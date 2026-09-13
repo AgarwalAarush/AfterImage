@@ -2117,6 +2117,7 @@ h3 {
 .selection-ask:hover { background: #f7f7f5; }
 .paper-assistant { position: fixed; z-index: 45; top: 92px; right: 16px; bottom: 16px; width: 390px; min-width: 320px; max-width: calc(50vw - 16px); display: flex; flex-direction: column; background: #fff; border: 1px solid #e0e1dc; border-radius: 17px; box-shadow: 0 5px 26px #292d2410; overflow: hidden; resize: horizontal; direction: rtl; transition: top 140ms ease; }
 .paper-assistant > * { direction: ltr; }
+.assistant-resize-edge { position: absolute; z-index: 2; top: 0; bottom: 0; left: 0; width: 16px; cursor: ew-resize; touch-action: none; }
 .assistant-heading { padding: 22px 22px 10px; display: flex; justify-content: space-between; align-items: center; gap: 12px; }
 .assistant-heading .eyebrow { font-size: 10px; }
 .assistant-heading h2 { font: 500 19px/1.4 var(--font-sans); margin: 6px 0 0; letter-spacing: -.3px; }

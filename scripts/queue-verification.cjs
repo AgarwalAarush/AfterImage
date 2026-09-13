@@ -1,0 +1,1 @@
+fetch('http://127.0.0.1:3000/api/state',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'generate',paperId:'2401.04088'})}).then(r=>r.json()).then(s=>console.log(s.error||s.state.jobs.slice(-1).map(j=>({type:j.type,status:j.status}))))
