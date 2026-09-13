@@ -1,0 +1,93 @@
+{
+  "assets": [
+    {
+      "contentType": "text/css",
+      "id": "cd0a28e0e36f0611",
+      "kind": "stylesheet",
+      "name": "style.css",
+      "path": "/var/folders/h6/d_62s7c916lb9lnvy0h63dbc0000gn/T/browser-use/assets/e4bd3f53-8c9a-4b74-af75-2208fa8f20bd/cd0a28e0e36f0611.css",
+      "url": "https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css"
+    },
+    {
+      "contentType": "text/css",
+      "id": "3c059ce9f18aa283",
+      "kind": "stylesheet",
+      "name": "style.css",
+      "path": "/var/folders/h6/d_62s7c916lb9lnvy0h63dbc0000gn/T/browser-use/assets/e4bd3f53-8c9a-4b74-af75-2208fa8f20bd/3c059ce9f18aa283.css",
+      "url": "https://unpkg.com/@phosphor-icons/web@2.1.1/src/fill/style.css"
+    },
+    {
+      "contentType": "text/css",
+      "id": "bb2f7ffaf5193a57",
+      "kind": "stylesheet",
+      "name": "style.css",
+      "path": "/var/folders/h6/d_62s7c916lb9lnvy0h63dbc0000gn/T/browser-use/assets/e4bd3f53-8c9a-4b74-af75-2208fa8f20bd/bb2f7ffaf5193a57.css",
+      "url": "https://unpkg.com/@phosphor-icons/web@2.1.1/src/bold/style.css"
+    },
+    {
+      "contentType": "",
+      "id": "99ef258e62978d07",
+      "kind": "stylesheet",
+      "name": "brand-q-gmNaul.css",
+      "path": "/var/folders/h6/d_62s7c916lb9lnvy0h63dbc0000gn/T/browser-use/assets/e4bd3f53-8c9a-4b74-af75-2208fa8f20bd/99ef258e62978d07.css",
+      "url": "https://fanout.sh/assets/brand-q-gmNaul.css"
+    },
+    {
+      "contentType": "",
+      "id": "e5a1b4e22f65bd6c",
+      "kind": "stylesheet",
+      "name": "index-BU2C1CDc.css",
+      "path": "/var/folders/h6/d_62s7c916lb9lnvy0h63dbc0000gn/T/browser-use/assets/e4bd3f53-8c9a-4b74-af75-2208fa8f20bd/e5a1b4e22f65bd6c.css",
+      "url": "https://fanout.sh/assets/index-BU2C1CDc.css"
+    },
+    {
+      "contentType": "",
+      "id": "86af93294a1bc208",
+      "kind": "stylesheet",
+      "name": "FullAccessCourseChips-Cld13pb9.css",
+      "path": "/var/folders/h6/d_62s7c916lb9lnvy0h63dbc0000gn/T/browser-use/assets/e4bd3f53-8c9a-4b74-af75-2208fa8f20bd/86af93294a1bc208.css",
+      "url": "https://fanout.sh/assets/FullAccessCourseChips-Cld13pb9.css"
+    },
+    {
+      "contentType": "",
+      "id": "193e43d661385667",
+      "kind": "stylesheet",
+      "name": "DailyExplainerOpening-ByZXUsmb.css",
+      "path": "/var/folders/h6/d_62s7c916lb9lnvy0h63dbc0000gn/T/browser-use/assets/e4bd3f53-8c9a-4b74-af75-2208fa8f20bd/193e43d661385667.css",
+      "url": "https://fanout.sh/assets/DailyExplainerOpening-ByZXUsmb.css"
+    },
+    {
+      "contentType": "",
+      "id": "e418d908493ab0d1",
+      "kind": "stylesheet",
+      "name": "wght-BFPNgCUJ.css",
+      "path": "/var/folders/h6/d_62s7c916lb9lnvy0h63dbc0000gn/T/browser-use/assets/e4bd3f53-8c9a-4b74-af75-2208fa8f20bd/e418d908493ab0d1.css",
+      "url": "https://fanout.sh/assets/wght-BFPNgCUJ.css"
+    },
+    {
+      "contentType": "",
+      "id": "b80654ece91e442b",
+      "kind": "stylesheet",
+      "name": "FanoutDailyPage-DkXoh0fV.css",
+      "path": "/var/folders/h6/d_62s7c916lb9lnvy0h63dbc0000gn/T/browser-use/assets/e4bd3f53-8c9a-4b74-af75-2208fa8f20bd/b80654ece91e442b.css",
+      "url": "https://fanout.sh/assets/FanoutDailyPage-DkXoh0fV.css"
+    },
+    {
+      "contentType": "",
+      "id": "6f537b0697f58a43",
+      "kind": "stylesheet",
+      "name": "DailyExplainer-CDfMYvvg.css",
+      "path": "/var/folders/h6/d_62s7c916lb9lnvy0h63dbc0000gn/T/browser-use/assets/e4bd3f53-8c9a-4b74-af75-2208fa8f20bd/6f537b0697f58a43.css",
+      "url": "https://fanout.sh/assets/DailyExplainer-CDfMYvvg.css"
+    },
+    {
+      "contentType": "text/css",
+      "id": "62c203b1081af4f3",
+      "kind": "stylesheet",
+      "name": "katex-ClQbWekD.css",
+      "path": "/var/folders/h6/d_62s7c916lb9lnvy0h63dbc0000gn/T/browser-use/assets/e4bd3f53-8c9a-4b74-af75-2208fa8f20bd/62c203b1081af4f3.css",
+      "url": "https://fanout.sh/assets/katex-ClQbWekD.css"
+    }
+  ],
+  "failures": []
+}
