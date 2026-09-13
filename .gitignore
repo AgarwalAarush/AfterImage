@@ -1,0 +1,16 @@
+node_modules/
+.next/
+.vercel/
+.env*
+!.env.example
+.data/
+*.tsbuildinfo
+artifacts/
+.vercel
+
+.next-production/
+.artifacts/
+
+supabase/.temp/
+
+.assistant-runtime/

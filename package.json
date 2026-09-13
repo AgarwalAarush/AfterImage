@@ -1,0 +1,36 @@
+{
+  "name": "afterimage",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --hostname 127.0.0.1",
+    "build": "next build",
+    "start": "next start --hostname 127.0.0.1",
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test tests/*.test.ts",
+    "worker": "tsx worker/index.ts"
+  },
+  "dependencies": {
+    "@fontsource-variable/dm-sans": "latest",
+    "@fontsource-variable/newsreader": "latest",
+    "@fontsource/ibm-plex-mono": "latest",
+    "@resvg/resvg-js": "latest",
+    "@supabase/supabase-js": "latest",
+    "cheerio": "latest",
+    "fast-xml-parser": "latest",
+    "katex": "^0.18.7",
+    "lucide-react": "latest",
+    "next": "latest",
+    "react": "latest",
+    "react-dom": "latest",
+    "zod": "latest"
+  },
+  "devDependencies": {
+    "@types/katex": "^0.16.8",
+    "@types/node": "latest",
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "tsx": "latest",
+    "typescript": "latest"
+  }
+}

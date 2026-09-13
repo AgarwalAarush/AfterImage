@@ -1,0 +1,12 @@
+/docs
+/worker
+/tests
+/.data
+/artifacts
+/.env*
+
+/.next-production
+/.artifacts
+/scripts
+
+/.assistant-runtime
