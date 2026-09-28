@@ -202,10 +202,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
               ["/", "For you"],
               ["/library", "Library"],
               ["/direction", "Direction"],
+              ["/documents", "Documents"],
             ].map(([href, label]) => (
               <Link
                 href={href}
-                className={pathname === href ? "active" : ""}
+                className={pathname === href || (href === "/documents" && pathname.startsWith("/documents/")) ? "active" : ""}
                 key={href}
               >
                 {label}

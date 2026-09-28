@@ -17,3 +17,4 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - Prefer small, topic-scoped commits with explicit intent. Default commit format: `feat:`, `fix:`, `docs:`, `chore:`.
 - Before creating a remote or pushing, verify credentials, remote URL, and branch target in the current thread (do not assume GitHub default naming).
 - If a request references deployment status, verify it from Vercel and API checks at the time of the request, not from stale historical notes.
+- Owner-uploaded documents are stored separately from `afterimage_state` in private local SQLite or the service-only Supabase `afterimage_documents` table. Apply the documents migration before deploying the Documents feature; never add uploaded bytes to the public library snapshot or worker queue.

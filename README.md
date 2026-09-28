@@ -2,6 +2,8 @@
 
 A personal reading compass and visual memory for research papers. The web app holds a short-lived shortlist, a searchable library, source-grounded notecards, and reading history. Reading happens in alphaXiv.
 
+The Documents tab adds a private shelf for uploaded Markdown guides and PDFs, with a formatted reader and original-file download. Document bytes live outside the frequently refreshed paper-library state. See `docs/documents.md` for storage, API, format, and release details.
+
 ## Repository status
 
 This repository is currently tracked from a fresh local bootstrap. Feature work and hardening progress is implemented across `src/`, `worker/`, `scripts/`, `docs/`, and `tests/`, with `README.md` and `AGENTS.md` capturing the current operating assumptions.
@@ -15,6 +17,7 @@ Primary product status in this checkout:
 - Worker orchestration with leased jobs, heartbeats, and limited retries
 - Environment-gated storage and authenticated API routes
 - Migration-backed Supabase schema with single-owner state model
+- Separate private document storage and reader for Markdown and PDF uploads
 
 ## Run locally
 
@@ -89,7 +92,8 @@ The former personal-notes editor has been removed. Existing stored notes are ret
 ## Current limits
 
 - Single owner; access-key sign-in rather than multi-user accounts.
-- arXiv and alphaXiv imports; arbitrary URLs and uploaded PDFs are not supported.
+- Paper imports support arXiv and alphaXiv links; arbitrary URLs and PDF-to-paper imports are not supported.
+- Documents accept Markdown and PDF uploads up to 4 MB; they remain separate from paper imports, recommendations, and generated notecards.
 - PDF fallback uses an isolated Python environment with `pypdf==6.18.1`; install with `python3 -m venv .venv` then `.venv/bin/pip install pypdf==6.18.1`. It extracts at most 12 pages, not necessarily the entire paper. Abstract-only results remain shorter and explicitly labeled.
 - Generated diagrams use a bounded vocabulary of original geometric primitives. They are editable SVG exports; there is no in-app vector editor.
 - Recommendation and generation jobs share a 12-job-per-hour limit. The Mac server and its signed-in Codex session must be available.
