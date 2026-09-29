@@ -1,13 +1,14 @@
 import { studySchema, validateStudy } from "@/lib/study";
 import { NextResponse } from "next/server";
 import { workerAuth } from "@/lib/auth";
-import { mutate } from "@/lib/store";
+import { mutate, touchWorkerSeenAt, workerClaimStatus } from "@/lib/store";
 import { resultSchema, recommendationSchema, validateScene } from "@/lib/scene";
 import { randomUUID } from "node:crypto";
 import { importPaper } from "@/lib/papers";
 import { validateRecall } from "@/lib/recall-validation";
 import { parsePaperId } from "@/lib/identity";
 import { excludedRecommendations, recommendationRunSchema } from "@/lib/recommendations";
+import { z } from "zod";
 export const maxDuration = 60;
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -16,6 +17,13 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   try {
     const body = await req.json();
+    if (body.action === "claim") {
+      const status = await workerClaimStatus();
+      if (!status.claim) {
+        if (status.heartbeat) await touchWorkerSeenAt();
+        return NextResponse.json({job: null});
+      }
+    }
     const newPapers =
       body.action === "complete" && Array.isArray(body.newPaperIds)
         ? await Promise.all(
@@ -53,7 +61,10 @@ export async function POST(req: Request) {
         job.leaseUntil = new Date(Date.now() + 15 * 60000).toISOString();
         job.leaseToken = randomUUID();
         const p = s.papers.find((p) => p.id === job.paperId);
-        if (p && job.type === "generate") p.generationStatus = "running";
+        if (p && job.type === "generate") {
+          p.generationStatus = "running";
+          p.generationStep = "sources";
+        }
         return {
           job,
           paper: p,
@@ -72,6 +83,12 @@ export async function POST(req: Request) {
         throw new Error("Job lease is no longer valid");
       if (body.action === "heartbeat") {
         job.leaseUntil = new Date(Date.now() + 15 * 60000).toISOString();
+        const stage = z
+          .enum(["sources", "planning", "drafting", "reviewing"])
+          .safeParse(body.stage);
+        const p = s.papers.find((p) => p.id === job.paperId);
+        if (p && job.type === "generate" && stage.success)
+          p.generationStep = stage.data;
         return { ok: true };
       }
       if (body.action === "fail") {
@@ -129,6 +146,7 @@ export async function POST(req: Request) {
         p.scene = result.scene;
         p.sources = sources;
         p.generationStatus = "ready";
+        delete p.generationStep;
         delete p.generationError;
         // Each new notecard gets its own independently reviewed visual/quiz supplement.
         if(!s.jobs.some(j=>j.type==="study"&&j.paperId===p.id&&["queued","running"].includes(j.status)))
@@ -171,6 +189,7 @@ export async function POST(req: Request) {
               attempts: 0,
             });
             p.generationStatus = "queued";
+            delete p.generationStep;
           }
         }
       }

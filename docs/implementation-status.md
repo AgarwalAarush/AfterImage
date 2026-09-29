@@ -3,10 +3,12 @@
 ## Built
 
 - Next.js 16 + React + TypeScript, self-hosted font packages, original quiet editorial design.
-- Reading shortlist with explanatory roles, reasons, reading focus, explicit refresh, and feedback.
-- Library with note/abstract/title search, keyboard focus shortcut, status filters, archive/restore, and sort.
+- Reading shortlist with explanatory roles, reasons, reading focus, manual refresh, and reading-driven automatic refresh when capacity allows.
+- Library with recall/abstract/title search, keyboard focus shortcut, status filters, archive/restore, and sort.
+- Global paper command palette: <kbd>⌘K</kbd> searches every known paper plus live importable results from arXiv and OpenAlex, supports arrow-key selection and Enter navigation, and accepts arXiv/alphaXiv intake through the existing save-and-generate path.
 - Paper page with source-backed recap, original native SVG, separate mobile composition, source excerpts, alphaXiv handoff, reading status and revisiting. The removed notes editor no longer occupies the paper page.
 - arXiv/alphaXiv import and version deduplication; automatic notecard queueing.
+- Discovery v2 searches relevance/recent query lanes across arXiv and OpenAlex, preserves one adjacent world-model lane, records provider-level coverage privately, and only ranks candidates whose canonical arXiv metadata resolves. See `docs/discovery-coverage.md`. The earlier deployed version was production-validated on September 13; the home-page simplification in this checkout remains local until redeployed.
 - SVG, Markdown, and JSON exports.
 - Private owner login, HttpOnly session cookie, server-only storage, and a separately authenticated worker endpoint.
 - Supabase optimistic state persistence; durable leased jobs, heartbeats, failure states, and bounded repairs.
@@ -18,12 +20,12 @@
 - Eleven focused unit tests pass (including equation validation, actual-font connector collision detection, and LoRA ordering/clearance): canonical paper identity, import-host rejection, XML safety, geometric validation, and honest starter state.
 - Development API integration checks pass: state retrieval, cross-origin mutation rejection, worker authentication, nonexistent-paper rejection, and invalid-source rejection.
 - Production-mode checks pass: anonymous access denied, wrong access key denied, valid session accepted, secure HttpOnly cookie, state accessible after sign-in, secrets and lease tokens withheld from the browser.
-- Browser: desktop shortlist, library search panel, phone-sized library, paper navigation, saved notes after reload, searching within notes, reading status, versioned import deduplication, generated desktop and portrait diagrams, and SVG download (`2401.04088.svg`) verified.
+- Browser: desktop shortlist, library search panel, phone-sized library, paper navigation, reading status, versioned import deduplication, generated desktop and portrait diagrams, and SVG download (`2401.04088.svg`) verified.
 - No browser console errors in the checked views.
 - Real Mac-server recommendation job `9eed34c3-ea9b-4c6a-a4f3-d6736740745e` completed; its selected arXiv records were independently imported and the shortlist persisted.
 - Real Mac-server generation job `627ad80e-9435-4ab1-8e50-7c1d6f72ac3f` completed for Mixtral. Source extraction included the abstract and paper sections. Draft passed the desktop render/source review and persisted. The resulting portrait rendering was separately visually inspected after that run. Subsequent worker code adds both images to automated review.
 - Two earlier generation drafts were rejected by quality checks. Connector-label placement, wrapping, caption instructions, and the expert-bank primitive were corrected; rejected drafts did not replace the existing notecard.
-- Temporary verification notes, reading status, and goal were removed conditionally. Generated content remains as a real working example, with no fabricated personal reading history.
+- Temporary verification state and goal were removed conditionally. Generated content remains as a real working example, with no fabricated personal reading history.
 
 ## Production deployment — 2026-09-12
 
@@ -40,10 +42,18 @@
 - Production runtime error scan over the deployment window returned no error-level log entries. The Mac worker error log was empty. No separate external log drain or alerting integration was added.
 - Live sign-in page was visually checked in the browser. The authenticated data and session flow were tested through the live HTTP endpoints without exposing credentials in logs.
 
+## Discovery v2 production deployment — 2026-09-13
+
+- Vercel deployment `dpl_6zhmAqa9WY4cuawaQeDSDWMwbCB7` reached READY and was aliased to `afterimage.aarushagarwal.dev`. The custom domain returned HTTP 200; the anonymous state endpoint retained its HTTP 401 boundary.
+- The authenticated production UI loaded the new build and displayed the persisted discovery report (`27 discovered · 27 verified candidates`) plus the revised source-grounded return copy.
+- The matching `worker/discovery.ts`, `worker/index.ts`, `src/lib/recommendations.ts`, and `src/lib/types.ts` files were synchronized to the Mac server without touching its environment, private data, artifacts, or dependencies. Both updated modules imported successfully; the LaunchAgent restarted in `gui/501` as PID 4618.
+- The release gates passed: 42 tests, TypeScript, the Next.js production build, and `git diff --check`. A Vercel error-level log scan found no entries during the checked release window. No external log drain was added or independently verified.
+- No recommendation refresh or model job was triggered for deployment verification. The visible 27-paper report is the persisted earlier shortlist; the broader multi-provider lanes run on the next explicit **New shortlist** action.
+
 
 ## Recall and diagram refinement — September 12, evening
 
-- Removed the personal-notes editor; retained stored history and older notes. Reading status remains in the paper header.
+- Removed the personal-notes editor. Schema version 2 now removes the retired capture fields from legacy state; reading status remains in the paper header.
 - Recall version 2 adds substantial mechanism, evidence, limitations, significance, and source-linked equations. KaTeX renders display and inline notation with unsafe commands disabled; both worker and completion API validate formulas and source IDs.
 - Reading copy is 16 px desktop / 15 px mobile, with 1.85 line height and a restrained prose measure. The misleading 60-second label is now simply “The recall.”
 - Added self-hosted Overused Grotesk and Departure Mono, retaining Newsreader and IBM Plex Mono in distinct roles. Official OFL licenses are included. Rendering on macserver uses the same actual font families.

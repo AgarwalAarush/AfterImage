@@ -3,6 +3,7 @@ import {
   createContext,
   useContext,
   useEffect,
+  useLayoutEffect,
   useState,
   useCallback,
   useRef,
@@ -16,6 +17,7 @@ import {
   Plus,
   X,
   Search,
+  FilePlus2,
   Bookmark,
   Check,
   RefreshCw,
@@ -25,10 +27,12 @@ import {
   BookOpen,
   SlidersHorizontal,
   LogOut,
+  Globe2,
 } from "lucide-react";
 import type { AppState, Paper, Entry, Recommendation } from "@/lib/types";
+import type { PaperSearchProvider, PaperSearchResult } from "@/lib/paper-search";
 import dynamic from "next/dynamic";
-import { readLibrary, SessionExpired } from "@/lib/library-client";
+import { readLibrary, readLibraryUpdate, SessionExpired } from "@/lib/library-client";
 import { LibraryContent } from "./library-content";
 const Diagram = dynamic(() => import("./diagram").then(module => module.Diagram), {
   loading: () => <div className="diagram diagram-loading" aria-label="Loading diagram" />,
@@ -86,29 +90,39 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AppState | null>(null),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
-    [adding, setAdding] = useState(false),
+    [paletteOpen, setPaletteOpen] = useState(false),
     [message, setMessage] = useState("");
   const router = useRouter(),
     pathname = usePathname();
   const stateRef = useRef<AppState | null>(null),
     requestRef = useRef<AbortController | null>(null),
     busyRef = useRef(false),
+    versionRef = useRef<number | null>(null),
     lastLoaded = useRef(0);
   const refresh = useCallback(async () => {
     if (busyRef.current || (requestRef.current && !requestRef.current.signal.aborted)) return;
     const controller = new AbortController();
     requestRef.current = controller;
     try {
-      const data = await readLibrary(controller.signal);
+      const {state: data, version, workerSeenAt} = await readLibraryUpdate(
+        controller.signal, stateRef.current && versionRef.current !== null ? versionRef.current : undefined,
+      );
       if (controller.signal.aborted) return;
-      stateRef.current = data;
+      versionRef.current = version;
       lastLoaded.current = Date.now();
-      setState(data);
+      if (data) {
+        stateRef.current = data;
+        setState(data);
+      } else if (stateRef.current && stateRef.current.workerSeenAt !== workerSeenAt) {
+        stateRef.current = {...stateRef.current, workerSeenAt};
+        setState(stateRef.current);
+      }
       setError("");
     } catch (e) {
       if (controller.signal.aborted) return;
       if (e instanceof SessionExpired) {
         stateRef.current = null;
+        versionRef.current = null;
         setState(null);
         router.replace("/login");
       } else setError((e as Error).message);
@@ -120,12 +134,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (pathname === "/login") {
       requestRef.current?.abort();
       stateRef.current = null;
+      versionRef.current = null;
       lastLoaded.current = 0;
       setState(null);
       setError("");
     } else if (!stateRef.current || Date.now() - lastLoaded.current > 30000) void refresh();
   }, [refresh, pathname]);
   useEffect(() => () => { requestRef.current?.abort(); }, []);
+  useEffect(() => {
+    const key = (event: KeyboardEvent) => {
+      if (pathname === "/login") return;
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setPaletteOpen(true);
+      }
+    };
+    window.addEventListener("keydown", key);
+    return () => window.removeEventListener("keydown", key);
+  }, [pathname]);
   const activeJobs = state?.jobs.some(j => ["queued", "running"].includes(j.status)) || false;
   useEffect(() => {
     if (pathname === "/login") return;
@@ -159,6 +185,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       });
       if (r.status === 401) {
         stateRef.current = null;
+        versionRef.current = null;
         setState(null);
         router.replace("/login");
         throw new Error("Please sign in again.");
@@ -166,6 +193,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const data = await r.json();
       if (!r.ok) throw new Error(data.error);
       stateRef.current = data.state;
+      versionRef.current = null;
       lastLoaded.current = Date.now();
       setState(data.state);
       setError("");
@@ -185,7 +213,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         state,
         act,
         busy,
-        openAdd: () => setAdding(true),
+        openAdd: () => setPaletteOpen(true),
         toast: setMessage,
       }}
     >
@@ -201,7 +229,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
             {[
               ["/", "For you"],
               ["/library", "Library"],
-              ["/direction", "Direction"],
             ].map(([href, label]) => (
               <Link
                 href={href}
@@ -214,7 +241,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           </nav>
           <button
             className="button small add-nav"
-            onClick={() => setAdding(true)}
+            onClick={() => setPaletteOpen(true)}
           >
             <Plus size={16} />
             <span>Add a paper</span>
@@ -241,20 +268,134 @@ export function AppProvider({ children }: { children: ReactNode }) {
           {message}
         </div>
       )}
-      {adding && <AddDialog close={() => setAdding(false)} />}
+      {paletteOpen && <PaperPalette close={() => setPaletteOpen(false)} />}
     </Context.Provider>
   );
 }
-function AddDialog({ close }: { close: () => void }) {
-  const { act, busy } = useApp(),
+function matchesPaperInput(value: string) {
+  return /^(?:\d{4}\.\d{4,5}(?:v\d+)?|[a-z-]+(?:\.[A-Z]{2})?\/\d{7}(?:v\d+)?|https?:\/\/(?:www\.)?(?:arxiv|alphaxiv)\.org\/)/i.test(value.trim());
+}
+function PaperPalette({ close }: { close: () => void }) {
+  const { state, act, busy } = useApp(),
     router = useRouter(),
     ref = useRef<HTMLDialogElement>(null),
-    [url, setUrl] = useState(""),
-    [error, setError] = useState("");
-  useEffect(() => {
+    input = useRef<HTMLInputElement>(null),
+    [query, setQuery] = useState(""),
+    [activeIndex, setActiveIndex] = useState(0),
+    [error, setError] = useState(""),
+    [remotePapers, setRemotePapers] = useState<PaperSearchResult[]>([]),
+    [providers, setProviders] = useState<PaperSearchProvider[]>([]),
+    [searching, setSearching] = useState(false),
+    [searchError, setSearchError] = useState("");
+  useLayoutEffect(() => {
     ref.current?.showModal();
-    return () => ref.current?.close();
+    const frame = requestAnimationFrame(() => input.current?.focus());
+    return () => {
+      cancelAnimationFrame(frame);
+      ref.current?.close();
+    };
   }, []);
+  const normalizedQuery = query.trim().toLowerCase();
+  const canImport = matchesPaperInput(query);
+  useEffect(() => {
+    setRemotePapers([]);
+    setProviders([]);
+    setSearchError("");
+    if (normalizedQuery.length < 2 || canImport) {
+      setSearching(false);
+      return;
+    }
+    const controller = new AbortController();
+    setSearching(true);
+    const timer = window.setTimeout(async () => {
+      try {
+        const response = await fetch(`/api/search?q=${encodeURIComponent(query.trim())}`, {
+          cache: "no-store",
+          signal: controller.signal,
+        });
+        if (response.status === 401) throw new SessionExpired();
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "Live paper search is unavailable.");
+        if (controller.signal.aborted) return;
+        const nextProviders: PaperSearchProvider[] = data.providers || [];
+        setRemotePapers(data.results || []);
+        setProviders(nextProviders);
+        setSearchError(
+          nextProviders.length && nextProviders.every((provider) => provider.status === "unavailable")
+            ? "Live paper search is temporarily unavailable."
+            : "",
+        );
+        setActiveIndex(0);
+      } catch (cause) {
+        if (controller.signal.aborted) return;
+        if (cause instanceof SessionExpired) router.replace("/login");
+        setSearchError(
+          cause instanceof SessionExpired
+            ? "Please sign in again."
+            : "Live paper search is temporarily unavailable.",
+        );
+      } finally {
+        if (!controller.signal.aborted) setSearching(false);
+      }
+    }, 300);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [normalizedQuery, canImport, query, router]);
+  if (!state) return null;
+  const papers = [...state.papers]
+    .filter((paper) => {
+      if (!normalizedQuery) return true;
+      const searchable = [
+        paper.title,
+        paper.authors,
+        paper.arxivId,
+        paper.topics.join(" "),
+        paper.abstract,
+        paper.recall?.idea || "",
+      ]
+        .join(" ")
+        .toLowerCase();
+      return normalizedQuery.split(/\s+/).every((term) => searchable.includes(term));
+    })
+    .sort((a, b) => {
+      if (!normalizedQuery) return Date.parse(b.createdAt) - Date.parse(a.createdAt);
+      const aTitle = a.title.toLowerCase();
+      const bTitle = b.title.toLowerCase();
+      return Number(bTitle.startsWith(normalizedQuery)) - Number(aTitle.startsWith(normalizedQuery));
+    })
+    .slice(0, 7);
+  const knownIds = new Set(state.papers.map((paper) => paper.id));
+  const discoveries = remotePapers.filter((paper) => !knownIds.has(paper.id));
+  const items: (
+    | { kind: "import" }
+    | { kind: "paper"; paper: Paper }
+    | { kind: "discovery"; paper: PaperSearchResult }
+  )[] = [
+    ...(canImport ? [{ kind: "import" as const }] : []),
+    ...papers.map((paper) => ({ kind: "paper" as const, paper })),
+    ...discoveries.map((paper) => ({ kind: "discovery" as const, paper })),
+  ];
+  const activeItem = items[activeIndex];
+  const select = async (item: (typeof items)[number]) => {
+    if (item.kind === "paper") {
+      close();
+      router.push(`/papers/${encodeURIComponent(item.paper.id)}`);
+      return;
+    }
+    try {
+      setError("");
+      const url = item.kind === "discovery"
+        ? `https://arxiv.org/abs/${item.paper.id}`
+        : query;
+      const result = await act({ action: "import", url });
+      close();
+      router.push(`/papers/${encodeURIComponent(result.paperId)}`);
+    } catch (cause) {
+      setError((cause as Error).message);
+    }
+  };
   return (
     <dialog
       ref={ref}
@@ -262,61 +403,177 @@ function AddDialog({ close }: { close: () => void }) {
       onClick={(e) => {
         if (e.target === e.currentTarget) close();
       }}
-      className="modal"
+      className="command-palette"
+      aria-label="Find or add a paper"
     >
-      <form
-        onSubmit={async (e) => {
-          e.preventDefault();
-          try {
-            const d = await act({ action: "import", url });
-            close();
-            router.push(`/papers/${encodeURIComponent(d.paperId)}`);
-          } catch (e) {
-            setError((e as Error).message);
-          }
-        }}
-      >
-        <div className="section-heading">
-          <span className="eyebrow">A PLACE FOR THE NEXT IDEA</span>
+      <div className="command-palette-heading">
+        <span className="eyebrow">YOUR RESEARCH DESK</span>
+        <button
+          type="button"
+          className="icon-button"
+          aria-label="Close paper search"
+          onClick={close}
+        >
+          <X size={18} />
+        </button>
+      </div>
+      <div className="command-search">
+        <Search size={20} aria-hidden="true" />
+        <input
+          ref={input}
+          role="combobox"
+          aria-expanded="true"
+          aria-controls="paper-palette-results"
+          aria-activedescendant={activeItem ? `paper-palette-item-${activeIndex}` : undefined}
+          aria-label="Search papers or paste an arXiv link"
+          placeholder="Search papers or paste an arXiv link…"
+          value={query}
+          onChange={(event) => {
+            setQuery(event.target.value);
+            setActiveIndex(0);
+            setError("");
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "ArrowDown" && items.length) {
+              event.preventDefault();
+              setActiveIndex((index) => Math.min(index + 1, items.length - 1));
+            } else if (event.key === "ArrowUp" && items.length) {
+              event.preventDefault();
+              setActiveIndex((index) => Math.max(index - 1, 0));
+            } else if (event.key === "Enter" && activeItem) {
+              event.preventDefault();
+              void select(activeItem);
+            }
+          }}
+        />
+        {query ? (
           <button
             type="button"
             className="icon-button"
-            aria-label="Close"
-            onClick={close}
+            aria-label="Clear paper search"
+            onClick={() => {
+              setQuery("");
+              setActiveIndex(0);
+              setError("");
+            }}
           >
-            <X size={18} />
+            <X size={17} />
           </button>
-        </div>
-        <h2>Add a paper.</h2>
-        <p>
-          Drop in an arXiv or alphaXiv link. We’ll keep the paper, and leave the
-          reading to you.
-        </p>
-        <label htmlFor="paper-url">Paper link or arXiv ID</label>
-        <input
-          id="paper-url"
-          autoFocus
-          required
-          value={url}
-          onChange={(e) => setUrl(e.target.value)}
-          placeholder="https://arxiv.org/abs/…"
-        />
-        <small>For example: 2401.04088</small>
-        {error && (
-          <p className="form-error" role="alert">
-            {error}
-          </p>
+        ) : <kbd>esc</kbd>}
+      </div>
+      {error && <p className="command-error" role="alert">{error}</p>}
+      <div id="paper-palette-results" className="command-results" role="listbox">
+        {canImport && (
+          <div className="command-group">
+            <span className="command-group-label">ADD TO YOUR LIBRARY</span>
+            <button
+              type="button"
+              id="paper-palette-item-0"
+              role="option"
+              aria-selected={activeIndex === 0}
+              className={`command-item import ${activeIndex === 0 ? "active" : ""}`}
+              disabled={busy}
+              onMouseMove={() => setActiveIndex(0)}
+              onClick={() => void select({ kind: "import" })}
+            >
+              <span className="command-item-icon"><FilePlus2 size={17} /></span>
+              <span className="command-item-copy">
+                <strong>{busy ? "Adding paper…" : "Add this paper"}</strong>
+                <small>{query.trim()}</small>
+              </span>
+              <ArrowRight size={16} />
+            </button>
+          </div>
         )}
-        <button className="button primary full" disabled={busy}>
-          {busy ? "Finding the paper…" : "Add to my library"}
-          <ArrowRight size={16} />
-        </button>
-      </form>
+        {(papers.length > 0 || !normalizedQuery) && (
+          <div className="command-group">
+            <span className="command-group-label">
+              {normalizedQuery ? "YOUR PAPERS" : "RECENT PAPERS"}
+            </span>
+            {papers.map((paper, index) => {
+              const itemIndex = index + (canImport ? 1 : 0);
+              const entry = state.entries[paper.id];
+              return (
+                <button
+                  type="button"
+                  id={`paper-palette-item-${itemIndex}`}
+                  role="option"
+                  aria-selected={activeIndex === itemIndex}
+                  className={`command-item ${activeIndex === itemIndex ? "active" : ""}`}
+                  key={paper.id}
+                  onMouseMove={() => setActiveIndex(itemIndex)}
+                  onClick={() => void select({ kind: "paper", paper })}
+                >
+                  <span className={`paper-dot ${paper.accent}`} />
+                  <span className="command-item-copy">
+                    <strong>{paper.title}</strong>
+                    <small>{paper.authors} · {paper.year}{entry ? ` · ${entry.status === "saved" ? "To read" : entry.status}` : " · Suggested"}</small>
+                  </span>
+                  <ArrowUpRight size={16} />
+                </button>
+              );
+            })}
+          </div>
+        )}
+        {normalizedQuery.length >= 2 && !canImport && (
+          <div className="command-group">
+            <span className="command-group-label">
+              {searching ? "SEARCHING ARXIV + OPENALEX" : "DISCOVER"}
+            </span>
+            {discoveries.map((paper, index) => {
+              const itemIndex = papers.length + index;
+              return (
+                <button
+                  type="button"
+                  id={`paper-palette-item-${itemIndex}`}
+                  role="option"
+                  aria-selected={activeIndex === itemIndex}
+                  className={`command-item ${activeIndex === itemIndex ? "active" : ""}`}
+                  key={paper.id}
+                  disabled={busy}
+                  onMouseMove={() => setActiveIndex(itemIndex)}
+                  onClick={() => void select({ kind: "discovery", paper })}
+                >
+                  <span className="command-item-icon discovery"><Globe2 size={16} /></span>
+                  <span className="command-item-copy">
+                    <strong>{paper.title}</strong>
+                    <small>{paper.authors}{paper.year ? ` · ${paper.year}` : ""} · arXiv {paper.id}</small>
+                  </span>
+                  <FilePlus2 size={16} aria-label="Add paper" />
+                </button>
+              );
+            })}
+            {searching && (
+              <p className="command-empty searching" role="status">Searching the scholarly corpus…</p>
+            )}
+            {!searching && !discoveries.length && (
+              <p className="command-empty">
+                {searchError
+                  ? `${searchError} Paste an arXiv link to add it.`
+                  : "No importable papers found. Try a title, author, or arXiv link."}
+              </p>
+            )}
+            {!searching && discoveries.length > 0 && (
+              <p className="command-provenance">
+                Found via {providers
+                  .filter((provider) => provider.status === "ok")
+                  .map((provider) => provider.provider === "arxiv" ? "arXiv" : "OpenAlex")
+                  .join(" + ") || "scholarly indexes"}. Selecting a paper adds its canonical arXiv record.
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+      <div className="command-footer" aria-hidden="true">
+        <span><kbd>↑</kbd><kbd>↓</kbd> navigate</span>
+        <span><kbd>↵</kbd> select</span>
+        <span><kbd>esc</kbd> close</span>
+      </div>
     </dialog>
   );
 }
 export function Home() {
-  const { state, act, busy, openAdd, toast } = useApp();
+  const { state, act, busy, toast } = useApp();
   if (!state) return null;
   const recs = state.recommendations
     .map((r) => ({ r, p: state.papers.find((p) => p.id === r.paperId)! }))
@@ -324,17 +581,24 @@ export function Home() {
   const active = state.jobs.find(
     (j) => j.type === "recommend" && ["queued", "running"].includes(j.status),
   );
-  const failed = state.jobs.filter((j) => j.type === "recommend").at(-1);
+  const latestRecommendationJob = state.jobs.filter((j) => j.type === "recommend").at(-1);
   const saved = Object.values(state.entries).filter(
     (e) => e.status !== "archived",
   );
-  const revisit = saved
-    .filter((e) => e.status === "read")
-    .sort(
-      (a, b) =>
-        Date.parse(a.reviewedAt || a.updatedAt) -
-        Date.parse(b.reviewedAt || b.updatedAt),
+  const recall = saved
+    .map((e) => ({ e, p: state.papers.find((p) => p.id === e.paperId) }))
+    .filter(
+      (item): item is { e: Entry; p: Paper } =>
+        Boolean(
+          item.p?.recall &&
+            (item.p.recall.provenance === "editorial" || item.p.study),
+        ),
     )
+    .sort((a, b) => {
+      const priority = { read: 0, reading: 1, saved: 2, archived: 3 };
+      const status = priority[a.e.status] - priority[b.e.status];
+      return status || Date.parse(b.e.reviewedAt || b.e.updatedAt) - Date.parse(a.e.reviewedAt || a.e.updatedAt);
+    })
     .slice(0, 3);
   return (
     <div className="page home">
@@ -348,27 +612,13 @@ export function Home() {
           <br className="mobile-break" /> A place for the ideas that stay.
         </p>
       </div>
-      <div className="direction-strip">
-        <div>
-          <span className="eyebrow">CURRENT DIRECTION</span>
-          <p>{state.direction.goal || "What are you trying to understand?"}</p>
-        </div>
-        <Link href="/direction">
-          {state.direction.goal ? "Refine direction" : "Set your direction"}
-          <ArrowUpRight size={15} />
-        </Link>
-      </div>
       <div className="section-heading shortlist-heading">
-        <div>
-          <span className="eyebrow">
-            {state.recommendationSource === "starter"
-              ? "A FEW STARTING POINTS"
-              : "YOUR NEXT READS"}
-          </span>
+        <div className="shortlist-title">
+          <h2>Next reads</h2>
           <span className="muted section-sub">
             {state.recommendationSource === "starter"
-              ? "An editorial selection to begin with."
-              : "Selected around your goals. Kept here until you move on."}
+              ? "A few strong places to begin."
+              : "Shaped by what you save, read, and skip."}
           </span>
         </div>
         {state.direction.goal && (
@@ -382,14 +632,13 @@ export function Home() {
             }
           >
             <RefreshCw size={14} className={active ? "spin" : ""} />
-            {active ? "Finding your next reads…" : "New shortlist"}
+            {active ? "Updating suggestions…" : "Refresh suggestions"}
           </button>
         )}
       </div>
-      {failed?.status === "failed" && (
+      {latestRecommendationJob?.status === "failed" && (
         <p className="notice">
-          The last shortlist couldn’t finish. {failed.error} Your previous
-          selection is still here.
+          Suggestions could not refresh. Your previous picks are still here.
         </p>
       )}
       <div className="recommendation-grid">
@@ -405,77 +654,52 @@ export function Home() {
       {!recs.length && (
         <div className="empty panel">
           <Compass size={24} />
-          <h2>A little room for a new direction.</h2>
-          <p>Update your goal, then ask for your next reading list.</p>
-          <Link className="button" href="/direction">
-            Set direction
-            <ArrowRight size={16} />
-          </Link>
+          <h2>Your next papers are being chosen.</h2>
+          <p>Your library stays available while suggestions refresh.</p>
         </div>
       )}
       <div className="below-grid">
         <section className="return-section">
           <div className="section-heading">
-            <span className="eyebrow">
-              {revisit.length ? "LET IT COME BACK" : "MAKE ROOM FOR RECALL"}
-            </span>
+            <div className="recall-heading">
+              <h2>Recall</h2>
+              <span className="muted section-sub">Completed reading kits ready for a quick return.</span>
+            </div>
             <Link className="text-button" href="/library">
               Your library <ArrowRight size={14} />
             </Link>
           </div>
-          {revisit.length ? (
-            revisit.map((e) => {
-              const p = state.papers.find((p) => p.id === e.paperId)!;
-              return (
-                <Link
-                  className="revisit-row"
-                  key={p.id}
-                  href={`/papers/${encodeURIComponent(p.id)}`}
-                >
-                  <span className={`paper-dot ${p.accent}`} />
-                  <div>
-                    <h3>{p.title}</h3>
-                    <p>
-                      {e.takeaway || p.recall?.idea || "Return to the idea."}
-                    </p>
-                  </div>
-                  <ArrowUpRight size={16} />
-                </Link>
-              );
-            })
+          {recall.length ? (
+            recall.map(({ e, p }) => (
+              <Link
+                className="revisit-row"
+                key={p.id}
+                href={`/papers/${encodeURIComponent(p.id)}`}
+              >
+                <span className={`paper-dot ${p.accent}`} />
+                <div>
+                  <h3>{p.title}</h3>
+                  <p>{p.recall?.idea || "Return to the idea."}</p>
+                </div>
+                <span className="revisit-status">
+                  {e.status === "read"
+                    ? "Read"
+                    : e.status === "reading"
+                      ? "In progress"
+                      : "Saved"}
+                </span>
+                <ArrowUpRight size={16} />
+              </Link>
+            ))
           ) : (
             <div className="recall-empty">
-              <div className="ghost-cards">
-                <span />
-                <span />
-                <span>↺</span>
-              </div>
               <div>
-                <h3>The good ideas deserve a second visit.</h3>
-                <p>
-                  Mark a paper as read and it will find its way back here, with
-                  a deeper recall and a visual refresher.
-                </p>
+                <h3>Your first reading kit is still taking shape.</h3>
+                <p>Completed notecards and visual guides will collect here automatically.</p>
               </div>
             </div>
           )}
         </section>
-        <aside className="aside-note">
-          <span className="eyebrow">A SMALL READING RITUAL</span>
-          <h3>
-            Read elsewhere.
-            <br />
-            Remember here.
-          </h3>
-          <p>
-            Open a paper in alphaXiv. Follow your curiosity. Come back for the
-            one idea you want to keep.
-          </p>
-          <button className="text-button" onClick={openAdd}>
-            Bring a paper with you
-            <Plus size={14} />
-          </button>
-        </aside>
       </div>
     </div>
   );
@@ -491,8 +715,9 @@ function RecommendationCard({
 }) {
   const { state, act, toast } = useApp();
   const saved = !!state?.entries[p.id];
+  const hasArt = Boolean(p.scene || p.visual);
   return (
-    <article className={`paper-card ${p.accent}`}>
+    <article className={`paper-card ${p.accent} ${hasArt ? "" : "no-art"}`}>
       <div className="card-top">
         <span className="eyebrow">
           <span className="card-number">0{index + 1}</span>
@@ -510,14 +735,16 @@ function RecommendationCard({
           {saved ? <Check size={16} /> : <Bookmark size={16} />}
         </button>
       </div>
-      <Link
-        className="card-art"
-        href={`/papers/${encodeURIComponent(p.id)}`}
-        tabIndex={-1}
-        aria-hidden="true"
-      >
-        <Diagram paper={p} thumbnail />
-      </Link>
+      {hasArt && (
+        <Link
+          className="card-art"
+          href={`/papers/${encodeURIComponent(p.id)}`}
+          tabIndex={-1}
+          aria-hidden="true"
+        >
+          <Diagram paper={p} thumbnail />
+        </Link>
+      )}
       <div className="card-content">
         <div className="eyebrow paper-meta">
           {p.year}
@@ -615,9 +842,6 @@ export function Library() {
           p.authors,
           p.topics.join(" "),
           p.abstract,
-          e.takeaway,
-          e.question,
-          e.why,
           p.recall?.idea,
         ]
           .join(" ")
@@ -634,7 +858,7 @@ export function Library() {
       <div className="page-intro compact">
         <div className="eyebrow intro-kicker">YOUR GROWING COLLECTION</div>
         <h1>Ideas, kept close.</h1>
-        <p>The papers you follow. The things you take away.</p>
+        <p>The papers you follow. The ideas worth returning to.</p>
       </div>
       <section className="search-panel panel">
         <div className="section-heading">
@@ -726,14 +950,10 @@ export function Library() {
               </div>
               <Diagram paper={p} thumbnail />
               <h2>{p.title}</h2>
-              <p>{e.takeaway || p.recall?.idea || p.abstract.slice(0, 170)}</p>
+              <p>{p.recall?.idea || p.abstract.slice(0, 170)}</p>
               <div className="library-card-bottom">
                 <span>
-                  {e.takeaway
-                    ? "YOUR TAKEAWAY"
-                    : p.recall
-                      ? "VISUAL NOTECARD"
-                      : "AWAITING A NOTECARD"}
+                  {p.recall ? "VISUAL NOTECARD" : "AWAITING A NOTECARD"}
                 </span>
                 <ArrowUpRight size={16} />
               </div>
@@ -963,7 +1183,7 @@ function DirectionForm({
       <section className="settings-row">
         <div>
           <span className="eyebrow">YOURS TO KEEP</span>
-          <p>Export your library, notes, and notecards.</p>
+          <p>Export your library and notecards.</p>
         </div>
         <button
           className="button"

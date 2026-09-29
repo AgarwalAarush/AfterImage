@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { ArrowUp, X, MessageSquare, Square, Quote, Copy, BookmarkPlus } from "lucide-react";
+import { ArrowUp, X, MessageSquare, Square, Quote, Copy } from "lucide-react";
 import type { Paper } from "@/lib/types";
 import type { AssistantRequest } from "@/lib/assistant";
 import { useApp } from "./app";
@@ -8,15 +8,15 @@ import { MathText, InlineText } from "./math";
 
 type Reply=Omit<AssistantRequest,"leaseToken"|"leaseUntil">;
 const active=(r:Reply)=>r.status==="running"||r.status==="queued";
-export function PaperAssistant({paper,children}:{paper:Paper;children:ReactNode}){
-  const {state,act,toast}=useApp();
+export function PaperAssistant({paper,children,available=true}:{paper:Paper;children:ReactNode;available?:boolean}){
+  const {toast}=useApp();
   const [narrow,setNarrow]=useState(false);
   const [pastTopBar,setPastTopBar]=useState(false);
   const [open,setOpen]=useState(false),[question,setQuestion]=useState(""),[selection,setSelection]=useState(""),[highlight,setHighlight]=useState<{text:string;x:number;y:number}|null>(null);
   const [messages,setMessages]=useState<Reply[]>([]),[sending,setSending]=useState(false),[error,setError]=useState(""),[source,setSource]=useState<{label:string;url:string;excerpt:string}|null>(null);
   const root=useRef<HTMLDivElement>(null),input=useRef<HTMLTextAreaElement>(null),conversation=useRef<HTMLDivElement>(null),returnFocus=useRef<HTMLElement|null>(null),follow=useRef(true),events=useRef<EventSource|null>(null);
   const running=messages.find(active);
-  function show(){returnFocus.current=document.activeElement as HTMLElement;setOpen(true);setTimeout(()=>input.current?.focus(),0);}
+  function show(){if(!available)return;returnFocus.current=document.activeElement as HTMLElement;setOpen(true);setTimeout(()=>input.current?.focus(),0);}
   function close(){setOpen(false);returnFocus.current?.focus();}
   function watch(id:string){
     events.current?.close();const stream=new EventSource(`/api/assistant?id=${encodeURIComponent(id)}`);events.current=stream;
@@ -27,14 +27,16 @@ export function PaperAssistant({paper,children}:{paper:Paper;children:ReactNode}
   useEffect(()=>{const query=matchMedia("(max-width: 999px)");const change=()=>setNarrow(query.matches);change();query.addEventListener("change",change);return()=>query.removeEventListener("change",change);},[]);
   useEffect(()=>{const check=()=>setPastTopBar(window.scrollY>88);check();window.addEventListener("scroll",check,{passive:true});return()=>window.removeEventListener("scroll",check);},[]);
   useEffect(()=>{
+    if(!available){setOpen(false);setHighlight(null);return;}
     let ignore=false;
     fetch(`/api/assistant?paperId=${encodeURIComponent(paper.id)}`).then(r=>{if(!r.ok)throw Error();return r.json();}).then((data:Reply[])=>{if(ignore)return;setMessages(data);const job=data.find(active);if(job)watch(job.id);}).catch(()=>{if(!ignore)setError("Could not load conversation history. You can still ask a question.");});
     return()=>{ignore=true;events.current?.close();};
-  },[paper.id]);
+  },[available,paper.id]);
   useEffect(()=>{
     if(open&&messages.length&&follow.current)conversation.current?.scrollTo({top:conversation.current.scrollHeight,behavior:"instant"});
   },[messages,open]);
   useEffect(()=>{
+    if(!available)return;
     const select=()=>{
       const s=window.getSelection();if(!s||s.isCollapsed||!s.rangeCount){setHighlight(null);return;}
       const range=s.getRangeAt(0),parent=range.commonAncestorContainer.nodeType===1?range.commonAncestorContainer as Element:range.commonAncestorContainer.parentElement;
@@ -53,7 +55,7 @@ export function PaperAssistant({paper,children}:{paper:Paper;children:ReactNode}
     };
     document.addEventListener("touchend",select);document.addEventListener("mouseup",select);document.addEventListener("keyup",select);document.addEventListener("keydown",keys);
     return()=>{document.removeEventListener("touchend",select);document.removeEventListener("mouseup",select);document.removeEventListener("keyup",select);document.removeEventListener("keydown",keys);};
-  },[open]);
+  },[available,open]);
   async function send(value=question){
     if(!value.trim()||running||sending)return;setSending(true);setError("");follow.current=true;
     const id=crypto.randomUUID();
@@ -67,20 +69,13 @@ export function PaperAssistant({paper,children}:{paper:Paper;children:ReactNode}
     if(id==="notecard"){setSource({label:"Afterimage notecard",url:"",excerpt:"This citation refers to the explanation on this page. It is an editorial or AI-generated interpretation, not a quotation from the original paper."});return;}
     try{const r=await fetch(`/api/assistant?paperId=${encodeURIComponent(paper.id)}&sourceId=${encodeURIComponent(id)}`);if(!r.ok)throw Error();setSource(await r.json());}catch{toast("Could not open that source.");}
   }
-  async function save(reply:Reply){
-    const old=state?.entries[paper.id]?.takeaway||"";const next=`${old}${old?"\n\n":""}Q: ${reply.question}\n${reply.answer}`;
-    if(next.length>8000){toast("Your notes are full. Copy this answer instead.");return;}
-    await act({action:"entry",paperId:paper.id,patch:{takeaway:next}}).then(()=>toast("Saved to this paper’s notes and Markdown export.")).catch(()=>{});
-  }
   return <div ref={root} className={`reader-workspace ${open?"assistant-open":""}`}>
     <div inert={open&&narrow?true:undefined}>{children}</div>
-    {!open&&<button className="assistant-launch button" onClick={show}><MessageSquare size={17}/>Ask this paper <kbd>⌘ J</kbd></button>}
-    {highlight&&<button className="selection-ask" style={{left:highlight.x,top:highlight.y}} onMouseDown={e=>e.preventDefault()} onClick={()=>{setSelection(highlight.text);setHighlight(null);show();window.getSelection()?.removeAllRanges();}}><MessageSquare size={14}/>Ask about this</button>}
-    {open&&<aside className="paper-assistant" role="dialog" aria-modal={narrow||undefined} aria-label="Paper assistant" style={narrow?undefined:{top:pastTopBar?"16px":"92px"}}>
-      <div className="assistant-resize-edge" aria-hidden="true" onPointerDown={e=>{if(narrow)return;e.preventDefault();const panel=e.currentTarget.parentElement!,startX=e.clientX,startWidth=panel.getBoundingClientRect().width;const resize=(move:PointerEvent)=>{panel.style.width=`${Math.max(320,Math.min(window.innerWidth/2-16,startWidth+startX-move.clientX))}px`;};const stop=()=>{window.removeEventListener("pointermove",resize);window.removeEventListener("pointerup",stop);};window.addEventListener("pointermove",resize);window.addEventListener("pointerup",stop);}} />
-      <div className="assistant-heading"><div><span className="eyebrow">READ WITH AFTERIMAGE</span><h2>Ask this paper</h2></div><button className="icon-button" aria-label="Close assistant" onClick={close}><X size={18}/></button></div>
-      <p className="assistant-paper-name">{paper.title}</p>
-      <div className="assistant-context"><span className="status-dot"/> {messages.length?`${messages.length} question${messages.length===1?"":"s"}`:"Ask a question"}</div>
+    {available&&!open&&<button className="assistant-launch button" onClick={show}><MessageSquare size={17}/>Ask this paper <kbd>⌘ J</kbd></button>}
+    {available&&highlight&&<button className="selection-ask" style={{left:highlight.x,top:highlight.y}} onMouseDown={e=>e.preventDefault()} onClick={()=>{setSelection(highlight.text);setHighlight(null);show();window.getSelection()?.removeAllRanges();}}><MessageSquare size={14}/>Ask about this</button>}
+    {available&&open&&<aside className="paper-assistant" role="dialog" aria-modal={narrow||undefined} aria-label="Paper assistant" style={narrow?undefined:{top:pastTopBar?"16px":"92px"}}>
+      <div className="assistant-resize-edge" aria-hidden="true" onPointerDown={e=>{if(narrow)return;e.preventDefault();const panel=e.currentTarget.parentElement!,workspace=panel.parentElement!,startX=e.clientX,startWidth=panel.getBoundingClientRect().width;const resize=(move:PointerEvent)=>{const next=Math.max(320,Math.min(window.innerWidth/2-16,startWidth+startX-move.clientX));panel.style.width=`${next}px`;workspace.style.setProperty("--assistant-width",`${next}px`);};const stop=()=>{window.removeEventListener("pointermove",resize);window.removeEventListener("pointerup",stop);};window.addEventListener("pointermove",resize);window.addEventListener("pointerup",stop);}} />
+      <div className="assistant-heading"><span className="eyebrow">READ WITH AFTERIMAGE</span><button className="icon-button" aria-label="Close assistant" onClick={close}><X size={18}/></button></div>
       <form className="assistant-composer" onSubmit={e=>{e.preventDefault();void send();}}>
         {selection&&<div className="assistant-selection"><Quote size={13}/><span>{selection}</span><button type="button" className="icon-button" aria-label="Remove selected passage" onClick={()=>setSelection("")}><X size={14}/></button></div>}
         {error&&<p className="assistant-error" role="status">{error}</p>}
@@ -91,8 +86,9 @@ export function PaperAssistant({paper,children}:{paper:Paper;children:ReactNode}
         {messages.map(m=><section className="assistant-turn" key={m.id}>
           <div className="assistant-question">{m.selection&&<blockquote>{m.selection}</blockquote>}<p>{m.question}</p></div>
           <div className="assistant-answer" aria-busy={active(m)}>{m.answer?<Answer text={m.answer} cite={cite} sources={paper.sources.map(s=>s.id)}/>:<p className="assistant-status" role="status">{m.status==="queued"?"Waiting for your assistant…":m.status==="running"?"Reading the paper…":m.error||"Reply stopped."}</p>}{active(m)&&m.answer&&<span className="stream-cursor" aria-label="Generating"/>}</div>
-          {m.answer&&!active(m)&&<div className="assistant-answer-actions"><button className="text-button" onClick={()=>navigator.clipboard.writeText(m.answer).then(()=>toast("Copied.")).catch(()=>toast("Could not copy."))}><Copy size={12}/>Copy</button><button className="text-button" onClick={()=>save(m)}><BookmarkPlus size={12}/>Save note</button>{m.status!=="complete"&&<span>{m.status==="cancelled"?"Stopped":"Incomplete"}</span>}</div>}
+          {m.answer&&!active(m)&&<div className="assistant-answer-actions"><button className="text-button" onClick={()=>navigator.clipboard.writeText(m.answer).then(()=>toast("Copied.")).catch(()=>toast("Could not copy."))}><Copy size={12}/>Copy</button>{m.status!=="complete"&&<span>{m.status==="cancelled"?"Stopped":"Incomplete"}</span>}</div>}
         </section>)}
+        {messages.length>0&&messages[messages.length-1].answer&&messages[messages.length-1].status==="complete"&&<div className="assistant-followups"><span className="eyebrow">FOLLOW UP</span><div className="assistant-starters">{["Make that more concrete","What evidence supports this?","How does this compare with the prior approach?"].map(q=><button key={q} disabled={sending} onClick={()=>send(q)}>{q}<ArrowUp size={13}/></button>)}</div></div>}
       </div>
       {source&&<div className="assistant-source"><button className="icon-button" aria-label="Close source" onClick={()=>setSource(null)}><X size={15}/></button><span className="eyebrow">SOURCE CONTEXT</span><h3>{source.label}</h3><p>{source.excerpt}</p>{source.url&&<a href={source.url} target="_blank" rel="noreferrer">Open original source ↗</a>}</div>}
     </aside>}

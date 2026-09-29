@@ -32,9 +32,9 @@ async function main() {
   assert.equal(
     (
       await call({
-        action: "entry",
+        action: "status",
         paperId: "missing",
-        patch: { takeaway: "test" },
+        status: "read",
       })
     ).status,
     400,

@@ -1,0 +1,9 @@
+# Supabase egress polling repair
+
+The September 25 investigation found HTTP 402 `exceed_egress_quota` on the AfterImage Supabase project. A 24-hour window showed 19,296 denied reads of `afterimage_state`. Those denied calls establish that the restriction persisted; they do not measure the traffic that originally exhausted the quota. The stored JSON document was previously measured at about 483 KB. The browser requested the full record every five seconds during active jobs, the generation worker checked for jobs every 20 seconds, and the assistant worker checked every two seconds.
+
+The browser now sends the last loaded state version during background polling. The server selects only `version` and worker presence and replies with an empty 204 when nothing changed; a changed version returns the full public state and its new version. First load and explicit export still return the appropriate full projection. Hidden and offline tabs retain the existing pause behavior.
+
+An idle generation worker now reads only the jobs projection. Its once-per-minute presence heartbeat updates the existing `updated_at` column without rewriting the large JSON document or advancing the state version. The API derives `workerSeenAt` from this timestamp for the reader UI. Queued work and expired leases still use the existing optimistic mutation path. The assistant worker now checks the assistant-request projection before loading the full record for a claim or expiry.
+
+This repair changes application requests and does not itself lift the Supabase quota restriction. Verify the authenticated live API and Supabase egress after deployment and after database access is restored. A 402 response still prevents a successful production read. The version and jobs projections should be checked against the live PostgREST schema before treating the deployment as verified.

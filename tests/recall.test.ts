@@ -133,7 +133,7 @@ test("worked examples and walkthroughs cannot bypass math or source validation",
 test("EAGLE teaching diagram has readable, non-colliding desktop and mobile labels", () => {
   const markup = renderToStaticMarkup(createElement(EagleDiagram));
   const svgs = markup.match(/<svg[\s\S]*?<\/svg>/g)!;
-  assert.equal(svgs.length, 2);
+  assert.equal(svgs.length, 3);
   for (const svg of svgs) {
     assert.deepEqual(inspectSvg(svg), []);
     assert.match(svg, /TARGET VERIF/);

@@ -1,7 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mechanismPlanSchema, technicalReviewSchema, technicalDefects, validateMechanismPlan, type TechnicalReview } from "../worker/quality";
+import { mechanismPlanSchema, technicalReviewSchema, technicalDefects, validateMechanismPlan, technicalRepairTarget, type TechnicalReview } from "../worker/quality";
 import { validateScene } from "../src/lib/scene";
+import { generationSchemas, recallRepairFields } from "../worker/generation-schema";
+import { outputSchema } from "../worker/output-schema";
 
 const sources = [{id:"method",label:"Methods",url:"https://arxiv.org/html/2503.01840#S3",excerpt:"Method evidence"}];
 const plan = mechanismPlanSchema.parse({
@@ -20,10 +22,32 @@ test("required mechanism coverage cannot be waived by an otherwise positive revi
   assert.ok(defects.some(d=>d.includes("Missing the required worked")));
   assert.ok(defects.some(d=>d.includes("cannot be waived")));
 });
+
+test("generation restricts every citation field to supplied sources", () => {
+  const schema = generationSchemas(["method", "results"]).recall;
+  assert.throws(() => schema.shape.sourceIds.parse(["invented"]));
+  assert.throws(() => schema.shape.equations.parse([{ title: "Equation", latex: "x=1", explanation: "An illustrative value", example: null, sourceId: "invented" }]));
+  const json = outputSchema(schema) as any;
+  assert.deepEqual(json.properties.sourceIds.items.enum, ["method", "results"]);
+  assert.deepEqual(schema.shape.sourceIds.parse(["method"]), ["method"]);
+});
+
+test("targeted recall repairs retain fields the reviewer did not reject", () => {
+  assert.deepEqual(recallRepairFields(["evidence: Missing benchmark denominator"]), ["evidence"]);
+  assert.deepEqual(recallRepairFields(["example: Missing final operation", "diagram: Incorrect transfer"]), ["equations", "walkthrough"]);
+  assert.equal(recallRepairFields(["scope: Unsupported claim"]), undefined);
+  const schema = generationSchemas(["method"]).recall.pick({ evidence: true });
+  const patch = schema.parse({ evidence: "Corrected benchmark", mechanism: "A regressed mechanism" });
+  assert.deepEqual({ mechanism: "Original mechanism", ...patch }, { mechanism: "Original mechanism", evidence: "Corrected benchmark" });
+});
 test("one technical failure blocks publication independently of all other checks",()=>{
   const defects=technicalDefects(plan,recall,{...review,diagram:{...pass,verdict:"fail",evidence:"Diagram conflates tokens with states.",repair:"Separate the state and sampled token."}},sources);
   assert.equal(defects.length,1);
   assert.match(defects[0],/Separate the state/);
+  assert.equal(technicalRepairTarget(defects), "scene");
+  const evidence = technicalDefects(plan,recall,{...review,evidence:{...pass,verdict:"fail",evidence:"Benchmark scope is missing.",repair:"Identify the hardware."}},sources);
+  assert.equal(technicalRepairTarget(evidence), "recall");
+  assert.equal(technicalRepairTarget([...defects, ...evidence]), "both");
 });
 test("reviews cannot omit checks or invent supporting source references",()=>{
   assert.throws(()=>technicalReviewSchema.parse({contribution:pass}));

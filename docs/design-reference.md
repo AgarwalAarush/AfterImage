@@ -85,7 +85,7 @@ The original-vs-random comparison is a teaching miniature, explicitly distinguis
 
 - Retain the paper/ink palette, tactile search field, quiet filter row, serif paper titles and mono metadata.
 - Use the search panel on the library view with reading states and topic filters. Home remains focused on two or three next reads.
-- Compress the editorial composition into a recall page: metadata, title, one-sentence idea, diagram, short factual recap, personal judgment, sources.
+- Compress the editorial composition into a recall page: metadata, title, one-sentence idea, diagram, short factual recap, limitations, and sources.
 - Target about 120–180 words for the generated recap, with detail/source disclosure when wanted. This word budget is a proposal to test, not a user-mandated limit.
 - Give each saved paper one main mechanism diagram; use a second figure or two-state interaction only when it materially improves recall.
 - Build original diagrams from primary paper evidence. Source assets in this folder are study material, not production artwork.
@@ -136,7 +136,7 @@ For AfterImage, retain the stacked cards and tactile controls where appropriate,
 ### Proposed AfterImage card hierarchy
 
 - Main recall surface: small subject label, one-sentence mechanism, generous original SVG, restrained semantic tint when useful.
-- Supporting row: concise explanation/evidence and personal takeaway/open question, with widths chosen for content. Avoid fragmenting every factual field into its own card.
+- Supporting row: concise mechanism, evidence, and limitation, with widths chosen for content. Avoid fragmenting every factual field into its own card.
 - One quiet metadata/action strip for reading status, review date and source navigation when relevant. Do not invent dashboard metrics to fill the source layout.
 - Shared 12px-ish corners, padding scale, shadows and label styles across cards; deliberate variation in card size.
 - Keep the serif title and reading typography from the paper reference, with sans/mono controls and labels from the lab. The two modes form one coherent visual system.

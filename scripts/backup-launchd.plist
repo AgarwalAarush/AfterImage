@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>Label</key><string>dev.aarushagarwal.afterimage-backup</string>
+<key>ProgramArguments</key><array>
+  <string>/usr/local/bin/node</string>
+  <string>/Users/agarwalaarush/Projects/AfterImage-hosted/scripts/backup-sqlite.mjs</string>
+  <string>/Users/agarwalaarush/Projects/AfterImage-hosted/.data/afterimage.sqlite</string>
+  <string>/Users/agarwalaarush/Projects/AfterImage-hosted/.data/backups</string>
+</array>
+<key>WorkingDirectory</key><string>/Users/agarwalaarush/Projects/AfterImage-hosted</string>
+<key>RunAtLoad</key><true/>
+<key>StartCalendarInterval</key><dict><key>Hour</key><integer>3</integer><key>Minute</key><integer>15</integer></dict>
+<key>StandardOutPath</key><string>/Users/agarwalaarush/Projects/AfterImage-hosted/.data/logs/backup.log</string>
+<key>StandardErrorPath</key><string>/Users/agarwalaarush/Projects/AfterImage-hosted/.data/logs/backup-error.log</string>
+</dict></plist>

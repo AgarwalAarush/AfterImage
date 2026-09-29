@@ -43,6 +43,34 @@ export function EagleDiagram({ thumbnail = false }: { thumbnail?: boolean }) {
       {text(42, 405, "TRAINING-TIME TEST · REHEARSE THE SAME STATE REUSE", true, 12)}
       {text(42, 433, "Train token prediction on these rollout inputs. Remove the target-feature matching loss.", false, 13)}
     </svg>
+    {!thumbnail && <svg className="graphic-compact" viewBox="0 0 560 370" role="img" aria-label={description}>
+      <title>How EAGLE-3 drafts and learns in a compact layout</title>
+      {text(12, 23, "LEARN TO CONTINUE THE DRAFT", true, 12)}
+      {text(12, 45, "One branch: “How can I …”", false, 10)}
+      {box(12, 64, 250, 130)}
+      {text(28, 91, "01 · TARGET PASS", true, 10)}
+      {text(28, 121, "Fuse low / mid / high → g_can", false, 11)}
+      {text(28, 147, "+ embedding of token “I”", false, 11)}
+      {text(28, 174, "Use one completed target pass", false, 10)}
+      {arrow("M265 129H292M285 124L292 129L285 134")}
+      {box(298, 64, 250, 130, true)}
+      {text(314, 91, "02 · FIRST DRAFT", true, 10)}
+      {text(314, 121, "Decoder → state a_I", false, 11)}
+      {text(314, 147, "LM head → token “do”", false, 11)}
+      {text(314, 174, "Keep the state + token", false, 10)}
+      {arrow("M423 197V209H137V219M132 212L137 219L142 212")}
+      {box(12, 222, 250, 126, true)}
+      {text(28, 249, "03 · REUSE THE DRAFT STATE", true, 10)}
+      {text(28, 279, "a_I + embedding of “do”", false, 11)}
+      {text(28, 305, "Decoder → state a_do", false, 11)}
+      {text(28, 331, "LM head → token “it”", false, 11)}
+      {box(298, 222, 250, 58)}
+      {text(314, 246, "TARGET VERIFIES", true, 10)}
+      {text(314, 267, "Score once; accept in order.", false, 10)}
+      {box(298, 292, 250, 56, true)}
+      {text(314, 316, "TRAINING-TIME TEST", true, 10)}
+      {text(314, 337, "Train reused states; token loss only.", false, 10)}
+    </svg>}
     {!thumbnail && <svg className="graphic-mobile" viewBox="0 0 350 778" role="img" aria-label={description}>
       <title>How EAGLE-3 drafts and learns</title>
       {text(10, 24, "LEARN TO CONTINUE YOUR OWN DRAFT", true, 11)}

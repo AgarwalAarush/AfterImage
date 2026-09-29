@@ -3,6 +3,8 @@ import type { StudyPack } from "./study";
 
 export type ReadingStatus = "saved" | "reading" | "read" | "archived";
 export type Accent = "violet" | "ochre" | "blue" | "sage";
+export type GenerationStatus = "ready" | "idle" | "queued" | "running" | "failed";
+export type GenerationStep = "sources" | "planning" | "drafting" | "reviewing";
 export type SceneNode = {
   id: string;
   kind: "box" | "circle" | "matrix" | "stack" | "experts";
@@ -21,6 +23,7 @@ export type SceneEdge = {
   dashed: boolean;
 };
 export type Scene = {
+  layout?: "flow-v2";
   title: string;
   description: string;
   footnote: string;
@@ -73,17 +76,15 @@ export type Paper = {
     | "contrastive"
     | "pruning"
     | "memory";
-  generationStatus: "ready" | "idle" | "queued" | "running" | "failed";
+  generationStatus: GenerationStatus;
+  /** Worker-reported milestone used for calm, reader-facing generation feedback. */
+  generationStep?: GenerationStep;
   generationError?: string;
   createdAt: string;
 };
 export type Entry = {
   paperId: string;
   status: ReadingStatus;
-  takeaway: string;
-  why: string;
-  question: string;
-  nextAction: string;
   savedAt: string;
   updatedAt: string;
   reviewedAt?: string;
@@ -98,10 +99,23 @@ export type Direction = {
 };
 export type RecommendationRun = {
   candidateCount: number;
+  discoveredCount?: number;
+  recentCandidateCount?: number;
   suggestedLinkCount: number;
   resolvedLinkCount: number;
   unresolvedIds: string[];
-  searches: { query: string; status: "ok" | "unavailable"; source?: "api" | "website" }[];
+  searches: {
+    query: string;
+    lane?: "relevance" | "recent";
+    status: "ok" | "unavailable";
+    source?: "api" | "website";
+    providers?: {
+      provider: "arxiv-api" | "arxiv-website" | "openalex";
+      status: "ok" | "unavailable";
+      resultCount: number;
+      candidateCount: number;
+    }[];
+  }[];
   directionUpdatedAt: string;
 };
 export type Recommendation = {
@@ -130,7 +144,7 @@ export type Job = {
   error?: string;
 };
 export type AppState = {
-  schemaVersion: 1;
+  schemaVersion: 2;
   assistantRequests?: AssistantRequest[];
   papers: Paper[];
   entries: Record<string, Entry>;

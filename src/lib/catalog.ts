@@ -139,7 +139,7 @@ export const catalog: Paper[] = [
 ];
 export function initialState(): AppState {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     papers: structuredClone(catalog),
     entries: {},
     direction: { goal: "", questions: "", topics: [] },

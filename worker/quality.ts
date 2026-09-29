@@ -1,7 +1,14 @@
 import { z } from "zod";
 import type { Recall, Source } from "../src/lib/types";
 
-export const qualityVersion = "mechanism-first-v1";
+export const qualityVersion = "mechanism-first-v2";
+export type RepairTarget = "scene" | "recall" | "both";
+/** Preserve unrelated accepted content when one part of a review fails. */
+export function technicalRepairTarget(defects: string[]): RepairTarget {
+  const diagram = defects.some(d => d.startsWith("diagram:"));
+  const recall = defects.some(d => !d.startsWith("diagram:"));
+  return diagram && recall ? "both" : diagram ? "scene" : "recall";
+}
 const explanation = z.string().min(1).max(1800);
 const citations = z.array(z.string()).min(1).max(8);
 export const mechanismPlanSchema = z.object({

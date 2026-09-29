@@ -1,13 +1,15 @@
 "use client";
 import Link from "next/link";
 import { PaperAssistant } from "./paper-assistant";
+import { PaperPreparation } from "./paper-preparation";
 import { StudyFigures, PaperQuiz } from "./paper-study";
 import { Download, ArrowUpRight, Bookmark, RefreshCw } from "lucide-react";
-import type { Paper, Entry } from "@/lib/types";
+import type { Paper } from "@/lib/types";
 import { useApp } from "./app";
 import { Diagram } from "./diagram";
 import { eagleCaption } from "./eagle-diagram";
 import { MathText, RecallText, InlineText } from "./math";
+import { paperPreparationModel } from "@/lib/generation-progress";
 import { readerUrl } from "@/lib/identity";
 import { download } from "@/lib/download";
 import "katex/dist/katex.min.css";
@@ -24,33 +26,38 @@ export function PaperView({ id }: { id: string }) {
       </div>
     );
   const e = state.entries[id];
-  const running = ["queued", "running"].includes(p.generationStatus);
   const r = p.recall;
+  const preparation = paperPreparationModel(p, state.jobs);
+  const ready = preparation.status === "ready";
   const related = state.papers
     .filter((x) => x.id !== id && x.topics.some((t) => p.topics.includes(t)))
     .slice(0, 2);
   return (
-    <PaperAssistant key={p.id} paper={p}><div className={`page paper-page ${p.accent}`}>
+    <PaperAssistant key={p.id} paper={p} available={ready}><div className={`page paper-page ${p.accent}`}>
       <div className="paper-breadcrumb">
         <Link href="/library">Library</Link>
         <span>/</span>
-        <span>Notecard</span>
-        <button
-          className="text-button"
-          onClick={() => download(`${id}.md`, paperMarkdown(p, e))}
-        >
-          <Download size={14} />
-          Export
-        </button>
+        <span>{ready ? "Notecard" : "Preparing"}</span>
+        {ready && (
+          <button
+            className="text-button"
+            onClick={() => download(`${id}.md`, paperMarkdown(p))}
+          >
+            <Download size={14} />
+            Export
+          </button>
+        )}
       </div>
-      <header className="paper-header">
+      <header className={`paper-header ${ready ? "" : "preparing"}`}>
         <div className="eyebrow">
           {p.authors} · {p.year}
         </div>
         <h1>{p.title}</h1>
-        <p>
-          <InlineText text={r?.idea || p.abstract} />
-        </p>
+        {ready && (
+          <p>
+            <InlineText text={r?.idea || p.abstract} />
+          </p>
+        )}
         <div className="paper-header-actions">
           <a
             className="button primary"
@@ -77,9 +84,9 @@ export function PaperView({ id }: { id: string }) {
               value={e.status}
               onChange={(ev) =>
                 act({
-                  action: "entry",
+                  action: "status",
                   paperId: id,
-                  patch: { status: ev.target.value },
+                  status: ev.target.value,
                 }).catch(() => {})
               }
             >
@@ -103,6 +110,7 @@ export function PaperView({ id }: { id: string }) {
           )}
         </div>
       </header>
+      {ready ? <>
       <section className="mechanism-panel panel">
         <div className="section-heading">
           <span className="eyebrow">THE IDEA, AT A GLANCE</span>
@@ -156,28 +164,17 @@ export function PaperView({ id }: { id: string }) {
             <span className="eyebrow">THE RECALL</span>
             <button
               className="text-button"
-              disabled={running || busy}
+              disabled={busy}
               onClick={() =>
                 act({ action: "generate", paperId: id })
-                  .then(() =>
-                    toast("Your notecard is queued. You can keep reading."),
-                  )
+                  .then(() => toast("A fresh reading kit is queued."))
                   .catch(() => {})
               }
             >
-              <RefreshCw size={13} className={running ? "spin" : ""} />
-              {running
-                ? p.generationStatus === "queued"
-                  ? "Queued"
-                  : "Creating…"
-                : r
-                  ? "Regenerate"
-                  : "Create notecard"}
+              <RefreshCw size={13} />
+              Regenerate package
             </button>
           </div>
-          {p.generationStatus === "failed" && (
-            <p className="notice">{p.generationError} You can try again.</p>
-          )}
           {r ? (
             <>
               <h2>
@@ -273,10 +270,13 @@ export function PaperView({ id }: { id: string }) {
           </div>
         </section>
       )}
+      </> : (
+        <PaperPreparation paperId={id} model={preparation} />
+      )}
     </div></PaperAssistant>
   );
 }
-function paperMarkdown(p: Paper, e?: Entry) {
+function paperMarkdown(p: Paper) {
   const r = p.recall;
   const sections = r
     ? [
@@ -298,10 +298,6 @@ function paperMarkdown(p: Paper, e?: Entry) {
           `${eq.title ? `### ${eq.title}\n\n` : ""}$$\n${eq.latex}\n$$\n\n${eq.explanation}${eq.example ? `\n\nWorked example: ${eq.example}` : ""}\n\nSource: ${p.sources.find((s) => s.id === eq.sourceId)?.url || eq.sourceId}`,
       )
       .join("\n\n") || "";
-  const notes =
-    e && [e.takeaway, e.why, e.question, e.nextAction].some(Boolean)
-      ? `\n\n## Saved notes\n${e.takeaway}\n${e.why}\n${e.question}\n${e.nextAction}`
-      : "";
   const walkthrough = r?.walkthrough ? `\n\n## ${r.walkthrough.title}\n\n${r.walkthrough.introduction}\n\n${r.walkthrough.steps.map(s => `### ${s.label}\nInput: ${s.input}\n\nOperation: ${s.operation}\n\nOutput: ${s.output}`).join("\n\n")}\n\nSource: ${p.sources.find(s => s.id === r.walkthrough!.sourceId)?.url}` : "";
-  return `# ${p.title}\n\n${p.authors} · ${p.year}\nhttps://arxiv.org/abs/${p.id}\n\n${sections}${equations ? "\n\n## The mechanism in math\n" + equations : ""}${walkthrough}\n\n${r ? `Provenance: ${r.provenance}; ${r.evidenceScope}` : ""}${notes}\n\n## Sources\n${p.sources.map((s) => `- [${s.label}](${s.url})`).join("\n")}`;
+  return `# ${p.title}\n\n${p.authors} · ${p.year}\nhttps://arxiv.org/abs/${p.id}\n\n${sections}${equations ? "\n\n## The mechanism in math\n" + equations : ""}${walkthrough}\n\n${r ? `Provenance: ${r.provenance}; ${r.evidenceScope}` : ""}\n\n## Sources\n${p.sources.map((s) => `- [${s.label}](${s.url})`).join("\n")}`;
 }

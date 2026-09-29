@@ -1,5 +1,7 @@
 import { z } from "zod";
+import { flowSceneSvg } from "./scene-layout";
 export const sceneSchema = z.object({
+  layout: z.literal("flow-v2").optional(),
   title: z.string().min(1).max(70),
   description: z.string().min(1).max(400),
   footnote: z.string().max(100),
@@ -66,6 +68,15 @@ export const resultSchema = z.object({
   }),
   scene: sceneSchema,
 });
+/** Models choose concepts and relationships. Geometry belongs to the renderer. */
+export const sceneGraphSchema = sceneSchema.omit({ layout: true, nodes: true }).extend({
+  nodes: z.array(sceneSchema.shape.nodes.element.omit({ x: true, y: true, w: true, h: true })).min(2).max(8),
+});
+export const generationResultSchema = resultSchema.extend({ scene: sceneGraphSchema });
+export function prepareScene(input: unknown) {
+  const graph = sceneGraphSchema.parse(input);
+  return sceneSchema.parse({ ...graph, layout: "flow-v2", nodes: graph.nodes.map(n => ({ ...n, x: 20, y: 60, w: 240, h: 100 })) });
+}
 export const recommendationSchema = z.object({
   recommendations: z
     .array(
@@ -145,22 +156,24 @@ export function validateScene(input: unknown) {
   const labels = [scene.title, scene.footnote, ...scene.nodes.flatMap(n => [n.label, n.detail]), ...scene.edges.map(e => e.label)];
   if (labels.some(label => /\$[^$]+\$|\\[a-zA-Z]+/.test(label)))
     throw new Error("Diagram labels must use readable plain text or native Unicode notation, not raw LaTeX. Keep rendered LaTeX in the recall equations.");
-  for (const n of scene.nodes) {
-    if (n.x + n.w > 760 || n.y + n.h > 405)
-      throw new Error("Diagram extends beyond its frame.");
-  }
-  for (let i = 0; i < scene.nodes.length; i++)
-    for (let j = i + 1; j < scene.nodes.length; j++) {
-      const a = scene.nodes[i],
-        b = scene.nodes[j];
-      if (
-        a.x < b.x + b.w + 10 &&
-        a.x + a.w + 10 > b.x &&
-        a.y < b.y + b.h + 24 &&
-        a.y + a.h + 24 > b.y
-      )
-        throw new Error("Diagram objects or labels overlap.");
+  if (scene.layout !== "flow-v2") {
+    for (const n of scene.nodes) {
+      if (n.x + n.w > 760 || n.y + n.h > 405)
+        throw new Error("Diagram extends beyond its frame.");
     }
+    for (let i = 0; i < scene.nodes.length; i++)
+      for (let j = i + 1; j < scene.nodes.length; j++) {
+        const a = scene.nodes[i],
+          b = scene.nodes[j];
+        if (
+          a.x < b.x + b.w + 10 &&
+          a.x + a.w + 10 > b.x &&
+          a.y < b.y + b.h + 24 &&
+          a.y + a.h + 24 > b.y
+        )
+          throw new Error("Diagram objects or labels overlap.");
+      }
+  }
   for (const e of scene.edges) {
     if (!ids.has(e.from) || !ids.has(e.to) || e.from === e.to)
       throw new Error("Diagram has an invalid connection.");
@@ -169,6 +182,7 @@ export function validateScene(input: unknown) {
 }
 export function sceneSvg(input: unknown, accent = "#7761bb") {
   const s = validateScene(input);
+  if (s.layout === "flow-v2") return flowSceneSvg(s, false, accent);
   const txt = (
     x: number,
     y: number,
@@ -256,6 +270,7 @@ export function sceneSvg(input: unknown, accent = "#7761bb") {
 /** A separate portrait composition preserves the graph's actual connections. */
 export function sceneSvgMobile(input: unknown, accent = "#7761bb") {
   const s = validateScene(input);
+  if (s.layout === "flow-v2") return flowSceneSvg(s, true, accent);
   const ordered: typeof s.nodes = [];
   const remaining = [...s.nodes];
   while (remaining.length) {

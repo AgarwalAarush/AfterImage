@@ -95,6 +95,10 @@ export function inspectSvg(svg: string): string[] {
       )
         issues.push(`Text collision: ${a.text} / ${b.text}`);
     }
+  const nodeBounds = $("[data-node-bounds]").toArray().map(el => {
+    const [x, y, width, height] = ($(el).attr("data-node-bounds") || "").split(",").map(Number);
+    return { id: $(el).attr("data-concept"), x, y, width, height };
+  });
   // These are the M/H/V/C paths emitted by our own renderer, never arbitrary SVG.
   $("[data-connector]").each((_, el) => {
     const commands = ($(el).attr("d") || "").match(/[MHVLC][^MHVLC]*/g) || [];
@@ -141,6 +145,10 @@ export function inspectSvg(svg: string): string[] {
             py < b.y + b.height + 3
           )
             issues.push(`Connector crosses text: ${b.text}`);
+        for (const b of nodeBounds)
+          if (b.id !== $(el).attr("data-from") && b.id !== $(el).attr("data-to") &&
+            px > b.x && px < b.x + b.width && py > b.y && py < b.y + b.height)
+            issues.push(`Connector crosses node: ${b.id}`);
       }
       x = endX;
       y = endY;

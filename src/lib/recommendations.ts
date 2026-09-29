@@ -4,10 +4,23 @@ import type { AppState } from "./types";
 
 export const recommendationRunSchema = z.object({
   candidateCount: z.number().int().min(0).max(2000),
+  discoveredCount: z.number().int().min(0).max(2000).optional(),
+  recentCandidateCount: z.number().int().min(0).max(2000).optional(),
   suggestedLinkCount: z.number().int().min(0).max(30),
   resolvedLinkCount: z.number().int().min(0).max(30),
   unresolvedIds: z.array(z.string().max(40)).max(30),
-  searches: z.array(z.object({ query: z.string().max(80), status: z.enum(["ok", "unavailable"]), source: z.enum(["api", "website"]).optional() })).max(2),
+  searches: z.array(z.object({
+    query: z.string().max(160),
+    lane: z.enum(["relevance", "recent"]).optional(),
+    status: z.enum(["ok", "unavailable"]),
+    source: z.enum(["api", "website"]).optional(),
+    providers: z.array(z.object({
+      provider: z.enum(["arxiv-api", "arxiv-website", "openalex"]),
+      status: z.enum(["ok", "unavailable"]),
+      resultCount: z.number().int().min(0).max(1000),
+      candidateCount: z.number().int().min(0).max(1000),
+    })).max(3).optional(),
+  })).max(6),
   directionUpdatedAt: z.string().max(40),
 });
 
@@ -39,4 +52,22 @@ export function excludedRecommendations(
       (feedback.value === "later" && now - Date.parse(feedback.at) < 30 * 86400000)) ids.add(feedback.paperId);
   }
   return ids;
+}
+
+/** Reading-state changes refresh suggestions quietly when capacity is available. */
+export function shouldRefreshRecommendations(
+  state: Pick<AppState, "direction" | "jobs">,
+  now = Date.now(),
+) {
+  return Boolean(
+    state.direction.goal.trim() &&
+      !state.jobs.some(
+        (job) =>
+          job.type === "recommend" &&
+          ["queued", "running"].includes(job.status),
+      ) &&
+      state.jobs.filter(
+        (job) => now - Date.parse(job.createdAt) < 60 * 60 * 1000,
+      ).length < 12,
+  );
 }

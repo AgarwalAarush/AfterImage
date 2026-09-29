@@ -14,3 +14,5 @@ artifacts/
 supabase/.temp/
 
 .assistant-runtime/
+__pycache__/
+*.pyc

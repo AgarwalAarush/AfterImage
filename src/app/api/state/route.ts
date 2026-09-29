@@ -1,21 +1,14 @@
 import { NextResponse } from "next/server";
 import { authenticated, sameOrigin } from "@/lib/auth";
-import { mutate, publicState, snapshot } from "@/lib/store";
+import { mutate, publicState, snapshot, stateStatus } from "@/lib/store";
 import { parsePaperId } from "@/lib/identity";
 import { importPaper } from "@/lib/papers";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import type { Paper } from "@/lib/types";
-import { excludedRecommendations } from "@/lib/recommendations";
+import { excludedRecommendations, shouldRefreshRecommendations } from "@/lib/recommendations";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-const entrySchema = z.object({
-  status: z.enum(["saved", "reading", "read", "archived"]).optional(),
-  takeaway: z.string().max(8000).optional(),
-  why: z.string().max(8000).optional(),
-  question: z.string().max(8000).optional(),
-  nextAction: z.string().max(2000).optional(),
-});
 export async function GET(req: Request) {
   if (!(await authenticated()))
     return NextResponse.json(
@@ -23,8 +16,19 @@ export async function GET(req: Request) {
       { status: 401 },
     );
   try {
-    return NextResponse.json(publicState((await snapshot()).data, new URL(req.url).searchParams.get("full") === "1"), {
-      headers: { "Cache-Control": "private, no-store" },
+    const params = new URL(req.url).searchParams;
+    const since = params.get("since");
+    if (params.get("full") !== "1" && since !== null && /^\d+$/.test(since)) {
+      const status = await stateStatus();
+      if (Number(since) === status.version)
+        return new Response(null, {status: 204, headers: {
+          "Cache-Control": "private, no-store",
+          "X-Afterimage-Worker-Seen-At": status.workerSeenAt || "",
+        }});
+    }
+    const {version, data} = await snapshot();
+    return NextResponse.json(publicState(data, params.get("full") === "1"), {
+      headers: { "Cache-Control": "private, no-store", "X-Afterimage-State-Version": String(version) },
     });
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message }, { status: 503 });
@@ -55,13 +59,20 @@ export async function POST(req: Request) {
         return (s.entries[id] ||= {
           paperId: id,
           status: "saved",
-          takeaway: "",
-          why: "",
-          question: "",
-          nextAction: "",
           savedAt: now,
           updatedAt: now,
         });
+      };
+      const refreshFromReading = () => {
+        if (!shouldRefreshRecommendations(s)) return;
+        s.jobs.push({
+          id: randomUUID(),
+          type: "recommend",
+          status: "queued",
+          createdAt: now,
+          attempts: 0,
+        });
+        s.jobs = s.jobs.slice(-100);
       };
       switch (body.action) {
         case "import":
@@ -91,7 +102,9 @@ export async function POST(req: Request) {
               createdAt: now,
               attempts: 0,
             });
-            s.papers.find((p) => p.id === id)!.generationStatus = "queued";
+            const generated = s.papers.find((p) => p.id === id)!;
+            generated.generationStatus = "queued";
+            delete generated.generationStep;
           }
           break;
         case "save":
@@ -99,14 +112,18 @@ export async function POST(req: Request) {
             body.status === "reading" ? "reading" : "saved";
           s.recommendations = s.recommendations.filter(r => !excludedRecommendations(s).has(r.paperId));
           break;
-        case "entry":
-          Object.assign(ensureEntry(), entrySchema.parse(body.patch), {
+        case "status":
+          const status = z.enum(["saved", "reading", "read", "archived"]).parse(body.status);
+          Object.assign(ensureEntry(), {
+            status,
             updatedAt: now,
           });
           s.recommendations = s.recommendations.filter(r => !excludedRecommendations(s).has(r.paperId));
+          if (["reading", "read"].includes(status)) refreshFromReading();
           break;
         case "review":
           ensureEntry().reviewedAt = now;
+          refreshFromReading();
           break;
         case "direction":
           s.direction = z
@@ -166,6 +183,7 @@ export async function POST(req: Request) {
           });
           if (paper && type === "generate") {
             paper.generationStatus = "queued";
+            delete paper.generationStep;
             delete paper.generationError;
           }
           s.jobs = s.jobs.slice(-100);

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { workerAuth } from "@/lib/auth";
-import { mutate } from "@/lib/store";
+import { assistantSnapshot, mutate } from "@/lib/store";
 import { assistantContext, expireAssistant, terminal } from "@/lib/assistant";
 export const runtime="nodejs";
 export const dynamic="force-dynamic";
@@ -8,6 +8,13 @@ export async function POST(req:Request){
   if(!workerAuth(req))return Response.json({error:"Unauthorized"},{status:401});
   try{
     const text=await req.text();if(text.length>70000)throw new Error("Update too large");const b=JSON.parse(text);
+    if(b.action==="claim"){
+      const requests=await assistantSnapshot(),now=Date.now();
+      const expired=requests.some(r=>r.status==="queued"?now-Date.parse(r.createdAt)>120000:
+        r.status==="running"&&Date.parse(r.leaseUntil||"")<now);
+      if(!expired&&(!requests.some(r=>r.status==="queued")||requests.some(r=>r.status==="running")))
+        return Response.json({request:null},{headers:{"Cache-Control":"no-store"}});
+    }
     const result=await mutate(s=>{
       const requests=s.assistantRequests||[];expireAssistant(requests);const now=new Date().toISOString();
       if(b.action==="claim"){
