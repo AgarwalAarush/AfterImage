@@ -4,7 +4,10 @@ import { StorageError } from "./storage-request";
 export type BackendAction =
   | { action: "snapshot" | "status" | "workerClaimStatus" | "assistantSnapshot" }
   | { action: "touchWorkerSeenAt"; now: string }
-  | { action: "compareAndSwap"; version: number; data: unknown };
+  | { action: "compareAndSwap"; version: number; data: unknown }
+  | { action: "documentList" }
+  | { action: "documentGet" | "documentMetadata" | "documentDelete"; id: string }
+  | { action: "documentSave"; filename: string; content: string };
 
 export async function macserverRequest<T>(request: BackendAction): Promise<T> {
   const origin = process.env.AFTERIMAGE_BACKEND_URL;
@@ -29,10 +32,18 @@ export async function macserverRequest<T>(request: BackendAction): Promise<T> {
       redirect: "error",
       signal: AbortSignal.timeout(12_000),
     });
-    if (!response.ok) throw new Error("Backend request failed.");
+    if (!response.ok) {
+      if (request.action === "documentSave" && response.status === 409)
+        throw new Error("This file is already in Documents.");
+      throw new Error("Backend request failed.");
+    }
     return (await response.json()) as T;
-  } catch {
+  } catch (error) {
+    if (error instanceof Error && error.message === "This file is already in Documents.") throw error;
     // Mutations are not retried: an interrupted response may follow a committed write.
-    throw new StorageError(request.action === "compareAndSwap" ? "POST" : "GET");
+    throw new StorageError(
+      request.action === "compareAndSwap" || request.action === "documentSave" || request.action === "documentDelete"
+        ? "POST" : "GET",
+    );
   }
 }

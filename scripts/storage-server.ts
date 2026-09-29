@@ -10,6 +10,15 @@ import {
   workerClaimStatus,
 } from "../src/lib/store";
 import type { AppState } from "../src/lib/types";
+import {
+  deleteDocument,
+  getDocument,
+  getDocumentMetadata,
+  listDocuments,
+  MAX_DOCUMENT_BYTES,
+  prepareDocument,
+  saveDocument,
+} from "../src/lib/documents";
 
 const maxBodyBytes = 8 * 1024 * 1024;
 const seen = new Map<string, number>();
@@ -43,6 +52,11 @@ function validState(data: unknown): data is AppState {
     typeof state.entries === "object" && !Array.isArray(state.entries) &&
     Boolean(state.direction) && typeof state.direction === "object" &&
     typeof state.onboardingDone === "boolean";
+}
+
+function validDocumentId(value: unknown): value is string {
+  return typeof value === "string" &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 }
 
 export async function handleStorageRequest(req: IncomingMessage, res: ServerResponse) {
@@ -87,6 +101,41 @@ export async function handleStorageRequest(req: IncomingMessage, res: ServerResp
           applied: compareAndSwapLocal(Number(request.version), request.data),
         });
       }
+      case "documentList": return reply(res, 200, await listDocuments());
+      case "documentGet": {
+        if (!validDocumentId(request.id)) return reply(res, 400, { error: "Invalid request" });
+        const document = await getDocument(request.id);
+        return reply(res, 200, document ? {
+          ...document,
+          content: document.content.toString("base64"),
+        } : null);
+      }
+      case "documentMetadata": {
+        if (!validDocumentId(request.id)) return reply(res, 400, { error: "Invalid request" });
+        return reply(res, 200, await getDocumentMetadata(request.id));
+      }
+      case "documentDelete": {
+        if (!validDocumentId(request.id)) return reply(res, 400, { error: "Invalid request" });
+        await deleteDocument(request.id);
+        return reply(res, 200, { ok: true });
+      }
+      case "documentSave": {
+        if (typeof request.filename !== "string" || request.filename.length > 240 ||
+          typeof request.content !== "string" ||
+          request.content.length > Math.ceil(MAX_DOCUMENT_BYTES / 3) * 4 ||
+          !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(request.content))
+          return reply(res, 400, { error: "Invalid request" });
+        const content = Buffer.from(request.content, "base64");
+        if (content.toString("base64") !== request.content)
+          return reply(res, 400, { error: "Invalid request" });
+        try {
+          return reply(res, 200, await saveDocument(prepareDocument(request.filename, content)));
+        } catch (error) {
+          if (error instanceof Error && error.message === "This file is already in Documents.")
+            return reply(res, 409, { error: error.message });
+          throw error;
+        }
+      }
       default: return reply(res, 400, { error: "Invalid request" });
     }
   } catch {
@@ -103,6 +152,7 @@ async function start() {
   if (!Number.isSafeInteger(port) || port < 0 || port > 65535)
     throw new Error("Invalid storage bridge port.");
   await stateStatus();
+  await listDocuments();
   const server = createServer(handleStorageRequest);
   server.headersTimeout = 10_000;
   server.requestTimeout = 15_000;

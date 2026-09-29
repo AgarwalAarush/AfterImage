@@ -2,6 +2,8 @@
 
 A personal reading compass and visual memory for research papers. The web app holds a short-lived shortlist, a searchable library, source-grounded notecards, and reading history. Reading happens in alphaXiv. Press <kbd>⌘K</kbd> anywhere in the signed-in app to search every known paper or paste an arXiv/alphaXiv link to add it to the library.
 
+The Documents tab adds a private shelf for uploaded Markdown guides and PDFs, with a formatted reader and original-file download. Document bytes live outside the frequently refreshed paper-library state. See `docs/documents.md` for storage, API, format, and release details.
+
 ## Repository status
 
 This repository is currently tracked from a fresh local bootstrap. Feature work and hardening progress is implemented across `src/`, `worker/`, `scripts/`, `docs/`, and `tests/`, with `README.md` and `AGENTS.md` capturing the current operating assumptions.
@@ -15,6 +17,7 @@ Primary product status in this checkout:
 - Worker orchestration with leased jobs, heartbeats, and limited retries
 - Environment-gated storage and authenticated API routes
 - Migration-backed Supabase schema with single-owner state model
+- Separate private document storage and reader for Markdown and PDF uploads
 
 ## Run locally
 
@@ -26,7 +29,7 @@ cp .env.example .env.local # fill only the server credentials you need
 npm run dev
 ```
 
-Without Supabase configuration, development uses `.data/afterimage.sqlite`. Development on localhost skips the access-key login. Production requires an access key and configured Supabase storage. The production server refuses to fall back to an ephemeral local database.
+Without Supabase configuration, development uses `.data/afterimage.sqlite`, including a separate `documents` table for uploaded files. Development on localhost skips the access-key login. Production requires an access key and an explicit storage mode; the selected hybrid deployment uses `AFTERIMAGE_STORAGE=macserver` on Vercel and `sqlite` on the restricted macserver bridge. The production server refuses to fall back to an ephemeral local database.
 
 ```sh
 npm test
@@ -40,9 +43,11 @@ node scripts/verify-production.cjs
 
 ## Private storage
 
-The existing **AfterImage** Supabase project in **Dev** is linked. The migration in `supabase/migrations/` creates an RLS-protected single-owner state record. Server-side optimistic version checks prevent concurrent library changes and worker completions from losing one another's changes. Browser clients have no database credentials or direct database access.
+The existing **AfterImage** Supabase project in **Dev** remains available as a historical export and explicit fallback, but production SQLite is authoritative. Server-side optimistic version checks prevent concurrent library changes and worker completions from losing one another's changes. Browser clients have no database credentials or direct database access.
 
 The public Next.js site and API routes now run on Vercel with SQLite and worker execution on macserver. The September 28 hybrid deployment was promoted after public-relay security tests from this Mac and edge, plus authenticated Vercel reads, writes, and polling. The bridge runs as restricted `_afterimage`, backed by root-owned code and a service-only database and credential; worker-account read denial and backup restore were verified. Authorized Funnel port 8443 uses TLS-terminated TCP forwarding to localhost port 3102 so incomplete unauthorized uploads receive an immediate rejection. `scripts/probe-storage-security.py` runs bounded external checks without accepting the bridge secret. Both worker agents run the compatible September 28 release. Backups stay on macserver and do not cover machine loss. See `docs/macserver-hybrid-hosting.md` for deployment evidence, remaining limits, and rollback precautions.
+
+The Documents shelf keeps owner-uploaded Markdown and PDFs in a separate table in that same SQLite file. Deploy the updated storage bridge with `scripts/install-documents-storage-macserver.sh` and verify its local backup/restore before enabling the Vercel routes. See `docs/documents.md` for the format, API, and release order.
 
 This deliberately small first version uses one JSON state record. A larger multi-user version should split papers, sources, reading entries, and jobs into separately paginated tables.
 
@@ -81,6 +86,9 @@ The following are **server-only** environment variables, with no `NEXT_PUBLIC_` 
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `AFTERIMAGE_ACCESS_KEY`
 - `AFTERIMAGE_WORKER_TOKEN`
+- `AFTERIMAGE_STORAGE=macserver`
+- `AFTERIMAGE_BACKEND_URL`
+- `AFTERIMAGE_BACKEND_TOKEN`
 
 The user explicitly approved uploading these server-only values and using a production deployment target. Some deployment IDs in this repo may be historical; treat current deploy state as “current at run time via Vercel/hosting checks,” and use the latest deployment metadata when releasing updates.
 
@@ -100,6 +108,7 @@ Walkthrough tables use a compact 15px body scale so procedural detail stays subo
 
 - Single owner; access-key sign-in rather than multi-user accounts.
 - arXiv and alphaXiv imports; OpenAlex broadens discovery but only records with a resolvable arXiv version can enter the current paper pipeline. DOI-only articles, arbitrary URLs, and uploaded PDFs are not yet supported.
+- Documents accept Markdown and PDF uploads up to 4 MB; they remain separate from paper imports, recommendations, and generated notecards.
 - PDF fallback uses an isolated Python environment with `pypdf==6.18.1`; install with `python3 -m venv .venv` then `.venv/bin/pip install pypdf==6.18.1`. It extracts at most 12 pages, not necessarily the entire paper. Abstract-only results remain shorter and explicitly labeled.
 - Generated diagrams use a bounded vocabulary of original geometric primitives. They are editable SVG exports; there is no in-app vector editor.
 - Recommendation and generation jobs share a 12-job-per-hour limit. The Mac server and its signed-in Codex session must be available.

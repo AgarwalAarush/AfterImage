@@ -10,6 +10,7 @@ import { initialState } from "../src/lib/catalog";
 import { signedBackendHeaders } from "../src/lib/backend-auth";
 import { macserverRequest } from "../src/lib/macserver-client";
 import { assistantSnapshot, mutate, snapshot, stateStatus, touchWorkerSeenAt } from "../src/lib/store";
+import { deleteDocument, getDocument, getDocumentMetadata, listDocuments, prepareDocument, saveDocument } from "../src/lib/documents";
 
 test("Vercel-to-macserver bridge authenticates requests and preserves SQLite versions", async () => {
   const directory = mkdtempSync(path.join(os.tmpdir(), "afterimage-storage-"));
@@ -62,6 +63,18 @@ test("Vercel-to-macserver bridge authenticates requests and preserves SQLite ver
     await touchWorkerSeenAt("2026-09-28T00:00:00.000Z");
     assert.deepEqual(await stateStatus(), {version: 1, workerSeenAt: "2026-09-28T00:00:00.000Z"});
     assert.deepEqual(await macserverRequest({action: "compareAndSwap", version: 0, data: (await snapshot()).data}), {applied: false});
+
+    const content = Buffer.from("# Private guide\n\nA useful explanation saved outside the paper state.\n");
+    const prepared = prepareDocument("guide.md", content);
+    const saved = await saveDocument(prepared);
+    assert.equal(saved.title, "Private guide");
+    assert.equal((await listDocuments()).length, 1);
+    assert.equal((await getDocumentMetadata(saved.id))?.filename, "guide.md");
+    assert.deepEqual((await getDocument(saved.id))?.content, content);
+    await assert.rejects(() => saveDocument(prepared), /already in Documents/);
+    assert.equal((await snapshot()).version, 1);
+    await deleteDocument(saved.id);
+    assert.equal((await listDocuments()).length, 0);
 
     const body = JSON.stringify({action: "status"});
     const headers = {"content-type": "application/json", ...signedBackendHeaders(body, secret)};
@@ -120,6 +133,7 @@ test("Vercel-to-macserver bridge authenticates requests and preserves SQLite ver
     const copy = new DatabaseSync(file, {readOnly: true});
     assert.equal(copy.prepare("PRAGMA integrity_check").get()!.integrity_check, "ok");
     assert.equal(copy.prepare("SELECT version FROM state WHERE id=1").get()!.version, 1);
+    assert.equal(copy.prepare("SELECT count(*) AS count FROM documents").get()!.count, 0);
     copy.close();
   } finally {
     if (oldStorage === undefined) delete process.env.AFTERIMAGE_STORAGE;
