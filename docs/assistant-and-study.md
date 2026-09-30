@@ -30,6 +30,10 @@ Study generation refreshes source extraction, including tables and separately ci
 
 Inspected the complete public [Fanout lottery-ticket article](https://fanout.sh/daily/2026-09-13-lottery-ticket-hypothesis), including its opening figure, fixed-mask initialization comparison, equation, evidence bars, limitations, quiz and references. Observed: different figures serve different explanatory roles; interaction isolates one changed variable; figure captions state experimental scope and teaching simplifications. Proposed for Afterimage: distribute complementary figures beside the relevant prose, source every reported value, label invented examples, and make quiz feedback explain misconceptions. The assistant's white surface, recessed input well, compact mono metadata and quiet controls also draw on the user-supplied lab-search screenshot.
 
+## Preparation visibility
+
+As of September 30, independently reviewed notecards remain readable while the study supplement completes. Study drafts stay private until their own checks pass. See `preparation-and-loading-2026-09-30.md` for worker milestones, elapsed time, connection status, and release ordering.
+
 ## Validation
 
 Run `npm test`, `AFTERIMAGE_BUILD_DIR=.next-production npm run build`, and the browser desktop/mobile flows. `scripts/test-assistant-stream.ts` checks real app-server deltas on the macserver. `scripts/verify-assistant-live.ts` checks production access boundaries and multiple real SSE updates; it submits one actual paper question. `worker/index.ts --study-file <paper.json>` runs full generation/review without publishing. Store passed artifact/review pairs before applying a supplement.

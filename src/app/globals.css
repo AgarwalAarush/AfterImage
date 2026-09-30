@@ -2695,3 +2695,25 @@ h3 {
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
 
 @media (max-width: 699px) { .assistant-input-well textarea { font-size: 16px; } }
+
+.preparation-activity {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+  margin-top: 18px;
+  color: var(--muted);
+  font: 10px/1.5 var(--font-mono);
+}
+.preparation-activity strong { color: var(--ink); font-weight: 400; }
+.preparation-activity .status-dot.offline { background: #a96e5c; }
+.paper-preparation-copy > .preparation-expectation { margin-top: 12px; font-size: 12px; }
+.paper-preparation.readable { min-height: 0; padding: 26px 28px; margin-bottom: 28px; }
+.paper-preparation.readable .paper-preparation-copy h2 { font-size: 26px; }
+.paper-preparation.readable .paper-preparation-steps { margin-top: 28px; }
+.paper-preparation.readable .preparation-footnote { text-transform: none; letter-spacing: 0; font-size: 11px; }
+.loading-status .loading-detail { max-width: 420px; margin: 12px auto; color: var(--muted); font-size: 13px; line-height: 1.6; }
+@media (max-width: 600px) {
+  .paper-preparation.readable { padding: 22px 16px; }
+  .preparation-activity { gap: 8px 12px; }
+}

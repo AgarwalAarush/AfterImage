@@ -130,6 +130,7 @@ export type Feedback = {
   value: "useful" | "known" | "advanced" | "irrelevant" | "later";
   at: string;
 };
+export type WorkerStage = GenerationStep | "study-sources" | "study-drafting" | "study-rendering" | "study-reviewing" | "study-repairing" | "publishing";
 export type Job = {
   id: string;
   type: "generate" | "recommend" | "study";
@@ -141,6 +142,10 @@ export type Job = {
   leaseUntil?: string;
   leaseToken?: string;
   attempts: number;
+  stage?: WorkerStage;
+  stageUpdatedAt?: string;
+  heartbeatAt?: string;
+  progressAttempt?: number;
   error?: string;
 };
 export type AppState = {

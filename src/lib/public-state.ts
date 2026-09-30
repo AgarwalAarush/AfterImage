@@ -5,10 +5,14 @@ export function publicState(s: AppState, includeExcerpts = false): AppState {
   return {
     ...s,
     assistantRequests: undefined,
-    papers: includeExcerpts ? s.papers : s.papers.map(p => ({
+    papers: s.papers.map(({generationError, ...p}) => ({
       ...p,
-      sources: p.sources.map(source => ({...source, excerpt: ""})),
+      sources: includeExcerpts ? p.sources : p.sources.map(source => ({...source, excerpt: ""})),
     })),
-    jobs: s.jobs.map(({leaseToken, ...job}) => job),
+    jobs: s.jobs.map(({leaseToken, leaseUntil, error, ...job}) => ({
+      ...job,
+      heartbeatAt: job.heartbeatAt || (job.status === "running" && leaseUntil && Number.isFinite(Date.parse(leaseUntil))
+        ? new Date(Date.parse(leaseUntil) - 15 * 60000).toISOString() : undefined),
+    })),
   };
 }

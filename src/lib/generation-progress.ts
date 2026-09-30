@@ -24,6 +24,12 @@ export type PaperPreparationModel = {
   orbState: PreparationOrbState;
   retryAction: "generate" | "study" | null;
   steps: PreparationStep[];
+  readable?: boolean;
+  startedAt?: string;
+  activityAt?: string;
+  queuePosition?: number;
+  workerState?: "online" | "unconfirmed" | "offline";
+  attempt?: number;
 };
 
 const stages: Array<Pick<PreparationStep, "id" | "label">> = [
@@ -88,7 +94,7 @@ function generationModel(paper: Paper): PaperPreparationModel {
         : copy[stage].title,
     detail:
       paper.generationStatus === "queued"
-        ? "The notecard, visual guide, and questions will appear together when they are ready."
+        ? "The worker will prepare and review your notecard first, then its visual guide and questions."
         : copy[stage].detail,
     orbState:
       paper.generationStatus === "queued" ? "working" : orbByStage[stage],
@@ -98,10 +104,9 @@ function generationModel(paper: Paper): PaperPreparationModel {
 }
 
 /**
- * Projects the two dependent worker jobs as one reader-facing package.
- * Generated notecards remain hidden until their study guide and quiz finish.
+ * Projects validated notecard and study jobs without exposing unreviewed drafts.
  */
-export function paperPreparationModel(
+function preparationModel(
   paper: Paper,
   jobs: Job[],
 ): PaperPreparationModel {
@@ -125,8 +130,8 @@ export function paperPreparationModel(
           : "Building the visual guide and quiz.",
       detail:
         activeStudy.status === "queued"
-          ? "The notecard passed review. The final part of your reading kit will start shortly."
-          : "Creating source-grounded visuals and review questions before the complete paper unlocks.",
+          ? "The notecard passed review and is ready to read. The visual guide and questions are queued."
+          : "Your reviewed notecard is ready to read while the visuals and questions are prepared.",
       orbState: activeStudy.status === "queued" ? "working" : "weaving",
       retryAction: null,
       steps: progress(4),
@@ -157,7 +162,7 @@ export function paperPreparationModel(
       status: "failed",
       title: "The reading kit didn’t pass review.",
       detail:
-        "The notecard did not finish, so the visual guide was not started. Nothing partial was published.",
+        "The notecard did not finish, so the visual guide was not started. Unreviewed drafts stay private.",
       orbState: "solving",
       retryAction: "generate",
       steps: progress(failedIndex, true),
@@ -169,7 +174,7 @@ export function paperPreparationModel(
       status: "failed",
       title: "The visual study guide didn’t pass review.",
       detail:
-        "The notecard is safe, but the complete package stays hidden until its visuals and questions are ready.",
+        "Your reviewed notecard remains available. Retry to finish the visuals and questions.",
       orbState: "weaving",
       retryAction: "study",
       steps: progress(4, true),
@@ -180,7 +185,7 @@ export function paperPreparationModel(
       status: "idle",
       title: "Finish preparing this paper.",
       detail:
-        "The notecard is ready. Add its visual guide and questions to unlock the complete reading kit.",
+        "The reviewed notecard is ready to read. Add its visual guide and questions when you want them.",
       orbState: "breathing",
       retryAction: "study",
       steps: progress(4),
@@ -194,5 +199,31 @@ export function paperPreparationModel(
     orbState: "breathing",
     retryAction: "generate",
     steps: progress(0),
+  };
+}
+
+const studyStages: Record<string, {title: string; detail: string}> = {
+  "study-sources": {title: "Gathering evidence for the study guide.", detail: "Refreshing the source excerpts for the visuals and questions."},
+  "study-drafting": {title: "Drafting the visuals and questions.", detail: "Creating examples and questions grounded in the paper’s evidence."},
+  "study-rendering": {title: "Checking the figure layouts.", detail: "Rendering desktop and mobile figures and checking their geometry."},
+  "study-reviewing": {title: "Reviewing the visuals and answers.", detail: "Checking the rendered figures, citations, and every quiz answer against the sources."},
+  "study-repairing": {title: "Improving the study guide after review.", detail: "The last draft needs corrections. The worker is preparing a revised version before publishing."},
+  publishing: {title: "Saving the reviewed result.", detail: "The checks passed. Your reading kit will update automatically."},
+};
+export function paperPreparationModel(paper: Paper, jobs: Job[], workerSeenAt?: string | null, now = Date.now()): PaperPreparationModel {
+  const model = preparationModel(paper, jobs);
+  const job = jobs.find(j => j.paperId === paper.id && ["generate", "study"].includes(j.type) && ["queued", "running"].includes(j.status));
+  const readable = Boolean(paper.recall);
+  if (!job) return {...model, readable};
+  // Legacy workers expose a lease but no heartbeat timestamp. Derive their last
+  // renewal from the existing 15-minute lease; do not interpret a lease as ETA.
+  const legacyHeartbeat = job.leaseUntil ? Date.parse(job.leaseUntil) - 15 * 60000 : NaN;
+  const activityAt = job.heartbeatAt || (Number.isFinite(legacyHeartbeat) ? new Date(legacyHeartbeat).toISOString() : job.startedAt);
+  const seen = Date.parse((job.status === "running" ? activityAt : workerSeenAt) || "");
+  const workerState = !Number.isFinite(seen) ? "unconfirmed" : now - seen > 150000 ? "offline" : "online";
+  const stage = job.status === "running" && job.stage ? studyStages[job.stage] : undefined;
+  return {...model, ...stage, readable, startedAt: job.startedAt || job.createdAt, activityAt,
+    workerState, attempt: job.progressAttempt,
+    queuePosition: job.status === "queued" ? jobs.filter(j => j.status === "queued").findIndex(j => j.id === job.id) + 1 : undefined,
   };
 }

@@ -28,7 +28,7 @@ import {
 } from "./diagram-review";
 import { parsePaperId } from "../src/lib/identity";
 import { excludedRecommendations, readingContextIds } from "../src/lib/recommendations";
-import type { RecommendationRun, Paper, Job, AppState, GenerationStep } from "../src/lib/types";
+import type { RecommendationRun, Paper, Job, AppState, GenerationStep, WorkerStage } from "../src/lib/types";
 const base = process.env.AFTERIMAGE_URL,
   token = process.env.AFTERIMAGE_WORKER_TOKEN;
 const evaluationOnly = ["--study-file", "--review-file", "--evaluate-file", "--evaluate-paper"].some(flag => process.argv.includes(flag));
@@ -67,6 +67,8 @@ async function codex<T>(
   name: string,
   image?: string | string[],
 ): Promise<T> {
+  const stepStarted = Date.now();
+  console.log(`${new Date().toISOString()} Model step started ${name}`);
   const schemaPath = path.join(dir, `${name}.schema.json`),
     out = path.join(dir, `${name}.json`);
   await writeFile(schemaPath, JSON.stringify(outputSchema(schema)));
@@ -101,11 +103,12 @@ async function codex<T>(
         TMPDIR: os.tmpdir(),
       },
     });
-    let error = "";
+    let error = "", timedOut = false;
     child.stderr.on("data", (b) => {
       error = (error + b.toString()).slice(-2000);
     });
     const t = setTimeout(() => {
+      timedOut = true;
       child.kill("SIGTERM");
       setTimeout(() => child.kill("SIGKILL"), 5000).unref();
     }, 10 * 60000);
@@ -115,12 +118,15 @@ async function codex<T>(
     });
     child.on("close", (code) => {
       clearTimeout(t);
-      code === 0
+      timedOut
+        ? reject(new Error(`Model step ${name} timed out after 10 minutes.`))
+        : code === 0
         ? resolve()
         : reject(new Error(`Codex exited ${code}. ${error.slice(-350)}`));
     });
     child.stdin.end(boundary + "\n\n" + prompt);
   });
+  console.log(`${new Date().toISOString()} Model step finished ${name} in ${Date.now() - stepStarted}ms`);
   return schema.parse(JSON.parse(await readFile(out, "utf8")));
 }
 async function generate(
@@ -377,16 +383,19 @@ async function recommend(
     newPaperIds: ranked.recommendations.map(r => r.paperId).filter(id => !data.papers.some(p => p.id === id)),
   };
 }
-async function generateStudy(paper: Paper, dir: string) {
+async function generateStudy(paper: Paper, dir: string, progress: (stage: WorkerStage, attempt?: number) => Promise<void> = async () => {}) {
+  await progress("study-sources");
   const extracted=await researchSources(paper);
   const sources=extracted.scope==="full-text"?extracted.sources:paper.sources;
   if(!sources.some(s=>s.excerpt))throw new Error("Source text is missing. Regenerate the notecard first.");
   const data=JSON.stringify({paper:{id:paper.id,title:paper.title},sources,recall:paper.recall,openingDiagram:paper.scene});
   let repair="";
   for(let attempt=0;attempt<3;attempt++){
+    await progress(attempt ? "study-repairing" : "study-drafting", attempt + 1);
     const pack=arrangeQuiz(await codex(studyPrompt+"\nSOURCE DATA:\n"+data+"\nREPAIR NOTES:\n"+repair,studySchema,dir,`study-${attempt}`));
     try{
       validateStudy(pack,sources);
+      await progress("study-rendering", attempt + 1);
       const images:string[]=[];
       for(const [i,f] of pack.figures.entries())for(const mobile of [false,true])for(let state=0;state<(f.kind==="network"?f.states.length:1);state++){
         const svg=studySvg(f,mobile,state),defects=inspectSvg(svg);
@@ -394,11 +403,12 @@ async function generateStudy(paper: Paper, dir: string) {
         const file=path.join(dir,`study-${attempt}-${i}-${mobile}-${state}.png`);
         await writeFile(file,new Resvg(svg,{background:"#ffffff",font:reviewFonts,fitTo:{mode:"width",value:mobile?350:760}}).render().asPng());images.push(file);
       }
+      await progress("study-reviewing", attempt + 1);
       const review=await codex(`Review all these supplementary figures and quiz questions independently against SOURCE DATA. ${reviewRubric} Check values, axes, units and denominators; illustrative versus reported labels; equal conditions when a comparison is claimed; network edges and multiplication; heatmap normalization and direction; token-tree topology, scores and accepted path; timeline ordering; curve axes, monotonic x order and comparable series; loss-landscape grid/path semantics; readable mobile labels. Verify the correct quiz answer AND every distractor explanation; reject ambiguous questions or multiple correct choices. These figures supplement the supplied notecard, not replace it. Values must be supported exactly by the cited source or clearly illustrative. No demand for decorative variety.\nPACK:\n${JSON.stringify(pack)}\nSOURCE DATA:\n${data}`,critiqueSchema,dir,`study-review-${attempt}`,images);
       if(!review.approved||review.issues.some(i=>i.severity==="must-fix"))throw new Error(JSON.stringify(review.issues));
       await writeFile(path.join(dir,"study-quality-report.json"),JSON.stringify({version:"study-figures-v2",paperId:paper.id,review,at:new Date().toISOString()},null,2));
       return {study:pack,sources};
-    }catch(e){repair=(e as Error).message;}
+    }catch(e){repair=(e as Error).message;console.log(`${new Date().toISOString()} Study review attempt ${attempt+1} requires repair`);await writeFile(path.join(dir,`study-repair-${attempt}.json`),JSON.stringify({error:repair,at:new Date().toISOString()}));}
   }
   throw new Error("The visual study guide did not pass review. Please try again.");
 }
@@ -416,11 +426,15 @@ async function run() {
   );
   try {
     const output =
-      job.type === "study" ? await generateStudy(data.paper, dir) : job.type === "generate"
+      job.type === "study" ? await generateStudy(data.paper, dir, async (stage, attempt) => {
+        console.log(`${new Date().toISOString()} Progress ${job.id} ${stage} attempt ${attempt || 1}`);
+        await api({ action: "heartbeat", ...credentials, stage, attempt });
+      }) : job.type === "generate"
         ? await generate(data.paper, dir, async (stage) => {
             await api({ action: "heartbeat", ...credentials, stage });
           })
         : await recommend(data, dir);
+    await api({ action: "heartbeat", ...credentials, stage: "publishing" });
     await api({ action: "complete", ...credentials, ...output });
     console.log(`${new Date().toISOString()} Completed ${job.id}`);
   } catch (e) {

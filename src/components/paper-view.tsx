@@ -27,8 +27,8 @@ export function PaperView({ id }: { id: string }) {
     );
   const e = state.entries[id];
   const r = p.recall;
-  const preparation = paperPreparationModel(p, state.jobs);
-  const ready = preparation.status === "ready";
+  const preparation = paperPreparationModel(p, state.jobs, state.workerSeenAt);
+  const ready = Boolean(preparation.readable);
   const related = state.papers
     .filter((x) => x.id !== id && x.topics.some((t) => p.topics.includes(t)))
     .slice(0, 2);
@@ -110,7 +110,8 @@ export function PaperView({ id }: { id: string }) {
           )}
         </div>
       </header>
-      {ready ? <>
+      {preparation.status !== "ready" && <PaperPreparation paperId={id} model={preparation} />}
+      {ready && <>
       <section className="mechanism-panel panel">
         <div className="section-heading">
           <span className="eyebrow">THE IDEA, AT A GLANCE</span>
@@ -255,7 +256,7 @@ export function PaperView({ id }: { id: string }) {
           )}
         </section>
       </div>
-      <PaperQuiz paper={p}/>
+      {p.study && <PaperQuiz paper={p}/>}
       {related.length > 0 && (
         <section className="related">
           <span className="eyebrow">PULL ON A RELATED THREAD</span>
@@ -270,9 +271,7 @@ export function PaperView({ id }: { id: string }) {
           </div>
         </section>
       )}
-      </> : (
-        <PaperPreparation paperId={id} model={preparation} />
-      )}
+      </>}
     </div></PaperAssistant>
   );
 }

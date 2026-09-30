@@ -20,14 +20,15 @@ test('legacy post-reading capture fields are removed from the active state model
  assert.deepEqual(upgraded.entries.paper,{paperId:'paper',status:'read',savedAt:'2026-09-01',updatedAt:'2026-09-02'});
 });
 
-test('paper preparation presents notecard and study work as one atomic package', () => {
+test('paper preparation retains review stages while allowing a validated notecard to be read', () => {
  const paper=structuredClone(initialState().papers[0]);
  paper.id='generated';paper.recall=null;paper.scene=null;delete paper.study;paper.generationStatus='queued';
  let model=paperPreparationModel(paper,[{id:'g',type:'generate',paperId:paper.id,status:'queued',createdAt:'2026-09-12',attempts:0}]);
  assert.equal(model.status,'queued');
  assert.equal(model.orbState,'working');
  assert.deepEqual(model.steps.map(step=>step.state),['active','upcoming','upcoming','upcoming','upcoming']);
- assert.match(model.detail,/notecard, visual guide, and questions/i);
+ assert.match(model.detail,/prepare and review your notecard/i);
+ assert.equal(model.readable,false);
 
  paper.generationStatus='running';paper.generationStep='reviewing';
  model=paperPreparationModel(paper,[{id:'g',type:'generate',paperId:paper.id,status:'running',createdAt:'2026-09-12',attempts:1}]);
@@ -37,6 +38,7 @@ test('paper preparation presents notecard and study work as one atomic package',
  paper.generationStatus='ready';paper.recall={...initialState().papers[0].recall!,provenance:'codex'};
  model=paperPreparationModel(paper,[{id:'s',type:'study',paperId:paper.id,status:'running',createdAt:'2026-09-12',attempts:1}]);
  assert.equal(model.orbState,'weaving');
+ assert.equal(model.readable,true);
  assert.deepEqual(model.steps.map(step=>step.state),['complete','complete','complete','complete','active']);
 
  model=paperPreparationModel(paper,[{id:'s',type:'study',paperId:paper.id,status:'queued',createdAt:'2026-09-12',attempts:1}]);
@@ -50,13 +52,18 @@ test('paper preparation presents notecard and study work as one atomic package',
 test('browser projection drops heavy excerpts, preserves citations, and full export never leaks leases', () => {
  const state=initialState();
  state.papers[0].sources=[{id:'abstract',label:'Source',url:'https://arxiv.org/abs/2401.04088',excerpt:'source evidence'}];
- state.jobs=[{id:'j',type:'generate',status:'running',createdAt:'2026-09-12',attempts:1,leaseToken:'private-lease'}];
+ state.papers[0].generationError='private generation error';
+ state.jobs=[{id:'j',type:'generate',status:'running',createdAt:'2026-09-12',attempts:1,leaseToken:'private-lease',leaseUntil:'2026-09-30T12:15:00Z',error:'private review error'}];
  const light=publicState(state);
  assert.equal(light.papers[0].sources[0].excerpt,'');
  assert.equal(light.papers[0].sources[0].url,state.papers[0].sources[0].url);
  assert.equal(state.papers[0].sources[0].excerpt,'source evidence');
  assert.equal(publicState(state,true).papers[0].sources[0].excerpt,'source evidence');
  assert.equal(light.jobs[0].leaseToken,undefined);
+ assert.equal(light.jobs[0].leaseUntil,undefined);
+ assert.equal(light.jobs[0].error,undefined);
+ assert.equal(light.papers[0].generationError,undefined);
+ assert.equal(light.jobs[0].heartbeatAt,'2026-09-30T12:00:00.000Z');
  assert.equal(publicState(state,true).jobs[0].leaseToken,undefined);
 });
 test('temporary storage read failure retries, but uncertain writes never replay', async () => {

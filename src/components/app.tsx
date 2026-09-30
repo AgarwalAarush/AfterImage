@@ -32,7 +32,9 @@ import {
 import type { AppState, Paper, Entry, Recommendation } from "@/lib/types";
 import type { PaperSearchProvider, PaperSearchResult } from "@/lib/paper-search";
 import dynamic from "next/dynamic";
+import { clientRequest } from "@/lib/client-request";
 import { readLibrary, readLibraryUpdate, SessionExpired } from "@/lib/library-client";
+import { LoadingStatus } from "./loading-status";
 import { LibraryContent } from "./library-content";
 const Diagram = dynamic(() => import("./diagram").then(module => module.Diagram), {
   loading: () => <div className="diagram diagram-loading" aria-label="Loading diagram" />,
@@ -43,12 +45,16 @@ const Context = createContext<{
   state: AppState | null;
   act: (body: Record<string, unknown>) => Promise<any>;
   busy: boolean;
+  refresh: () => Promise<void>;
+  refreshing: boolean;
   openAdd: () => void;
   toast: (s: string) => void;
 }>({
   state: null,
   act: async () => {},
   busy: false,
+  refresh: async () => {},
+  refreshing: false,
   openAdd: () => {},
   toast: () => {},
 });
@@ -90,6 +96,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AppState | null>(null),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
+    [refreshing, setRefreshing] = useState(false),
     [paletteOpen, setPaletteOpen] = useState(false),
     [message, setMessage] = useState("");
   const router = useRouter(),
@@ -103,6 +110,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (busyRef.current || (requestRef.current && !requestRef.current.signal.aborted)) return;
     const controller = new AbortController();
     requestRef.current = controller;
+    setRefreshing(true);
+    setError("");
     try {
       const {state: data, version, workerSeenAt} = await readLibraryUpdate(
         controller.signal, stateRef.current && versionRef.current !== null ? versionRef.current : undefined,
@@ -127,7 +136,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         router.replace("/login");
       } else setError((e as Error).message);
     } finally {
-      if (requestRef.current === controller) requestRef.current = null;
+      if (requestRef.current === controller) { requestRef.current = null; setRefreshing(false); }
     }
   }, [router]);
   useEffect(() => {
@@ -138,7 +147,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       lastLoaded.current = 0;
       setState(null);
       setError("");
-    } else if (!stateRef.current || Date.now() - lastLoaded.current > 30000) void refresh();
+    } else if (!pathname.startsWith("/documents") && (!stateRef.current || Date.now() - lastLoaded.current > 30000)) void refresh();
   }, [refresh, pathname]);
   useEffect(() => () => { requestRef.current?.abort(); }, []);
   useEffect(() => {
@@ -154,7 +163,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [pathname]);
   const activeJobs = state?.jobs.some(j => ["queued", "running"].includes(j.status)) || false;
   useEffect(() => {
-    if (pathname === "/login") return;
+    if (pathname === "/login" || pathname.startsWith("/documents")) return;
     const poll = () => {
       if (document.visibilityState === "visible" && navigator.onLine) void refresh();
     };
@@ -178,7 +187,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     requestRef.current?.abort();
     setBusy(true);
     try {
-      const r = await fetch("/api/state", {
+      const r = await clientRequest("/api/state", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
@@ -213,6 +222,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         state,
         act,
         busy,
+        refresh,
+        refreshing,
         openAdd: () => setPaletteOpen(true),
         toast: setMessage,
       }}
@@ -250,10 +261,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
         </div>
       </header>
       <main>
-        <LibraryContent loaded={!!state} error={error} retry={refresh} loading={
-          <div className="loading-state" role="status">
+        <LibraryContent loaded={pathname.startsWith("/documents") || !!state} error={pathname.startsWith("/documents") ? "" : error} retry={refresh} loading={
+          <div className="loading-state">
             <Mark />
-            <p className="eyebrow">Opening your reading desk</p>
+            <LoadingStatus label="Opening your reading desk" detail="Fetching your private library. This is taking longer than usual; the connection will time out and offer a retry." />
             <div className="skeleton" />
           </div>
         }>{children}</LibraryContent>
@@ -277,7 +288,7 @@ function matchesPaperInput(value: string) {
   return /^(?:\d{4}\.\d{4,5}(?:v\d+)?|[a-z-]+(?:\.[A-Z]{2})?\/\d{7}(?:v\d+)?|https?:\/\/(?:www\.)?(?:arxiv|alphaxiv)\.org\/)/i.test(value.trim());
 }
 function PaperPalette({ close }: { close: () => void }) {
-  const { state, act, busy } = useApp(),
+  const { state, act, busy, refresh } = useApp(),
     router = useRouter(),
     ref = useRef<HTMLDialogElement>(null),
     input = useRef<HTMLInputElement>(null),
@@ -296,6 +307,7 @@ function PaperPalette({ close }: { close: () => void }) {
       ref.current?.close();
     };
   }, []);
+  useEffect(() => { if (!state) void refresh(); }, [refresh]);
   const normalizedQuery = query.trim().toLowerCase();
   const canImport = matchesPaperInput(query);
   useEffect(() => {
@@ -344,8 +356,7 @@ function PaperPalette({ close }: { close: () => void }) {
       controller.abort();
     };
   }, [normalizedQuery, canImport, query, router]);
-  if (!state) return null;
-  const papers = [...state.papers]
+  const papers = [...(state?.papers || [])]
     .filter((paper) => {
       if (!normalizedQuery) return true;
       const searchable = [
@@ -367,7 +378,7 @@ function PaperPalette({ close }: { close: () => void }) {
       return Number(bTitle.startsWith(normalizedQuery)) - Number(aTitle.startsWith(normalizedQuery));
     })
     .slice(0, 7);
-  const knownIds = new Set(state.papers.map((paper) => paper.id));
+  const knownIds = new Set(state?.papers.map((paper) => paper.id) || []);
   const discoveries = remotePapers.filter((paper) => !knownIds.has(paper.id));
   const items: (
     | { kind: "import" }
@@ -493,7 +504,7 @@ function PaperPalette({ close }: { close: () => void }) {
             </span>
             {papers.map((paper, index) => {
               const itemIndex = index + (canImport ? 1 : 0);
-              const entry = state.entries[paper.id];
+              const entry = state?.entries[paper.id];
               return (
                 <button
                   type="button"

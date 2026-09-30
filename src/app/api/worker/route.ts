@@ -8,7 +8,8 @@ import { importPaper } from "@/lib/papers";
 import { validateRecall } from "@/lib/recall-validation";
 import { parsePaperId } from "@/lib/identity";
 import { excludedRecommendations, recommendationRunSchema } from "@/lib/recommendations";
-import { z } from "zod";
+import type { Paper } from "@/lib/types";
+import { recordWorkerProgress } from "@/lib/worker-progress";
 export const maxDuration = 60;
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -58,6 +59,10 @@ export async function POST(req: Request) {
         job.status = "running";
         job.attempts++;
         job.startedAt = now;
+        job.heartbeatAt = now;
+        delete job.stage;
+        delete job.stageUpdatedAt;
+        delete job.progressAttempt;
         job.leaseUntil = new Date(Date.now() + 15 * 60000).toISOString();
         job.leaseToken = randomUUID();
         const p = s.papers.find((p) => p.id === job.paperId);
@@ -83,12 +88,11 @@ export async function POST(req: Request) {
         throw new Error("Job lease is no longer valid");
       if (body.action === "heartbeat") {
         job.leaseUntil = new Date(Date.now() + 15 * 60000).toISOString();
-        const stage = z
-          .enum(["sources", "planning", "drafting", "reviewing"])
-          .safeParse(body.stage);
+        recordWorkerProgress(job, body, now);
         const p = s.papers.find((p) => p.id === job.paperId);
-        if (p && job.type === "generate" && stage.success)
-          p.generationStep = stage.data;
+        if (p && job.type === "generate" && job.stage &&
+            ["sources", "planning", "drafting", "reviewing"].includes(job.stage))
+          p.generationStep = job.stage as NonNullable<Paper["generationStep"]>;
         return { ok: true };
       }
       if (body.action === "fail") {

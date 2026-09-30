@@ -11,6 +11,8 @@ import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import rehypeKatex from "rehype-katex";
 import rehypeSlug from "rehype-slug";
 import GithubSlugger from "github-slugger";
+import { clientRequest } from "@/lib/client-request";
+import { LoadingStatus } from "./loading-status";
 import type { SavedDocument } from "@/lib/documents";
 import "katex/dist/katex.min.css";
 
@@ -41,41 +43,43 @@ export function DocumentReader({ id }: { id: string }) {
   const [markdown, setMarkdown] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [loadVersion, setLoadVersion] = useState(0);
   const [deleting, setDeleting] = useState(false);
   const router = useRouter();
   useEffect(() => {
     const controller = new AbortController();
+    setLoading(true); setDocument(null); setMarkdown(""); setError("");
     async function load() {
       try {
-        const response = await fetch(`/api/documents/${encodeURIComponent(id)}?meta=1`, { signal: controller.signal, cache: "no-store" });
+        const response = await clientRequest(`/api/documents/${encodeURIComponent(id)}?meta=1`, { signal: controller.signal, cache: "no-store" });
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || "Could not open this document.");
         if (data.document.kind === "markdown") {
-          const contentResponse = await fetch(`/api/documents/${encodeURIComponent(id)}`, { signal: controller.signal, cache: "no-store" });
+          const contentResponse = await clientRequest(`/api/documents/${encodeURIComponent(id)}`, { signal: controller.signal, cache: "no-store" });
           const content = await contentResponse.json();
           if (!contentResponse.ok) throw new Error(content.error || "Could not read this document.");
           setMarkdown(content.markdown);
         }
-        setDocument(data.document);
+        if (!controller.signal.aborted) setDocument(data.document);
       } catch (cause) { if (!controller.signal.aborted) setError((cause as Error).message); }
       finally { if (!controller.signal.aborted) setLoading(false); }
     }
     void load();
     return () => controller.abort();
-  }, [id]);
+  }, [id, loadVersion]);
   const body = useMemo(() => readableMarkdown(markdown), [markdown]);
   const outline = useMemo(() => readingOutline(body), [body]);
   async function remove() {
     if (!document || !window.confirm(`Remove “${document.title}” from Documents?`)) return;
     setDeleting(true);
     try {
-      const response = await fetch(`/api/documents/${encodeURIComponent(id)}`, { method: "DELETE" });
+      const response = await clientRequest(`/api/documents/${encodeURIComponent(id)}`, { method: "DELETE" });
       if (!response.ok) throw new Error((await response.json()).error || "Could not remove the document.");
       router.push("/documents");
     } catch (cause) { setError((cause as Error).message); setDeleting(false); }
   }
-  if (loading) return <div className="page document-reader-loading" role="status">Opening your document…</div>;
-  if (!document) return <div className="page document-reader-loading"><h1>Couldn’t open this document.</h1><p>{error}</p><Link href="/documents" className="button"><ArrowLeft size={15} /> Back to Documents</Link></div>;
+  if (loading) return <div className="page document-reader-loading"><LoadingStatus label="Opening your document…" detail="Fetching the original file. This is taking longer than usual; you can retry if the connection times out." /></div>;
+  if (!document) return <div className="page document-reader-loading"><h1>Couldn’t open this document.</h1><p>{error}</p><button className="button" onClick={() => setLoadVersion(value => value + 1)}>Try again</button><Link href="/documents" className="button"><ArrowLeft size={15} /> Back to Documents</Link></div>;
   return <div className="document-reader-page">
     <div className="document-reader-top"><Link href="/documents"><ArrowLeft size={15} /> Documents</Link><div><a href={`/api/documents/${encodeURIComponent(id)}?download=1`} className="text-button"><Download size={15} /> Download original</a><button className="text-button document-delete" disabled={deleting} onClick={remove}><Trash2 size={15} /> {deleting ? "Removing…" : "Remove"}</button></div></div>
     {error && <div className="document-error" role="alert">{error}</div>}

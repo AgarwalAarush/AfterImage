@@ -77,12 +77,18 @@ function contourPaths(values:number[][],left:number,top:number,width:number,heig
   }
   return out;
 }
+export function barAxisMax(figure: Extract<StudyFigure, {kind: "bars"}>) {
+  const largest = Math.max(...figure.series.map(s => s.value));
+  // Percentages have a known endpoint; other units keep their actual common
+  // endpoint visible so a full-width bar cannot imply a different scale.
+  return /%|percent/i.test(figure.unit) && largest <= 100 ? 100 : Math.max(largest, 1);
+}
 /** Deterministic charts/networks: models provide semantics and numbers, never arbitrary SVG or coordinates. */
 export function studySvg(f:StudyFigure,mobile=false,state=0){
   const w=mobile?350:760;let h=300,body="";
   if(f.kind==="bars"){
-    const top=36,row=mobile?90:68;h=top+f.series.length*row+32;const left=mobile?16:170,right=w-32,extent=right-left,max=Math.max(...f.series.map(s=>s.value));
-    body+=text(left,18,`0 · ${f.unit}`,11);
+    const top=36,row=mobile?90:68;h=top+f.series.length*row+32;const left=mobile?16:170,right=w-32,extent=right-left,max=barAxisMax(f);
+    body+=text(left,18,`0 · ${f.unit}`,11)+text(right,18,num(max),11,"end");
     f.series.forEach((s,i)=>{const y=top+i*row;const bw=extent*s.value/max;
       body+=text(mobile?left:20,y+15,s.label,13);
       const by=mobile?y+25:y+24;
@@ -147,7 +153,7 @@ export const studyPrompt=`Create a visual study supplement to a research notecar
 - curve: latency, loss, scaling, or quality as a function of a strictly increasing x variable;
 - landscape: a scalar field or loss surface represented by a 3-7 by 3-7 sampled grid and a discrete optimization path.
 Do NOT manufacture benchmark values, choose a decorative network, or substitute a timeline for a causal mechanism. Each figure must teach a different precise idea and must not duplicate the opening diagram. It is fine to use one well-supported figure. Numeric worked examples must use provenance=illustrative and explicitly say the values are invented teaching values. Every reported numeric value in any figure must appear exactly in its cited source excerpt. Captions explain how to read the figure, units, what changes and stays fixed, conditions/baselines, and simplifications.
-For networks, edges connect adjacent layers by zero-based indices; weights can be negative and inactive edges are dashed. Node labels are <=12 characters, unique within a layer, and values appear in a separate ledger. For trees, parentId creates the topology; scores must share scoreUnit and status expresses the branch outcome. For curves, keep every series under the same x/y definitions and order points by strictly increasing x. For landscapes, grid rows/columns carry the y/x parameters and the path uses zero-based row/column indices. Matrix labels <=12 characters. Bar values are nonnegative and share a single unit and comparable condition; labels <=22 characters, notes <=55 characters; bars always start at zero.
+For networks, edges connect adjacent layers by zero-based indices; weights can be negative and inactive edges are dashed. Node labels are <=12 characters, unique within a layer, and values appear in a separate ledger. For trees, parentId creates the topology; scores must share scoreUnit and status expresses the branch outcome. For curves, keep every series under the same x/y definitions and order points by strictly increasing x. For landscapes, grid rows/columns carry the y/x parameters and the path uses zero-based row/column indices. Matrix labels <=12 characters. Bar values are nonnegative and share a single unit and comparable condition; labels <=22 characters, notes <=55 characters; bars always start at zero and the renderer labels the common endpoint. Percentage units use a fixed 0–100 scale.
 Cite supplied sourceIds for every figure and quiz question. Quiz questions test mechanism, interpretation, or a common misconception. Give three plausible distinct options with exactly one correct answer; the explanation for EVERY option must explain why it is right or wrong using the source. Cover both computation and evidence limitations. No raw LaTeX in SVG labels. Inline $...$ math is permitted in quiz text and captions. Never invent evidence to fill the schema.`;
 
 /** Shuffle once per question ID; keep the correct answer and every explanation together. */

@@ -2,6 +2,8 @@
 import { useCallback, useEffect, useRef, useState, type ChangeEvent, type DragEvent } from "react";
 import Link from "next/link";
 import { ArrowRight, FileText, FileUp, Plus, Search, X } from "lucide-react";
+import { clientRequest } from "@/lib/client-request";
+import { LoadingStatus } from "./loading-status";
 import type { SavedDocument } from "@/lib/documents";
 
 function formatBytes(bytes: number) { return bytes < 1024 * 1024 ? `${Math.round(bytes / 1024)} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`; }
@@ -13,17 +15,19 @@ export function Documents() {
   const [uploading, setUploading] = useState("");
   const [dragging, setDragging] = useState(false);
   const input = useRef<HTMLInputElement>(null);
-  const load = useCallback(async () => {
+  const load = useCallback(async (signal?: AbortSignal) => {
+    setLoading(true);
     try {
-      const response = await fetch("/api/documents", { cache: "no-store" });
+      const response = await clientRequest("/api/documents", { cache: "no-store", signal });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Could not load documents.");
+      if (signal?.aborted) return;
       setDocuments(data.documents);
       setError("");
-    } catch (cause) { setError((cause as Error).message); }
-    finally { setLoading(false); }
+    } catch (cause) { if (!signal?.aborted) setError((cause as Error).message); }
+    finally { if (!signal?.aborted) setLoading(false); }
   }, []);
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => { const controller = new AbortController(); void load(controller.signal); return () => controller.abort(); }, [load]);
 
   async function upload(files: FileList | File[]) {
     const selected = Array.from(files);
@@ -35,7 +39,7 @@ export function Documents() {
       try {
         const body = new FormData();
         body.append("file", file);
-        const response = await fetch("/api/documents", { method: "POST", body });
+        const response = await clientRequest("/api/documents", { method: "POST", body });
         const data = await response.json();
         if (!response.ok) throw new Error(`${file.name}: ${data.error || "Upload failed."}`);
         setDocuments(current => [data.document, ...current]);
@@ -73,8 +77,8 @@ export function Documents() {
       <div><span className="eyebrow">DOCUMENTS</span><h2>On your shelf <span>{documents.length}</span></h2></div>
       <label className="document-search"><Search size={17} /><input value={query} onChange={event => setQuery(event.target.value)} placeholder="Search documents" aria-label="Search documents" />{query && <button aria-label="Clear search" onClick={() => setQuery("")}><X size={15} /></button>}</label>
     </div>
-    {loading ? <div className="document-empty" role="status">Opening your shelf…</div>
-      : visible.length ? <div className="document-list">{visible.map(document => <Link className="document-row" href={`/documents/${document.id}`} key={document.id}>
+    {loading ? <div className="document-empty"><LoadingStatus label="Opening your shelf…" detail="Your document shelf is taking longer to load. A retry will be available if the connection times out." /></div>
+      : error && !documents.length ? null : visible.length ? <div className="document-list">{visible.map(document => <Link className="document-row" href={`/documents/${document.id}`} key={document.id}>
         <span className={`document-file-icon ${document.kind}`}><FileText size={24} strokeWidth={1.4} /></span>
         <span className="document-row-main"><span className="document-row-meta">{document.kind === "pdf" ? "PDF" : "MARKDOWN"} <i /> {new Date(document.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}</span><strong>{document.title}</strong><span className="document-row-excerpt">{document.excerpt}</span></span>
         <span className="document-row-end"><span>{document.wordCount ? `${Math.max(1, Math.round(document.wordCount / 250))} min read` : formatBytes(document.bytes)}</span><ArrowRight size={18} /></span>

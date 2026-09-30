@@ -43,3 +43,16 @@ test("specialized renderers reject invalid normalization, topology, axes, and pa
  assert.throws(()=>validateStudy({figures:[{...base,id:"bad-curve",kind:"curve",xLabel:"x",yLabel:"y",series:[{label:"series",points:[{x:2,y:1},{x:1,y:2}]}]}],quiz:validQuiz},sources),/increase strictly/);
  assert.throws(()=>validateStudy({figures:[{...base,id:"bad-landscape",kind:"landscape",xLabel:"x",yLabel:"y",zLabel:"loss",values:[[1,2,3],[2,3,4],[3,4,5]],path:[{row:0,column:0,label:"start"},{row:4,column:1,label:"end"}]}],quiz:validQuiz},sources),/leaves the grid/);
 });
+
+test("percentage bars use the full 0–100 scale and label both endpoints", () => {
+  const figure={...pack.figures[0],kind:"bars" as const,unit:"accuracy (%)",series:[{label:"EC-CF2",value:92.6,note:"Same condition"},{label:"ST Top-1",value:88.9,note:"Same condition"}]};
+  for(const mobile of [false,true]) {
+    const svg=studySvg(figure,mobile);
+    assert.match(svg,/>100<\/text>/);
+    const extent=mobile?302:558;
+    const widths=[...svg.matchAll(/<rect[^>]+width="([^"]+)"[^>]+fill="#8c79b2"/g)].map(m=>Number(m[1]));
+    assert.ok(Math.abs(widths[0]-extent*.926)<.00001);
+    assert.ok(Math.abs(widths[1]-extent*.889)<.00001);
+    assert.deepEqual(inspectSvg(svg),[]);
+  }
+});
