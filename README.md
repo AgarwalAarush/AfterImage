@@ -96,6 +96,8 @@ The user explicitly approved uploading these server-only values and using a prod
 
 The locally generated owner access key is stored privately in `.data/access-key.txt`. It is separate from the database password. Private files, reference assets, worker diagnostics, and local storage are excluded from deployment and version control.
 
+The paper assistant acknowledges questions immediately, shows cached source previews on hover/focus, renders Markdown tables, and smoothly reveals cumulative replies. Figures adapt to the actual reading column when the sidebar is resized. See [assistant reader interactions](docs/assistant-reader-interactions-2026-09-30.md) for behavior and local verification.
+
 ## Typography and recall
 
 New diagram generation uses a versioned semantic graph: code places nodes and routes arrows around text and shapes, with separate desktop and mobile layouts. Diagram-only repairs preserve the recall, and recall-only repairs preserve the graph. See `docs/diagram-generation-v2.md` for regression evidence and the required web-before-worker release order. `node --import tsx worker/index.ts --evaluate-paper 2312.07104` exercises generation and review without publishing or touching the queue.
