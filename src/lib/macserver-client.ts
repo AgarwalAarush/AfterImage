@@ -20,6 +20,9 @@ export async function macserverRequest<T>(request: BackendAction): Promise<T> {
     (url.protocol !== "https:" && !(local && process.env.NODE_ENV !== "production")))
     throw new Error("Macserver storage URL must be a secure origin.");
   const body = JSON.stringify(request);
+  const startedAt = Date.now();
+  let status: number | undefined;
+  let phase: "request" | "response" = "request";
   try {
     const response = await fetch(new URL("/internal/storage", url), {
       method: "POST",
@@ -32,6 +35,8 @@ export async function macserverRequest<T>(request: BackendAction): Promise<T> {
       redirect: "error",
       signal: AbortSignal.timeout(12_000),
     });
+    status = response.status;
+    phase = "response";
     if (!response.ok) {
       if (request.action === "documentSave" && response.status === 409)
         throw new Error("This file is already in Documents.");
@@ -40,6 +45,17 @@ export async function macserverRequest<T>(request: BackendAction): Promise<T> {
     return (await response.json()) as T;
   } catch (error) {
     if (error instanceof Error && error.message === "This file is already in Documents.") throw error;
+    // Never log request/response bodies, URLs, signatures, credentials, or raw
+    // error messages. Transport messages can contain private connection details.
+    const cause = error instanceof Error ? error.cause as {code?: unknown; errors?: {code?: unknown}[]} | undefined : undefined;
+    const codes = [cause?.code, ...(Array.isArray(cause?.errors) ? cause.errors.slice(0, 4).map(item => item.code) : [])]
+      .filter((code): code is string => typeof code === "string" && /^[A-Z0-9_]{1,64}$/.test(code));
+    console.error("afterimage.macserver", {
+      action: request.action, phase, status,
+      durationMs: Date.now() - startedAt,
+      errorName: error instanceof Error && ["Error", "TypeError", "TimeoutError", "AbortError", "SyntaxError"].includes(error.name) ? error.name : "Error",
+      codes: [...new Set(codes)],
+    });
     // Mutations are not retried: an interrupted response may follow a committed write.
     throw new StorageError(
       request.action === "compareAndSwap" || request.action === "documentSave" || request.action === "documentDelete"

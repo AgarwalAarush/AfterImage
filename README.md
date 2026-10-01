@@ -129,3 +129,5 @@ Local reading-set evaluations also exercise study figures with the shared semant
 Next reads now offers compact summaries and an explicit Prepare reading kit action. Recommendation cards follow the compact image mockup with a full-width reading action and overflow feedback. Library cards use one status label and complete fitted diagrams without a repeated bottom bar; unprepared readers retain their abstracts. Desktop is the product and release acceptance target. See [reading discovery and library previews](docs/reading-discovery-qol-2026-09-30.md) for the verified failure causes, graph-ID repair, and release order.
 
 The scientific illustration web/API and regular macserver worker are released on October 1; see [release verification](docs/scientific-diagram-release-2026-10-01.md). Stored diagrams require explicit reviewed regeneration.
+
+Storage connection failures now produce private, redacted upstream diagnostics while preserving generic browser errors and avoiding retries of uncertain writes. See [storage reliability diagnosis](docs/storage-reliability-2026-10-01.md) for the investigation and live recovery evidence.

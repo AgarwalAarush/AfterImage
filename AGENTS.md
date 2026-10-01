@@ -16,6 +16,7 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 - Keep `.next`, `.next-production`, `.vercel`, `node_modules`, `.data`, `.artifacts`, `.assistant-runtime`, and generated build artifacts untracked. The existing `.gitignore` is the source of truth for ignored artifacts.
 - Preserve `.env*` and all secrets. Keep only `.env.example` in source control.
+- Storage transport diagnostics stay in private server logs. Record only the action, phase, HTTP status, elapsed time, bounded error class, and sanitized transport codes; exclude bodies, URLs, credentials, signatures, and raw exception messages. Never retry an uncertain storage mutation.
 - When changing behavior in app, worker, or scripts, include a matching note in `docs/` and a short context update in `README.md`.
 - Update `AGENTS.md` whenever architecture boundaries, data handling assumptions, or release constraints change.
 - Prefer small, topic-scoped commits with explicit intent. Default commit format: `feat:`, `fix:`, `docs:`, `chore:`.
