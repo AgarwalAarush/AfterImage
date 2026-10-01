@@ -25,3 +25,11 @@ Desktop is the product target and the required release acceptance view, as confi
 Regression tests cover underscore/hyphen endpoint spelling, retained relationships, unknown endpoints, self-connections, interrupted-generation copy, metadata-only recommendation completion, explicit kit saving, and queue deduplication. UI verification uses an isolated SQLite fixture with ready, queued, running, failed, idle, editorial, and generated cards. No private production backup is copied or modified.
 
 The web/API change can be released without a storage bridge update. Deploy compatible web/API code before updating the worker; let active jobs finish before restarting workers. The graph fix runs in the worker and does not repair stored failed jobs automatically. A new reviewed run is needed before claiming those papers are fixed in production.
+
+### October 1 production release
+
+Release commit `040609bd9999a7e34e0a55491e5cd7d4771c8248` was pushed to the verified `origin/main` and deployed as `dpl_2S4vuL8CCt71JYF4FkS9eMB9dfRT`. Vercel reports the production alias `afterimage.aarushagarwal.dev` on that READY deployment. All 71 tests and typechecking passed, followed by the production build.
+
+The compatible web/API shipped first. With no queued or running paper jobs, the regular macserver worker switched to `/Users/agarwalaarush/Projects/AfterImage-worker-20261001-040609b`; its prior LaunchAgent configuration remains in that release for rollback. The worker's 13 graph/review regression tests passed on macserver, its service was running, and the authenticated API showed a fresh heartbeat. The assistant worker and restricted storage bridge required no update.
+
+Authenticated production checks returned HTTP 200 for library state and Documents, denied anonymous state reads, and withheld private diagnostics. Desktop browser checks verified the simplified recommendation cards and overflow menu, no repeated library footer, complete EAGLE/LoRA previews, and the QLoRA retry reader. Browser navigation did not start a generation. Browser console and deployment-scoped error/fatal runtime logs were clear during the release check. Previously failed papers were not regenerated, so this release confirms the fix is installed rather than claiming a new kit has passed review.
