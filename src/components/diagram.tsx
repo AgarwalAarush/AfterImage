@@ -2,6 +2,7 @@ import type { Paper } from "@/lib/types";
 import { sceneSvg, sceneSvgMobile } from "@/lib/scene";
 import { LoraDiagram } from "./lora-diagram";
 import { EagleDiagram } from "./eagle-diagram";
+import { FileText, Sparkles, RotateCcw, Clock3 } from "lucide-react";
 const colors = {
   violet: "#8068be",
   sage: "#6d927f",
@@ -53,12 +54,11 @@ export function Diagram({
   if (!paper.visual)
     return (
       <div className="diagram thumbnail diagram-pending">
-        <span>◌</span>
-        <small>
-          {["queued", "running"].includes(paper.generationStatus)
-            ? "NOTECARD IN THE MAKING"
-            : "A NEW THREAD TO FOLLOW"}
-        </small>
+        <div className={`notecard-glyph ${paper.generationStatus === "running" ? "working" : ""}`} aria-hidden="true">
+          <FileText size={38} strokeWidth={1.2} />
+          {paper.generationStatus === "failed" ? <RotateCcw className="glyph-mark" size={17} /> : paper.generationStatus === "queued" ? <Clock3 className="glyph-mark" size={17} /> : <Sparkles className="glyph-mark" size={20} />}
+        </div>
+
       </div>
     );
   const kind = paper.visual;

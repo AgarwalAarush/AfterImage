@@ -49,6 +49,18 @@ test('paper preparation retains review stages while allowing a validated notecar
  assert.doesNotMatch(model.detail,/private/);
 });
 
+test('an interrupted generation is not presented as a rejected review', () => {
+ const paper=structuredClone(initialState().papers[0]);
+ paper.recall=null;paper.scene=null;delete paper.study;paper.generationStatus='failed';paper.generationStep='planning';
+ const stopped=paperPreparationModel(paper,[]);
+ assert.match(stopped.title,/interrupted/);
+ assert.doesNotMatch(stopped.detail,/didn.t pass review/);
+ paper.generationStep='reviewing';
+ const rejected=paperPreparationModel(paper,[]);
+ assert.match(rejected.detail,/did not produce a reviewed notecard/);
+ assert.equal(rejected.retryAction,'generate');
+});
+
 test('browser projection drops heavy excerpts, preserves citations, and full export never leaks leases', () => {
  const state=initialState();
  state.papers[0].sources=[{id:'abstract',label:'Source',url:'https://arxiv.org/abs/2401.04088',excerpt:'source evidence'}];

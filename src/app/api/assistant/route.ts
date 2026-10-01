@@ -24,6 +24,12 @@ export async function GET(req: Request) {
   if (!(await authenticated())) return Response.json({error:"Sign in to your library."},{status:401});
   const url=new URL(req.url),id=url.searchParams.get("id"),paperId=url.searchParams.get("paperId");
   const sourceId=url.searchParams.get("sourceId");
+  const sourceIds=url.searchParams.getAll("sourceIds");
+  if(sourceIds.length){
+    if(sourceIds.length>24||sourceIds.some(id=>id.length>160))return Response.json({error:"Too many sources requested"},{status:400,headers});
+    const sources=(await snapshot()).data.papers.find(p=>p.id===paperId)?.sources||[];
+    return Response.json(sources.filter(s=>sourceIds.includes(s.id)),{headers});
+  }
   if(sourceId){const source=(await snapshot()).data.papers.find(p=>p.id===paperId)?.sources.find(s=>s.id===sourceId);return source?Response.json(source,{headers}):Response.json({error:"Source not found"},{status:404});}
   if (!id) return Response.json((await assistantSnapshot()).filter(r=>r.paperId===paperId).slice(-24).map(visibleRequest),{headers});
   const encoder=new TextEncoder();

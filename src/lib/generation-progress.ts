@@ -160,9 +160,11 @@ function preparationModel(
     );
     return {
       status: "failed",
-      title: "The reading kit didn’t pass review.",
+      title: failedStage === "reviewing" ? "Prepare a fresh reading kit." : "Preparation was interrupted.",
       detail:
-        "The notecard did not finish, so the visual guide was not started. Unreviewed drafts stay private.",
+        failedStage === "reviewing"
+          ? "The previous attempt did not produce a reviewed notecard. You can request a new pass, or read the original paper."
+          : "The last attempt stopped before the notecard was reviewed. You can request a new pass, or read the original paper.",
       orbState: "solving",
       retryAction: "generate",
       steps: progress(failedIndex, true),
@@ -172,7 +174,7 @@ function preparationModel(
   if (paper.recall && latestStudy?.status === "failed")
     return {
       status: "failed",
-      title: "The visual study guide didn’t pass review.",
+      title: "The study guide needs a fresh pass.",
       detail:
         "Your reviewed notecard remains available. Retry to finish the visuals and questions.",
       orbState: "weaving",

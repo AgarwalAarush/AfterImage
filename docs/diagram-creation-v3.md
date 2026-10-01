@@ -59,3 +59,8 @@ This work is local. Publish the compatible web schema, renderer, and publication
 The sequential [four-paper evaluation](diagram-evaluation-reading-set.md) adds allocation lanes/diagonal regions, two-tier memory residency panels, shared-prefix token trees with derived committed output, and replay/imagination state traces. These typed panels share source validation and renderer-owned geometry with supplementary figures. Native phone layouts retain identities and inputs instead of shrinking desktop drawings. Reviews use publication-width scroll slices; explicit model-service capacity errors receive bounded transport retries without relaxing content checks.
 
 The final reading-set suite has 98 passing tests and a passing production build/type check. Approved local guides and a manifest are under `.artifacts/reading-set-2026-09-30/`. This supersedes the earlier 78-test count for the current changes; the release boundary above remains unchanged.
+
+
+## Integration with current main
+
+The release preserves the October 1 on-demand reading-kit and assistant interaction changes. Graph preparation retains current main's exact endpoint diagnostics and unambiguous underscore-to-hyphen normalization; illustration preparation still selects `explanatory-v3`. The combined suite passes 105 tests and the production build. Existing stored scenes and failed jobs are not regenerated automatically.

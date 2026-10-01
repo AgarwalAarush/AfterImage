@@ -42,4 +42,3 @@ export function validateGlyph(glyph: Glyph) {
 export const glyphLabels = (glyph: Glyph) => [glyph.label, glyph.detail, ...(glyph.glyph === "vector" ? glyph.values : glyph.glyph === "tokens" || glyph.glyph === "bank" ? glyph.items : [])];
 export const glyphNumbers = (glyph: Glyph): number[] => glyph.glyph === "gaussian" ? [glyph.mean, glyph.deviation, ...(glyph.sample === null ? [] : [glyph.sample])]
   : glyph.glyph === "gauge" ? [glyph.value] : glyph.glyph === "bank" ? [glyph.capacity] : [];
-

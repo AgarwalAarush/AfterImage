@@ -37,7 +37,7 @@ export function PaperView({ id }: { id: string }) {
       <div className="paper-breadcrumb">
         <Link href="/library">Library</Link>
         <span>/</span>
-        <span>{ready ? "Notecard" : "Preparing"}</span>
+        <span>{ready ? "Notecard" : ["queued", "running"].includes(preparation.status) ? "Preparing" : "Paper"}</span>
         {ready && (
           <button
             className="text-button"
@@ -53,11 +53,7 @@ export function PaperView({ id }: { id: string }) {
           {p.authors} · {p.year}
         </div>
         <h1>{p.title}</h1>
-        {ready && (
-          <p>
-            <InlineText text={r?.idea || p.abstract} />
-          </p>
-        )}
+        <p><InlineText text={ready ? r?.idea || p.abstract : p.abstract} /></p>
         <div className="paper-header-actions">
           <a
             className="button primary"

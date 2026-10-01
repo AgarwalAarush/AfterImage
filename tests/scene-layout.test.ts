@@ -42,6 +42,18 @@ test("generation schema requests semantic nodes, while stored scenes preserve th
   assert.throws(() => validateScene(prepareScene({ ...sglangScene, edges: [{ from: "missing", to: "tree", label: "", dashed: false }] })));
 });
 
+test("model endpoint punctuation is resolved without dropping relationships or guessing missing nodes", () => {
+  const graph = {title: "Adapter update", description: "A frozen projection and trainable branch merge.", footnote: "Only the adapter learns.",
+    nodes: ["base-projection", "lora-branch", "merged-output"].map(id => ({id, kind: "box", label: id, detail: "", emphasis: false})),
+    edges: [{from: "base_projection", to: "merged_output", label: "", dashed: false}, {from: "lora_branch", to: "merged_output", label: "", dashed: false}]};
+  const scene = prepareScene(graph);
+  assert.deepEqual(scene.edges.map(e => [e.from,e.to]), [["base-projection","merged-output"],["lora-branch","merged-output"]]);
+  assert.equal(validateScene(scene).edges.length, 2);
+  assert.deepEqual(inspectSvg(sceneSvg(scene)), []);
+  assert.throws(() => validateScene(prepareScene({...graph, edges:[{...graph.edges[0],from:"unknown"}]})), /unknown -> merged-output references a missing node.*base-projection/);
+  assert.throws(() => validateScene(prepareScene({...graph, edges:[{...graph.edges[0],from:"merged_output"}]})), /points to itself/);
+});
+
 test("review catches an arrow through an unrelated node even if it misses all text", () => {
   const svg = `<svg viewBox="0 0 400 200"><g data-concept="other" data-node-bounds="100,60,180,100"><rect x="100" y="60" width="180" height="100"/></g><path data-connector="true" data-from="source" data-to="target" d="M20 100L380 100"/></svg>`;
   assert.deepEqual(inspectSvg(svg), ["Connector crosses node: other"]);

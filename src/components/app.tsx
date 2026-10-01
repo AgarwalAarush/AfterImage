@@ -28,6 +28,8 @@ import {
   SlidersHorizontal,
   LogOut,
   Globe2,
+  Sparkles,
+  MoreHorizontal,
 } from "lucide-react";
 import type { AppState, Paper, Entry, Recommendation } from "@/lib/types";
 import type { PaperSearchProvider, PaperSearchResult } from "@/lib/paper-search";
@@ -602,8 +604,7 @@ export function Home() {
     .filter(
       (item): item is { e: Entry; p: Paper } =>
         Boolean(
-          item.p?.recall &&
-            (item.p.recall.provenance === "editorial" || item.p.study),
+          item.p?.recall,
         ),
     )
     .sort((a, b) => {
@@ -675,7 +676,7 @@ export function Home() {
           <div className="section-heading">
             <div className="recall-heading">
               <h2>Recall</h2>
-              <span className="muted section-sub">Completed reading kits ready for a quick return.</span>
+              <span className="muted section-sub">Reviewed notecards ready for a quick return.</span>
             </div>
             <Link className="text-button" href="/library">
               Your library <ArrowRight size={14} />
@@ -706,8 +707,8 @@ export function Home() {
           ) : (
             <div className="recall-empty">
               <div>
-                <h3>Your first reading kit is still taking shape.</h3>
-                <p>Completed notecards and visual guides will collect here automatically.</p>
+                <h3>A place to return to an idea.</h3>
+                <p>Save a paper and prepare its reading kit to keep its notecard here.</p>
               </div>
             </div>
           )}
@@ -715,6 +716,25 @@ export function Home() {
       </div>
     </div>
   );
+}
+function paperDisplayTitle(title: string) {
+  const prefix = title.split(":", 1)[0].trim();
+  return title.includes(":") && prefix.length <= 36 ? prefix : title;
+}
+function notecardStatus(paper: Paper) {
+  if (paper.recall) return "Notecard ready";
+  if (paper.generationStatus === "queued") return "Queued for preparation";
+  if (paper.generationStatus === "running") return {
+    sources: "Gathering evidence", planning: "Planning the explanation",
+    drafting: "Composing notecard", reviewing: "Reviewing notecard",
+  }[paper.generationStep || "sources"];
+  return paper.generationStatus === "failed" ? "Prepare again" : "Paper saved";
+}
+function paperSummary(abstract: string) {
+  const text = abstract.replace(/\s+/g, " ").trim();
+  if (text.length <= 280) return text;
+  const end = text.slice(0, 280).search(/[.!?](?:\s|$)/);
+  return end >= 80 ? text.slice(0, end + 1) : text.slice(0, 277).replace(/\s+\S*$/, "") + "…";
 }
 function RecommendationCard({
   paper: p,
@@ -725,98 +745,92 @@ function RecommendationCard({
   recommendation: Recommendation;
   index: number;
 }) {
-  const { state, act, toast } = useApp();
+  const { state, act, busy, toast } = useApp();
+  const router = useRouter();
   const saved = !!state?.entries[p.id];
-  const hasArt = Boolean(p.scene || p.visual);
+  const preparing = state?.jobs.some(j => j.paperId === p.id && j.type === "generate" && ["queued", "running"].includes(j.status));
+  const paperHref = `/papers/${encodeURIComponent(p.id)}`;
+  const prepare = () => act({action: "generate", paperId: p.id})
+    .then(() => { toast("Reading kit queued and saved to your library."); router.push(paperHref); })
+    .catch(() => {});
   return (
-    <article className={`paper-card ${p.accent} ${hasArt ? "" : "no-art"}`}>
+    <article className={`paper-card next-read-card ${p.accent}`}>
       <div className="card-top">
         <span className="eyebrow">
           <span className="card-number">0{index + 1}</span>
           {r.role}
         </span>
-        <button
-          aria-label={saved ? `${p.title} saved` : `Save ${p.title}`}
-          className={`icon-button bookmark ${saved ? "saved" : ""}`}
-          onClick={() =>
-            act({ action: "save", paperId: p.id })
-              .then(() => toast("Saved to your library."))
-              .catch(() => {})
-          }
-        >
-          {saved ? <Check size={16} /> : <Bookmark size={16} />}
-        </button>
-      </div>
-      {hasArt && (
-        <Link
-          className="card-art"
-          href={`/papers/${encodeURIComponent(p.id)}`}
-          tabIndex={-1}
-          aria-hidden="true"
-        >
-          <Diagram paper={p} thumbnail />
-        </Link>
-      )}
-      <div className="card-content">
-        <div className="eyebrow paper-meta">
-          {p.year}
-          <span>·</span>
-          {p.topics[0] || "Research paper"}
+        <div className="card-tools">
+          <details
+            className="suggestion-feedback"
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                event.currentTarget.open = false;
+                event.currentTarget.querySelector("summary")?.focus();
+              }
+            }}
+            onBlur={(event) => {
+              if (!event.currentTarget.contains(event.relatedTarget)) event.currentTarget.open = false;
+            }}
+          >
+            <summary>
+              <MoreHorizontal size={18} />
+              <span className="sr-only">Refine this suggestion</span>
+            </summary>
+            <div>
+              {[
+                ["useful", "Useful"],
+                ["known", "Already know it"],
+                ["advanced", "Too advanced"],
+                ["irrelevant", "Not for me"],
+                ["later", "Save for later"],
+              ].map(([value, label]) => (
+                <button
+                  key={value}
+                  disabled={busy}
+                  onClick={(event) => {
+                    const menu = event.currentTarget.closest("details");
+                    if (menu) menu.open = false;
+                    void act({ action: "feedback", paperId: p.id, value })
+                      .then(() => toast("Noted for your next shortlist."))
+                      .catch(() => {});
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </details>
+          <button
+            aria-label={saved ? `${p.title} saved` : `Save ${p.title}`}
+            className={`icon-button bookmark ${saved ? "saved" : ""}`}
+            disabled={busy || saved}
+            onClick={() =>
+              act({ action: "save", paperId: p.id })
+                .then(() => toast("Saved to your library."))
+                .catch(() => {})
+            }
+          >
+            {saved ? <Check size={16} /> : <Bookmark size={16} />}
+          </button>
         </div>
+      </div>
+      <div className="card-content">
         <Link
           href={`/papers/${encodeURIComponent(p.id)}`}
           className="card-title"
         >
-          <h2>{p.title}</h2>
+          <h2 title={p.title}>{paperDisplayTitle(p.title)}</h2>
         </Link>
         <p className="card-idea">
-          {p.recall?.idea ||
-            p.abstract.slice(0, 150).replace(/\s+\S*$/, "") + "…"}
+          {p.recall?.idea || paperSummary(p.abstract)}
         </p>
-        <div className="why-block">
-          <span className="eyebrow">WHY THIS PAPER</span>
-          <p>{r.reason}</p>
-        </div>
-        <div className="focus-line">
-          <span className="eyebrow">LOOK FOR</span>
-          <p>{r.focus}</p>
-        </div>
+
         <div className="card-actions">
-          <Link
-            href={`/papers/${encodeURIComponent(p.id)}`}
-            className="text-button"
-          >
-            Open the notecard
-            <ArrowUpRight size={15} />
-          </Link>
-          <span className="depth">{r.depth}</span>
+          {p.recall || preparing ? <Link href={paperHref} className="kit-action">
+            {p.recall ? <BookOpen size={16} /> : <Sparkles size={16} />}{p.recall ? "Read notecard" : "View preparation"}<ArrowRight size={16} />
+          </Link> : <button className="kit-action" disabled={busy} onClick={prepare}><Sparkles size={15} />Prepare reading kit<ArrowRight size={15} /></button>}
         </div>
-        <details className="feedback">
-          <summary>
-            Refine this suggestion
-            <ChevronDown size={11} />
-          </summary>
-          <div>
-            {[
-              ["useful", "Useful"],
-              ["known", "Already know it"],
-              ["advanced", "Too advanced"],
-              ["irrelevant", "Not for me"],
-              ["later", "Save for later"],
-            ].map(([value, label]) => (
-              <button
-                key={value}
-                onClick={() =>
-                  act({ action: "feedback", paperId: p.id, value })
-                    .then(() => toast("Noted for your next shortlist."))
-                    .catch(() => {})
-                }
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-        </details>
       </div>
     </article>
   );
@@ -947,28 +961,14 @@ export function Library() {
               key={p.id}
             >
               <div className="card-top">
-                <span className="eyebrow">
-                  {p.year} · {p.topics[0] || "Research paper"}
+                <span className={`notecard-status ${p.recall ? "ready" : p.generationStatus}`}>
+                  <span aria-hidden="true" />{notecardStatus(p)}
                 </span>
-                <span className="status-label">
-                  {e.status === "saved"
-                    ? "To read"
-                    : e.status === "reading"
-                      ? "Reading"
-                      : e.status === "archived"
-                        ? "Archived"
-                        : "Read"}
-                </span>
+                <span className="status-label">{e.status === "saved" ? "To read" : e.status === "reading" ? "Reading" : e.status === "archived" ? "Archived" : "Read"}</span>
               </div>
               <Diagram paper={p} thumbnail />
-              <h2>{p.title}</h2>
-              <p>{p.recall?.idea || p.abstract.slice(0, 170)}</p>
-              <div className="library-card-bottom">
-                <span>
-                  {p.recall ? "VISUAL NOTECARD" : "AWAITING A NOTECARD"}
-                </span>
-                <ArrowUpRight size={16} />
-              </div>
+              <h2 title={p.title}>{paperDisplayTitle(p.title)}</h2>
+              <p>{p.recall?.idea || paperSummary(p.abstract)}</p>
             </Link>
           ))}
         </div>
