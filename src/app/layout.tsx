@@ -3,6 +3,7 @@ import "@fontsource-variable/newsreader";
 import "@fontsource/ibm-plex-mono/400.css";
 import "./globals.css";
 import "./theme.css";
+import "./ui.css";
 import { AppProvider } from "@/components/app";
 import { themeBootstrap } from "@/lib/theme";
 export const metadata: Metadata = {

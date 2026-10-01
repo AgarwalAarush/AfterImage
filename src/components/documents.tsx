@@ -56,7 +56,6 @@ export function Documents() {
   const visible = documents.filter(document => `${document.title} ${document.filename} ${document.excerpt}`.toLowerCase().includes(query.toLowerCase()));
   return <div className="page documents-page">
     <div className="page-intro compact documents-intro">
-      <span className="eyebrow intro-kicker">YOUR PERSONAL READING SHELF</span>
       <h1>Room for the longer read.</h1>
       <p>Keep the guides, articles, and essays you want to return to.</p>
     </div>
@@ -74,7 +73,7 @@ export function Documents() {
     </div>
     {error && <div className="document-error" role="alert">{error} <button onClick={() => { setError(""); void load(); }}>Retry</button></div>}
     <div className="documents-list-heading">
-      <div><span className="eyebrow">DOCUMENTS</span><h2>On your shelf <span>{documents.length}</span></h2></div>
+      <div><h2>On your shelf <span>{documents.length}</span></h2></div>
       <label className="document-search"><Search size={17} /><input value={query} onChange={event => setQuery(event.target.value)} placeholder="Search documents" aria-label="Search documents" />{query && <button aria-label="Clear search" onClick={() => setQuery("")}><X size={15} /></button>}</label>
     </div>
     {loading ? <div className="document-empty"><LoadingStatus label="Opening your shelf…" detail="Your document shelf is taking longer to load. A retry will be available if the connection times out." /></div>
