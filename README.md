@@ -4,7 +4,7 @@ A personal reading compass and visual memory for research papers. The web app ho
 
 The Documents tab adds a private shelf for uploaded Markdown guides and PDFs, with a formatted reader and original-file download. Document bytes live outside the frequently refreshed paper-library state. See `docs/documents.md` for storage, API, format, and release details.
 
-Appearance supports System, Light, and Dark with a saved browser preference. The dark palette includes reader panels, assistant views, and SVG diagrams; SVG downloads preserve the selected colors. See `docs/dark-mode-2026-10-01.md`.
+Appearance supports System, Light, and Dark with a saved browser preference. The dark palette includes reader panels, assistant views, and SVG diagrams; SVG downloads preserve the selected colors. The October 1 web release is deployed; live appearance checks passed, while a pre-existing library connection failure prevents live reader/SVG acceptance. See `docs/dark-mode-2026-10-01.md` for release evidence and this verification limit.
 
 Reviewed notecards are available while their visual guide and quiz finish. Preparation shows real worker milestones, elapsed time, queue position, and connection status; Documents loads independently of the paper library. See `docs/preparation-and-loading-2026-09-30.md` for behavior and release order.
 
