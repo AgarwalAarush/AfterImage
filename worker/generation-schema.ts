@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { generationResultSchema, resultSchema } from "../src/lib/scene";
+import { generationResultSchema, resultSchema, sceneGraphSchema } from "../src/lib/scene";
+import { illustrationPanelSchema, illustrationSchema } from "../src/lib/scene-illustration";
 
 /** Prevent invented citation identifiers at the model-output boundary. */
 export function generationSchemas(sourceIds: string[]) {
@@ -7,11 +8,15 @@ export function generationSchemas(sourceIds: string[]) {
   const citation = z.enum(sourceIds as [string, ...string[]]);
   const base = resultSchema.shape.recall;
   const recall = base.extend({
-    sourceIds: z.array(citation).min(1).max(8),
+    sourceIds: z.array(citation).min(1).max(14),
     equations: z.array(base.shape.equations.element.extend({ sourceId: citation })).max(5),
     walkthrough: base.shape.walkthrough.unwrap().unwrap().extend({ sourceId: citation }).nullish(),
   });
-  return { recall, result: generationResultSchema.extend({ recall }) };
+  const [matrix, routing, bars, schematic, allocation, memory, tree, stateTrace] = illustrationPanelSchema.options;
+  const support = { sourceIds: z.array(citation).min(1).max(8) };
+  const illustration = illustrationSchema.extend({ panels: z.array(z.discriminatedUnion("kind", [matrix.extend(support), routing.extend(support), bars.extend(support), schematic.extend(support), allocation.extend(support), memory.extend(support), tree.extend(support), stateTrace.extend(support)])).min(1).max(3) });
+  const scene = sceneGraphSchema.extend({ illustration: illustration.nullish() });
+  return { recall, scene, result: generationResultSchema.extend({ recall, scene }) };
 }
 
 export type RecallField = keyof typeof resultSchema.shape.recall.shape;
@@ -34,4 +39,13 @@ export function recallRepairFields(defects: string[]): RecallField[] | undefined
     affected.forEach(field => fields.add(field));
   }
   return fields.size ? [...fields] : undefined;
+}
+
+/** Caption-only defects should rewrite text, not regenerate a valid illustration. */
+export function panelTextRepairSchema(panelCount: number) {
+  if (panelCount < 1 || panelCount > 3) throw new Error("Caption repair requires bounded illustration panels.");
+  return z.object({
+    description: sceneGraphSchema.shape.description.describe("A complete, concise accessible description; at most 400 characters, preferably under 340. Never truncate."),
+    captions: z.array(illustrationPanelSchema.options[0].shape.caption).length(panelCount),
+  });
 }

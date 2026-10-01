@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { workerAuth } from "@/lib/auth";
 import { mutate, touchWorkerSeenAt, workerClaimStatus } from "@/lib/store";
 import { resultSchema, recommendationSchema, validateScene } from "@/lib/scene";
+import { validateIllustrationSources } from "@/lib/scene-illustration";
 import { randomUUID } from "node:crypto";
 import { importPaper } from "@/lib/papers";
 import { validateRecall } from "@/lib/recall-validation";
@@ -141,6 +142,7 @@ export async function POST(req: Request) {
         )
           throw new Error("Unknown source citation");
         validateRecall(result.recall, sources);
+        if (result.scene.illustration) validateIllustrationSources(result.scene.illustration, sources);
         p.recall = {
           ...result.recall,
           provenance: "codex",

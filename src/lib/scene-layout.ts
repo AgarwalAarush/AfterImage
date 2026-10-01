@@ -3,7 +3,7 @@ import { diagramText, escapeXml } from "./scene";
 
 type Point = { x: number; y: number };
 type Box = Point & { w: number; h: number };
-type Placed = SceneNode & Box;
+type Placed = SceneNode & Box & {anchor?:Box};
 type Port = { tip: Point; stub: Point };
 const grid = 10;
 
@@ -33,11 +33,19 @@ function orderedNodes(scene: Scene) {
   return ordered;
 }
 
-function ports(node: Placed, scene: Scene, edgeIndex: number): Port[] {
+function ports(node: Placed, scene: Scene, edgeIndex: number, mode: "all" | "glyph" | "memory" = "all"): Port[] {
   const incident = scene.edges.map((e, i) => ({ e, i })).filter(({ e }) => e.from === node.id || e.to === node.id);
   const fraction = (incident.findIndex(({ i }) => i === edgeIndex) + 1) / (incident.length + 1);
   const x = node.x + Math.round(node.w * fraction / grid) * grid;
-  const y = node.y + Math.round(node.h * fraction / grid) * grid;
+  const y = node.y + (mode === "glyph" ? 60 + Math.round(40 * fraction / grid) * grid : Math.round(node.h * fraction / grid) * grid);
+  if(mode==="memory" && node.anchor){
+    const a=node.anchor,cy=a.y+Math.round(a.h*fraction/grid)*grid;
+    return [{tip:{x:a.x,y:cy},stub:{x:node.x-20,y:cy}},{tip:{x:a.x+a.w,y:cy},stub:{x:node.x+node.w+20,y:cy}}];
+  }
+  if (mode === "glyph") return [
+    { tip: { x: node.x, y }, stub: { x: node.x - 20, y } },
+    { tip: { x: node.x + node.w, y }, stub: { x: node.x + node.w + 20, y } },
+  ];
   return [
     { tip: { x, y: node.y }, stub: { x, y: node.y - 20 } },
     { tip: { x, y: node.y + node.h }, stub: { x, y: node.y + node.h + 20 } },
@@ -79,10 +87,12 @@ const pointKey = (p: Point) => `${p.x},${p.y}`;
 const segmentKey = (a: Point, b: Point) => [pointKey(a), pointKey(b)].sort().join("|");
 
 /** Orthogonal A*: expanded node bounds are obstacles; edges cannot share segments. */
-function route(starts: Port[], ends: Port[], boxes: Box[], width: number, height: number, occupied: Set<string>): Point[] {
+function route(starts: Port[], ends: Port[], boxes: Box[], width: number, height: number, occupied: Set<string>, mode: "all" | "glyph" | "memory"): Point[] {
   const portFree = (port: Port) => {
-    const middle = { x: (port.tip.x + port.stub.x) / 2, y: (port.tip.y + port.stub.y) / 2 };
-    return !occupied.has(segmentKey(port.tip, middle)) && !occupied.has(segmentKey(middle, port.stub));
+    const length=Math.abs(port.stub.x-port.tip.x)+Math.abs(port.stub.y-port.tip.y);
+    const at=(offset:number)=>({x:port.tip.x+Math.sign(port.stub.x-port.tip.x)*offset,y:port.tip.y+Math.sign(port.stub.y-port.tip.y)*offset});
+    for(let offset=0;offset<length;offset+=grid)if(occupied.has(segmentKey(at(offset),at(Math.min(length,offset+grid)))))return false;
+    return true;
   };
   starts = starts.filter(portFree); ends = ends.filter(portFree);
   if (!starts.length || !ends.length) throw new Error("Diagram routing has no free connection ports.");
@@ -90,7 +100,7 @@ function route(starts: Port[], ends: Port[], boxes: Box[], width: number, height
   const queue = new MinHeap<State>(), best = new Map<string, number>();
   const parents = new Map<string, string>(), points = new Map<string, Point>();
   const roots = new Map<string, Port>();
-  const blocked = (p: Point) => p.x < 20 || p.x > width - 20 || p.y < 80 || p.y > height - 20 ||
+  const blocked = (p: Point) => p.x < (mode !== "all" ? 10 : 20) || p.x > width - (mode !== "all" ? 10 : 20) || p.y < 80 || p.y > height - 20 ||
     boxes.some(b => p.x > b.x - 10 && p.x < b.x + b.w + 10 && p.y > b.y - 10 && p.y < b.y + b.h + 10);
   const heuristic = (p: Point) => Math.min(...ends.map(e => Math.abs(e.stub.x - p.x) + Math.abs(e.stub.y - p.y)));
   for (const start of starts) {
@@ -142,12 +152,18 @@ export function layoutScene(scene: Scene, mobile: boolean) {
     return { ...n, x: mobile ? 70 : 80 + column * 380, y: 110 + row * (mobile ? 210 : 190), w: nodeWidth, h: mobile || n.kind === "circle" || n.kind === "experts" ? 140 : 110 };
   });
   const height = Math.max(...nodes.map(n => n.y + n.h)) + 70;
-  const occupied = new Set<string>();
-  const edges = scene.edges.map((edge, i) => {
-    const from = nodes.find(n => n.id === edge.from)!, to = nodes.find(n => n.id === edge.to)!;
-    return { ...edge, points: route(ports(from, scene, i), ports(to, scene, i), nodes, width, height, occupied) };
-  });
+  const edges = routePlacedEdges(scene, nodes, width, height);
   return { width, height, nodes, edges };
+}
+
+/** Share obstacle-aware routing with conceptual glyphs, preserving the old flow layout. */
+export function routePlacedEdges(scene: Scene, nodes: Placed[], width: number, height: number, mode: "all" | "glyph" | "memory" = "all") {
+  const occupied = new Set<string>();
+  return scene.edges.map((edge, i) => {
+    const from = nodes.find(n => n.id === edge.from)!, to = nodes.find(n => n.id === edge.to)!;
+    try{return { ...edge, points: route(ports(from, scene, i, mode), ports(to, scene, i, mode), nodes, width, height, occupied, mode) };}
+    catch(error){throw new Error(`${edge.from} → ${edge.to}: ${(error as Error).message}`);}
+  });
 }
 
 /** Extend rectangle-boundary ports to the actual ellipse, without moving the exterior route. */

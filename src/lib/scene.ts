@@ -1,7 +1,10 @@
 import { z } from "zod";
 import { flowSceneSvg } from "./scene-layout";
+import { illustrationSchema, illustrationLabels, validateIllustration } from "./scene-illustration";
+import { illustrationSvg } from "./scene-illustration-svg";
 export const sceneSchema = z.object({
-  layout: z.literal("flow-v2").optional(),
+  layout: z.enum(["flow-v2", "explanatory-v3"]).optional(),
+  illustration: illustrationSchema.nullish(),
   title: z.string().min(1).max(70),
   description: z.string().min(1).max(400),
   footnote: z.string().max(100),
@@ -22,7 +25,7 @@ export const sceneSchema = z.object({
         emphasis: z.boolean(),
       }),
     )
-    .min(2)
+    .min(0)
     .max(8),
   edges: z
     .array(
@@ -64,18 +67,18 @@ export const resultSchema = z.object({
       })).min(2).max(6),
       sourceId: z.string(),
     }).nullish(),
-    sourceIds: z.array(z.string()).min(1).max(8),
+    sourceIds: z.array(z.string()).min(1).max(14),
   }),
   scene: sceneSchema,
 });
 /** Models choose concepts and relationships. Geometry belongs to the renderer. */
 export const sceneGraphSchema = sceneSchema.omit({ layout: true, nodes: true }).extend({
-  nodes: z.array(sceneSchema.shape.nodes.element.omit({ x: true, y: true, w: true, h: true })).min(2).max(8),
+  nodes: z.array(sceneSchema.shape.nodes.element.omit({ x: true, y: true, w: true, h: true })).max(8),
 });
 export const generationResultSchema = resultSchema.extend({ scene: sceneGraphSchema });
 export function prepareScene(input: unknown) {
   const graph = sceneGraphSchema.parse(input);
-  return sceneSchema.parse({ ...graph, layout: "flow-v2", nodes: graph.nodes.map(n => ({ ...n, x: 20, y: 60, w: 240, h: 100 })) });
+  return sceneSchema.parse({ ...graph, layout: graph.illustration ? "explanatory-v3" : "flow-v2", nodes: graph.nodes.map(n => ({ ...n, x: 20, y: 60, w: 240, h: 100 })) });
 }
 export const recommendationSchema = z.object({
   recommendations: z
@@ -133,7 +136,9 @@ export function diagramText(value: string) {
     ᵥ: "v",
     ₓ: "x",
   };
+  const supers: Record<string,string> = {"ᵀ":"T","⁰":"0","¹":"1","²":"2","³":"3","⁴":"4","⁵":"5","⁶":"6","⁷":"7","⁸":"8","⁹":"9","⁻":"−","⁺":"+"};
   return escapeXml(value)
+    .replace(/[ᵀ⁰¹²³⁴⁵⁶⁷⁸⁹⁻⁺]+/g, s => `<tspan baseline-shift="super" font-size="70%">${[...s].map(c=>supers[c]).join("")}</tspan>`)
     .replace(
       /[₀₁₂₃₄₅₆₇₈₉ₐₑₕᵢⱼₖₗₘₙₒₚᵣₛₜᵤᵥₓ]+/g,
       (s) =>
@@ -153,10 +158,17 @@ export function validateScene(input: unknown) {
     ids = new Set(scene.nodes.map((n) => n.id));
   if (ids.size !== scene.nodes.length)
     throw new Error("Duplicate diagram identifiers.");
-  const labels = [scene.title, scene.footnote, ...scene.nodes.flatMap(n => [n.label, n.detail]), ...scene.edges.map(e => e.label)];
+  if (scene.layout === "explanatory-v3") {
+    if (!scene.illustration || scene.nodes.length || scene.edges.length)
+      throw new Error("Explanatory diagrams require panels and no hidden flow graph.");
+    validateIllustration(scene.illustration);
+  } else if (scene.illustration || scene.nodes.length < 2) {
+    throw new Error("Flow diagrams require at least two nodes and no illustration panels.");
+  }
+  const labels = [scene.title, scene.footnote, ...scene.nodes.flatMap(n => [n.label, n.detail]), ...scene.edges.map(e => e.label), ...(scene.illustration ? illustrationLabels(scene.illustration) : [])];
   if (labels.some(label => /\$[^$]+\$|\\[a-zA-Z]+/.test(label)))
     throw new Error("Diagram labels must use readable plain text or native Unicode notation, not raw LaTeX. Keep rendered LaTeX in the recall equations.");
-  if (scene.layout !== "flow-v2") {
+  if (!scene.layout) {
     for (const n of scene.nodes) {
       if (n.x + n.w > 760 || n.y + n.h > 405)
         throw new Error("Diagram extends beyond its frame.");
@@ -182,6 +194,7 @@ export function validateScene(input: unknown) {
 }
 export function sceneSvg(input: unknown, accent = "#7761bb") {
   const s = validateScene(input);
+  if (s.layout === "explanatory-v3") return illustrationSvg(s, false, accent);
   if (s.layout === "flow-v2") return flowSceneSvg(s, false, accent);
   const txt = (
     x: number,
@@ -270,6 +283,7 @@ export function sceneSvg(input: unknown, accent = "#7761bb") {
 /** A separate portrait composition preserves the graph's actual connections. */
 export function sceneSvgMobile(input: unknown, accent = "#7761bb") {
   const s = validateScene(input);
+  if (s.layout === "explanatory-v3") return illustrationSvg(s, true, accent);
   if (s.layout === "flow-v2") return flowSceneSvg(s, true, accent);
   const ordered: typeof s.nodes = [];
   const remaining = [...s.nodes];

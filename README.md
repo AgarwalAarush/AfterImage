@@ -6,6 +6,8 @@ The Documents tab adds a private shelf for uploaded Markdown guides and PDFs, wi
 
 Reviewed notecards are available while their visual guide and quiz finish. Preparation shows real worker milestones, elapsed time, queue position, and connection status; Documents loads independently of the paper library. See `docs/preparation-and-loading-2026-09-30.md` for behavior and release order.
 
+Opening diagrams now support expressive object illustrations: occupied expert buckets, allocation lanes and sparse regions, repeated token identities, branching parameter vectors, sampled distributions, and calibrated gauges, alongside matrices, comparisons and dependency graphs. Planning names the relationship and geometric encoding the reader must be able to see; review rejects stage labels that hide the contribution. New panel diagrams use `explanatory-v3`, derive assignment counts, distinguish illustrative examples from sourced values, and recompose for phones. See `docs/diagram-creation-v3.md` for local verification and the required web-before-worker release order. Sequential public-paper evaluation can include the study figures and quiz with `--evaluate-paper ID --full`; see `docs/diagram-evaluation-reading-set.md` for evidence and generator adjustments.
+
 ## Repository status
 
 This repository is currently tracked from a fresh local bootstrap. Feature work and hardening progress is implemented across `src/`, `worker/`, `scripts/`, `docs/`, and `tests/`, with `README.md` and `AGENTS.md` capturing the current operating assumptions.
@@ -117,3 +119,5 @@ Walkthrough tables use a compact 15px body scale so procedural detail stays subo
 - A model review is a quality check, not a guarantee of scientific correctness; each recap links to the exact saved source excerpts.
 
 See `docs/design-reference.md`, `docs/development-plan.md`, and `docs/implementation-status.md` for reference evidence and validation status.
+
+Local reading-set evaluations also exercise study figures with the shared semantic illustration vocabulary. Phone matrices and heatmaps recompose as labelled rows with readable conditions, timeline copy stays complete, and ratio charts show parity. Memory panels anchor transfers to actual grids and can show complete tile-visit schedules. Native state traces connect a shared posterior to observed replay and imagined futures with explicit action/observation roles. Native token trees draw shared prefixes, a verifier boundary, and one accepted path with a separate target fallback. Tall diagrams receive overlapping scroll views during visual review. Evaluation-only `--diagram-focus` keeps planning and review aligned to a source-supported narrow visual lesson while preserving full notecard coverage. Explicit model-capacity failures receive at most two bounded step retries; rejected content never bypasses review. See `docs/diagram-evaluation-reading-set.md` for observed failures and approved artifacts.

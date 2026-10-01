@@ -1,5 +1,6 @@
 import type { AssistantRequest } from "./assistant";
 import type { StudyPack } from "./study";
+import type { Illustration } from "./scene-illustration";
 
 export type ReadingStatus = "saved" | "reading" | "read" | "archived";
 export type Accent = "violet" | "ochre" | "blue" | "sage";
@@ -23,7 +24,8 @@ export type SceneEdge = {
   dashed: boolean;
 };
 export type Scene = {
-  layout?: "flow-v2";
+  layout?: "flow-v2" | "explanatory-v3";
+  illustration?: Illustration | null;
   title: string;
   description: string;
   footnote: string;

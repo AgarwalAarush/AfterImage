@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { validateStudy, studySvg, type StudyPack } from "../src/lib/study";
+import { validateStudy, studySvg, type StudyPack, type StudyFigure } from "../src/lib/study";
 import { inspectSvg } from "../worker/diagram-review";
 const pack:StudyPack={figures:[{id:"comparison",kind:"bars",placement:"evidence",title:"A controlled comparison",caption:"Illustrative values show how to compare results under the same conditions, not a measured benchmark.",sourceId:"s1",provenance:"illustrative",unit:"iterations",series:[{label:"Baseline",value:100,note:"Same task and hardware"},{label:"Variant",value:50,note:"Same task and hardware"}]}],quiz:[0,1].map(i=>({id:`q-${i}`,question:"Which quantity stays fixed in this comparison?",options:[{text:"The task",explanation:"The task stays fixed for a controlled comparison."},{text:"The result",explanation:"The result can change; that is the measured outcome."},{text:"Nothing",explanation:"This cannot isolate an effect if everything changes."}],answer:0,sourceId:"s1"}))};
 const sources=[{id:"s1",label:"Method",url:"https://arxiv.org/abs/1234.56789",excerpt:"Evidence"}];
@@ -54,5 +54,46 @@ test("percentage bars use the full 0–100 scale and label both endpoints", () =
     assert.ok(Math.abs(widths[0]-extent*.926)<.00001);
     assert.ok(Math.abs(widths[1]-extent*.889)<.00001);
     assert.deepEqual(inspectSvg(svg),[]);
+  }
+});
+
+
+test("study illustrations share semantic validation and responsive object rendering", async () => {
+ const {sparseAllocationScene}=await import("./fixtures/concept-scenes");
+ const figure={...pack.figures[0],id:"allocation",kind:"illustration" as const,illustration:sparseAllocationScene.illustration!};
+ const cited=[...sources,...figure.illustration.panels.flatMap(panel=>panel.sourceIds).map(id=>({...sources[0],id}))];
+ validateStudy({...pack,figures:[figure]},cited);
+ for(const mobile of [false,true]){
+   const svg=studySvg(figure,mobile);assert.match(svg,/data-allocation-cell/);assert.deepEqual(inspectSvg(svg),[]);
+ }
+ const bad=structuredClone(figure);bad.illustration.panels[0].sourceIds=["invented"];
+ assert.throws(()=>validateStudy({...pack,figures:[bad]},cited),/unknown source/);
+ const reported={...figure,provenance:"reported" as const};assert.throws(()=>validateStudy({...pack,figures:[reported]},cited),/illustrative panels/);
+});
+
+test("mobile matrices preserve complete operand labels and timeline details are never truncated", () => {
+ const matrix={...pack.figures[0],kind:"matrix" as const,unit:"microbatch size",rows:["MegaBlocks","Tutel"],columns:["dMoE-Small","dMoE-Medium"],values:[[64,32],[16,8]]};
+ const svg=studySvg(matrix,true);assert.match(svg,/>MegaBlocks<\/text>/);assert.match(svg,/>dMoE-Small<\/text>/);assert.deepEqual(inspectSvg(svg),[]);
+ const timeline={...pack.figures[0],kind:"timeline" as const,events:["input","compute","output"].map(phase=>({phase:phase as "input"|"compute"|"output",label:"Operation",detail:"Retain all routed tokens, including the final boundary-padded token group."}))};
+ for(const mobile of [false,true]){const svg=studySvg(timeline,mobile);assert.match(svg,/token group/);assert.match(svg,/marker-end/);assert.deepEqual(inspectSvg(svg),[]);}
+});
+
+
+test("transpose glyphs use native SVG superscripts and relative charts show parity", () => {
+ const matrix={...pack.figures[0],kind:"matrix" as const,unit:"sparse products",rows:["Data","Weights"],columns:["Layer 1","Layer 2"],values:[[0,1],[1,0]]};
+ const figure={...pack.figures[0],kind:"bars" as const,unit:"% of baseline",reference:{value:100,label:"100% parity"},series:[{label:"Below",value:91,note:"Same conditions"},{label:"Above",value:104,note:"Same conditions"}]};
+ for(const mobile of [false,true]){assert.match(studySvg(figure,mobile),/100% parity/);assert.deepEqual(inspectSvg(studySvg(figure,mobile)),[]);assert.deepEqual(inspectSvg(studySvg(matrix,mobile)),[]);}
+});
+
+test("bounded heatmaps retain all conditions and values at readable phone size", () => {
+  const figure: StudyFigure = { id:"large-heatmap", kind:"heatmap", title:"Readable conditions", placement:"evidence", sourceId:"s", provenance:"illustrative", caption:"Illustrative maximum-bounded grid exercises complete dataset and condition labels.", normalization:"unnormalized", unit:"percent", rows:Array.from({length:8},(_,i)=>`Dataset-${i}-long`), columns:Array.from({length:8},(_,i)=>`Condition-${i}`), values:Array.from({length:8},(_,r)=>Array.from({length:8},(_,c)=>r*8+c)) };
+  for(const mobile of [false,true]) {
+    const svg=studySvg(figure,mobile);
+    assert.deepEqual(inspectSvg(svg),[]);
+    assert.doesNotMatch(svg,/rotate\(/);
+    assert.doesNotMatch(svg,/font-size="(?:[0-9]|1[012])"/);
+    for(const label of figure.rows)assert.ok(svg.includes(label));
+    assert.match(svg,/0 → 100/);
+    for(const row of figure.values)for(const value of row)assert.ok(svg.includes(`>${value}<`));
   }
 });
