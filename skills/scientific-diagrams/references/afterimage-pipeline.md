@@ -2,9 +2,9 @@
 
 Resolve paths from repository root and re-read current code before changes.
 
-## Current gap
+## Generated-workflow gap
 
-`src/lib/types.ts` defines `Recall.equations[].example` as an optional string. `src/components/paper-view.tsx` renders it with `RecallText` in `.math-example`, with no visual reference/playback state.
+`src/lib/types.ts` defines `Recall.equations[].example` as an optional string. `src/components/paper-view.tsx` preserves prose and can attach a matching curated editorial animation from the registry described below. Stored/generated examples still have no visual-reference or storyboard field.
 
 `src/lib/study.ts` defines reviewed figures placed at `mechanism` or `evidence`, including static typed illustrations and switchable networks. It currently has no equation-example association or animation storyboard.
 
@@ -34,7 +34,7 @@ Browser playback applies presentation-only timing/highlights. Keep stored semant
 
 Release web validation/rendering before workers, let active jobs finish, and verify actual live queue/APIs. Older APIs can strip fields. Regenerate stored examples only through explicit reviewed preparation. A local authored preview does not prove production generation/deployment.
 
-Read installed `node_modules/next/dist/docs/` before Next.js code. Update README/docs and AGENTS if boundaries change. This skill and standalone example do not implement that extension or release.
+Read installed `node_modules/next/dist/docs/` before Next.js code. Update README/docs and AGENTS if boundaries change. The curated editorial web release below does not implement the generated-storyboard extension.
 
 ## Editorial web integration (October 1)
 
