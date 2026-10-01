@@ -426,7 +426,7 @@ function PaperPalette({ close }: { close: () => void }) {
       aria-label="Find or add a paper"
     >
       <div className="command-palette-heading">
-        <span className="eyebrow">YOUR RESEARCH DESK</span>
+        <span className="eyebrow">Your research desk</span>
         <button
           type="button"
           className="icon-button"
@@ -622,7 +622,7 @@ export function Home() {
     <div className="page home">
       <div className="page-intro">
         <div className="eyebrow intro-kicker">
-          <span className="tiny-cross">✳</span> YOUR READING COMPASS
+          <span className="tiny-cross" aria-hidden="true">✳</span> YOUR READING COMPASS
         </div>
         <h1>Follow the thread.</h1>
         <p>
@@ -633,26 +633,24 @@ export function Home() {
       <div className="section-heading shortlist-heading">
         <div className="shortlist-title">
           <h2>Next reads</h2>
-          <span className="muted section-sub">
-            {state.recommendationSource === "starter"
-              ? "A few strong places to begin."
-              : "Shaped by what you save, read, and skip."}
-          </span>
         </div>
-        {state.direction.goal && (
-          <button
-            className="text-button"
-            disabled={busy || !!active}
-            onClick={() =>
-              act({ action: "recommend" })
-                .then(() => toast("Your next reading list is queued."))
-                .catch(() => {})
-            }
-          >
-            <RefreshCw size={14} className={active ? "spin" : ""} />
-            {active ? "Updating suggestions…" : "Refresh suggestions"}
-          </button>
-        )}
+        <div className="shortlist-actions">
+          <Link className="text-button" href="/direction"><SlidersHorizontal size={14} />Reading direction</Link>
+          {state.direction.goal && (
+            <button
+              className="text-button"
+              disabled={busy || !!active}
+              onClick={() =>
+                act({ action: "recommend" })
+                  .then(() => toast("Your next reading list is queued."))
+                  .catch(() => {})
+              }
+            >
+              <RefreshCw size={14} className={active ? "spin" : ""} />
+              {active ? "Updating suggestions…" : "Refresh suggestions"}
+            </button>
+          )}
+        </div>
       </div>
       {latestRecommendationJob?.status === "failed" && (
         <p className="notice">
@@ -660,12 +658,12 @@ export function Home() {
         </p>
       )}
       <div className="recommendation-grid">
-        {recs.map(({ r, p }, i) => (
+        {recs.map(({ r, p }, index) => (
           <RecommendationCard
             key={p.id}
             paper={p}
             recommendation={r}
-            index={i}
+            index={index}
           />
         ))}
       </div>
@@ -681,7 +679,6 @@ export function Home() {
           <div className="section-heading">
             <div className="recall-heading">
               <h2>Recall</h2>
-              <span className="muted section-sub">Reviewed notecards ready for a quick return.</span>
             </div>
             <Link className="text-button" href="/library">
               Your library <ArrowRight size={14} />
@@ -762,7 +759,7 @@ function RecommendationCard({
     <article className={`paper-card next-read-card ${p.accent}`}>
       <div className="card-top">
         <span className="eyebrow">
-          <span className="card-number">0{index + 1}</span>
+          <span className="card-number">{String(index + 1).padStart(2, "0")}</span>
           {r.role}
         </span>
         <div className="card-tools">
@@ -887,14 +884,13 @@ export function Library() {
   return (
     <div className="page">
       <div className="page-intro compact">
-        <div className="eyebrow intro-kicker">YOUR GROWING COLLECTION</div>
         <h1>Ideas, kept close.</h1>
         <p>The papers you follow. The ideas worth returning to.</p>
       </div>
       <section className="search-panel panel">
         <div className="section-heading">
           <label className="eyebrow" htmlFor="library-search">
-            FIND AN IDEA
+            Find an idea
           </label>
           <span className="eyebrow keyboard-hint">PRESS / TO FOCUS</span>
         </div>
@@ -930,6 +926,7 @@ export function Library() {
             ].map(([key, label]) => (
               <button
                 className={filter === key ? "selected" : ""}
+                aria-pressed={filter === key}
                 onClick={() => setFilter(key)}
                 key={key}
               >
@@ -942,13 +939,13 @@ export function Library() {
               </button>
             ))}
           </div>
-          <span className="eyebrow matches">
+          <span className="eyebrow matches" role="status" aria-live="polite" aria-atomic="true">
             {results.length} {results.length === 1 ? "MATCH" : "MATCHES"}
           </span>
         </div>
       </section>
       <div className="section-heading library-heading">
-        <span className="eyebrow">YOUR NOTECARDS</span>
+        <h2 className="library-title">Notecards</h2>
         <label className="sort">
           Sort by
           <select value={sort} onChange={(e) => setSort(e.target.value)}>
@@ -979,13 +976,7 @@ export function Library() {
         </div>
       ) : (
         <div className="empty library-empty">
-          <div className="ghost-cards">
-            <span />
-            <span />
-            <span>
-              <Bookmark size={22} />
-            </span>
-          </div>
+          <Bookmark size={26} strokeWidth={1.5} className="empty-icon" aria-hidden="true" />
           <h2>
             {q || filter !== "all"
               ? "No ideas here, just yet."
@@ -1008,7 +999,7 @@ export function Library() {
             }
           >
             {q || filter !== "all" ? "Clear filters" : "Add your first paper"}
-            <Plus size={16} />
+            {q || filter !== "all" ? <X size={16} /> : <Plus size={16} />}
           </button>
         </div>
       )}
@@ -1066,9 +1057,6 @@ function DirectionForm({
   return (
     <div className="page direction-page">
       <div className="page-intro compact">
-        <span className="eyebrow intro-kicker">
-          GIVE YOUR CURIOSITY A DIRECTION
-        </span>
         <h1>What’s on your mind?</h1>
         <p>A reading list is better when it knows where you’re going.</p>
       </div>
@@ -1158,22 +1146,6 @@ function DirectionForm({
           </div>
         </form>
         <aside>
-          <div className="direction-illustration">
-            <svg viewBox="0 0 300 190" aria-hidden="true">
-              <path
-                d="M35 150C65 120 98 178 132 109S208 53 265 35"
-                stroke="#a695c7"
-                fill="none"
-                strokeWidth="1.5"
-                strokeDasharray="4 5"
-              />
-              <circle cx="35" cy="150" r="6" fill="#eee9f6" stroke="#967eb8" />
-              <circle cx="132" cy="109" r="9" fill="#eee9f6" stroke="#967eb8" />
-              <circle cx="265" cy="35" r="17" fill="none" stroke="#967eb8" />
-              <circle cx="265" cy="35" r="4" fill="#967eb8" />
-            </svg>
-          </div>
-          <span className="eyebrow">A COMPASS, NOT A CURRICULUM</span>
           <h2>
             Enough direction.
             <br />
@@ -1262,7 +1234,6 @@ export function Login() {
           }
         }}
       >
-        <span className="eyebrow">YOUR PERSONAL READING DESK</span>
         <h1>
           A little less
           <br />

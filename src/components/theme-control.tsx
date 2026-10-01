@@ -1,9 +1,10 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
-import { SunMoon } from "lucide-react";
+import { useEffect, useId, useRef, useState } from "react";
+import { Monitor, Moon, Sun } from "lucide-react";
 import { THEME_STORAGE_KEY, themePreference, type ThemePreference } from "@/lib/theme";
 
 export function ThemeControl() {
+  const id = useId();
   const [preference, setPreference] = useState<ThemePreference>("system");
   const current = useRef<ThemePreference>("system");
   useEffect(() => {
@@ -28,19 +29,29 @@ export function ThemeControl() {
     };
   }, []);
 
-  return <label className="theme-control">
-    <SunMoon size={16} aria-hidden="true" />
-    <span className="sr-only">Appearance</span>
-    <select value={preference} onChange={event => {
-      const next = themePreference(event.target.value);
-      current.current = next;
-      setPreference(next);
-      document.documentElement.dataset.theme = next === "system" ? (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light") : next;
-      try { localStorage.setItem(THEME_STORAGE_KEY, next); } catch {}
-    }}>
-      <option value="system">System</option>
-      <option value="light">Light</option>
-      <option value="dark">Dark</option>
-    </select>
-  </label>;
+  return <fieldset className="theme-control">
+    <legend className="sr-only">Appearance</legend>
+    {([
+      { value: "system", label: "System", Icon: Monitor },
+      { value: "light", label: "Light", Icon: Sun },
+      { value: "dark", label: "Dark", Icon: Moon },
+    ] as const).map(({ value, label, Icon }) => (
+      <label className="theme-choice" key={value} title={value === "system" ? "System appearance · follows your device" : `${label} appearance`}>
+        <input
+          type="radio"
+          name={`appearance-${id}`}
+          value={value}
+          checked={preference === value}
+          onChange={() => {
+            current.current = value;
+            setPreference(value);
+            document.documentElement.dataset.theme = value === "system" ? (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light") : value;
+            try { localStorage.setItem(THEME_STORAGE_KEY, value); } catch {}
+          }}
+        />
+        <span className="theme-choice-face"><Icon size={15} strokeWidth={1.75} aria-hidden="true" /></span>
+        <span className="sr-only">{label}</span>
+      </label>
+    ))}
+  </fieldset>;
 }

@@ -232,17 +232,6 @@ export function PaperView({ id }: { id: string }) {
                 </div>
                 <a className="walkthrough-source" href={p.sources.find(s => s.id === r.walkthrough!.sourceId)?.url} target="_blank" rel="noreferrer">Walkthrough source ↗</a>
               </section>}
-              <div className="provenance">
-                <span className="status-dot" />
-                {r.provenance === "editorial"
-                  ? "Editorial notecard"
-                  : "Generated with Codex"}{" "}
-                ·{" "}
-                {r.evidenceScope === "abstract"
-                  ? "Based on the abstract"
-                  : "Based on extracted paper sections"}
-                . Check the source for detail.
-              </div>
             </>
           ) : (
             <p className="muted">

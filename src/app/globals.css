@@ -929,13 +929,6 @@ main {
   margin-top: 8px;
   color: var(--theme-muted, #62665b);
 }
-.provenance {
-  border-top: 1px solid var(--line);
-  padding-top: 18px;
-  font-size: 10px;
-  color: var(--theme-faint, #93968c);
-  line-height: 1.8;
-}
 .status-dot {
   width: 5px;
   height: 5px;
@@ -1027,11 +1020,6 @@ input::placeholder {
 .direction-grid aside {
   padding-top: 5px;
   max-width: 300px;
-}
-.direction-illustration {
-  height: 190px;
-  max-width: 280px;
-  margin-bottom: 20px;
 }
 .direction-grid aside h2 {
   font-size: 34px;
@@ -1716,11 +1704,6 @@ input::placeholder {
   .home .page-intro {
     padding: 31px 0 24px;
   }
-  .intro-kicker {
-    font-size: 8px;
-    letter-spacing: 1.3px;
-    margin-bottom: 17px;
-  }
   .page-intro h1 {
     font-size: 44px;
     letter-spacing: -1.2px;
@@ -2012,11 +1995,6 @@ input::placeholder {
   .direction-grid aside {
     max-width: none;
   }
-  .direction-illustration {
-    height: 150px;
-    max-width: 220px;
-    margin: 0 auto 15px;
-  }
   .direction-grid aside h2 {
     font-size: 31px;
   }
@@ -2270,8 +2248,7 @@ h3 {
 }
 .recap-section,
 .recall-equations,
-.recall-walkthrough,
-.recap-panel > .provenance {
+.recall-walkthrough {
   max-width: 760px;
   margin-left: auto;
   margin-right: auto;
