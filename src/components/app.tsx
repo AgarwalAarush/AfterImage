@@ -38,6 +38,7 @@ import { clientRequest } from "@/lib/client-request";
 import { readLibrary, readLibraryUpdate, SessionExpired } from "@/lib/library-client";
 import { LoadingStatus } from "./loading-status";
 import { LibraryContent } from "./library-content";
+import { ThemeControl } from "./theme-control";
 const Diagram = dynamic(() => import("./diagram").then(module => module.Diagram), {
   loading: () => <div className="diagram diagram-loading" aria-label="Loading diagram" />,
 });
@@ -78,7 +79,7 @@ export function Mark() {
       />
       <path
         d="M13 3h18v23H13z"
-        fill="white"
+        fill="var(--paper)"
         stroke="currentColor"
         strokeWidth="1.3"
       />
@@ -253,13 +254,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
               </Link>
             ))}
           </nav>
-          <button
-            className="button small add-nav"
-            onClick={() => setPaletteOpen(true)}
-          >
-            <Plus size={16} />
-            <span>Add a paper</span>
-          </button>
+          <div className="nav-actions">
+            <button
+              className="button small add-nav"
+              aria-label="Add a paper"
+              onClick={() => setPaletteOpen(true)}
+            >
+              <Plus size={16} />
+              <span>Add a paper</span>
+            </button>
+            <ThemeControl />
+          </div>
         </div>
       </header>
       <main>
@@ -1230,6 +1235,7 @@ export function Login() {
   const router = useRouter();
   return (
     <div className="login-wrap">
+      <div className="login-theme"><ThemeControl /></div>
       <Link className="brand" href="/">
         <Mark />
         <span>afterimage.</span>

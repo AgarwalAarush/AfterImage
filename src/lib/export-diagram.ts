@@ -4,6 +4,10 @@ export async function exportDiagram(id: string) {
     ".mechanism-panel .graphic-desktop, .mechanism-panel .scene-wide svg",
   );
   if (!source) throw new Error("Diagram unavailable");
+  return exportSvg(source, id);
+}
+
+export async function exportSvg(source: SVGSVGElement, id: string) {
   const clone = source.cloneNode(true) as SVGSVGElement;
   const originals = [source, ...source.querySelectorAll("*")],
     copies = [clone, ...clone.querySelectorAll("*")];
@@ -14,11 +18,21 @@ export async function exportDiagram(id: string) {
       "font-size",
       "font-weight",
       "letter-spacing",
-    ])
+      "fill",
+      "stroke",
+      "stop-color",
+      "fill-opacity",
+      "stroke-opacity",
+      "opacity",
+    ]) {
+      const value = computed.getPropertyValue(property);
       (copies[i] as SVGElement).style.setProperty(
         property,
-        computed.getPropertyValue(property),
+        value,
       );
+      if (["fill", "stroke", "stop-color"].includes(property))
+        copies[i].setAttribute(property, value);
+    }
   });
   const fonts = [
     ["Departure Mono", "/fonts/DepartureMono-Regular.woff2"],
@@ -41,6 +55,15 @@ export async function exportDiagram(id: string) {
   clone.removeAttribute("class");
   clone.style.width = "";
   clone.style.height = "";
+  // Standalone files need the surface that the on-screen palette was designed for.
+  const background = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+  const viewBox = source.viewBox.baseVal;
+  background.setAttribute("x", String(viewBox.x));
+  background.setAttribute("y", String(viewBox.y));
+  background.setAttribute("width", String(viewBox.width));
+  background.setAttribute("height", String(viewBox.height));
+  background.setAttribute("fill", getComputedStyle(document.documentElement).getPropertyValue("--paper").trim());
+  clone.insertBefore(background, clone.firstChild);
   const url = URL.createObjectURL(
     new Blob([new XMLSerializer().serializeToString(clone)], {
       type: "image/svg+xml",

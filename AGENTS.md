@@ -12,6 +12,8 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 - Desktop is the product target and the release acceptance view. Existing responsive compatibility and diagram review gates remain in place; do not expand product scope into mobile-specific work unless requested.
 
+- Appearance is browser-local (System/Light/Dark), initialized before paint and kept out of library state. Apply SVG theme colors only at the browser presentation boundary; preserve stored/reviewed geometry and the worker's deterministic renderer. Standalone SVG exports embed computed colors and their matching surface. Theme changes require only a web release.
+
 - Keep `.next`, `.next-production`, `.vercel`, `node_modules`, `.data`, `.artifacts`, `.assistant-runtime`, and generated build artifacts untracked. The existing `.gitignore` is the source of truth for ignored artifacts.
 - Preserve `.env*` and all secrets. Keep only `.env.example` in source control.
 - When changing behavior in app, worker, or scripts, include a matching note in `docs/` and a short context update in `README.md`.

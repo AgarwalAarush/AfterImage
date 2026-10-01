@@ -1,23 +1,24 @@
+import { diagramPaint } from "@/lib/diagram-theme";
 const ink = "#38353f", muted = "#706979", accent = "#8068be";
 export const eagleCaption = "One branch shown: real target features start the draft; later steps reuse draft states and sampled tokens. EAGLE-3 trains on these same kinds of inputs. The full method builds and verifies a dynamic tree.";
 
 /** Original teaching diagram, checked against EAGLE-3 sections 2.1 and 3, Figure 5. */
 export function EagleDiagram({ thumbnail = false }: { thumbnail?: boolean }) {
   const text = (x: number, y: number, value: string, heading = false, size = 14) => (
-    <text x={x} y={y} fill={heading ? accent : ink}
+    <text x={x} y={y} fill={diagramPaint(heading ? accent : ink, "fill", true)}
       fontFamily={heading ? "Departure Mono" : "IBM Plex Mono"} fontSize={size}>{value.split(/(_(?:can|do|I))\b/).map((part, i) => part.startsWith("_") ? <tspan key={i} baselineShift="sub" fontSize="75%">{part.slice(1)}</tspan> : <tspan key={i}>{part}</tspan>)}</text>
   );
   const box = (x: number, y: number, w: number, h: number, active = false) => (
-    <rect x={x} y={y} width={w} height={h} rx={10} fill={active ? "#f0ebf8" : "#fdfcfe"}
-      stroke={active ? accent : "#d7d2de"} strokeWidth={1.4} />
+    <rect x={x} y={y} width={w} height={h} rx={10} fill={diagramPaint(active ? "#f0ebf8" : "#fdfcfe", "fill")}
+      stroke={diagramPaint(active ? accent : "#d7d2de", "stroke")} strokeWidth={1.4} />
   );
-  const arrow = (d: string) => <path data-connector="true" d={d} fill="none" stroke={accent} strokeWidth={1.6} />;
+  const arrow = (d: string) => <path data-connector="true" d={d} fill={diagramPaint("none", "fill")} stroke={diagramPaint(accent, "stroke")} strokeWidth={1.6} />;
   const description = "A target pass supplies fused features and the token I. The draft produces state a_I and token do, then reuses a_I with the embedding of do to predict it. Target verification follows. Training also feeds back draft states, with token prediction supervision and no feature matching loss.";
   return <div className={`diagram eagle-diagram ${thumbnail ? "thumbnail" : ""}`}>
     <svg className="graphic-desktop" viewBox="0 0 900 470" role="img" aria-label={description}>
       <title>Train the drafter on the states it actually uses</title>
       {text(24, 28, "TEACH THE DRAFTER TO CONTINUE ITS OWN WORK", true)}
-      <text x={24} y={54} fill={muted} fontFamily="IBM Plex Mono" fontSize={12}>ONE INFERENCE BRANCH · example prefix: “How can I”</text>
+      <text x={24} y={54} fill={diagramPaint(muted, "fill", true)} fontFamily="IBM Plex Mono" fontSize={12}>ONE INFERENCE BRANCH · example prefix: “How can I”</text>
       {box(24, 82, 252, 160)}
       {text(42, 111, "01 · START FROM THE TARGET", true, 12)}
       {text(42, 146, "Low / mid / high features")}

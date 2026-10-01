@@ -1,0 +1,98 @@
+/* Light-mode fallbacks in globals.css preserve the original palette. */
+:root { color-scheme: light; }
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --canvas: #14120f;
+  --paper: #1c1a16;
+  --ink: #e8e4dc;
+  --muted: #b5afa4;
+  --faint: #a29b90;
+  --line: #34312b;
+  --accent: #b9a0df;
+  --tint: #292332;
+  --theme-header: #14120ff5;
+  --theme-paper: var(--paper);
+  --theme-surface: #211e19;
+  --theme-surface-raised: #2d2923;
+  --theme-hover: #ffffff08;
+  --theme-ink: var(--ink);
+  --theme-muted: var(--muted);
+  --theme-faint: var(--faint);
+  --theme-line: var(--line);
+  --theme-line-strong: #655d51;
+  --theme-solid: #e8e4dc;
+  --theme-on-solid: #1c1a16;
+  --theme-violet: #b9a0df;
+  --theme-violet-surface: #292332;
+  --theme-violet-line: #655475;
+  --theme-green: #9abb9e;
+  --theme-green-surface: #222b22;
+  --theme-green-line: #4f6650;
+  --theme-blue: #8db7d5;
+  --theme-blue-surface: #202830;
+  --theme-blue-line: #47677d;
+  --theme-ochre: #d4b67d;
+  --theme-ochre-surface: #2d261b;
+  --theme-ochre-line: #77613d;
+  --theme-red: #dc9c89;
+  --theme-red-surface: #30231e;
+  --theme-red-line: #7d5548;
+  --diagram-ink: #e8e4dc;
+  --diagram-muted: #b5afa4;
+  --diagram-line: #665e53;
+  --diagram-surface: #24211b;
+  --diagram-canvas: #1c1a16;
+  --diagram-violet: #b9a0df;
+  --diagram-green: #9abb9e;
+  --diagram-blue: #8db7d5;
+  --diagram-ochre: #d4b67d;
+  --diagram-red: #dc9c89;
+  --diagram-violet-surface: #2c2437;
+  --diagram-green-surface: #222d25;
+  --diagram-blue-surface: #202b35;
+  --diagram-ochre-surface: #31281b;
+}
+
+:root[data-theme="dark"] .violet { --accent: #b9a0df; --tint: #292332; }
+:root[data-theme="dark"] .sage { --accent: #9abb9e; --tint: #222b22; }
+:root[data-theme="dark"] .blue { --accent: #8db7d5; --tint: #202830; }
+:root[data-theme="dark"] .ochre { --accent: #d4b67d; --tint: #2d261b; }
+
+.theme-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+.theme-control select {
+  max-width: 90px;
+  min-height: 34px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 5px 5px 5px 8px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.nav-actions { display: flex; align-items: center; gap: 12px; margin-left: auto; }
+.nav-actions .add-nav { margin-left: 0; }
+.login-theme { position: absolute; top: 24px; right: 28px; }
+:root[data-theme="dark"] ::selection { background: #514263; color: #f0ece5; }
+:root[data-theme="dark"] .diagram,
+:root[data-theme="dark"] .study-drawing { background: var(--paper); }
+:root[data-theme="dark"] .button.primary,
+:root[data-theme="dark"] .assistant-send,
+:root[data-theme="dark"] .toast { color: var(--theme-on-solid); background: var(--theme-solid); }
+:root[data-theme="dark"] .button.primary:hover { background: #cfcbc2; }
+
+@media (max-width: 700px) {
+  .nav-actions { gap: 8px; }
+  .theme-control { gap: 4px; }
+  .theme-control > svg { display: none; }
+  .theme-control select { max-width: 73px; padding-left: 4px; font-size: 11px; }
+}
+@media (max-width: 370px) {
+  .nav-actions .add-nav span { display: none; }
+  .nav-actions .add-nav { min-width: 34px; padding: 7px; }
+}
