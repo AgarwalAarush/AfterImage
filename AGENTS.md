@@ -10,6 +10,8 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 ## AfterImage workspace rules
 
+- Desktop is the product target and the release acceptance view. Existing responsive compatibility and diagram review gates remain in place; do not expand product scope into mobile-specific work unless requested.
+
 - Keep `.next`, `.next-production`, `.vercel`, `node_modules`, `.data`, `.artifacts`, `.assistant-runtime`, and generated build artifacts untracked. The existing `.gitignore` is the source of truth for ignored artifacts.
 - Preserve `.env*` and all secrets. Keep only `.env.example` in source control.
 - When changing behavior in app, worker, or scripts, include a matching note in `docs/` and a short context update in `README.md`.
@@ -29,3 +31,5 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - Reviewed stored notecards and opening diagrams may be read while the study supplement is queued, running, or failed. Never expose unreviewed drafts. Publish supplements only after their source, geometry, and visual/quiz reviews pass. Worker job stages are allowlisted milestones; keep raw job errors and lease metadata out of browser state and full exports. Deploy compatible web progress handling before updating workers, and let active work finish before restarting them. Documents routes load independently of paper-library state.
 
 - Assistant citations may preload only referenced source excerpts through authenticated, bounded requests; keep the cache in reader memory and excerpts out of ordinary library polling. Browser text reveal animates cumulative answer snapshots without altering persisted answers or worker streaming. Figure breakpoints follow the paper column width rather than sidebar-open state.
+
+- Recommendations publish discovery metadata only; generating a reading kit requires an explicit prepare/import action. Never start generation on hover or prefetch. A prepare request saves the paper and deduplicates active jobs. Failed drafts must not masquerade as available notecards. Resolve only an underscore-to-hyphen endpoint spelling that matches an existing scene node before review; preserve all relationships and keep unknown nodes invalid. See `docs/reading-discovery-qol-2026-09-30.md` for the failure diagnosis and release order.

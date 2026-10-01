@@ -45,7 +45,7 @@ export function PaperPreparation({
           </div>
         )}
         <div className="paper-preparation-copy">
-          <span className="eyebrow">{model.readable ? active ? "NOTECARD READY · PREPARATION IN PROGRESS" : "NOTECARD READY · FINISH YOUR STUDY GUIDE" : "PREPARING YOUR READING KIT"}</span>
+          <span className="eyebrow">{model.readable ? active ? "NOTECARD READY · PREPARATION IN PROGRESS" : "NOTECARD READY · FINISH YOUR STUDY GUIDE" : active ? "PREPARING YOUR READING KIT" : "YOUR READING KIT"}</span>
           <h2 aria-live="polite">{model.title}</h2>
           <p>{model.detail}</p>
           {active && <div className="preparation-activity">
@@ -73,22 +73,22 @@ export function PaperPreparation({
               }
             >
               <RefreshCw size={15} />
-              {model.status === "failed" ? "Try again" : "Prepare paper"}
+              {model.status === "failed" ? "Prepare again" : "Prepare reading kit"}
             </button>
           )}
         </div>
       </div>
-      <ol className="paper-preparation-steps" aria-label="Paper preparation progress">
+      {active && <ol className="paper-preparation-steps" aria-label="Paper preparation progress">
         {model.steps.map((step) => (
           <li className={step.state} key={step.id}>
             <span aria-hidden="true" />
             {step.label}
           </li>
         ))}
-      </ol>
-      <p className="preparation-footnote">
+      </ol>}
+      {active && <p className="preparation-footnote">
         {model.readable ? "Read the reviewed notecard below. New visuals and questions appear after their own checks pass." : "Only reviewed content is published. Status updates automatically."}
-      </p>
+      </p>}
     </section>
   );
 }

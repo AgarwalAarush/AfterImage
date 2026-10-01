@@ -155,6 +155,7 @@ export async function POST(req: Request) {
         case "recommend": {
           const type = z.enum(["generate", "recommend", "study"]).parse(body.action);
           if (type !== "recommend" && !paper) throw new Error("Paper not found");
+          if (type !== "recommend") ensureEntry();
           if (type === "recommend" && !s.direction.goal.trim())
             throw new Error("Add a learning goal first.");
           if (

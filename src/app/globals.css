@@ -341,7 +341,7 @@ main {
 }
 .recommendation-grid {
   display: grid;
-  grid-template-columns: 1.16fr 1fr 1fr;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 18px;
 }
 .discovery-report {
@@ -463,16 +463,19 @@ main {
   height: auto;
 }
 .diagram.thumbnail {
-  height: 182px;
+  height: 204px;
+  padding: 18px 16px;
   display: flex;
   align-items: center;
   justify-content: center;
   overflow: hidden;
 }
 .diagram.thumbnail > svg {
-  width: 112%;
-  max-width: none;
-  flex-shrink: 0;
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
+  object-fit: contain;
+  flex-shrink: 1;
 }
 .card-content {
   padding: 5px 24px 0;
@@ -800,19 +803,6 @@ main {
   color: #878981;
   white-space: nowrap;
 }
-.library-card-bottom {
-  padding: 14px 23px;
-  border-top: 1px solid var(--line);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  color: #999b94;
-}
-.library-card-bottom span {
-  font-family: var(--font-mono);
-  font-size: 8px;
-  letter-spacing: 0.8px;
-}
 .empty {
   text-align: center;
   padding: 65px 24px;
@@ -1117,11 +1107,18 @@ input::placeholder {
 .scene-wide {
   width: 100%;
 }
-.generated.thumbnail {
-  height: 182px;
-}
+
 .generated.thumbnail .scene-wide {
   width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.generated.thumbnail .scene-wide > svg {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
 }
 .notice {
   border: 1px solid #e7ddcd;
@@ -1640,33 +1637,6 @@ input::placeholder {
   .recommendation-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-  .recommendation-grid .paper-card:last-child {
-    grid-column: 1/-1;
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-  }
-  .recommendation-grid .paper-card:last-child .card-top {
-    grid-column: 1;
-    grid-row: 1;
-    align-self: start;
-  }
-  .recommendation-grid .paper-card:last-child .card-art {
-    grid-column: 1;
-    grid-row: 1;
-    align-self: center;
-    padding-top: 20px;
-  }
-  .recommendation-grid .paper-card:last-child .card-content {
-    grid-column: 2;
-    grid-row: 1;
-    padding-top: 27px;
-  }
-  .recommendation-grid .paper-card:last-child .card-idea {
-    min-height: 0;
-  }
-  .recommendation-grid .paper-card:last-child .card-title h2 {
-    min-height: 0;
-  }
   .library-grid {
     grid-template-columns: 1fr 1fr;
   }
@@ -1810,23 +1780,6 @@ input::placeholder {
   .recommendation-grid {
     grid-template-columns: 1fr;
     gap: 20px;
-  }
-  .recommendation-grid .paper-card:last-child {
-    display: flex;
-    grid-column: auto;
-  }
-  .recommendation-grid .paper-card:last-child .card-content {
-    padding-top: 5px;
-  }
-  .recommendation-grid .paper-card:last-child .card-art {
-    padding-top: 0;
-    align-self: auto;
-  }
-  .recommendation-grid .card-art {
-    display: none;
-  }
-  .recommendation-grid .paper-card .card-content {
-    padding-top: 24px;
   }
   .card-top {
     padding: 17px 23px 0;
@@ -2176,11 +2129,63 @@ input::placeholder {
 .diagram-pending > span {
   font-size: 45px;
 }
-.diagram-pending small {
-  font-family: var(--font-mono);
-  font-size: 8px;
-  letter-spacing: 1.2px;
-  color: #aaa4b0;
+.notecard-glyph {
+  position: relative;
+  width: 76px;
+  height: 76px;
+  display: grid;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--accent) 18%, white);
+  background: color-mix(in srgb, var(--tint) 65%, white);
+  border-radius: 20px;
+  color: var(--accent);
+}
+.notecard-glyph .glyph-mark {
+  position: absolute;
+  top: 14px;
+  right: 9px;
+  background: var(--tint);
+  border-radius: 4px;
+}
+.notecard-glyph > svg { width: 38px; height: 38px; }
+.notecard-glyph > svg.glyph-mark { width: 20px; height: 20px; }
+.notecard-glyph.working .glyph-mark { animation: preparation-pulse 2s ease-in-out infinite; }
+.next-read-card { background: #fdfdfc; overflow: visible; box-shadow: none; }
+.next-read-card .card-top { padding: 20px 22px 0; }
+.next-read-card .card-content { padding: 20px 22px 22px; }
+.next-read-card .card-title h2 { min-height: 0; max-width: none; font-size: 28px; line-height: 1.15; }
+.next-read-card .card-idea { min-height: 0; font-size: 14px; line-height: 1.55; margin: 12px 0 24px; }
+.next-read-card .card-actions { padding: 0; border: 0; margin-top: auto; }
+.kit-action { width: 100%; display: flex; align-items: center; justify-content: center; gap: 9px; padding: 12px 14px; border: 0; border-radius: 7px; background: #f0edf8; color: #7560af; font-size: 13px; font-weight: 500; }
+.kit-action > svg:last-child { margin-left: auto; }
+.kit-action > svg:first-child { margin-right: auto; }
+.kit-action:hover { background: #e8e2f4; }
+.card-tools { display: flex; gap: 3px; align-items: center; }
+.suggestion-feedback { position: relative; }
+.suggestion-feedback summary { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 5px; cursor: pointer; list-style: none; color: #838287; }
+.suggestion-feedback summary::-webkit-details-marker { display: none; }
+.suggestion-feedback summary:hover { background: #f0edf8; }
+.suggestion-feedback > div { position: absolute; right: 0; top: 34px; z-index: 5; display: grid; min-width: 150px; padding: 5px; border: 1px solid var(--line); border-radius: 8px; background: white; box-shadow: 0 6px 24px #24202f12; }
+.suggestion-feedback button { padding: 9px 11px; text-align: left; border: 0; border-radius: 4px; background: transparent; font-size: 12px; white-space: nowrap; }
+.suggestion-feedback button:hover { background: #f4f1fa; }
+.library-card { background: #fdfdfc; }
+.library-card .card-top { padding: 19px 22px 0; }
+.notecard-status { display: flex; align-items: center; gap: 8px; color: #76737e; font: 9px/1.4 var(--font-mono); text-transform: uppercase; letter-spacing: 1px; }
+.notecard-status > span { width: 7px; height: 7px; flex: 0 0 7px; border-radius: 50%; background: #aba4b8; }
+.notecard-status.ready > span { background: #68a087; }
+.notecard-status.running > span, .notecard-status.queued > span { background: #8b78bf; }
+.library-card > .diagram.thumbnail { margin: 16px 16px 0; width: calc(100% - 32px); height: 202px; background: #faf9fc; border: 1px solid #eeeaf1; border-radius: 8px; }
+.library-card > .diagram.thumbnail.diagram-pending { border-color: transparent; background: transparent; }
+.library-card .notecard-glyph { width: 100px; height: 100px; border: 0; border-radius: 50%; background: #f3f0f9; }
+.library-card .notecard-glyph > svg { width: 42px; height: 42px; }
+.library-card .notecard-glyph > svg.glyph-mark { top: 26px; right: 20px; width: 22px; height: 22px; background: #f3f0f9; }
+.library-card h2 { padding: 16px 22px 0; font-size: 25px; }
+.library-card > p { padding: 10px 22px 24px; font-size: 14px; line-height: 1.65; }
+.paper-preparation:is(.idle, .failed) { min-height: 0; padding: 32px 24px; }
+.paper-preparation:is(.idle, .failed) .paper-preparation-copy h2 { font-size: 28px; }
+.paper-header.preparing > p { max-width: 760px; margin: 20px auto 0; font-size: 15px; line-height: 1.7; color: var(--muted); }
+@media (prefers-reduced-motion: reduce) {
+  .notecard-glyph.working .glyph-mark { animation: none; }
 }
 /* Typeface roles verified from the supplied reference. Fonts are self-hosted. */
 @font-face {

@@ -75,7 +75,13 @@ export const sceneGraphSchema = sceneSchema.omit({ layout: true, nodes: true }).
 export const generationResultSchema = resultSchema.extend({ scene: sceneGraphSchema });
 export function prepareScene(input: unknown) {
   const graph = sceneGraphSchema.parse(input);
-  return sceneSchema.parse({ ...graph, layout: "flow-v2", nodes: graph.nodes.map(n => ({ ...n, x: 20, y: 60, w: 240, h: 100 })) });
+  const ids = new Set(graph.nodes.map(node => node.id));
+  // Models sometimes spell an otherwise identical endpoint with underscores.
+  // Resolve only this unambiguous spelling difference; never invent or drop edges.
+  const endpoint = (id: string) => ids.has(id) ? id : ids.has(id.replaceAll("_", "-")) ? id.replaceAll("_", "-") : id;
+  return sceneSchema.parse({ ...graph, layout: "flow-v2",
+    edges: graph.edges.map(edge => ({...edge, from: endpoint(edge.from), to: endpoint(edge.to)})),
+    nodes: graph.nodes.map(n => ({ ...n, x: 20, y: 60, w: 240, h: 100 })) });
 }
 export const recommendationSchema = z.object({
   recommendations: z
@@ -175,8 +181,10 @@ export function validateScene(input: unknown) {
       }
   }
   for (const e of scene.edges) {
-    if (!ids.has(e.from) || !ids.has(e.to) || e.from === e.to)
-      throw new Error("Diagram has an invalid connection.");
+    if (!ids.has(e.from) || !ids.has(e.to))
+      throw new Error(`Diagram connection ${e.from} -> ${e.to} references a missing node. Use exact node IDs: ${[...ids].join(", ")}.`);
+    if (e.from === e.to)
+      throw new Error(`Diagram connection ${e.from} -> ${e.to} points to itself. Connect two distinct nodes.`);
   }
   return scene;
 }

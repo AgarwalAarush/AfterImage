@@ -173,29 +173,7 @@ export async function POST(req: Request) {
         s.recommendationSource = "codex";
         s.recommendedAt = now;
         s.recommendationRun = report;
-        for (const rec of result.recommendations) {
-          const p = s.papers.find((p) => p.id === rec.paperId)!;
-          if (
-            !p.recall &&
-            !s.jobs.some(
-              (j) =>
-                j.paperId === p.id && ["queued", "running"].includes(j.status),
-            ) &&
-            s.jobs.filter((j) => Date.now() - Date.parse(j.createdAt) < 3600000)
-              .length < 12
-          ) {
-            s.jobs.push({
-              id: randomUUID(),
-              type: "generate",
-              paperId: p.id,
-              status: "queued",
-              createdAt: now,
-              attempts: 0,
-            });
-            p.generationStatus = "queued";
-            delete p.generationStep;
-          }
-        }
+        // Discovery publishes metadata only. The reader explicitly requests a kit.
       }
       job.status = "complete";
       job.finishedAt = now;
