@@ -130,4 +130,4 @@ Next reads now offers compact summaries and an explicit Prepare reading kit acti
 
 The scientific illustration web/API and regular macserver worker are released on October 1; see [release verification](docs/scientific-diagram-release-2026-10-01.md). Stored diagrams require explicit reviewed regeneration.
 
-Storage connection failures now produce private, redacted upstream diagnostics while preserving generic browser errors and avoiding retries of uncertain writes. See [storage reliability diagnosis](docs/storage-reliability-2026-10-01.md) for the investigation and live recovery evidence.
+The October 1 library outage came from Funnel's public ingress path while private Tailscale checks still passed. Public access was restored by refreshing ingress registration. Storage failures now have redacted server diagnostics and a bounded read-only retry; uncertain writes are never replayed. `scripts/check-storage-relay.mjs` verifies the actual public relays. See [storage reliability diagnosis](docs/storage-reliability-2026-10-01.md) for evidence and remaining limits.
