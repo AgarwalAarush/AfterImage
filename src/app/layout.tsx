@@ -2,7 +2,9 @@ import type { Metadata } from "next";
 import "@fontsource-variable/newsreader";
 import "@fontsource/ibm-plex-mono/400.css";
 import "./globals.css";
+import "./theme.css";
 import { AppProvider } from "@/components/app";
+import { themeBootstrap } from "@/lib/theme";
 export const metadata: Metadata = {
   title: {
     default: "Afterimage — A little less forgotten",
@@ -15,7 +17,8 @@ export const metadata: Metadata = {
 };
 export default function Layout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
+      <head><script dangerouslySetInnerHTML={{ __html: themeBootstrap }} /></head>
       <body>
         <AppProvider>{children}</AppProvider>
       </body>

@@ -4,6 +4,8 @@ A personal reading compass and visual memory for research papers. The web app ho
 
 The Documents tab adds a private shelf for uploaded Markdown guides and PDFs, with a formatted reader and original-file download. Document bytes live outside the frequently refreshed paper-library state. See `docs/documents.md` for storage, API, format, and release details.
 
+Appearance supports System, Light, and Dark with a saved browser preference. The dark palette includes reader panels, assistant views, and SVG diagrams; SVG downloads preserve the selected colors. See `docs/dark-mode-2026-10-01.md`.
+
 Reviewed notecards are available while their visual guide and quiz finish. Preparation shows real worker milestones, elapsed time, queue position, and connection status; Documents loads independently of the paper library. See `docs/preparation-and-loading-2026-09-30.md` for behavior and release order.
 
 Opening diagrams now support expressive object illustrations: occupied expert buckets, allocation lanes and sparse regions, repeated token identities, branching parameter vectors, sampled distributions, and calibrated gauges, alongside matrices, comparisons and dependency graphs. Planning names the relationship and geometric encoding the reader must be able to see; review rejects stage labels that hide the contribution. New panel diagrams use `explanatory-v3`, derive assignment counts, distinguish illustrative examples from sourced values, and recompose for phones. See `docs/diagram-creation-v3.md` for local verification and the required web-before-worker release order. Sequential public-paper evaluation can include the study figures and quiz with `--evaluate-paper ID --full`; see `docs/diagram-evaluation-reading-set.md` for evidence and generator adjustments.

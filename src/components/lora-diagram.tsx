@@ -1,3 +1,4 @@
+import { diagramPaint } from "@/lib/diagram-theme";
 const ink = "#363b37",
   muted = "#6e766f",
   accent = "#648775",
@@ -8,7 +9,7 @@ export function LoraDiagram({ thumbnail = false }: { thumbnail?: boolean }) {
       x={x}
       y={y}
       textAnchor="middle"
-      fill={kind === "meta" ? muted : ink}
+      fill={diagramPaint(kind === "meta" ? muted : ink, "fill", true)}
       className={`diagram-${kind}`}
     >
       {s.includes("₀") ? s.split("₀").map((part, i) => (
@@ -34,8 +35,8 @@ export function LoraDiagram({ thumbnail = false }: { thumbnail?: boolean }) {
         width={w}
         height={h}
         rx="8"
-        fill={active ? "#edf3ee" : "#fcfcfb"}
-        stroke={active ? accent : line}
+        fill={diagramPaint(active ? "#edf3ee" : "#fcfcfb", "fill")}
+        stroke={diagramPaint(active ? accent : line, "stroke")}
         strokeWidth="1.4"
       />
       {text(x + w / 2, y + h / 2 + 5, label)}
@@ -59,11 +60,11 @@ export function LoraDiagram({ thumbnail = false }: { thumbnail?: boolean }) {
             refY="3"
             orient="auto"
           >
-            <path d="M0 0L6 3L0 6" fill="none" stroke={accent} />
+            <path d="M0 0L6 3L0 6" fill={diagramPaint("none", "fill")} stroke={diagramPaint(accent, "stroke")} />
           </marker>
         </defs>
         {text(470, 27, "A SMALL UPDATE, ALONGSIDE THE FROZEN MODEL", "heading")}
-        <g fill="none" stroke={line} strokeWidth="1.5">
+        <g fill={diagramPaint("none", "fill")} stroke={diagramPaint(line, "stroke")} strokeWidth="1.5">
           <path d="M137 194H205V109H270" />
           <path d="M205 194V275H310" />
           <path d="M380 109H455" markerEnd="url(#lora-arrow)" />
@@ -75,13 +76,13 @@ export function LoraDiagram({ thumbnail = false }: { thumbnail?: boolean }) {
         {box(270, 79, 110, 60, "A", true)}
         {box(455, 79, 110, 60, "B", true)}
         {box(310, 240, 240, 70, "W₀", false)}
-        <circle cx="205" cy="194" r="3" fill={line} />
+        <circle cx="205" cy="194" r="3" fill={diagramPaint(line, "fill")} />
         <circle
           cx="700"
           cy="194"
           r="25"
-          fill="white"
-          stroke={accent}
+          fill={diagramPaint("white", "fill")}
+          stroke={diagramPaint(accent, "stroke")}
           strokeWidth="1.5"
         />
         {text(700, 200, "+")}
@@ -107,7 +108,7 @@ export function LoraDiagram({ thumbnail = false }: { thumbnail?: boolean }) {
         >
           <title>LoRA: parallel frozen and trainable branches</title>
           {text(195, 24, "TRAIN THE UPDATE, KEEP THE BASE", "heading")}
-          <g fill="none" stroke={line} strokeWidth="1.5">
+          <g fill={diagramPaint("none", "fill")} stroke={diagramPaint(line, "stroke")} strokeWidth="1.5">
             <path d="M195 102V126H97V157 M195 126H287V210 M97 210V260 M97 313V370H172 M287 280V370H218 M195 393V433" />
           </g>
           {box(155, 49, 80, 53, "x")}
@@ -118,8 +119,8 @@ export function LoraDiagram({ thumbnail = false }: { thumbnail?: boolean }) {
             cx="195"
             cy="370"
             r="23"
-            fill="white"
-            stroke={accent}
+            fill={diagramPaint("white", "fill")}
+            stroke={diagramPaint(accent, "stroke")}
             strokeWidth="1.5"
           />
           {text(195, 376, "+")}

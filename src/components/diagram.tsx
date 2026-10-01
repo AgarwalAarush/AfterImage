@@ -1,3 +1,4 @@
+import { diagramPaint, themedSvg } from "@/lib/diagram-theme";
 import type { Paper } from "@/lib/types";
 import { sceneSvg, sceneSvgMobile } from "@/lib/scene";
 import { LoraDiagram } from "./lora-diagram";
@@ -31,13 +32,13 @@ export function Diagram({
         <div className={`diagram generated ${thumbnail ? "thumbnail" : ""}`}>
           <div
             className="scene-wide"
-            dangerouslySetInnerHTML={{ __html: sceneSvg(paper.scene, c) }}
+            dangerouslySetInnerHTML={{ __html: themedSvg(sceneSvg(paper.scene, c)) }}
           />
           {!thumbnail && (
             <div
               className="scene-mobile"
               dangerouslySetInnerHTML={{
-                __html: sceneSvgMobile(paper.scene, c),
+                __html: themedSvg(sceneSvgMobile(paper.scene, c)),
               }}
             />
           )}
@@ -67,7 +68,7 @@ export function Diagram({
       x={x}
       y={y}
       textAnchor="middle"
-      fill={muted ? "#8a8884" : "#343530"}
+      fill={diagramPaint(muted ? "#8a8884" : "#343530", "fill", true)}
       style={textStyle}
     >
       {t}
@@ -88,8 +89,8 @@ export function Diagram({
         width={w}
         height={h}
         rx={7}
-        fill={active ? light : "#fbfbfa"}
-        stroke={active ? c : "#d9d8d4"}
+        fill={diagramPaint(active ? light : "#fbfbfa", "fill")}
+        stroke={diagramPaint(active ? c : "#d9d8d4", "stroke")}
         strokeWidth="1.4"
       />
       {label(x + w / 2, y + h / 2 + 4, t, !active)}
@@ -108,8 +109,8 @@ export function Diagram({
           <>
             <path
               d="M90 150 H240 M330 150 C390 150 350 82 421 82 M330 150 C390 150 440 222 482 222"
-              fill="none"
-              stroke={c}
+              fill={diagramPaint("none", "fill")}
+              stroke={diagramPaint(c, "stroke")}
               strokeWidth="1.8"
               strokeDasharray="5 5"
             />
@@ -122,7 +123,7 @@ export function Diagram({
               return (
                 <g key={i}>
                   {node(x, y, 53, 50, `E${i + 1}`, active)}
-                  {active && <circle cx={x + 26} cy={y + 65} r="3" fill={c} />}
+                  {active && <circle cx={x + 26} cy={y + 65} r="3" fill={diagramPaint(c, "fill")} />}
                 </g>
               );
             })}
@@ -140,8 +141,8 @@ export function Diagram({
                   <path
                     key={j}
                     d={`M380 98 Q${140 + j * 240} ${80 + i * 25} ${140 + i * 240} 219`}
-                    fill="none"
-                    stroke={c}
+                    fill={diagramPaint("none", "fill")}
+                    stroke={diagramPaint(c, "stroke")}
                     strokeWidth={i === 1 ? 2 : 1.2}
                     opacity={i === 1 ? 0.8 : 0.25}
                   />
@@ -152,8 +153,8 @@ export function Diagram({
               cx="380"
               cy="85"
               r="38"
-              fill={light}
-              stroke={c}
+              fill={diagramPaint(light, "fill")}
+              stroke={diagramPaint(c, "stroke")}
               strokeWidth="1.5"
             />
             {label(380, 89, "CONTEXT", false)}
@@ -170,23 +171,23 @@ export function Diagram({
                   <g key={j}>
                     <path
                       d={`M${237 + j * 125} ${80 + i * 62} l10 -9 h106 l-10 9 Z`}
-                      fill={i === j ? c + "25" : "#f0f1f3"}
-                      stroke={i === j ? c : "#d6d8df"}
+                      fill={diagramPaint(i === j ? c + "25" : "#f0f1f3", "fill")}
+                      stroke={diagramPaint(i === j ? c : "#d6d8df", "stroke")}
                     />
                     <rect
                       x={237 + j * 125}
                       y={80 + i * 62}
                       width="106"
                       height="45"
-                      fill={i === j ? light : "#f7f7f8"}
-                      stroke={i === j ? c : "#d6d8df"}
+                      fill={diagramPaint(i === j ? light : "#f7f7f8", "fill")}
+                      stroke={diagramPaint(i === j ? c : "#d6d8df", "stroke")}
                     />
                     {i === j && (
                       <circle
                         cx={290 + j * 125}
                         cy={102 + i * 62}
                         r="4"
-                        fill={c}
+                        fill={diagramPaint(c, "fill")}
                       />
                     )}
                   </g>
@@ -195,9 +196,9 @@ export function Diagram({
             ))}
             <path
               d="M290 102 L540 226"
-              stroke={c}
+              stroke={diagramPaint(c, "stroke")}
               strokeDasharray="3 8"
-              fill="none"
+              fill={diagramPaint("none", "fill")}
             />
             {label(405, 295, "MATCHED PAIRS COME CLOSER")}
           </>
@@ -210,8 +211,8 @@ export function Diagram({
                   <g key={j}>
                     <path
                       d={`M${140} ${75 + i * 80} L${370} ${75 + j * 80} L620 ${155}`}
-                      fill="none"
-                      stroke={i === j ? c : "#dedddf"}
+                      fill={diagramPaint("none", "fill")}
+                      stroke={diagramPaint(i === j ? c : "#dedddf", "stroke")}
                       strokeWidth={i === j ? 2 : 1}
                       opacity={i === j ? 1 : 0.5}
                     />
@@ -226,8 +227,8 @@ export function Diagram({
                   cx={x}
                   cy={y}
                   r="11"
-                  fill="white"
-                  stroke={c}
+                  fill={diagramPaint("white", "fill")}
+                  stroke={diagramPaint(c, "stroke")}
                   strokeWidth="1.5"
                 />
               )),
@@ -236,8 +237,8 @@ export function Diagram({
               cx="620"
               cy="155"
               r="16"
-              fill={light}
-              stroke={c}
+              fill={diagramPaint(light, "fill")}
+              stroke={diagramPaint(c, "stroke")}
               strokeWidth="1.5"
             />
             {node(244, 41, 63, 30, "θ₀", true)}
@@ -248,13 +249,13 @@ export function Diagram({
           <>
             <path
               d="M283 75 H467 V222 Q467 280 375 280 Q283 280 283 222 Z"
-              fill={c + "08"}
-              stroke="#a5a1ac"
+              fill={diagramPaint(c + "08", "fill")}
+              stroke={diagramPaint("#a5a1ac", "stroke")}
               strokeWidth="1.4"
             />
             <path
               d="M284 186 Q330 174 376 187 T466 186 V222 Q466 279 375 279 Q284 279 284 222Z"
-              fill={c + "30"}
+              fill={diagramPaint(c + "30", "fill")}
             />
             {[0, 1, 2, 3].map((i) => (
               <circle
@@ -262,26 +263,26 @@ export function Diagram({
                 cx={92 + i * 40}
                 cy={170 - Math.sin(i) * 30}
                 r={i % 2 ? 7 : 12}
-                fill={i % 2 ? "white" : light}
-                stroke={i % 2 ? "#d4d0da" : c}
+                fill={diagramPaint(i % 2 ? "white" : light, "fill")}
+                stroke={diagramPaint(i % 2 ? "#d4d0da" : c, "stroke")}
                 strokeWidth="1.5"
               />
             ))}
             <path
               d="M86 170 Q173 106 262 152 M523 121 L467 148"
-              fill="none"
-              stroke={c}
+              fill={diagramPaint("none", "fill")}
+              stroke={diagramPaint(c, "stroke")}
               strokeDasharray="4 6"
             />
             <circle
               cx="375"
               cy="75"
               r="29"
-              fill="white"
-              stroke={c}
+              fill={diagramPaint("white", "fill")}
+              stroke={diagramPaint(c, "stroke")}
               strokeWidth="1.8"
             />
-            <path d="M359 75 H391 M375 46 V29" stroke={c} strokeWidth="1.8" />
+            <path d="M359 75 H391 M375 46 V29" stroke={diagramPaint(c, "stroke")} strokeWidth="1.8" />
             {node(526, 86, 81, 59, "xₜ")}
             {label(376, 146, "STATE h", false)}
             {label(374, 236, "SELECTED HISTORY")}
@@ -316,8 +317,8 @@ export function Diagram({
           )}
           <path
             d="M190 80 V129 M190 211 V268"
-            fill="none"
-            stroke={c}
+            fill={diagramPaint("none", "fill")}
+            stroke={diagramPaint(c, "stroke")}
             strokeDasharray="4 5"
             strokeWidth="1.5"
           />
