@@ -5,6 +5,8 @@ import { themeBootstrap, themePreference } from "../src/lib/theme";
 import { diagramPaint, themedSvg } from "../src/lib/diagram-theme";
 import { prepareScene, sceneSvg } from "../src/lib/scene";
 import { sglangScene } from "./fixtures/sglang-scene";
+import { distributionScene, gaugeScene, sparseAllocationScene, tokenTreeScene } from "./fixtures/concept-scenes";
+import { expertChoiceScene, expertObjectScene } from "./fixtures/expert-choice-scene";
 
 test("appearance resolves saved choices, system defaults, and blocked storage before paint", () => {
   for (const [saved, system, expected] of [["dark", false, "dark"], ["light", true, "light"], ["system", true, "dark"], ["invalid", false, "light"], [null, true, "dark"]] as const) {
@@ -19,7 +21,7 @@ test("appearance resolves saved choices, system defaults, and blocked storage be
 });
 
 test("browser SVG theming preserves reviewed geometry, labels, and topology", () => {
-  for (const scene of [sglangScene, prepareScene(sglangScene)]) {
+  for (const scene of [sglangScene, prepareScene(sglangScene), distributionScene, gaugeScene, sparseAllocationScene, tokenTreeScene, expertChoiceScene, expertObjectScene]) {
     const original = sceneSvg(scene), themed = themedSvg(original);
     const withoutPaint = (svg:string) => svg.replace(/\b(fill|stroke|stop-color)="[^"]+"/g, "$1=PAINT");
     assert.equal(withoutPaint(themed), withoutPaint(original));
@@ -28,8 +30,10 @@ test("browser SVG theming preserves reviewed geometry, labels, and topology", ()
     assert.match(themed, /fill="none"/);
   }
   assert.equal(diagramPaint("url(#heatmap)"), "url(#heatmap)");
-  assert.equal(diagramPaint("#8068be18"), "var(--diagram-violet-surface, #8068be18)");
+  assert.equal(diagramPaint("#8068be18"), "light-dark(#8068be18, #b9a0df18)");
+  assert.equal(diagramPaint("#7761bb45", "stroke"), "light-dark(#7761bb45, #b9a0df45)");
   assert.equal(diagramPaint("#edf3ee"), "var(--diagram-green-surface, #edf3ee)");
+  assert.match(themedSvg('<path stroke="white" stroke-width="5"/>'), /--diagram-canvas, white/);
 });
 
 test("heat scales retain distinct monotonic values and readable label colors", () => {
