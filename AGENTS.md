@@ -10,6 +10,8 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 ## AfterImage workspace rules
 
+- Worked-example animations are curated, reviewed editorial SVG/poster pairs under `public/worked-examples`, matched by paper identity, saved source ID and equation semantics. Keep one animation per notecard, prose fallback, inherited page appearance, native autoplay with one Play/Pause control, reduced-motion/print posters and visibility pausing. The worker cannot supply assets, SVG or executable animation data; a future generated storyboard requires a separate bounded reviewed schema and compatible web-before-worker release. No stored recall or study migration is needed for editorial presentation.
+
 - Desktop is the product target and the release acceptance view. Existing responsive compatibility and diagram review gates remain in place; do not expand product scope into mobile-specific work unless requested.
 
 - Appearance is browser-local (System/Light/Dark), initialized before paint and kept out of library state. Apply SVG theme colors only at the browser presentation boundary; preserve stored/reviewed geometry and the worker's deterministic renderer. Standalone SVG exports embed computed colors and their matching surface. Theme changes require only a web release.

@@ -1,0 +1,51 @@
+{
+  "version": 1,
+  "mode": "reviewed-editorial",
+  "examples": [
+    {
+      "slug": "eagle-state-reuse",
+      "reviewFingerprint": "4fc982b7f704a8ad525d73b86d881b5ce26abc2af611bef143b0b6686939bd37",
+      "sourceStoryboard": "skills/scientific-diagrams/examples/eagle-state-reuse.json",
+      "files": [
+        {
+          "name": "eagle-state-reuse.svg",
+          "sha256": "9389e3f6af36b4efabe2fe87ac37f90778e707824f8328753ae9bc68114a48d0"
+        },
+        {
+          "name": "eagle-state-reuse-poster.svg",
+          "sha256": "5d73727a0ff657f2098334a949f0c3e202038b814dcfcc64b295f2bce6f986d2"
+        }
+      ]
+    },
+    {
+      "slug": "lora-rank-one",
+      "reviewFingerprint": "9353499b80cfe068a914986bacd2cdbf17898626247723b45c7f7a4260a21a9d",
+      "sourceStoryboard": "skills/scientific-diagrams/examples/lora-rank-one.json",
+      "files": [
+        {
+          "name": "lora-rank-one.svg",
+          "sha256": "bb5762747d23f05779241d363afd2aaca08c90bf2490369e42221ef68b7824d8"
+        },
+        {
+          "name": "lora-rank-one-poster.svg",
+          "sha256": "9ee00be8a79644456a88835f791f581c0f3d07e80936954bff0aab13e6fd5d41"
+        }
+      ]
+    },
+    {
+      "slug": "online-softmax",
+      "reviewFingerprint": "1723f5fce95a0a2d8e95a4a94455a04821478affae30a4bc2e91c3c38386f441",
+      "sourceStoryboard": "skills/scientific-diagrams/examples/online-softmax.json",
+      "files": [
+        {
+          "name": "online-softmax.svg",
+          "sha256": "f85a5f2cf4c7335237043fb3976a44aeefef8122a46aa931d9cff3ba63be37f1"
+        },
+        {
+          "name": "online-softmax-poster.svg",
+          "sha256": "abb52caf436aeb360917c388821216d0de9ff4cc01cb2a600f079b608def1319"
+        }
+      ]
+    }
+  ]
+}

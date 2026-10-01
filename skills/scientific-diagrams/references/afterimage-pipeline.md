@@ -35,3 +35,7 @@ Browser playback applies presentation-only timing/highlights. Keep stored semant
 Release web validation/rendering before workers, let active jobs finish, and verify actual live queue/APIs. Older APIs can strip fields. Regenerate stored examples only through explicit reviewed preparation. A local authored preview does not prove production generation/deployment.
 
 Read installed `node_modules/next/dist/docs/` before Next.js code. Update README/docs and AGENTS if boundaries change. This skill and standalone example do not implement that extension or release.
+
+## Editorial web integration (October 1)
+
+`src/lib/worked-examples.ts` selects one reviewed authored figure using paper identity, saved source and matching equation semantics. `src/components/worked-example.tsx` owns visibility-aware native playback and inherited colors. `public/worked-examples/manifest.json` records reviewed fingerprints and shipped hashes. This curated web path does not extend worker schemas or automate generation; all future generated-animation boundaries above still apply.

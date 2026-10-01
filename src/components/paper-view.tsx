@@ -12,6 +12,8 @@ import { MathText, RecallText, InlineText } from "./math";
 import { paperPreparationModel } from "@/lib/generation-progress";
 import { readerUrl } from "@/lib/identity";
 import { download } from "@/lib/download";
+import { workedExampleForEquation } from "@/lib/worked-examples";
+import { WorkedExampleAnimation } from "./worked-example";
 import "katex/dist/katex.min.css";
 
 export function PaperView({ id }: { id: string }) {
@@ -29,6 +31,7 @@ export function PaperView({ id }: { id: string }) {
   const r = p.recall;
   const preparation = paperPreparationModel(p, state.jobs, state.workerSeenAt);
   const ready = Boolean(preparation.readable);
+  const workedEquationIndex = r?.equations?.findIndex(eq => workedExampleForEquation(p, eq)) ?? -1;
   const related = state.papers
     .filter((x) => x.id !== id && x.topics.some((t) => p.topics.includes(t)))
     .slice(0, 2);
@@ -194,13 +197,15 @@ export function PaperView({ id }: { id: string }) {
               {!!r.equations?.length && (
                 <section className="recall-equations">
                   <span className="eyebrow">THE MECHANISM IN MATH</span>
-                  {r.equations.map((eq, i) => (
+                  {r.equations.map((eq, i) => {
+                    const animation = i === workedEquationIndex ? workedExampleForEquation(p, eq) : null;
+                    return (
                     <figure key={i}>
                       <h3><span className="math-step-number">{String(i + 1).padStart(2, "0")}</span>{eq.title || `Equation ${i + 1}`}</h3>
                       <MathText latex={eq.latex} display />
                       <figcaption>
                         <RecallText text={eq.explanation} />
-                        {eq.example && <div className="math-example"><span className="eyebrow">WORK IT THROUGH</span><RecallText text={eq.example} /></div>}
+                        {(eq.example || animation) && <div className="math-example"><span className="eyebrow">WORK IT THROUGH</span>{animation ? <WorkedExampleAnimation example={animation} fallback={<RecallText text={eq.example || animation.intro} />} /> : <RecallText text={eq.example!} />}</div>}
                         {p.sources.find((src) => src.id === eq.sourceId) && (
                           <a
                             href={
@@ -215,7 +220,7 @@ export function PaperView({ id }: { id: string }) {
                         )}
                       </figcaption>
                     </figure>
-                  ))}
+                  );})}
                 </section>
               )}
               {r.walkthrough && <section className="recall-walkthrough">

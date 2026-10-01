@@ -1,0 +1,24 @@
+.example {
+  --worked-surface: var(--paper);
+  --worked-ink: var(--ink);
+  --worked-muted: var(--muted);
+  --worked-line: var(--diagram-line, #aaa295);
+  --worked-accent: var(--accent);
+  --worked-panel: var(--theme-surface, #efece5);
+}
+.example .intro {
+  font: 400 clamp(22px, 2vw, 28px)/1.45 var(--font-serif);
+  letter-spacing: -.02em;
+  color: var(--ink);
+  margin: 18px 0 24px;
+  text-wrap: pretty;
+}
+.drawing { max-width: 720px; margin: 0 auto; }
+.drawing:empty { display: none; }
+.drawing > svg { width: 100%; height: auto; display: block; }
+.footer { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding-top: 14px; margin-top: 20px; border-top: 1px solid var(--line); }
+.example .caption { margin: 0; color: var(--muted); font: 13px/1.6 var(--font-sans); max-width: 600px; }
+.example .caption a { margin: 0; font: inherit; color: inherit; text-decoration: underline; text-underline-offset: 3px; }
+.control { display: inline-flex; align-items: center; gap: 7px; flex: none; padding: 8px 2px; background: none; border: 0; color: var(--ink); font: 13px/1 var(--font-sans); cursor: pointer; }
+.control:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 2px; }
+@media print { .control { display: none; } }
