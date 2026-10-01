@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EAGLE-3 — work it through</title>
+<style>
+  @font-face{font-family:Newsreader;src:url('./fonts/newsreader.woff2') format('woff2');font-weight:200 800;font-display:swap}
+  @font-face{font-family:'DM Sans';src:url('./fonts/dm-sans.woff2') format('woff2');font-weight:100 1000;font-display:swap}
+  @font-face{font-family:'IBM Plex Mono';src:url('./fonts/ibm-plex-mono.woff2') format('woff2');font-weight:400;font-display:swap}
+  @font-face{font-family:MathItalic;src:url('./fonts/math-italic.woff2') format('woff2');font-style:italic;font-display:swap}
+  @font-face{font-family:MathMain;src:url('./fonts/math-main.woff2') format('woff2');font-display:swap}
+  :root{color-scheme:dark;--surface:#1d1b18;--ink:#e6e2d9;--muted:#aaa398;--line:#70695f;--accent:#b29bd7;--panel:#24211d;--font-serif:Newsreader,Georgia,serif;--font-sans:'DM Sans',sans-serif;--font-mono:'IBM Plex Mono',monospace}
+  *{box-sizing:border-box}body{margin:0;background:var(--surface);color:var(--ink);-webkit-font-smoothing:antialiased}
+  main{width:min(940px,calc(100% - 80px));margin:90px auto 70px}
+  .eyebrow{font:11px/1.5 var(--font-mono);letter-spacing:.16em;color:var(--muted);text-transform:uppercase}
+  .intro{font:400 32px/1.4 var(--font-serif);letter-spacing:-.02em;max-width:740px;margin:22px 0 36px;text-wrap:pretty}
+  .intro em{font-style:normal;color:var(--accent)}
+  #figure svg{width:100%;height:auto;display:block}#figure{max-width:720px;margin:0 auto}
+  .footer{display:flex;align-items:center;justify-content:space-between;gap:24px;margin-top:25px;padding-top:20px;border-top:1px solid color-mix(in srgb,var(--line) 45%,transparent)}
+  .caption{font:14px/1.65 var(--font-sans);color:var(--muted);margin:0;max-width:610px}
+  .caption a{color:inherit;text-underline-offset:3px;text-decoration-color:color-mix(in srgb,var(--muted) 55%,transparent)}
+  button{display:flex;align-items:center;gap:8px;flex:none;background:none;border:0;padding:10px 4px;color:var(--ink);cursor:pointer;font:14px/1 var(--font-sans)}button:disabled{opacity:.4;cursor:default}button:focus-visible,a:focus-visible{outline:2px solid var(--accent);outline-offset:5px;border-radius:2px}button svg{width:15px;height:15px;fill:currentColor}button .play-icon{display:none}button[data-paused="true"] .pause-icon{display:none}button[data-paused="true"] .play-icon{display:block}
+  #notice{font:14px/1.6 var(--font-sans);color:var(--muted)}#notice:empty{display:none}
+  /* The embedding page owns appearance; no figure-specific theme control. */
+  :root[data-theme="light"]{color-scheme:light;--surface:#f8f6f1;--ink:#302e29;--muted:#655e52;--line:#aaa295;--accent:#705297;--panel:#efece5}
+  :root[data-theme="light"] #figure svg{--surface:#f8f6f1;--ink:#302e29;--muted:#655e52;--line:#aaa295;--accent:#705297;--panel:#efece5}
+  @media print{button{display:none}main{margin:0;width:100%}}
+</style>
+<main>
+  <section aria-labelledby="heading">
+    <h1 class="eyebrow" id="heading">Work it through</h1>
+    <p class="intro">After proposing “do”, the draft reuses <em>its own state</em> to propose “it”.</p>
+    <div id="figure" aria-busy="true"></div>
+    <div class="footer">
+      <p class="caption">Reusing the draft state avoids a new target pass. Tokens remain proposals until verification. <a href="https://arxiv.org/html/2503.01840v1#S3.SS1" target="_blank" rel="noreferrer">EAGLE-3 §3.1 ↗</a></p>
+      <button id="play" disabled data-paused="true" aria-label="Play explanation"><svg class="pause-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 3h3v10H4zM9 3h3v10H9z"/></svg><svg class="play-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2.5 13 8 4 13.5z"/></svg><span>Play</span></button>
+    </div>
+    <p id="notice" role="status"></p>
+  </section>
+</main>
+<script type="module">
+  const figure=document.querySelector('#figure'),button=document.querySelector('#play');
+  // Author-only deterministic frame inspection; absent in the reader surface.
+  const reviewParams=new URLSearchParams(location.search),reviewTime=Number(reviewParams.get('frame'));
+  const examples={
+    eagle:{slug:'eagle-state-reuse',module:'state-reuse',title:'EAGLE-3',intro:null,caption:null,url:null,source:null},
+    lora:{slug:'lora-rank-one',module:'lora-rank-one',title:'LoRA',intro:'A rank-one update adds a learned correction to the frozen model.',caption:'Illustrative learned parameters, rank 1 and α/r = 1. Both branches share x; timing guides attention.',url:'https://arxiv.org/html/2106.09685#S4.SS1',source:'LoRA §4.1 ↗'},
+    softmax:{slug:'online-softmax',module:'online-softmax',title:'Online softmax',intro:'When the maximum changes, rescale the totals instead of starting over.',caption:'Illustrative one-row values; equivalent numerator form u = ℓO. Rescaling is an intermediate calculation. GPU storage and timing omitted.',url:'https://arxiv.org/pdf/2205.14135',source:'FlashAttention Algorithm 1 ↗'}
+  };
+  const example=examples[reviewParams.get('example')]||examples.eagle;
+  if(example.intro){document.title=example.title+' — work it through';document.querySelector('.intro').textContent=example.intro;const caption=document.querySelector('.caption'),link=document.createElement('a');link.href=example.url;link.target='_blank';link.rel='noreferrer';link.textContent=example.source;caption.replaceChildren(document.createTextNode(example.caption+' '),link);}
+  const reviewing=reviewParams.has('frame')&&Number.isFinite(reviewTime)&&reviewTime>=0&&reviewTime<=16000;
+  if(reviewing&&reviewParams.get('theme')==='light')document.documentElement.dataset.theme='light';
+  const reduced=matchMedia('(prefers-reduced-motion: reduce)');
+  let svg,animatedSvg,posterSvg,userPaused=false,visible=false,explicitPlay=false,printMode=false;
+  function theme(){for(const name of ['surface','ink','muted','line','accent','panel'])svg?.style.setProperty('--'+name,getComputedStyle(document.documentElement).getPropertyValue('--'+name));}
+  function sync(){
+    if(!svg||reviewing)return;
+    const usePoster=printMode||(reduced.matches&&!explicitPlay);
+    const desired=usePoster?posterSvg:animatedSvg;
+    if(svg!==desired){svg.pauseAnimations();svg=desired;figure.replaceChildren(svg);theme();}
+    const playing=!usePoster&&!userPaused&&!document.hidden&&visible;
+    svg.dataset.playing=String(playing);
+    if(playing)svg.unpauseAnimations();else svg.pauseAnimations();
+    button.dataset.paused=String(!playing);
+    button.querySelector('span').textContent=playing?'Pause':'Play';
+    button.setAttribute('aria-label',playing?'Pause explanation':'Play explanation');
+  }
+  button.onclick=()=>{const wasPlaying=svg.dataset.playing==='true';userPaused=wasPlaying;explicitPlay=!wasPlaying;sync();};
+  document.addEventListener('visibilitychange',sync);
+  reduced.addEventListener('change',()=>{explicitPlay=false;sync();});
+  new MutationObserver(theme).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme','style','class']});
+  addEventListener('beforeprint',()=>{printMode=true;sync();});addEventListener('afterprint',()=>{printMode=false;sync();});
+  new IntersectionObserver(entries=>{visible=entries[0].isIntersecting;sync();},{threshold:.1}).observe(figure);
+  try{
+    const assets=await Promise.all([example.slug+'.svg',example.slug+'-poster.svg'].map(async name=>{
+      const response=await fetch('./'+name);if(!response.ok)throw new Error();
+      const doc=new DOMParser().parseFromString(await response.text(),'image/svg+xml');
+      if(doc.querySelector('parsererror')||doc.documentElement.localName!=='svg')throw new Error();
+      return document.importNode(doc.documentElement,true);
+    }));
+    // Fixed authored assets; never accepts model- or user-supplied SVG.
+    [animatedSvg,posterSvg]=assets;svg=animatedSvg;svg.dataset.playing='false';figure.append(svg);svg.pauseAnimations();theme();
+    figure.ariaBusy='false';button.disabled=false;
+    if(reviewing){const {render}=await import('./'+example.module+'.mjs');const doc=new DOMParser().parseFromString(render({time:reviewTime}),'image/svg+xml');svg=document.importNode(doc.documentElement,true);figure.replaceChildren(svg);theme();button.hidden=true;button.style.display='none';}else sync();
+  }catch{figure.ariaBusy='false';document.querySelector('#notice').textContent='The illustration could not load. Serve this example directory over localhost.';}
+</script>
+</html>

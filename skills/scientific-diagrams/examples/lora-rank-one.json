@@ -1,0 +1,101 @@
+{
+  "version": 1,
+  "title": "LoRA rank-one update",
+  "visibleProof": "Both branches consume the same x; BAx adds to W0x without changing W0.",
+  "provenance": "Source-backed mechanism with invented illustrative numbers.",
+  "sources": [
+    {
+      "id": "lora-rank-one",
+      "url": "https://arxiv.org/html/2106.09685#S4.SS1",
+      "location": "\u00a74.1 Eq.3 and alpha/r scaling"
+    }
+  ],
+  "objects": [
+    {
+      "id": "input"
+    },
+    {
+      "id": "frozen-weight"
+    },
+    {
+      "id": "A"
+    },
+    {
+      "id": "projected"
+    },
+    {
+      "id": "B"
+    },
+    {
+      "id": "base"
+    },
+    {
+      "id": "delta"
+    },
+    {
+      "id": "output"
+    }
+  ],
+  "beats": [
+    {
+      "id": "parallel-input",
+      "input": "x = [2,1]",
+      "operation": "Feed the same x into W0 and the update branch.",
+      "output": "W0x = [2,1] and Ax = 1",
+      "visibleChange": "W0x = [2,1] and Ax = 1",
+      "sourceIds": [
+        "lora-rank-one"
+      ],
+      "location": "\u00a74.1 Eq.3 and alpha/r scaling"
+    },
+    {
+      "id": "project",
+      "input": "A is 1\u00d72, x is 2\u00d71",
+      "operation": "Compute Ax = 1*2 - 1*1.",
+      "output": "One scalar 1",
+      "visibleChange": "One scalar 1",
+      "sourceIds": [
+        "lora-rank-one"
+      ],
+      "location": "\u00a74.1 Eq.3 and alpha/r scaling"
+    },
+    {
+      "id": "expand",
+      "input": "B is 2\u00d71, Ax is scalar1",
+      "operation": "Compute (alpha/r) B(Ax), with alpha/r=1.",
+      "output": "Delta = [3,2]",
+      "visibleChange": "Delta = [3,2]",
+      "sourceIds": [
+        "lora-rank-one"
+      ],
+      "location": "\u00a74.1 Eq.3 and alpha/r scaling"
+    },
+    {
+      "id": "add",
+      "input": "Base [2,1], delta [3,2]",
+      "operation": "Add coordinate-wise; keep W0 frozen.",
+      "output": "h = [5,3]",
+      "visibleChange": "h = [5,3]",
+      "sourceIds": [
+        "lora-rank-one"
+      ],
+      "location": "\u00a74.1 Eq.3 and alpha/r scaling"
+    }
+  ],
+  "omissions": [
+    "Optimization, initialization and matrix merging",
+    "Timing is attention guidance; the branches need not execute serially."
+  ],
+  "playback": {
+    "cycleMs": 16000,
+    "timing": "Pedagogical, not measured latency",
+    "control": "play-pause"
+  },
+  "scope": "One illustrative worked calculation; pacing does not represent measured computation.",
+  "initialFacts": [
+    "W0 is frozen identity",
+    "A and B are illustrative learned parameters, not LoRA zero initialization",
+    "rank=1, alpha=1, so alpha/r=1"
+  ],
+  "finalInvariant": "The low-rank branch adds BAx to W0x; both use the same x."
+}

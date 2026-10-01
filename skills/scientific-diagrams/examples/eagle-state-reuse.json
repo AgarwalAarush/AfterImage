@@ -1,0 +1,167 @@
+{
+  "version": 1,
+  "title": "Reuse a draft state to propose the next token",
+  "visibleProof": "The draft decoder produces a_do; the same state becomes the following input with e(it), without waiting for a new target feature.",
+  "provenance": "source-grounded authored trace; vector glyphs are schematic",
+  "scope": "One EAGLE-3 inference drafting step; tokens remain proposals until verification.",
+  "sources": [
+    {
+      "id": "eagle-3",
+      "url": "https://arxiv.org/html/2503.01840v1#S3.SS1",
+      "location": "Section 3.1, Figure 5"
+    }
+  ],
+  "objects": [
+    {
+      "id": "draft-input",
+      "type": "draft-state",
+      "label": "a_I",
+      "meaning": "Previous draft decoder output"
+    },
+    {
+      "id": "embedding",
+      "type": "embedding",
+      "label": "e(do)",
+      "meaning": "Embedding of proposed do"
+    },
+    {
+      "id": "target-feature",
+      "type": "unavailable",
+      "label": "g_I",
+      "meaning": "Target feature unavailable during this step"
+    },
+    {
+      "id": "decoder",
+      "type": "compute",
+      "label": "FC \u2192 Decoder",
+      "meaning": "Project concatenation, then run the draft decoder"
+    },
+    {
+      "id": "draft-output",
+      "type": "draft-state",
+      "label": "a_do",
+      "meaning": "New draft decoder output"
+    },
+    {
+      "id": "proposal",
+      "type": "token",
+      "label": "it",
+      "meaning": "LM-head proposal, not accepted output"
+    }
+  ],
+  "connections": [
+    {
+      "id": "input-flow",
+      "from": "draft-input",
+      "to": "decoder",
+      "role": "concatenated-input"
+    },
+    {
+      "id": "output-flow",
+      "from": "decoder",
+      "to": "draft-output",
+      "role": "draft-state"
+    },
+    {
+      "id": "head-flow",
+      "from": "draft-output",
+      "to": "proposal",
+      "role": "head-and-sampling"
+    },
+    {
+      "id": "reuse",
+      "from": "draft-output",
+      "to": "draft-input",
+      "role": "reuse-at-next-step; input becomes a_do with e(it)"
+    }
+  ],
+  "initialFacts": [
+    "do was proposed from a_I",
+    "g_I is unavailable",
+    "earlier context remains available but is omitted"
+  ],
+  "beats": [
+    {
+      "id": "input",
+      "title": "Keep the state; add the token",
+      "input": "a_I and proposed do",
+      "operation": "Concatenate the previous draft state with the token embedding.",
+      "output": "[a_I ; e(do)]",
+      "focus": [
+        "draft-input",
+        "embedding",
+        "input-flow"
+      ],
+      "sourceIds": [
+        "eagle-3"
+      ],
+      "location": "\u00a73.1, Fig. 5",
+      "holdMs": 2800
+    },
+    {
+      "id": "compute",
+      "title": "Run the small draft decoder",
+      "input": "[a_I ; e(do)]",
+      "operation": "Project the concatenation, then run the single-layer draft decoder.",
+      "output": "a_do",
+      "focus": [
+        "decoder",
+        "output-flow",
+        "draft-output"
+      ],
+      "sourceIds": [
+        "eagle-3"
+      ],
+      "location": "\u00a73.1, Fig. 5",
+      "holdMs": 3300
+    },
+    {
+      "id": "propose",
+      "title": "Propose the next token",
+      "input": "a_do",
+      "operation": "Use the LM head and sample a draft token.",
+      "output": "it (a proposal)",
+      "focus": [
+        "draft-output",
+        "head-flow",
+        "proposal"
+      ],
+      "sourceIds": [
+        "eagle-3"
+      ],
+      "location": "\u00a73.1, Fig. 5",
+      "holdMs": 1800
+    },
+    {
+      "id": "reuse",
+      "title": "Reuse the new state again",
+      "input": "a_do and proposed it",
+      "operation": "Use a_do with e(it) for the following draft step.",
+      "output": "Next input: [a_do ; e(it)]",
+      "focus": [
+        "draft-output",
+        "reuse"
+      ],
+      "sourceIds": [
+        "eagle-3"
+      ],
+      "location": "\u00a73.1, Fig. 5",
+      "holdMs": 7700
+    }
+  ],
+  "finalInvariant": "Draft output is reusable state; proposed tokens still need target verification.",
+  "omissions": [
+    "Earlier context and attention dependencies",
+    "Dynamic draft tree",
+    "Target verification",
+    "Training computation; \u00a73.2 describes rehearsal separately"
+  ],
+  "accessibleDescription": "a_I and e(do) are concatenated. FC and the draft decoder produce a_do; its LM head can propose it. g_I is unavailable. The next draft step reuses a_do with e(it). This is drafting, not acceptance.",
+  "playback": {
+    "autoplay": "while-visible",
+    "control": "play-pause",
+    "cycleMs": 16000,
+    "timing": "Illustrative pacing: input 0\u20132.8s, compute 2.8\u20136.1s, proposal 6.1\u20137.9s, reuse 7.9\u201311.3s, final hold until 15.6s, fade/reset. Not measured latency.",
+    "resetMs": 400
+  }
+}

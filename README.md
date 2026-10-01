@@ -133,3 +133,5 @@ Next reads now offers compact summaries and an explicit Prepare reading kit acti
 The scientific illustration web/API and regular macserver worker are released on October 1; see [release verification](docs/scientific-diagram-release-2026-10-01.md). Stored diagrams require explicit reviewed regeneration.
 
 The October 1 library outage came from Funnel's public ingress path while private Tailscale checks still passed. Public access was restored by refreshing ingress registration. Storage failures now have redacted server diagnostics and a bounded read-only retry; uncertain writes are never replayed. `scripts/check-storage-relay.mjs` verifies the actual public relays. See [storage reliability diagnosis](docs/storage-reliability-2026-10-01.md) for evidence and remaining limits.
+
+The scientific animation authoring workflow is evaluated on EAGLE-3, LoRA and online softmax, with independent arithmetic checks and117 browser samples. See [the evaluation and remaining coverage limits](docs/animation-example-evaluation-2026-10-01.md). These remain local authored fixtures.

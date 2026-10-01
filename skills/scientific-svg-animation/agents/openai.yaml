@@ -1,0 +1,4 @@
+interface:
+  display_name: "Scientific SVG Animation"
+  short_description: "Source-grounded animated paper explanations"
+  default_prompt: "Use $scientific-svg-animation to turn this worked example into a source-grounded SVG explanation with controlled playback and a static poster."
