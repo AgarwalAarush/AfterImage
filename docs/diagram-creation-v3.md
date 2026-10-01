@@ -64,3 +64,5 @@ The final reading-set suite has 98 passing tests and a passing production build/
 ## Integration with current main
 
 The release preserves the October 1 on-demand reading-kit and assistant interaction changes. Graph preparation retains current main's exact endpoint diagnostics and unambiguous underscore-to-hyphen normalization; illustration preparation still selects `explanatory-v3`. The combined suite passes 105 tests and the production build. Existing stored scenes and failed jobs are not regenerated automatically.
+
+The web/API and regular worker were subsequently released in compatible order; see [October 1 release evidence](scientific-diagram-release-2026-10-01.md). The earlier local-only statements describe evaluation time.
