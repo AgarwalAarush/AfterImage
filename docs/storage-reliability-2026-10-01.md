@@ -52,3 +52,20 @@ each public IPv4 relay while preserving hostname/certificate validation. Every
 relay must return HTTP 401 for the unsigned storage request. It exits nonzero
 on a failed relay; it neither modifies forwarding nor restarts anything. The
 query discloses only the already-public hostname to Google's DNS resolver.
+
+## Final release verification
+
+Code revision `f20084ccaeee539ee5dea3a86d688c5980f5276a` is pushed to the
+verified `origin/main`. Vercel deployment `dpl_8mpE4FybNKfq48TQgJ1NsWk5Vprn`
+is READY and serves `afterimage.aarushagarwal.dev`, including the existing
+dark-mode release. All 109 tests, TypeScript, diff checks, and the Vercel
+production build passed. Regression coverage exercises redaction, read retry
+exhaustion, fresh nonces, duplicate-document conflicts, and no mutation replay.
+
+Final production reads around 12:28 PM Pacific returned state HTTP 200 in about
+one second, Documents HTTP 200, and version polling HTTP 204. State remained at
+version 10275 with 14 papers, zero active jobs, no private job fields, and a fresh
+heartbeat at `2026-10-01T19:28:10.679Z`. The public-relay script returned 401
+from both public IPv4 addresses. The final deployment's storage-diagnostic log
+scan returned no failures. These are API/network checks; the desktop visual
+check was unavailable because the owner's Mac was locked.
