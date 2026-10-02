@@ -15,6 +15,7 @@ import { download } from "@/lib/download";
 import { workedExampleForEquation } from "@/lib/worked-examples";
 import { WorkedExampleAnimation } from "./worked-example";
 import "katex/dist/katex.min.css";
+import reading from "./paper-reading.module.css";
 
 export function PaperView({ id }: { id: string }) {
   const { state, act, busy, toast, preparations } = useApp();
@@ -36,7 +37,7 @@ export function PaperView({ id }: { id: string }) {
     .filter((x) => x.id !== id && x.topics.some((t) => p.topics.includes(t)))
     .slice(0, 2);
   return (
-    <PaperAssistant key={p.id} paper={p} available={ready}><div className={`page paper-page ${p.accent}`}>
+    <PaperAssistant key={p.id} paper={p} available={ready}><div className={`page paper-page ${p.accent} ${reading.reader}`}>
       <div className="paper-breadcrumb">
         <Link href="/library">Library</Link>
         <span>/</span>
@@ -188,7 +189,7 @@ export function PaperView({ id }: { id: string }) {
                 ["KEEP IN MIND", r.limitation],
                 ...(r.significance ? [["WHY IT MATTERS", r.significance]] : []),
               ].map(([label, text]) => (
-                <div className="recap-section" key={label}>
+                <div className={`recap-section ${reading.prose}`} key={label}>
                   <span className="eyebrow">{label}</span>
                   <RecallText text={text} />
                   {label === "HOW IT WORKS" && <StudyFigures paper={p} placement="mechanism"/>}
@@ -204,7 +205,7 @@ export function PaperView({ id }: { id: string }) {
                     <figure key={i}>
                       <h3><span className="math-step-number">{String(i + 1).padStart(2, "0")}</span>{eq.title || `Equation ${i + 1}`}</h3>
                       <MathText latex={eq.latex} display />
-                      <figcaption>
+                      <figcaption className={reading.prose}>
                         <RecallText text={eq.explanation} />
                         {(eq.example || animation) && <div className="math-example"><span className="eyebrow">WORK IT THROUGH</span>{animation ? <WorkedExampleAnimation example={animation} fallback={<RecallText text={eq.example || animation.intro} />} /> : <RecallText text={eq.example!} />}</div>}
                         {p.sources.find((src) => src.id === eq.sourceId) && (
@@ -224,7 +225,7 @@ export function PaperView({ id }: { id: string }) {
                   );})}
                 </section>
               )}
-              {r.walkthrough && <section className="recall-walkthrough">
+              {r.walkthrough && <section className={`recall-walkthrough ${reading.prose}`}>
                 <h3>{r.walkthrough.title}</h3>
                 <RecallText text={r.walkthrough.introduction} />
                 <div className="walkthrough-table" role="region" aria-label={r.walkthrough.title} tabIndex={0}>
