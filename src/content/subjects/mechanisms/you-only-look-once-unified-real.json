@@ -568,7 +568,17 @@
     "status": "passed",
     "reviewedAt": "2026-10-02T00:18:00.706Z",
     "contentDigest": "d170ab102a17dfc2ae659f4d9f631c7c4af58dfb5c13dcea1f3376f7226658ea",
-    "rendererDigest": "2cc690a7105c5faca75e22053e83674a2cf2e227ae22afe88cc4662d09c98bb4",
-    "visualReviewedAt": "2026-10-02T02:38:54.701Z"
+    "rendererDigest": "83a7df171d30c59ad1eef731009edc62331803b8dcba7d6983b92d72bf27ea4a",
+    "visualReviewedAt": "2026-10-02T03:28:30.454Z",
+    "visualAcceptance": {
+      "version": 2,
+      "reportDigest": "71b18a93c01165eb52c4c9210cabc59f7d6285714a2b815c1495920bf689e482",
+      "presentationDigest": "56b720930a73cd93f181538f44fe716da56b2a1e4febafcc27f3ebbc6c4c1712",
+      "semanticPolicyVersion": "mechanism-semantic-ownership-v1",
+      "reviewerId": "/root/experiment_polish",
+      "viewCount": 4,
+      "beatCount": 4,
+      "transitionCount": 12
+    }
   }
 }

@@ -8,7 +8,9 @@
 /.next-production
 /.artifacts
 /.playwright-mcp
-/scripts
+/scripts/*
+!/scripts/audit-subject-publication.ts
+!/scripts/generate-diagram-text-metrics.mjs
 
 /.assistant-runtime
 

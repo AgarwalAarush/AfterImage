@@ -7,7 +7,17 @@ const config: NextConfig = {
     "/subjects": ["./src/content/subjects/lessons/*.json"],
     "/subjects/*": ["./src/content/subjects/lessons/*.json", "./src/content/subjects/mechanisms/*.json",
       "./src/lib/subject-mechanism.ts", "./src/components/subject-mechanism.tsx",
-      "./src/components/subject-mechanism.module.css", "./src/lib/scene-layout.ts"],
+      "./src/components/subject-mechanism.module.css", "./src/lib/scene-layout.ts",
+      "./src/lib/diagram-text-metrics.ts", "./src/lib/diagram-text-metrics.json",
+      "./src/app/globals.css", "./src/app/theme.css", "./src/app/ui.css", "./src/app/layout.tsx",
+      "./src/lib/theme.ts", "./src/components/subject-reader.tsx", "./src/components/subject-prose.tsx",
+      "./src/lib/subject-visual-review-schema.ts", "./src/lib/subject-visual-review.ts",
+      "./src/lib/subject-mechanism-quality.ts", "./src/lib/subject-mechanism-store.ts",
+      "./package-lock.json", "./public/fonts/**/*",
+      "./node_modules/@fontsource-variable/newsreader/**/*.css", "./node_modules/@fontsource-variable/newsreader/**/*.woff2",
+      "./node_modules/@fontsource-variable/newsreader/**/*.woff",
+      "./node_modules/@fontsource/ibm-plex-mono/**/*.css", "./node_modules/@fontsource/ibm-plex-mono/**/*.woff2",
+      "./node_modules/@fontsource/ibm-plex-mono/**/*.woff"],
   },
   async headers() {
     return [

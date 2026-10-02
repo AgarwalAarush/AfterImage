@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { readFileSync } from "node:fs";
-import { layoutMechanismGlyphs, layoutSubjectMechanism, publishedSubjectMechanismSchema, validateSubjectMechanism, type SubjectMechanism } from "../src/lib/subject-mechanism";
+import { readFileSync, readdirSync } from "node:fs";
+import { assertSubjectMechanismGeometry, inspectSubjectMechanismGeometry, layoutMechanismGlyphs, layoutSubjectMechanism, publishedSubjectMechanismSchema, subjectMechanismSchema, validateSubjectMechanism, type SubjectMechanism } from "../src/lib/subject-mechanism";
 import type { PublishedLesson } from "../src/lib/subjects";
 
 const lesson=JSON.parse(readFileSync(new URL("../src/content/subjects/lessons/playing-atari-with-deep-reinforcement-learning.json",import.meta.url),"utf8")) as PublishedLesson;
@@ -107,4 +107,70 @@ test("module sizes fit their maximum content across beats without reserving blan
     assert.equal(labels("loss").titleX,labels("loss").detailX);
     assert.ok(labels("loss").glyphOffset!<node("loss").w-50,"the retained identity belongs beside its centered text group, not at the card edge");
   }
+});
+
+test("all published walkthroughs satisfy relational geometry in every beat and supported column width",()=>{
+  const directory=new URL("../src/content/subjects/mechanisms/",import.meta.url),files=readdirSync(directory).filter(file=>file.endsWith(".json"));
+  assert.ok(files.length>=14,"exercise the complete authored catalog, rather than a single screenshot fixture");
+  for(const file of files){
+    const mechanism=subjectMechanismSchema.parse(JSON.parse(readFileSync(new URL(file,directory),"utf8")));
+    for(const width of [760,700,560,380]){
+      const layout=layoutSubjectMechanism(mechanism,width);
+      assert.deepEqual(inspectSubjectMechanismGeometry(mechanism,layout),[],`${file} at ${width}px`);
+      const reordered=layoutSubjectMechanism({...mechanism,beats:[...mechanism.beats].reverse()},width);
+      assert.deepEqual(reordered,layout,"reserving every beat's maximum content keeps geometry stable during playback");
+    }
+  }
+});
+
+test("previous corner-badge module layout fails association even when nothing overlaps or clips",()=>{
+  const mechanism=fixture(),layout=layoutSubjectMechanism(mechanism,760),labels=layout.nativeLabels.find(label=>label.id==="loss")!,node=layout.nodes.find(node=>node.id==="loss")!;
+  assert.equal(labels.inlineGlyph,true);
+  // The previous design centered the title but left-aligned the detail and put
+  // the same glyph near the card's right edge. A bounds-only test accepted it.
+  labels.titleX=(node.w-labels.title[0].length*7.5)/2;labels.detailX=14;labels.textAnchor="start";labels.glyphOffset=node.w-44;
+  const issues=inspectSubjectMechanismGeometry(mechanism,layout);
+  assert.equal(issues.some(issue=>issue.code==="bounds"||issue.code==="collision"),false,"the previous arrangement's defect was relational, not clipping");
+  assert.ok(issues.some(issue=>issue.code==="text-alignment"&&issue.location==="object loss"));
+  assert.ok(issues.some(issue=>issue.code==="glyph-association"&&issue.location==="object loss"));
+  assert.throws(()=>assertSubjectMechanismGeometry(mechanism,layout),/glyph-association/);
+});
+
+test("geometry gate rejects spare rows, canvas gaps, misaligned peers, and identity/order detachment",()=>{
+  const mechanism=fixture();
+  const surplus=layoutSubjectMechanism(mechanism,760);surplus.nodes[4].h+=80;
+  assert.ok(inspectSubjectMechanismGeometry(mechanism,surplus).some(issue=>issue.code==="occupancy"&&issue.location==="object loss"));
+  const gap=layoutSubjectMechanism(mechanism,760);gap.height+=120;
+  assert.ok(inspectSubjectMechanismGeometry(mechanism,gap).some(issue=>issue.code==="occupancy"&&issue.location==="canvas"));
+  const misaligned=layoutSubjectMechanism(mechanism,760);misaligned.nodes[1].y+=8;
+  assert.ok(inspectSubjectMechanismGeometry(mechanism,misaligned).some(issue=>issue.code==="row-alignment"));
+  const detached=layoutSubjectMechanism(mechanism,760);[detached.nativeLabels[0],detached.nativeLabels[1]]=[detached.nativeLabels[1],detached.nativeLabels[0]];
+  assert.ok(inspectSubjectMechanismGeometry(mechanism,detached).some(issue=>issue.code==="glyph-association"&&issue.location==="layout"));
+});
+
+test("late-state wider identities cannot escape fit checks or reserve an undersized object",()=>{
+  const mechanism=fixture(),layout=layoutSubjectMechanism(mechanism,760);
+  mechanism.entities.push({id:"late-result",label:"Qnew(u)",meaning:"A complete symbolic prediction computed in the final state."});
+  mechanism.beats[2].objects.find(state=>state.objectId==="loss")!.entityIds=["late-result"];
+  const issues=inspectSubjectMechanismGeometry(mechanism,layout);
+  assert.ok(issues.some(issue=>issue.code==="glyph-association"&&issue.location==="object loss"));
+  const wider=fixture();wider.entities.push({id:"wide-result",label:"Qold(u)",meaning:"One of several complete symbolic predictions in the final state."});
+  wider.beats[2].objects.find(state=>state.objectId==="online")!.entityIds=Array(5).fill("wide-result");
+  const overflow=inspectSubjectMechanismGeometry(wider,layout);
+  assert.ok(overflow.some(issue=>issue.code==="bounds"&&issue.location==="beat 3, object online"));
+});
+
+test("arrow contracts reject gratuitous detours, false endpoints, diagonal paths and node crossings",()=>{
+  const mechanism=fixture();
+  mechanism.relationships=ids.slice(1).map((id,i)=>({id:`chain-${i}`,from:ids[i],to:id,label:"ordered dependency",dashed:false,...references}));
+  const layout=layoutSubjectMechanism(mechanism,560),edge=layout.edges[0],[a,b]=edge.points;
+  edge.points=[a,{x:a.x+20,y:a.y},{x:b.x+20,y:b.y},b];
+  assert.ok(inspectSubjectMechanismGeometry(mechanism,layout).some(issue=>issue.code==="arrow-detour"));
+  const falseEndpoint=layoutSubjectMechanism(mechanism,560);falseEndpoint.edges[0].points[0].y+=10;
+  assert.ok(inspectSubjectMechanismGeometry(mechanism,falseEndpoint).some(issue=>issue.code==="arrow-endpoint"));
+  const diagonal=layoutSubjectMechanism(mechanism,560);diagonal.edges[0].points[1].x+=10;
+  assert.ok(inspectSubjectMechanismGeometry(mechanism,diagonal).some(issue=>issue.code==="arrow-route"));
+  const crossing=layoutSubjectMechanism(mechanism,560),from=crossing.nodes[0],through=crossing.nodes[2];
+  crossing.edges[0].points=[{x:from.x+from.w/2,y:from.y+from.h},{x:through.x+through.w/2,y:through.y+through.h}];
+  assert.ok(inspectSubjectMechanismGeometry(mechanism,crossing).some(issue=>issue.code==="arrow-route"&&issue.message.includes("interior")));
 });

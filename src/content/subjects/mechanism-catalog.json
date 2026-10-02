@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "lessonIds": [
+    "decision-transformer-reinforcement-learning-via-sequence",
+    "diffusionblocks",
+    "mastering-atari-go-chess-and-shogi",
+    "mastering-chess-and-shogi-by-self",
+    "megatron-lm",
+    "nerf-representing-scenes-as-neural-radiance",
+    "playing-atari-with-deep-reinforcement-learning",
+    "resnet",
+    "soft-actor-critic-off-policy-maximum",
+    "t5",
+    "trust-region-policy-optimization",
+    "whisper",
+    "you-only-look-once-unified-real",
+    "zero-memory-optimizations-toward-training-trillion"
+  ]
+}

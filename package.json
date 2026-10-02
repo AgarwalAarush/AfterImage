@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev --hostname 127.0.0.1",
+    "prebuild": "node scripts/generate-diagram-text-metrics.mjs --check-public && node --import tsx scripts/audit-subject-publication.ts",
     "build": "next build",
     "start": "next start --hostname 127.0.0.1",
     "typecheck": "tsc --noEmit",
@@ -11,6 +12,7 @@
     "worker": "tsx worker/index.ts",
     "storage-server": "node --import tsx scripts/storage-server.ts",
     "subjects:generate": "node --import tsx scripts/generate-subject-lessons.ts",
+    "subjects:verify": "node --import tsx scripts/audit-subject-publication.ts",
     "subjects:sync": "python3 scripts/sync-subject-catalog.py"
   },
   "dependencies": {

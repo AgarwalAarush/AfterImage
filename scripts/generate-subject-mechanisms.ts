@@ -3,14 +3,17 @@ import path from "node:path";
 import { z } from "zod";
 import { requireCleanSubjectReview } from "../src/lib/subject-review";
 import { subjectMechanismSchema, publishedSubjectMechanismSchema, validateSubjectMechanism, type SubjectMechanism } from "../src/lib/subject-mechanism";
-import { mechanismDigest, subjectMechanismRendererDigest, validateMechanismMath } from "../src/lib/subject-mechanism-store";
+import { mechanismDigest, subjectMechanismRendererDigest, validateMechanismMath, getSubjectMechanism } from "../src/lib/subject-mechanism-store";
 import { subjectPublicLessonSchema, validateSubjectLesson, type PublishedLesson } from "../src/lib/subjects";
 import { subjectPublicationDigest } from "../src/lib/subject-publication";
 import { restoreAuditLedger } from "./refine-subject-prose";
 import { subjectModel } from "../worker/subject-model";
+import { subjectVisualPresentationDigest, validateSubjectVisualReview, verifySubjectVisualArtifacts, subjectVisualAcceptance } from "../src/lib/subject-visual-review";
+import { validateSubjectMechanismQuality, subjectMechanismQualityVersion, mechanismOwnershipInstructions } from "../src/lib/subject-mechanism-quality";
 
 const contextSchema=z.object({scope:z.literal("full-text"),sources:z.array(z.object({id:z.string(),label:z.string(),url:z.string(),excerpt:z.string()})).min(1)});
-const reviewSchema=z.object({science:z.object({passed:z.boolean(),findings:z.array(z.string()).max(12)}),teaching:z.object({passed:z.boolean(),findings:z.array(z.string()).max(12)}),states:z.object({passed:z.boolean(),findings:z.array(z.string()).max(12)})});
+export const subjectMechanismSourceReviewSchema=z.object({science:z.object({passed:z.boolean(),findings:z.array(z.string()).max(12)}),teaching:z.object({passed:z.boolean(),findings:z.array(z.string()).max(12)}),states:z.object({passed:z.boolean(),findings:z.array(z.string()).max(12)}),ownership:z.object({passed:z.boolean(),findings:z.array(z.string()).max(12)})});
+const reviewSchema=subjectMechanismSourceReviewSchema;
 const concisePrompt="\nWrite the takeaway as ONE complete sentence under180 characters, preferably plain text: state the scientific invariant without repeating the full equations. Use introduction under500 characters, entity meanings under110, object details under35, and beat explanations under750. These preferred targets leave generous headroom below the schema maximum. Never fill a bound and cut the final words or math delimiters. Put full mathematical detail in the relevant beat narration.";
 async function repairMechanismLabels(mechanism:SubjectMechanism,findings:string,directory:string,name:string){
   const paths=["takeaway","introduction",...mechanism.objects.flatMap((_,index)=>[`objects.${index}.label`,`objects.${index}.detail`]),...mechanism.entities.flatMap((_,index)=>[`entities.${index}.label`,`entities.${index}.meaning`]),...mechanism.relationships.map((_,index)=>`relationships.${index}.label`),...mechanism.beats.flatMap((_,index)=>[`beats.${index}.title`,`beats.${index}.explanation`])];
@@ -38,11 +41,15 @@ async function main(){
   if(args.includes("--approve-visual")){
     const id=args[args.indexOf("--approve-visual")+1],reviewFile=args[args.indexOf("--review-file")+1];
     if(!/^[a-z0-9-]+$/.test(id||"")||!args.includes("--review-file"))throw new Error("Use --approve-visual <identity> --review-file <fingerprint-bound review.json>");
-    const file=path.join(destination,id+".json"),mechanism=publishedSubjectMechanismSchema.parse(JSON.parse(await readFile(file,"utf8"))),lesson=JSON.parse(await readFile(path.join(lessonsRoot,id+".json"),"utf8")) as PublishedLesson;
-    const report=z.object({contentDigest:z.string(),parentContentDigest:z.string(),rendererDigest:z.string(),passed:z.literal(true),findings:z.array(z.string()).length(0),checkedViews:z.array(z.string().min(5)).min(4),reviewedAt:z.string()}).parse(JSON.parse(await readFile(path.resolve(reviewFile),"utf8")));
-    if(report.contentDigest!==mechanism.review.contentDigest||report.parentContentDigest!==mechanism.parentContentDigest||report.parentContentDigest!==lesson.review.contentDigest||report.rendererDigest!==mechanism.review.rendererDigest||report.rendererDigest!==await subjectMechanismRendererDigest())throw new Error("Visual review is stale");
+    const file=path.join(destination,id+".json"),lessonFile=path.join(lessonsRoot,id+".json"),mechanismBytes=await readFile(file,"utf8"),lessonBytes=await readFile(lessonFile,"utf8"),mechanism=publishedSubjectMechanismSchema.parse(JSON.parse(mechanismBytes)),lesson=JSON.parse(lessonBytes) as PublishedLesson;
+    if(lesson.id!==id||lesson.review.status!=="passed"||lesson.review.contentDigest!==subjectPublicationDigest(subjectPublicLessonSchema.parse(lesson),lesson))throw new Error("Visual review parent publication is invalid");
+    if(mechanism.parentContentDigest!==lesson.review.contentDigest||mechanism.review.contentDigest!==mechanismDigest(JSON.stringify(subjectMechanismSchema.parse(mechanism)))||mechanism.review.rendererDigest!==await subjectMechanismRendererDigest())throw new Error("Visual review is stale");
+    const report=validateSubjectVisualReview(JSON.parse(await readFile(path.resolve(reviewFile),"utf8")),mechanism,{lessonId:id,contentDigest:mechanism.review.contentDigest,parentContentDigest:lesson.review.contentDigest,rendererDigest:mechanism.review.rendererDigest,presentationDigest:await subjectVisualPresentationDigest()});
+    await verifySubjectVisualArtifacts(report,mechanism);
     validateSubjectMechanism(mechanism,lesson,lesson.sources);validateMechanismMath(mechanism,lesson);
-    await writeFile(file+".tmp",JSON.stringify({...mechanism,review:{...mechanism.review,status:"passed",visualReviewedAt:report.reviewedAt}},null,2)+"\n");await rename(file+".tmp",file);console.log(`VISUAL PASSED ${id}`);return;
+    validateSubjectMechanismQuality(mechanism);
+    if(await readFile(file,"utf8")!==mechanismBytes||await readFile(lessonFile,"utf8")!==lessonBytes||await subjectMechanismRendererDigest()!==report.rendererDigest||await subjectVisualPresentationDigest()!==report.presentationDigest)throw new Error("Visual review bindings changed during approval");
+    await writeFile(file+".tmp",JSON.stringify({...mechanism,review:{...mechanism.review,status:"passed",visualReviewedAt:report.reviewedAt,visualAcceptance:subjectVisualAcceptance(report)}},null,2)+"\n");await rename(file+".tmp",file);console.log(`VISUAL PASSED ${id}`);return;
   }
   if(!args.includes("--all")&&!args.includes("--id"))throw new Error("Use --all or --id <identity[,identity]>");
   const ids=args.includes("--id")?args[args.indexOf("--id")+1].split(","):null;
@@ -62,12 +69,19 @@ async function main(){
       const rendererDigest=await subjectMechanismRendererDigest();
       const baseline=await readFile(lessonFile,"utf8"),published=JSON.parse(baseline) as PublishedLesson,content=subjectPublicLessonSchema.parse(published);
       if(published.review.status!=="passed"||published.id!==id||published.review.contentDigest!==subjectPublicationDigest(content,published))throw new Error("Parent lesson is not a current reviewed publication");
-      try{const existing=publishedSubjectMechanismSchema.parse(JSON.parse(await readFile(path.join(destination,file),"utf8")));if(!authoredCandidateFile&&existing.parentContentDigest===published.review.contentDigest&&existing.review.rendererDigest===rendererDigest&&existing.review.contentDigest===mechanismDigest(JSON.stringify(subjectMechanismSchema.parse(existing)))){statuses[id]=existing.review.status;await save();console.log(`SKIP MECHANISM ${id}`);return;}}catch{}
+      try{
+        const existing=publishedSubjectMechanismSchema.parse(JSON.parse(await readFile(path.join(destination,file),"utf8")));
+        if(!authoredCandidateFile&&existing.parentContentDigest===published.review.contentDigest&&existing.review.rendererDigest===rendererDigest&&existing.review.contentDigest===mechanismDigest(JSON.stringify(subjectMechanismSchema.parse(existing)))){
+          validateSubjectMechanism(existing,published,published.sources);validateMechanismMath(existing,published);validateSubjectMechanismQuality(existing);
+          statuses[id]=await getSubjectMechanism(published)?"passed":"source-passed";
+          await save();console.log(`SKIP MECHANISM ${id} (${statuses[id]}${statuses[id]==="source-passed"?", awaiting current rendered acceptance":""})`);return;
+        }
+      }catch{}
       const context=contextSchema.parse(JSON.parse(await readFile(path.join(evidenceDirectory,"evidence.json"),"utf8")));
       for(const source of published.sources){const evidence=context.sources.find(item=>item.id===source.id);if(!evidence||evidence.url!==source.url||source.digest!==mechanismDigest(evidence.excerpt))throw new Error("Primary evidence differs from parent source binding");}
       const draftFiles=(await readdir(evidenceDirectory)).filter(name=>/^(?:draft|recovery)-\d+(?:-candidate)?\.json$/.test(name));
       const draft=restoreAuditLedger(published,await Promise.all(draftFiles.map(file=>readFile(path.join(evidenceDirectory,file),"utf8").then(JSON.parse).catch(()=>null))),context.sources);validateSubjectLesson(draft,context.sources);
-      const common=`\nPRIMARY EVIDENCE:\n${JSON.stringify(context)}\nREVIEWED LESSON AND PRIVATE SOURCE LEDGER:\n${JSON.stringify(draft)}`;
+      const common=`\nREQUIRED OWNERSHIP POLICY (${subjectMechanismQualityVersion}):\n${mechanismOwnershipInstructions}\nPRIMARY EVIDENCE:\n${JSON.stringify(context)}\nREVIEWED LESSON AND PRIVATE SOURCE LEDGER:\n${JSON.stringify(draft)}`;
       let mechanism:SubjectMechanism|undefined,findings="",previous="",initialLabelsRepaired=false;
       if(!authoredCandidateFile&&args.includes("--resume-drafts")){
         const saved=(await readdir(directory)).filter(name=>/^draft-\d+\.json$/.test(name)).sort((a,b)=>Number(b.match(/\d+/)![0])-Number(a.match(/\d+/)![0]));
@@ -102,7 +116,7 @@ async function main(){
       }
       if(authoredCandidateFile){
         mechanism=subjectMechanismSchema.parse(JSON.parse(await readFile(path.resolve(authoredCandidateFile),"utf8")));
-        validateSubjectMechanism(mechanism,published,context.sources);validateMechanismMath(mechanism,published);
+        validateSubjectMechanism(mechanism,published,context.sources);validateMechanismMath(mechanism,published);validateSubjectMechanismQuality(mechanism);
         previous=JSON.stringify(mechanism);initialLabelsRepaired=true;
         await writeFile(path.join(directory,"authored-candidate.json"),previous);
       }
@@ -113,10 +127,11 @@ async function main(){
           if(authoredPatch)mechanism=applyAuthoredMechanismLabels(mechanism,JSON.parse(authoredPatch));
           previous=JSON.stringify(mechanism);
           await writeFile(path.join(directory,`draft-${attempt}.json`),JSON.stringify(mechanism,null,2));
-          validateSubjectMechanism(mechanism,published,context.sources);validateMechanismMath(mechanism,published);
+          validateSubjectMechanism(mechanism,published,context.sources);validateMechanismMath(mechanism,published);validateSubjectMechanismQuality(mechanism);
           const review=await subjectModel(`Independently audit every scientific object, relationship, entity meaning, beat and invariant against the supplied PRIMARY EVIDENCE. Check the paper-specific contribution rather than trusting ledger references. Reject a diagram that only names generic modules without demonstrating meaningful data changes. Check exact source version: DQN 2013 must not import later fixed-period target-network schedules or prioritized replay; Whisper must distinguish input task/language/timestamp control from learned emitted text and actual source-supported token format. Check that snapshots preserve identities, pool membership, prefix order and availability; an output cannot precede its dependencies. Pending is unavailable, not an empty computed result. Parallel inputs may coexist in a guidance beat, and pacing is explanatory rather than measured latency. Check all equations in narration, all numeric claims and all limits. Short symbolic collections are permitted as clearly explained examples; they cannot imply measured capacity or actual token content. Relationships with entityIds must transfer unchanged identities actually present at both endpoints. Reject unsupported capabilities, invented sampled outputs, a generic prerequisite substituted for the contribution, or repetitive warnings. All checks pass only with no substantive findings.\nSCENE:\n${JSON.stringify(mechanism)}${common}`,reviewSchema,directory,`review-${attempt}`);
           requireCleanSubjectReview(review);
           if(await readFile(lessonFile,"utf8")!==baseline||await subjectMechanismRendererDigest()!==rendererDigest)throw new Error("Parent or renderer changed during source review");
+          await writeFile(path.join(directory,"source-review-binding.json"),JSON.stringify({reviewedAt:new Date().toISOString(),semanticPolicyVersion:subjectMechanismQualityVersion,contentDigest:mechanismDigest(JSON.stringify(subjectMechanismSchema.parse(mechanism))),parentContentDigest:published.review.contentDigest,rendererDigest,sources:published.sources,checks:review,scope:"semantic source and ownership review; rendered approval remains separate"},null,2));
           const sidecar=publishedSubjectMechanismSchema.parse({...mechanism,lessonId:id,parentContentDigest:published.review.contentDigest,review:{status:"source-passed",reviewedAt:new Date().toISOString(),contentDigest:mechanismDigest(JSON.stringify(subjectMechanismSchema.parse(mechanism))),rendererDigest,visualReviewedAt:null}});
           await writeFile(path.join(destination,file)+".tmp",JSON.stringify(sidecar,null,2)+"\n");await rename(path.join(destination,file)+".tmp",path.join(destination,file));statuses[id]="source-passed";await save();console.log(`SOURCE PASSED MECHANISM ${id} (awaiting visual review)`);return;
         }catch(error){findings=(error as Error).message;if(!previous)try{previous=await readFile(path.join(directory,`draft-${attempt}.json`),"utf8");}catch{}await writeFile(path.join(directory,`defects-${attempt}.json`),JSON.stringify({at:new Date().toISOString(),error:findings}));if(findings==="Parent or renderer changed during source review")throw error;console.log(`REPAIR MECHANISM ${id}: ${findings.slice(0,180)}`);}

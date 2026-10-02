@@ -4,8 +4,10 @@ import path from "node:path";
 import { publishedSubjectMechanismSchema, subjectMechanismSchema, validateSubjectMechanism } from "./subject-mechanism";
 import { validateSubjectMath } from "./subject-math";
 import type { PublishedLesson } from "./subjects";
+import { subjectVisualPresentationDigest } from "./subject-visual-review";
+import { subjectMechanismQualityVersion, validateSubjectMechanismQuality } from "./subject-mechanism-quality";
 
-export const subjectMechanismRendererFiles=["src/lib/subject-mechanism.ts","src/components/subject-mechanism.tsx","src/components/subject-mechanism.module.css","src/lib/scene-layout.ts"];
+export const subjectMechanismRendererFiles=["src/lib/subject-mechanism.ts","src/components/subject-mechanism.tsx","src/components/subject-mechanism.module.css","src/lib/scene-layout.ts","src/lib/diagram-text-metrics.ts","src/lib/diagram-text-metrics.json"];
 export const mechanismDigest=(value:string)=>createHash("sha256").update(value).digest("hex");
 export async function subjectMechanismRendererDigest(){
   const files=await Promise.all(subjectMechanismRendererFiles.map(async file=>[file,mechanismDigest(await readFile(path.resolve(file),"utf8"))]));
@@ -22,7 +24,12 @@ export async function getSubjectMechanism(lesson:PublishedLesson,{allowSourcePas
     const input=publishedSubjectMechanismSchema.parse(JSON.parse(await readFile(path.resolve("src/content/subjects/mechanisms",lesson.id+".json"),"utf8")));
     if(input.lessonId!==lesson.id||input.parentContentDigest!==lesson.review.contentDigest||(!allowSourcePassed&&input.review.status!=="passed")||input.review.status==="passed"&&!input.review.visualReviewedAt)return null;
     if(input.review.contentDigest!==mechanismDigest(JSON.stringify(subjectMechanismSchema.parse(input)))||input.review.rendererDigest!==await subjectMechanismRendererDigest())return null;
+    if(!allowSourcePassed){
+      const acceptance=input.review.visualAcceptance;
+      if(!acceptance||acceptance.semanticPolicyVersion!==subjectMechanismQualityVersion||acceptance.beatCount!==input.beats.length||acceptance.transitionCount!==(input.beats.length-1)*4||acceptance.presentationDigest!==await subjectVisualPresentationDigest())return null;
+    }
     validateSubjectMechanism(input,lesson,lesson.sources);validateMechanismMath(input,lesson);
+    validateSubjectMechanismQuality(input);
     return input;
   }catch{return null;}
 }

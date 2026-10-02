@@ -10,6 +10,8 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 ## AfterImage workspace rules
 
+- Subjects mechanism source approval cannot certify visual layout. Publication requires the current semantic ownership policy, every-state relational geometry, and a versioned independent browser review covering every beat and adjacent transition at 1440px/900px in Light/Dark. Bind reviews to the exact parent, scene, renderer, presentation, and font assets; keep PNGs and browser audit facts private. Production builds run the Subjects publication audit and reject withheld sidecars. A presentation-only rebind preserves exact scientific/parent digests and resets visual approval; changed semantics require source review. Historical paper worker/rendering boundaries remain separate.
+
 - Worked-example animations are curated, reviewed editorial SVG/poster pairs under `public/worked-examples`, matched by paper identity, saved source ID and equation semantics. Keep one animation per notecard, prose fallback, inherited page appearance, native autoplay with one Play/Pause control, reduced-motion/print posters and visibility pausing. The worker cannot supply assets, SVG or executable animation data; a future generated storyboard requires a separate bounded reviewed schema and compatible web-before-worker release. No stored recall or study migration is needed for editorial presentation.
 
 - Desktop is the product target and the release acceptance view. Existing responsive compatibility and diagram review gates remain in place; do not expand product scope into mobile-specific work unless requested.
