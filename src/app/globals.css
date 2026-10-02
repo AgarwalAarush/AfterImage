@@ -2578,7 +2578,7 @@ h3 {
 .subject-article { min-width:0; }
 .subject-article-header { padding-bottom:36px; border-bottom:1px solid var(--line); margin-bottom:36px; }
 .subject-article-header h1 { margin:22px 0; }
-.subject-article-header > p { max-width:68ch; font:400 18px/1.65 var(--font-sans); color:var(--muted); }
+.subject-article-header > p { max-width:68ch; font:400 16px/1.65 var(--font-sans); color:var(--muted); }
 .subject-objectives { margin-bottom:44px; }
 .subject-objectives h2 { font:550 25px/1.3 var(--font-sans); margin-bottom:18px; }
 .subject-objectives li { max-width:68ch; margin:12px 0; font:400 var(--recall-font-size)/1.75 var(--font-sans); }
@@ -2602,5 +2602,4 @@ h3 {
 @media print { .subject-reader-layout { display:block; padding:0; } }
 
 .subject-objectives li p { display:inline; margin:0; }
-.subject-prerequisites .katex { font-size:1em; }
 .subject-experiment-question p { margin:0; }
