@@ -1,6 +1,6 @@
 # AfterImage
 
-The [Subjects reading typography refinement](docs/subjects-reading-typography-2026-10-02.md) uses the existing interface sans-serif for article prose, smaller introductions and objectives headings, and clearer paragraph spacing. Useful background is removed from all Subjects articles. Fresh independent visual acceptance covers every mechanism state and adjacent transition at both desktop widths in Light and Dark.
+The [Subjects reading typography refinement](docs/subjects-reading-typography-2026-10-02.md) uses the existing interface sans-serif for article prose, smaller introductions and objectives headings, and clearer paragraph spacing. Useful background is removed from all Subjects articles. Fresh independent visual acceptance covers every mechanism state and adjacent transition at both desktop widths in Light and Dark. This web release is live and verified on the production reader, Library, and Documents routes.
 
 Readable Subjects titles open their lesson, alongside the existing “Read lesson” link. See [Subjects title navigation](docs/subjects-title-navigation-2026-10-02.md).
 
