@@ -1,9 +1,10 @@
-import { readdir } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
 import mechanismCatalog from "../src/content/subjects/mechanism-catalog.json";
 import { getSubjectLesson, subjectCatalog } from "../src/lib/subject-library";
-import { getSubjectMechanism } from "../src/lib/subject-mechanism-store";
+import { getSubjectMechanism, mechanismDigest, subjectMechanismRendererDigest } from "../src/lib/subject-mechanism-store";
+import { subjectVisualPresentationDigest } from "../src/lib/subject-visual-review";
 
 const mechanismCatalogSchema=z.object({version:z.literal(1),lessonIds:z.array(z.string().regex(/^[a-z0-9-]+$/).max(150)).min(1).max(1000)}).strict();
 /** Expected walkthrough identities are independent of the files being shipped. */
@@ -41,6 +42,12 @@ export async function auditSubjectPublication(inventory:{lessonDirectory?:string
   }
   return {catalog:catalogIds.size,mechanismCatalog:mechanismCatalog.lessonIds.length,lessons:lessons.size,figures,mechanisms:mechanisms.length,issues};
 }
-if(process.argv[1]?.endsWith("audit-subject-publication.ts"))auditSubjectPublication().then(result=>{
-  console.log(JSON.stringify(result,null,2));if(result.issues.length)process.exitCode=1;
+if(process.argv[1]?.endsWith("audit-subject-publication.ts"))auditSubjectPublication().then(async result=>{
+  console.log(JSON.stringify(result,null,2));if(result.issues.length){
+    process.exitCode=1;
+    // Build diagnostics expose bounded public-source fingerprints, never raw
+    // failures, private review files, environment values, or library contents.
+    try{console.error(JSON.stringify({phase:"publication-bindings",rendererDigest:await subjectMechanismRendererDigest(),presentationDigest:await subjectVisualPresentationDigest(),packageLockDigest:mechanismDigest(await readFile(path.resolve("package-lock.json"),"utf8"))}));}
+    catch(error){console.error(JSON.stringify({phase:"publication-bindings",errorClass:error instanceof Error?error.name:"UnknownError",code:typeof error==="object"&&error!==null&&"code" in error?String(error.code).replace(/[^A-Z0-9_]/g,"").slice(0,24):null}));}
+  }
 });

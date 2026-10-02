@@ -20,6 +20,7 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - Shared workspace and control styling lives in `src/app/ui.css`, imported after the base and theme styles. Keep reader typography and diagram geometry in their existing owners; UI refinement is a web-only release.
 
 - Keep `.next`, `.next-production`, `.vercel`, `node_modules`, `.data`, `.artifacts`, `.assistant-runtime`, and generated build artifacts untracked. The existing `.gitignore` is the source of truth for ignored artifacts.
+- Production builds use the committed Vercel `npm ci` install and webpack build commands. Preserve exact reviewed dependency/font bytes; never weaken approval fingerprints to accommodate a rewritten lockfile. Private artifacts, SQLite data, assistant runtime files, and environment files are excluded from every Next output trace as well as deployment uploads; audit fresh traces before release.
 - Preserve `.env*` and all secrets. Keep only `.env.example` in source control.
 - Storage transport diagnostics stay in private server logs. Record only the action, phase, HTTP status, elapsed time, bounded error class, and sanitized transport codes; exclude bodies, URLs, credentials, signatures, and raw exception messages. Never retry an uncertain storage mutation.
 - When changing behavior in app, worker, or scripts, include a matching note in `docs/` and a short context update in `README.md`.

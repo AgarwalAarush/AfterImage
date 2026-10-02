@@ -3,6 +3,11 @@ const config: NextConfig = {
   distDir:process.env.AFTERIMAGE_BUILD_DIR||".next",
   serverExternalPackages: ["@resvg/resvg-js"],
   poweredByHeader: false,
+  // Approval-time artifact readers must never pull private review/storage files
+  // into a runtime bundle, even for a locally prebuilt deployment.
+  outputFileTracingExcludes: {
+    "/*": ["./.artifacts/**/*", "./.data/**/*", "./.assistant-runtime/**/*", "./.env*"],
+  },
   outputFileTracingIncludes: {
     "/subjects": ["./src/content/subjects/lessons/*.json"],
     "/subjects/*": ["./src/content/subjects/lessons/*.json", "./src/content/subjects/mechanisms/*.json",
