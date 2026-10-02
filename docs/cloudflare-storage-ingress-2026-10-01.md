@@ -16,8 +16,16 @@ assignments and public DNS responses. Preserve the apex and wildcard Vercel
 destinations using Cloudflare's supported DNS representation; keep existing
 Vercel sites DNS-only. Do not rely on Cloudflare's automatic record scan alone.
 
-The Cloudflare dashboard requires owner sign-in. `cloudflared` is not currently
-installed on macserver, and noninteractive administrator access is unavailable.
+The owner has signed in and activated **Zero Trust Free**. Its checkout states
+$0/month but requires a payment method and authorization for usage beyond free
+limits; the owner accepted that condition. The free DNS zone contains the five
+original records, with the Vercel destinations DNS-only. Nameservers have not
+changed. Direct checks against the staged DNS destinations preserve successful
+TLS and current HTTP statuses for the apex, www, AfterImage, Stratum, Ares and
+Chemo (the existing Chemo 404 also remains a 404).
+
+`cloudflared` is not currently installed as a service on macserver, and
+noninteractive administrator access is unavailable.
 Do not store an administrator password in source, logs, chat, or a credentials
 file. Authenticate interactively when installing the restricted service.
 
@@ -57,6 +65,23 @@ and supervise it with launchd under a restricted account. Keep tunnel credential
 in a service-only directory; never pass a long-lived token in process arguments
 or expose the storage bridge secret to the connector. The connector needs local
 TCP access, not SQLite or backup access.
+
+`scripts/install-cloudflare-storage-macserver.sh` stages this boundary separately
+from the storage bridge: `_afterimage_tunnel` (UID 498, no login) runs root-owned
+code under `/Users/Shared/AfterImageTunnel`. Its token is stored in a mode-0700
+directory, read with `--token-file`, and removed from the ordinary user's staging
+directory after installation. The installer verifies that the connector cannot
+read the SQLite database or storage credential, leaves the bridge untouched,
+and refuses an existing or partial installation. Readiness/metrics bind only to
+`127.0.0.1:3103`. Connector output is discarded to avoid storing raw transport
+URLs/errors; use readiness, connection counts and sanitized API checks for
+verification. Automatic binary updates are disabled for this root-owned release.
+
+The official `cloudflared` 2026.9.3 Intel macOS archive was checked against its
+GitHub release asset SHA256 before extracting. The staged binary SHA256 is
+`ab588b3b4db9cdb4476c30a3db2a72635b1d8327d44741fee6799a0f37b0ec07`.
+Its version and `--token-file` support were verified on macserver. See
+[run parameters](https://developers.cloudflare.com/tunnel/reference/run-parameters/).
 
 ## Cutover and proof
 
@@ -98,5 +123,10 @@ The Next.js 16.3.5 production build also passes after copying the existing
 dependencies into this worktree (Turbopack does not accept an out-of-root
 `node_modules` symlink). The build reports two existing broad filesystem-tracing
 warnings in `subject-mechanism-store.ts`; these are outside the storage client
-change. Build-generated edits to `next-env.d.ts` were restored. No deployment,
-nameserver change, Cloudflare token or connector installation has occurred.
+change. Build-generated edits to `next-env.d.ts` were restored. The connector
+installer passes shell syntax checks and a read-only macserver preflight using
+a disposable placeholder token. No account or service was created by that check.
+A temporary management-token draft is
+restricted to the owner's Cloudflare account and this DNS zone; final creation
+remains an owner handoff. No deployment, nameserver change, tunnel credential or
+connector service installation has occurred.
