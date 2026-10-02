@@ -67,6 +67,14 @@ export class AssistantDatabase {
     const rows=this.db.prepare("SELECT data FROM assistant_turns WHERE status IN ('queued','running')").all() as {data:string}[];
     for(const row of rows){const turn=JSON.parse(row.data) as StoredAssistantTurn;if(this.expired(turn,now))this.save(this.failedExpiry(turn,now));}
   }
+  /** Read-only readiness; never claims work or returns any stored content. */
+  queueReadiness(now=Date.now()):{ready:boolean;recheckAt?:number}{
+    const rows=this.db.prepare("SELECT data FROM assistant_turns WHERE status IN ('queued','running')").all() as {data:string}[];
+    const turns=rows.map(row=>JSON.parse(row.data) as StoredAssistantTurn).filter(turn=>!this.expired(turn,now));
+    const running=turns.find(turn=>turn.status==="running");
+    if(running)return {ready:false,recheckAt:Date.parse(running.leaseUntil!)+1};
+    return {ready:turns.some(turn=>turn.status==="queued")};
+  }
   execute(raw:AssistantOperation,now=Date.now()):unknown{
     const op=assistantOperationSchema.parse(raw);
     if(op.op==="list"){

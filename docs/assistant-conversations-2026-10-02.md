@@ -71,3 +71,6 @@ The first live Subjects answer exposed shorthand `[lesson-s4]` instead of the re
 Live Light/Dark checks at 1440px and 900px passed; the wide panel has 16px above/below, and the narrow layout retains its existing overlay. Library loads all seven entries and Documents loads all five records. The follow-up ten-minute deployment error scan is empty.
 
 The final post-cutover production backup restore is pending the administrator's `--verify` output. The earlier rehearsal verifies migration preservation but does not replace this final backup check. Backups remain exclusively on macserver.
+
+
+The October 2 idle-wake activation completed the post-cutover local backup restore verification: integrity passed and retained legacy turns, conversations, turns, migration markers and documents were present. See [the idle-wake release record](assistant-idle-wake-2026-10-02.md) for the separate installed worker, notification and production cadence checks.
