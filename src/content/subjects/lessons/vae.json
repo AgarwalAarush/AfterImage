@@ -1,0 +1,464 @@
+{
+  "title": "Moving Randomness Out of the Way",
+  "summary": "Reparameterization makes the SGVB variational-lower-bound estimator differentiable. AEVB uses that estimator to jointly learn a generative decoder and an amortized recognition model for independent data with continuous latent variables.",
+  "prerequisites": [
+    "Basic probability distributions and expectations",
+    "Logarithms, derivatives, and gradient-based optimization",
+    "Conceptual neural-network encoders and decoders"
+  ],
+  "objectives": [
+    "State and interpret the evidence lower bound and its relation to marginal likelihood.",
+    "Explain how reparameterization enables gradients through Gaussian samples.",
+    "Distinguish probabilistic inference from deterministic autoencoding.",
+    "Compute a one-dimensional Gaussian KL contribution.",
+    "Interpret the paper's experiments within their stated conditions."
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "mechanism",
+      "statement": "AEVB targets i.i.d. datasets with a continuous latent variable for each datapoint and jointly learns generative and recognition-model parameters.",
+      "conditions": "The dataset is treated as fixed and i.i.d.; latent variables are continuous and local to datapoints.",
+      "sourceIds": [
+        "abstract",
+        "section-2",
+        "section-6"
+      ]
+    },
+    {
+      "id": "c2",
+      "kind": "equation",
+      "statement": "For each datapoint, the log marginal likelihood equals the evidence lower bound plus the KL divergence from the approximate posterior to the true posterior.",
+      "conditions": "The distributions and expectations in the variational identity are well-defined.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c3",
+      "kind": "result",
+      "statement": "Because the posterior KL divergence is nonnegative, the variational objective is a lower bound on the log marginal likelihood.",
+      "conditions": "KL nonnegativity applies and the relevant densities have compatible support.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c4",
+      "kind": "equation",
+      "statement": "The lower bound decomposes into expected conditional log likelihood minus the KL divergence from the approximate posterior to the prior.",
+      "conditions": "The joint model factors as a prior over the latent variable times a conditional likelihood.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c5",
+      "kind": "mechanism",
+      "statement": "Reparameterization represents a sample from the parameterized approximate posterior as a differentiable transformation of parameter-independent auxiliary noise.",
+      "conditions": "A suitable differentiable transformation exists for the chosen continuous approximate posterior.",
+      "sourceIds": [
+        "section-2-part-2",
+        "section-2-part-3"
+      ]
+    },
+    {
+      "id": "c6",
+      "kind": "mechanism",
+      "statement": "For a Gaussian approximate posterior, sampling can be written as mean plus elementwise standard deviation times standard-normal noise.",
+      "conditions": "The approximate posterior is Gaussian with the stated diagonal covariance structure.",
+      "sourceIds": [
+        "section-2-part-2",
+        "section-3"
+      ]
+    },
+    {
+      "id": "c7",
+      "kind": "result",
+      "statement": "When the posterior-to-prior KL is analytically available, sampling is needed only for the expected conditional log-likelihood term, yielding the paper's second estimator, which typically has less variance than the generic estimator.",
+      "conditions": "The KL divergence between the selected approximate posterior and prior has a tractable closed form.",
+      "sourceIds": [
+        "section-2-part-2"
+      ]
+    },
+    {
+      "id": "c8",
+      "kind": "mechanism",
+      "statement": "The recognition model amortizes inference by mapping each observation directly to a distribution over latent codes instead of running a separate iterative inference procedure for every datapoint.",
+      "conditions": "One shared recognition model is trained across the i.i.d. dataset.",
+      "sourceIds": [
+        "abstract",
+        "section-1",
+        "section-2"
+      ]
+    },
+    {
+      "id": "c9",
+      "kind": "equation",
+      "statement": "A random minibatch of size M estimates the full-data lower bound by multiplying the minibatch sum by N divided by M.",
+      "conditions": "The minibatch is randomly sampled from a dataset of N datapoints.",
+      "sourceIds": [
+        "section-2-part-2"
+      ]
+    },
+    {
+      "id": "c10",
+      "kind": "mechanism",
+      "statement": "In the paper's variational autoencoder example, the prior is a centered isotropic Gaussian and the encoder outputs the mean and standard deviation of a diagonal-Gaussian approximate posterior.",
+      "conditions": "This describes the specific neural-network example in Section 3, not every model supported by SGVB.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c11",
+      "kind": "caveat",
+      "statement": "The diagonal Gaussian posterior used in the example is a simplifying modeling choice rather than a stated limitation of the general method.",
+      "conditions": "The claim concerns the distinction between the Section 3 example and the broader reparameterization strategy.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c12",
+      "kind": "result",
+      "statement": "Across varying latent dimensions, AEVB converged faster and reached a better variational lower-bound solution than wake-sleep in the reported MNIST and Frey Face experiments. A separate estimated-marginal-likelihood experiment compared AEVB, wake-sleep and MCEM only on low-dimensional MNIST.",
+      "conditions": "Lower-bound comparisons used matching encoder/decoder hidden layers of 500 units for MNIST and 200 for Frey Face, minibatches of 100, one latent sample per datapoint, a small weight-decay term corresponding to a standard-normal parameter prior and approximate MAP training. Adagrad global step sizes were selected from {0.01, 0.02, 0.1} using early training-set performance. Latent dimensionality varied. The separate marginal-likelihood comparison used MNIST networks with 100 hidden units and three latent variables; MCMC estimates became unreliable at higher latent dimensionality.",
+      "sourceIds": [
+        "section-4",
+        "section-5"
+      ]
+    },
+    {
+      "id": "c13",
+      "kind": "caveat",
+      "statement": "The paper reports that marginal-likelihood estimates became unreliable for higher-dimensional latent spaces, so its MCMC-based likelihood comparison used three latent variables.",
+      "conditions": "This limitation applies to the experiment's likelihood estimator, not necessarily to training AEVB itself.",
+      "sourceIds": [
+        "section-5"
+      ]
+    },
+    {
+      "id": "c14",
+      "kind": "caveat",
+      "statement": "The paper leaves experimental evaluation of variational inference over global parameters to future work and lists hierarchical, time-series, and supervised extensions as future directions.",
+      "conditions": "These are boundaries of the paper's demonstrated experiments rather than proofs that the extensions are impossible.",
+      "sourceIds": [
+        "section-2",
+        "section-7"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "s1",
+      "title": "The hidden integral that blocks learning",
+      "markdown": "A latent-variable model tells a two-stage story. First draw an unobserved code $\\mathbf{z}$ from a prior $p_{\\boldsymbol{\\theta}}(\\mathbf{z})$; then draw an observation $\\mathbf{x}$ from $p_{\\boldsymbol{\\theta}}(\\mathbf{x}\\mid\\mathbf{z})$. Here $\\mathbf{x}$ is one datapoint, $\\mathbf{z}$ its continuous latent variable, and $\\boldsymbol{\\theta}$ the generative parameters. For a dataset $\\mathbf{X}=\\{\\mathbf{x}^{(i)}\\}_{i=1}^{N}$, $N$ denotes the number of i.i.d. observations.\n\nLearning by marginal likelihood would require\n\n$$p_{\\boldsymbol{\\theta}}(\\mathbf{x})=\\int p_{\\boldsymbol{\\theta}}(\\mathbf{z})p_{\\boldsymbol{\\theta}}(\\mathbf{x}\\mid\\mathbf{z})\\,d\\mathbf{z}.$$\n\nA nonlinear decoder can make this integral—and therefore the exact posterior $p_{\\boldsymbol{\\theta}}(\\mathbf{z}\\mid\\mathbf{x})$—intractable. AEVB introduces $q_{\\boldsymbol{\\phi}}(\\mathbf{z}\\mid\\mathbf{x})$, a recognition model with parameters $\\boldsymbol{\\phi}$, to approximate that posterior. The crucial efficiency gain is amortization: instead of solving a fresh optimization or sampling problem for every observation, one shared model maps an observation to a distribution over possible codes.\n\nThis is already different from an ordinary deterministic autoencoder. The encoder does not output just one code, and the decoder does not output just one reconstruction. Both specify probability distributions.",
+      "sourceIds": [
+        "section-1",
+        "section-2"
+      ],
+      "claimIds": [
+        "c1",
+        "c8"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s2",
+      "title": "The lower bound as a learnable target",
+      "markdown": "For datapoint $\\mathbf{x}^{(i)}$, the paper uses the exact identity\n\n$$\\log p_{\\boldsymbol{\\theta}}(\\mathbf{x}^{(i)})=D_{KL}\\!\\left(q_{\\boldsymbol{\\phi}}(\\mathbf{z}\\mid\\mathbf{x}^{(i)})\\,\\|\\,p_{\\boldsymbol{\\theta}}(\\mathbf{z}\\mid\\mathbf{x}^{(i)})\\right)+\\mathcal{L}(\\boldsymbol{\\theta},\\boldsymbol{\\phi};\\mathbf{x}^{(i)}).$$\n\nHere $D_{KL}(q\\|p)=\\mathbb{E}_{q}[\\log q-\\log p]$ is the Kullback–Leibler divergence, and $\\mathcal{L}$ is the evidence lower bound, or ELBO. Since KL divergence is nonnegative, $\\mathcal{L}\\leq\\log p_{\\boldsymbol{\\theta}}(\\mathbf{x}^{(i)})$. Maximizing the ELBO jointly trains the generative parameters $\\boldsymbol{\\theta}$ and recognition parameters $\\boldsymbol{\\phi}$. The identity characterizes the approximation gap as the posterior KL divergence, but an increase in the ELBO does not by itself guarantee that this gap decreases, because changing $\\boldsymbol{\\theta}$ also changes the true posterior and marginal likelihood.\n\nUsing $p_{\\boldsymbol{\\theta}}(\\mathbf{x},\\mathbf{z})=p_{\\boldsymbol{\\theta}}(\\mathbf{z})p_{\\boldsymbol{\\theta}}(\\mathbf{x}\\mid\\mathbf{z})$, the same objective becomes\n\n$$\\mathcal{L}=-D_{KL}\\!\\left(q_{\\boldsymbol{\\phi}}(\\mathbf{z}\\mid\\mathbf{x}^{(i)})\\,\\|\\,p_{\\boldsymbol{\\theta}}(\\mathbf{z})\\right)+\\mathbb{E}_{q_{\\boldsymbol{\\phi}}}\\!\\left[\\log p_{\\boldsymbol{\\theta}}(\\mathbf{x}^{(i)}\\mid\\mathbf{z})\\right].$$\n\nThe first term rewards agreement with the prior; the second rewards latent samples under which the decoder assigns high probability to the observation. Calling the second term a reconstruction term is useful shorthand, but it remains a conditional log probability, not merely a pixel-distance formula.",
+      "sourceIds": [
+        "section-2",
+        "section-2-part-2"
+      ],
+      "claimIds": [
+        "c2",
+        "c3",
+        "c4"
+      ],
+      "figureId": "fig-latent"
+    },
+    {
+      "id": "s3",
+      "title": "Move randomness into an external input",
+      "markdown": "Directly sampling $\\mathbf{z}\\sim q_{\\boldsymbol{\\phi}}(\\mathbf{z}\\mid\\mathbf{x})$ seems to interrupt differentiation with respect to $\\boldsymbol{\\phi}$. The paper's key move is to rewrite the same random variable as\n\n$$\\widetilde{\\mathbf{z}}=g_{\\boldsymbol{\\phi}}(\\boldsymbol{\\epsilon},\\mathbf{x}),\\qquad \\boldsymbol{\\epsilon}\\sim p(\\boldsymbol{\\epsilon}),$$\n\nwhere the auxiliary-noise distribution does not depend on $\\boldsymbol{\\phi}$ and $g_{\\boldsymbol{\\phi}}$ is differentiable. Then\n\n$$\\mathbb{E}_{q_{\\boldsymbol{\\phi}}}[f(\\mathbf{z})]=\\mathbb{E}_{p(\\boldsymbol{\\epsilon})}\\!\\left[f(g_{\\boldsymbol{\\phi}}(\\boldsymbol{\\epsilon},\\mathbf{x}))\\right].$$\n\nA sampled objective is now an ordinary differentiable computation from fixed-distribution noise through $g_{\\boldsymbol{\\phi}}$ and the decoder. For a Gaussian, $z=\\mu+\\sigma\\epsilon$ with $\\epsilon\\sim\\mathcal{N}(0,1)$. If $\\mu=2$, $\\sigma=0.5$, and an illustrative draw is $\\epsilon=-1.2$, then $z=2+0.5(-1.2)=1.4$. Holding that draw fixed locally gives $\\partial z/\\partial\\mu=1$ and $\\partial z/\\partial\\sigma=-1.2$, so downstream derivatives can reach the encoder outputs.\n\nThe sampled decoder contribution propagates through those derivatives by the chain rule. If $f(z)$ is the decoder log likelihood evaluated at this draw, then $\\partial f/\\partial\\mu=(\\partial f/\\partial z)(\\partial z/\\partial\\mu)$ and $\\partial f/\\partial\\sigma=(\\partial f/\\partial z)(\\partial z/\\partial\\sigma)$. The encoder parameters affect these mean and scale outputs, so a gradient can continue from the decoder through the sampled latent value into the shared recognition model. The draw remains random across samples; the important change is that its fixed-distribution input is independent of the parameters being differentiated.",
+      "sourceIds": [
+        "section-2-part-2",
+        "section-2-part-3",
+        "section-3"
+      ],
+      "claimIds": [
+        "c5",
+        "c6"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s4",
+      "title": "The concrete variational autoencoder",
+      "markdown": "The paper's neural example chooses $p(\\mathbf{z})=\\mathcal{N}(\\mathbf{0},\\mathbf{I})$, where $\\mathbf{I}$ is the identity matrix. Its encoder produces a mean vector $\\boldsymbol{\\mu}^{(i)}$ and standard-deviation vector $\\boldsymbol{\\sigma}^{(i)}$ for observation $i$, defining a diagonal Gaussian. With $\\odot$ denoting elementwise multiplication and $J$ the number of latent dimensions,\n\n$$\\mathbf{z}^{(i,l)}=\\boldsymbol{\\mu}^{(i)}+\\boldsymbol{\\sigma}^{(i)}\\odot\\boldsymbol{\\epsilon}^{(l)},\\qquad \\boldsymbol{\\epsilon}^{(l)}\\sim\\mathcal{N}(\\mathbf{0},\\mathbf{I}),$$\n\nwhere $l$ indexes one of $L$ Monte Carlo samples. The decoder likelihood is Bernoulli for binary data or Gaussian for real-valued data in the stated example.\n\nBecause the Gaussian KL is analytic, its negative contribution in one dimension is\n\n$$\\frac{1}{2}\\left(1+\\log\\sigma^2-\\mu^2-\\sigma^2\\right).$$\n\nFor an illustrative posterior $q=\\mathcal{N}(1,0.5^2)$ against $p=\\mathcal{N}(0,1)$, this equals $\\tfrac12(1+\\log 0.25-1-0.25)\\approx-0.818$. Thus $D_{KL}(q\\|p)\\approx0.818$. The chosen mean and variance make this a small arithmetic example of the analytic term.\n\nIn $J$ dimensions, the diagonal structure makes this contribution a sum over coordinates. Each coordinate can incur a cost because its mean is displaced from zero or because its variance differs from one. This does not mean that every useful posterior must resemble the prior point by point. The expected conditional log-likelihood can compensate for a KL cost when information in a shifted or rescaled latent distribution helps the decoder assign greater probability to the observation. Training therefore balances two terms derived from one variational objective rather than separately minimizing a reconstruction score and an arbitrary regularizer.\n\nAnalytic evaluation of the KL also clarifies where Monte Carlo noise remains. For the estimator used in this example, the posterior-to-prior KL is computed exactly from $\\boldsymbol{\\mu}^{(i)}$ and $\\boldsymbol{\\sigma}^{(i)}$, while samples $\\mathbf{z}^{(i,l)}$ estimate the expected decoder log likelihood. The paper notes that this second SGVB estimator typically has lower variance than the generic estimator in which both contributions are sampled. That advantage depends on having a tractable KL for the selected prior and approximate posterior; it is not guaranteed for every reparameterizable family.\n\nThe retained latent control fixes the posterior variance at one: $q=\\mathcal{N}(\\mu,1)$ and $p=\\mathcal{N}(0,1)$. The analytic KL then reduces to $D_{KL}(q\\|p)=\\mu^2/2$, so shifting the mean away from zero increases this contribution. To interpret it within the complete objective, combine that KL cost with the expected decoder log likelihood computed from reparameterized samples. A shift can still improve the bound when its gain in decoder log probability outweighs the larger KL.",
+      "sourceIds": [
+        "section-2-part-2",
+        "section-3"
+      ],
+      "claimIds": [
+        "c6",
+        "c7",
+        "c10",
+        "c11"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s5",
+      "title": "From one datapoint to stochastic learning",
+      "markdown": "For $N$ datapoints, the full objective is a sum of datapoint bounds. If $\\mathbf{X}^{M}$ is a random minibatch of size $M$, the paper estimates it by\n\n$$\\widetilde{\\mathcal{L}}^{M}(\\boldsymbol{\\theta},\\boldsymbol{\\phi};\\mathbf{X}^{M})=\\frac{N}{M}\\sum_{i=1}^{M}\\widetilde{\\mathcal{L}}(\\boldsymbol{\\theta},\\boldsymbol{\\phi};\\mathbf{x}^{(i)}).$$\n\nThe factor $N/M$ rescales the minibatch sum to the full-dataset scale. For an illustrative dataset with $N=1000$, a minibatch with $M=10$, and sampled datapoint bounds summing to $-24$, the estimator is $(1000/10)(-24)=-2400$. This is correctly scaled but remains noisy because both minibatch selection and latent sampling introduce randomness.\n\nAn AEVB iteration follows the computation that defines this estimator. Select a random minibatch, use the shared recognition network to compute each observation's Gaussian mean and scale, draw parameter-independent auxiliary noise, and form the reparameterized latent samples. Evaluate their decoder log likelihoods and the analytic Gaussian KL terms, then sum and rescale the datapoint bounds. Differentiating that one sampled objective supplies gradients for both the generative parameters $\\boldsymbol{\\theta}$ and recognition parameters $\\boldsymbol{\\phi}$.\n\nThe parameters are updated to increase the bound. Gradients reaching $\\boldsymbol{\\theta}$ improve how the decoder assigns probability to observations given latent samples. Gradients reaching $\\boldsymbol{\\phi}$ change the shared inference map that chooses each observation's approximate posterior. Sampling a new minibatch and new auxiliary noise on the next iteration produces another estimate of the same dataset objective. This is the operational role of SGVB within AEVB: a differentiable stochastic estimate makes the two networks trainable together, while one recognition model reuses its learned inference procedure across datapoints. The reported experiments used Adagrad to adapt step sizes and a small weight-decay term for approximate MAP training; section 6 attaches the comparison results to those settings.",
+      "sourceIds": [
+        "section-2-part-2",
+        "section-3",
+        "section-5"
+      ],
+      "claimIds": [
+        "c7",
+        "c9",
+        "c10"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s6",
+      "title": "What the reported evidence establishes",
+      "markdown": "The lower-bound experiments compared AEVB with wake-sleep on MNIST and Frey Face while varying the number of latent variables. For MNIST, the corresponding encoder and decoder each had a hidden layer of 500 units; the smaller Frey Face dataset used 200 hidden units in each network to limit overfitting. The two learning methods used the same recognition-model architecture, so the comparison concerns their training procedures within these matched model choices.\n\nTraining used minibatches of $M=100$ and $L=1$ latent sample per datapoint. A small weight-decay term corresponded to a standard-normal prior on the generative parameters, making the training criterion approximate maximum a posteriori estimation rather than pure maximum likelihood. Adagrad adapted the parameter step sizes; its global step-size parameter was selected from $\\{0.01,0.02,0.1\\}$ using training-set performance in the first few iterations. These choices matter when interpreting convergence: the displayed comparison combines the estimator, the amortized recognition model, the model sizes, and the reported optimization procedure.\n\nFigure 2 reports faster convergence and a better average variational-lower-bound solution for AEVB than wake-sleep across the tested latent dimensions. This supports AEVB under those MNIST and Frey Face conditions. It does not imply a universal ranking of all inference algorithms or establish that optimizing the bound recovers the exact posterior. The paper also observes that additional latent variables did not produce overfitting in these experiments and attributes that behavior to the bound's regularizing contribution.\n\nThe estimated-marginal-likelihood comparison is a separate experiment on MNIST only. Here the encoder and decoder had 100 hidden units and three latent variables. AEVB and wake-sleep were compared with Monte Carlo EM using a Hybrid Monte Carlo sampler, across small and large training-set sizes. The authors state that the MCMC estimates became unreliable at higher latent dimensionality. Consequently, these likelihood comparisons must remain attached to the low-dimensional MNIST setup; they are not Frey Face likelihood results or validation across arbitrary latent dimensions.\n\nThe paper also visualized two-dimensional latent manifolds for MNIST and Frey Face and random samples from MNIST models at several latent dimensionalities. Those displays illustrate projection and generation using the learned model. They do not independently measure posterior accuracy or guarantee the quality of every learned representation.",
+      "sourceIds": [
+        "main-text",
+        "section-4",
+        "section-5"
+      ],
+      "claimIds": [
+        "c12",
+        "c13"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s7",
+      "title": "Misconceptions and scientific boundaries",
+      "markdown": "A common misconception is that the reparameterization trick removes randomness. It does not. Randomness remains in $\\boldsymbol{\\epsilon}$; the trick relocates it to a distribution independent of the learned variational parameters, exposing a differentiable path through the sampled computation.\n\nA second misconception is that a VAE is simply an autoencoder with noise added. The paper's construction is a directed probabilistic model trained through a variational bound. Its KL term follows from that bound, while its reconstruction language refers to expected conditional log likelihood. The diagonal Gaussian used in the worked architecture is a simplifying choice, not the full scope of SGVB.\n\nThe demonstrated scope is nevertheless specific. The central construction assumes continuous latent variables with an available differentiable reparameterization. The paper's experiments do not evaluate variational inference over global parameters, and hierarchical neural architectures, time-series models, and supervised latent-variable applications are presented as future directions. Finally, optimizing an ELBO does not guarantee that $q_{\\boldsymbol{\\phi}}(\\mathbf{z}\\mid\\mathbf{x})$ equals the true posterior: the gap is precisely the posterior KL in the variational identity. A restricted approximate-posterior family can therefore leave a nonzero gap even after successful optimization.",
+      "sourceIds": [
+        "section-2",
+        "section-2-part-2",
+        "section-3",
+        "section-6",
+        "section-7"
+      ],
+      "claimIds": [
+        "c2",
+        "c5",
+        "c8",
+        "c11",
+        "c14"
+      ],
+      "figureId": null
+    }
+  ],
+  "figures": [
+    {
+      "id": "fig-latent",
+      "kind": "latent",
+      "title": "The price of shifting a Gaussian posterior",
+      "question": "As the posterior mean moves away from zero while its variance stays one, how does its KL divergence from the standard-normal prior change?",
+      "caption": "An illustrative scalar posterior $q=\\mathcal{N}(\\mu,1)$ is compared with $p=\\mathcal{N}(0,1)$; moving $\\mu$ changes both density separation and the exact value $D_{KL}(q\\|p)=\\mu^2/2$.",
+      "limitation": "This control fixes variance and omits the decoder likelihood, learned encoder, multidimensional covariance, and optimization, so it represents only a special-case KL term.",
+      "sourceIds": [
+        "section-2",
+        "section-3"
+      ],
+      "claimIds": [
+        "c4",
+        "c10",
+        "c11"
+      ],
+      "illustrative": true
+    }
+  ],
+  "quiz": [
+    {
+      "question": "Assume $q(z\\mid x)=\\mathcal{N}(\\mu,\\sigma^2)$ and use $z=\\mu+\\sigma\\epsilon$ with a fixed sampled $\\epsilon$. Which statement best explains why encoder gradients can be computed?",
+      "options": [
+        {
+          "text": "The sampled $z$ becomes nonrandom after reparameterization.",
+          "explanation": "Incorrect. Randomness remains through the draw of $\\epsilon$; conditioning on one draw only exposes a differentiable sampled computation."
+        },
+        {
+          "text": "The noise distribution is independent of the encoder parameters, while $z$ is differentiable in $\\mu$ and $\\sigma$.",
+          "explanation": "Correct. This moves parameter dependence into a differentiable transformation through which derivatives can propagate."
+        },
+        {
+          "text": "The reparameterization makes the true posterior analytically tractable.",
+          "explanation": "Incorrect. It provides a differentiable estimator but does not make the model's true posterior tractable."
+        }
+      ],
+      "answer": 1,
+      "sourceIds": [
+        "section-2-part-2",
+        "section-3"
+      ],
+      "claimIds": [
+        "c5",
+        "c6"
+      ]
+    },
+    {
+      "question": "For the illustrative special case $q=\\mathcal{N}(2,1)$ and $p=\\mathcal{N}(0,1)$, what is $D_{KL}(q\\|p)$?",
+      "options": [
+        {
+          "text": "1",
+          "explanation": "Incorrect. Under the stated equal-unit-variance assumption, the KL is $\\mu^2/2$, not $\\mu/2$."
+        },
+        {
+          "text": "2",
+          "explanation": "Correct. Substitution gives $2^2/2=2$."
+        },
+        {
+          "text": "4",
+          "explanation": "Incorrect. This omits the factor of one half in the special-case formula."
+        }
+      ],
+      "answer": 1,
+      "sourceIds": [
+        "section-2",
+        "section-3"
+      ],
+      "claimIds": [
+        "c4",
+        "c10"
+      ]
+    },
+    {
+      "question": "Which conclusion is justified by the paper's reported marginal-likelihood comparison?",
+      "options": [
+        {
+          "text": "Its MCMC-based estimates validate AEVB equally well at any latent dimensionality.",
+          "explanation": "Incorrect. The authors report that those estimates became unreliable at higher latent dimensionality."
+        },
+        {
+          "text": "Under the stated low-dimensional MNIST setup, AEVB was compared with wake-sleep and MCEM using estimated marginal likelihood.",
+          "explanation": "Correct. This preserves the dataset, low-dimensional condition, and limited scope of the comparison."
+        },
+        {
+          "text": "AEVB always recovers the exact posterior when its ELBO improves.",
+          "explanation": "Incorrect. ELBO improvement does not force the posterior KL gap to zero, especially with a restricted variational family."
+        }
+      ],
+      "answer": 1,
+      "sourceIds": [
+        "section-2",
+        "section-5"
+      ],
+      "claimIds": [
+        "c2",
+        "c12",
+        "c13"
+      ]
+    }
+  ],
+  "id": "vae",
+  "createdAt": "2026-10-02T01:33:00.510Z",
+  "pipelineVersion": "subjects-lessons-v1",
+  "sources": [
+    {
+      "id": "abstract",
+      "label": "Original paper · abstract",
+      "url": "https://arxiv.org/abs/1312.6114",
+      "digest": "e8c00c05f6cba75fd48dfec978dc660890ddbaf30a6ccd259ad97a916e06678a",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:33:16.376Z"
+    },
+    {
+      "id": "main-text",
+      "label": "Original paper · unsectioned main text",
+      "url": "https://arxiv.org/html/1312.6114",
+      "digest": "9e1b6ea3d4f85a942bd42ee5d052b420f2ba2a760aec7379211dbb73bc46ef24",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:33:16.376Z"
+    },
+    {
+      "id": "section-1",
+      "label": "1 Introduction",
+      "url": "https://arxiv.org/html/1312.6114#S1",
+      "digest": "1cfc04b5beee722b2aa49c2bd21bef4cad6bd4fe22397ecd4ac643fd8129c338",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:33:16.376Z"
+    },
+    {
+      "id": "section-2",
+      "label": "2 Method",
+      "url": "https://arxiv.org/html/1312.6114#S2",
+      "digest": "38e911be7b35316229e30a82203cea3e8338920b34477fbfdb970c5f5e659628",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:33:16.376Z"
+    },
+    {
+      "id": "section-2-part-2",
+      "label": "2 Method · part 2",
+      "url": "https://arxiv.org/html/1312.6114#S2",
+      "digest": "afeffcbe335cd2a23ade8ec65d7951c32ba18d919635b37d3838bb171f685278",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:33:16.376Z"
+    },
+    {
+      "id": "section-2-part-3",
+      "label": "2 Method · part 3",
+      "url": "https://arxiv.org/html/1312.6114#S2",
+      "digest": "5bbb2372a094c307fdd8e0bb52b9247c4cca71eff6e06c100a46ba0df20f1934",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:33:16.376Z"
+    },
+    {
+      "id": "section-3",
+      "label": "3 Example: Variational Auto-Encoder",
+      "url": "https://arxiv.org/html/1312.6114#S3",
+      "digest": "74356356a1beacd25f69741a3c5cb9112f041ce66f4bb0d84b6f7667da91c405",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:33:16.376Z"
+    },
+    {
+      "id": "section-4",
+      "label": "4 Related work",
+      "url": "https://arxiv.org/html/1312.6114#S4",
+      "digest": "76b1151533a1c0e94f068563da326280a6b8e1d25e74249b9a608562c3ae607a",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:33:16.376Z"
+    },
+    {
+      "id": "section-5",
+      "label": "5 Experiments",
+      "url": "https://arxiv.org/html/1312.6114#S5",
+      "digest": "05bc64f8b2978469c3d480f0a240aff0863765a11d61c21f0e0f0a843f5c68ed",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:33:16.376Z"
+    },
+    {
+      "id": "section-6",
+      "label": "6 Conclusion",
+      "url": "https://arxiv.org/html/1312.6114#S6",
+      "digest": "fb0dee8aa918063e71d88c2b88cdc00850fde9ea265f7213539671400c7a55db",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:33:16.376Z"
+    },
+    {
+      "id": "section-7",
+      "label": "7 Future work",
+      "url": "https://arxiv.org/html/1312.6114#S7",
+      "digest": "f53a0d7d69844c19e85736e8696b26ce38a71fb120e785a756a0bb0a867997c4",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:33:16.376Z"
+    }
+  ],
+  "review": {
+    "status": "passed",
+    "reviewedAt": "2026-10-02T01:46:32.799Z",
+    "contentDigest": "b49b92f5f312a6390d8444444490244190d39f8ef6f4f9994df5dd927ac272cd"
+  }
+}

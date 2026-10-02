@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import path from "node:path";
+import {hasSubstantiveSourceBody} from "../src/lib/source-extraction";
 import { extractSources } from "../src/lib/papers";
 import type { Paper, Source } from "../src/lib/types";
 const exec = promisify(execFile);
@@ -14,7 +15,7 @@ export async function researchSources(paper: Paper) {
       { timeout: 60000, maxBuffer: 500000 },
     );
     const pages: Source[] = JSON.parse(stdout);
-    if (pages.length >= 2)
+    if (pages.length >= 2&&hasSubstantiveSourceBody(pages))
       return {
         scope: "full-text" as const,
         sources: [html.sources[0], ...pages],

@@ -1,0 +1,422 @@
+{
+  "title": "From Surface Events to Generative Tokens",
+  "summary": "O-Voxel turns native mesh intersections and materials into sparse structured data, then SC-VAE compresses that data for staged flow-based 3D generation.",
+  "prerequisites": [
+    "Basic familiarity with meshes, voxels, and vectors",
+    "Basic knowledge of variational autoencoders",
+    "Comfort with squared-distance objectives and sparse grids"
+  ],
+  "objectives": [
+    "Explain how O-Voxel represents geometry without an implicit field.",
+    "Derive a dual vertex from Hermite samples using the QEF.",
+    "Trace geometry and materials through SC-VAE compression and generation.",
+    "Interpret reconstruction results within their evaluation conditions.",
+    "Distinguish spatial compression from topology simplification."
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "mechanism",
+      "statement": "O-Voxel represents an asset with feature tuples attached only to active cells of a regular three-dimensional grid.",
+      "conditions": "For an $N\\times N\\times N$ grid, cells not intersecting the asset are inactive.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c2",
+      "kind": "mechanism",
+      "statement": "Each active O-Voxel stores local shape information, material information, and its integer grid coordinate.",
+      "conditions": "The coordinate lies in $\\{0,1,\\ldots,N-1\\}^3$.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c3",
+      "kind": "mechanism",
+      "statement": "O-Voxel activates dual faces from direct mesh-edge intersections rather than sign changes of a sampled scalar field.",
+      "conditions": "Hermite intersection points and normals are computed from the input mesh triangles.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c4",
+      "kind": "equation",
+      "statement": "A dual vertex minimizes a QEF combining distances to tangent planes, distances to intersected boundary lines, and regularization toward the mean intersection point.",
+      "conditions": "The minimizer is constrained to its voxel; the boundary and regularization terms are weighted by $\\lambda_{\\mathrm{bound}}$ and $\\lambda_{\\mathrm{reg}}$.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c5",
+      "kind": "mechanism",
+      "statement": "Stored edge-intersection flags determine connections between neighboring dual vertices, while splitting weights control how quadrilateral faces are triangulated.",
+      "conditions": "Three predefined axis-aligned edge flags are stored per voxel; flags for the other edges reside in neighboring voxels.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c6",
+      "kind": "mechanism",
+      "statement": "The implemented material tuple contains base color, metallic ratio, roughness, and opacity aligned with the surface geometry.",
+      "conditions": "Base color has three channels and the other properties have one channel each, with all six values in $[0,1]$.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c7",
+      "kind": "mechanism",
+      "statement": "SC-VAE uses a sparse-convolutional U-shaped encoder and decoder with hierarchical spatial downsampling and mirrored reconstruction.",
+      "conditions": "The network operates on sparse O-Voxel features rather than a dense full-resolution grid.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c8",
+      "kind": "mechanism",
+      "statement": "At factor-two downsampling, the residual shortcut stacks up to eight child features into channels and averages channel groups to form a coarse estimate.",
+      "conditions": "Missing sparse children contribute zero vectors; the typical target width is $C'=2C$.",
+      "sourceIds": [
+        "section-3-part-2"
+      ]
+    },
+    {
+      "id": "c9",
+      "kind": "mechanism",
+      "statement": "The decoder predicts active children before upsampling so that subsequently inactive nodes can be skipped.",
+      "conditions": "A binary eight-entry mask is predicted for every parent node at each applicable upsampling step.",
+      "sourceIds": [
+        "section-3-part-2"
+      ]
+    },
+    {
+      "id": "c10",
+      "kind": "mechanism",
+      "statement": "The complete generator separates sparse structure, geometry, and material synthesis into three successive models.",
+      "conditions": "Material latents are conditioned jointly on the input image and generated geometry latents.",
+      "sourceIds": [
+        "section-3-part-2"
+      ]
+    },
+    {
+      "id": "c11",
+      "kind": "result",
+      "statement": "The reported 1024-resolution reconstruction configuration used about 9.6K tokens, 16-fold spatial downsampling, and a 0.301-second decoder runtime; its all-surface results were reported as MD×10^6 = 0.0042 with F1 at threshold 1e-8 = 0.971 on Toys4K, and MD×10^6 = 0.0170 with F1 at threshold 1e-8 = 0.868 on the curated unseen Sketchfab set.",
+      "conditions": "Table 1 evaluation on an NVIDIA A100; the MD entries are displayed after multiplication by 10^6, and the stated F1 values use the all-surface 1e-8 threshold rather than the outer-surface 1e-6 threshold.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c12",
+      "kind": "result",
+      "statement": "Removing residual autoencoding degraded reconstruction more strongly at 32-fold than at 16-fold compression in the reported ablation.",
+      "conditions": "Curated Sketchfab assets at $256^3$ resolution; comparisons use equal token counts within each compression setting.",
+      "sourceIds": [
+        "section-4-part-2"
+      ]
+    },
+    {
+      "id": "c13",
+      "kind": "result",
+      "statement": "The method obtained the highest reported value in every alignment and preference column of the image-to-3D comparison table.",
+      "conditions": "Evaluation used 100 AI-generated image prompts; the preference study involved about 40 participants and uncurated outputs under identical conditions.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c14",
+      "kind": "caveat",
+      "statement": "The paper reports material-reconstruction metrics only for its own method because it identifies no suitable baseline that encodes material alone given shape.",
+      "conditions": "Reported material scores therefore establish reconstruction performance within the proposed system, not comparative superiority over a matched material-only baseline.",
+      "sourceIds": [
+        "section-4"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "s1",
+      "title": "The representation problem comes first",
+      "markdown": "A 3D generator cannot recover information that its input representation has already erased. Iso-surface methods describe a surface as a level set of a scalar field. That is useful for many closed shapes, but the paper targets harder assets: open sheets, non-manifold junctions, internal surfaces, sharp normal discontinuities, and spatially aligned physical material properties. Its response is not merely a larger generator. It changes the object being compressed.\n\nFor a regular grid of resolution $N\\times N\\times N$, O-Voxel stores\n\n$$\n\\boldsymbol{f}=\\{(\\boldsymbol{f}^{\\mathrm{shape}}_i,\\boldsymbol{f}^{\\mathrm{mat}}_i,\\boldsymbol{p}_i)\\}_{i=1}^{L}.\n$$\n\nHere $L$ is the number of active voxels; $i$ indexes one active voxel; $\\boldsymbol{p}_i\\in\\{0,1,\\ldots,N-1\\}^3$ is its grid coordinate; and $\\boldsymbol{f}^{\\mathrm{shape}}_i$ and $\\boldsymbol{f}^{\\mathrm{mat}}_i$ are its shape and material features. A voxel is active when it participates in the asset rather than merely occupying empty space.\n\nThe patches control below offers a deliberately simpler analogy. It masks cells in a fixed $8\\times8$ image and counts what remains visible. Use it to predict how increasing the hidden fraction changes the amount of processed data. O-Voxel sparsity is more meaningful: activity follows surface intersections in three dimensions, not an arbitrary image mask. The toy therefore clarifies sparse selection, but cannot demonstrate topology, decoding, or reconstruction quality.",
+      "sourceIds": [
+        "section-1",
+        "section-3"
+      ],
+      "claimIds": [
+        "c1",
+        "c2"
+      ],
+      "figureId": "fig-patches"
+    },
+    {
+      "id": "s2",
+      "title": "Geometry from intersections, not a hidden field",
+      "markdown": "Start with a mesh and the edges of the primal voxel grid. Whenever a mesh triangle intersects a grid edge, the conversion records an intersection point $\\boldsymbol{q}_i$ and surface normal $\\boldsymbol{n}_i$. These pairs are Hermite data. The intersection also activates the corresponding dual face. Thus connectivity comes from observed mesh-edge events rather than from a sign change in a sampled signed-distance field.\n\nEach intersected primal cell receives a dual vertex $\\boldsymbol{v}$. Neighboring dual vertices are connected across marked edges to form quadrilaterals. The stored vector $\\boldsymbol{\\delta}_i\\in\\{0,1\\}^3$ records intersection flags for three predefined voxel edges along the coordinate axes; neighboring voxels hold the remaining edge information. A positive splitting weight $\\gamma_i$ selects how each quadrilateral is divided into triangles.\n\nThis distinction addresses a common misconception: a voxel grid does not automatically imply blocky occupied cubes or an implicit field. Here the grid organizes local evidence and connectivity, while the reconstructed surface passes through adjustable dual vertices. Spatial discretization still bounds attainable detail, but it does not force the surface itself to coincide with voxel faces.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c3",
+        "c5"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s3",
+      "title": "The dual vertex is a constrained geometric compromise",
+      "markdown": "The dual vertex minimizes\n\n$$\n\\min_{\\boldsymbol{v}\\in\\mathrm{voxel}} e(\\boldsymbol{v})=\n\\sum_i d_{\\Pi,i}^2+\n\\lambda_{\\mathrm{bound}}\\sum_j d_{L,j}^2+\n\\lambda_{\\mathrm{reg}}d_{\\hat{\\boldsymbol{q}}}^2.\n$$\n\nFor Hermite sample $i$,\n\n$$\nd_{\\Pi,i}^2=\\big(\\boldsymbol{n}_i\\cdot(\\boldsymbol{v}-\\boldsymbol{q}_i)\\big)^2\n$$\n\nis squared distance to its tangent plane. For boundary line $j$, $\\boldsymbol{o}_j$ is a point on the line and $\\boldsymbol{d}_j$ is its unit direction, giving\n\n$$\nd_{L,j}^2=\\left\\|(\\boldsymbol{v}-\\boldsymbol{o}_j)-\n\\big((\\boldsymbol{v}-\\boldsymbol{o}_j)\\cdot\\boldsymbol{d}_j\\big)\\boldsymbol{d}_j\\right\\|^2.\n$$\n\nFinally, $d_{\\hat{\\boldsymbol{q}}}^2=\\|\\boldsymbol{v}-\\bar{\\boldsymbol{q}}\\|^2$, where $\\bar{\\boldsymbol{q}}$ is the mean intersection point. The nonnegative weights $\\lambda_{\\mathrm{bound}}$ and $\\lambda_{\\mathrm{reg}}$ balance boundary alignment and stabilization.\n\nConsider an illustrative one-dimensional restriction with $v\\in[0,1]$, two plane targets at $0.2$ and $0.6$, no boundary term, and $\\lambda_{\\mathrm{reg}}=2$ toward their mean $\\bar q=0.4$. Then\n\n$$\ne(v)=(v-0.2)^2+(v-0.6)^2+2(v-0.4)^2.\n$$\n\nDifferentiating gives $e'(v)=8v-3.2$, so $v=0.4$, which satisfies the cell constraint. This arithmetic is illustrative, not a reported mesh measurement. In the full three-dimensional QEF, differently oriented planes can pull the vertex toward a sharp feature, while boundary-line evidence helps open-surface edges remain aligned.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c4"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s4",
+      "title": "Material travels with the surface",
+      "markdown": "Geometry is only half of a usable asset. At active voxel $i$, the implemented material feature is\n\n$$\n\\boldsymbol{f}^{\\mathrm{mat}}_i=(\\boldsymbol{c}_i,m_i,r_i,\\alpha_i),\n$$\n\nwhere $\\boldsymbol{c}_i\\in[0,1]^3$ is RGB base color, $m_i\\in[0,1]$ is metallic ratio, $r_i\\in[0,1]$ is roughness, and $\\alpha_i\\in[0,1]$ is opacity. This is six scalar channels in total.\n\nDuring mesh-to-O-Voxel conversion, the center of an active voxel is projected onto intersected triangles. Texture attributes are sampled through their UV coordinates and combined using point-to-surface-distance weights. In the reverse direction, a surface query obtains attributes by trilinear interpolation from neighboring voxel values. The resulting mesh can then be rendered without the view-dependent merging stage criticized by the paper.\n\n“Native” should not be misread as lossless. Sampling, interpolation, grid resolution, and learned compression can all remove detail. The narrower claim is architectural: geometry and material occupy the same three-dimensional structure, so their alignment is represented directly rather than assembled from independently generated views.",
+      "sourceIds": [
+        "section-2",
+        "section-3"
+      ],
+      "claimIds": [
+        "c6"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s5",
+      "title": "Compression preserves structure by rearranging it",
+      "markdown": "SC-VAE maps sparse O-Voxel data into a compact stochastic latent space. Its encoder repeatedly downsamples; its decoder mirrors those stages. At a factor-two spatial step, one parent covers up to eight children. If every child has $C$ channels, the shortcut stacks them into an $8C$-channel vector, then averages channel groups to reach $C'$ channels, typically $C'=2C$. Missing children supply zeros. Upsampling performs a corresponding channel-to-space rearrangement and duplicates groups to match the target width.\n\nThis shortcut does not magically retain every child value when $8C$ numbers become $2C$ numbers. Instead, it gives learned residual blocks a structured coarse estimate. Before decoder expansion, an eight-bit prediction $\\hat{\\boldsymbol{\\rho}}\\in\\{0,1\\}^8$ identifies which children should exist, allowing inactive branches to be skipped.\n\nThe latent control visualizes a different but relevant VAE prerequisite: $q=\\mathcal N(\\mu,1)$ versus $p=\\mathcal N(0,1)$, with $\\mathrm{KL}(q\\|p)=\\mu^2/2$. Predict what happens to KL as $|\\mu|$ grows. This exact scalar calculation explains regularization pressure toward a prior, but it is not the paper's learned multidimensional posterior and says nothing about its reconstruction fidelity. SC-VAE training combines KL with feature reconstruction, occupancy, and later rendering losses.",
+      "sourceIds": [
+        "section-3",
+        "section-3-part-2"
+      ],
+      "claimIds": [
+        "c7",
+        "c8",
+        "c9"
+      ],
+      "figureId": "fig-latent"
+    },
+    {
+      "id": "s6",
+      "title": "Generation follows the asset's dependency order",
+      "markdown": "The learned representation supports three generative stages. First, a sparse-structure model predicts where active voxels exist. Second, a geometry model fills active locations with geometry latents. Third, a material model predicts material latents conditioned jointly on the input image and generated geometry. Separate shape and material SC-VAEs support material generation for a supplied shape, while the material decoder follows the shape VAE's subdivision structure.\n\nThe generators are sparse DiTs trained with flow matching. The paper reports progressive training from $512^3$ outputs with a $32^3$ latent resolution to $1024^3$ outputs with a $64^3$ latent resolution. This staged order is consequential: material is attached after a spatial geometric scaffold exists, rather than being painted first and reconciled later.\n\nThe paper also describes cascaded test-time generation beyond or within the training scale. That is an additional inference strategy, not evidence that arbitrarily high resolution is free. Reapplying a generator costs computation, and downsampled layouts may still preserve or introduce errors. Likewise, a 16-fold spatial downsampling factor describes resolution along each axis; it must not be confused with a simple sixteen-to-one reduction in total dense-grid cells or with guaranteed perceptual equivalence.",
+      "sourceIds": [
+        "section-3-part-2",
+        "section-4-part-2"
+      ],
+      "claimIds": [
+        "c10"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s7",
+      "title": "What the measurements establish—and what they do not",
+      "markdown": "On Table 1's A100 evaluation, the reported $1024$ configuration uses about 9.6K tokens, 16-fold spatial downsampling, and 0.301 seconds of decoder time. For all-surface reconstruction on Toys4K, the table reports $\\mathrm{MD}\\times10^6=0.0042$—equivalently, an underlying MD of $4.2\\times10^{-9}$—and F1 $=0.971$ at the $10^{-8}$ threshold; its normal-map PSNR is $43.11$ dB. On the curated unseen Sketchfab set, it reports $\\mathrm{MD}\\times10^6=0.0170$—an underlying MD of $1.70\\times10^{-8}$—and F1 $=0.868$ at the same $10^{-8}$ all-surface threshold; its normal-map PSNR is $35.26$ dB. These numbers belong to different test sets and metrics and should not be blended into one universal quality score. Table 1 separately reports outer-surface F1 at a $10^{-6}$ threshold, so those values should not be interchanged with the cited all-surface F1 scores.\n\nThe ablation gives more targeted causal evidence. At $256^3$ on curated Sketchfab assets, removing residual autoencoding raises MD from 1.032 to 1.747 at 16-fold compression and from 1.405 to 7.394 at 32-fold compression. The latter change is much larger, supporting the shortcut's importance under the stronger bottleneck. It does not isolate every architectural interaction.\n\nFor image-conditioned generation, the method leads every alignment and preference column reported in Table 2. Those comparisons use 100 AI-generated prompts; about 40 participants supplied preference votes. They support superiority under that protocol, not every prompt distribution, renderer, hardware target, or real production workflow. Material-only reconstruction has no matched baseline in the paper, so its reported PBR scores demonstrate internal fidelity rather than comparative dominance.\n\nFinally, topology capacity and successful generation are different claims. O-Voxel can encode open, non-manifold, and internal surfaces, but a learned generator can still fail to predict their sparse layout or local attributes. Resolution, training coverage, stochastic generation, and decoding errors remain practical limits.",
+      "sourceIds": [
+        "section-4",
+        "section-4-part-2"
+      ],
+      "claimIds": [
+        "c11",
+        "c12",
+        "c13",
+        "c14"
+      ],
+      "figureId": null
+    }
+  ],
+  "figures": [
+    {
+      "id": "fig-patches",
+      "kind": "patches",
+      "title": "Sparse selection on a fixed grid",
+      "question": "As the masked fraction increases, how do the visible and masked cell counts change while the grid size stays fixed?",
+      "caption": "An illustrative $8\\times8$ image grid uses a deterministic mask to expose the bookkeeping difference between retained and skipped cells, a prerequisite for reasoning about sparse processing.",
+      "limitation": "Masking is not O-Voxel activation: it shows neither mesh-edge intersections nor 3D topology, learned reconstruction, or compression quality.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c1"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "fig-latent",
+      "kind": "latent",
+      "title": "Prior pressure in a scalar VAE",
+      "question": "How does moving the posterior mean away from zero change its KL divergence from the standard-normal prior?",
+      "caption": "For the illustrative distributions $q=\\mathcal N(\\mu,1)$ and $p=\\mathcal N(0,1)$, the control changes $\\mu$ and displays the exact value $\\mu^2/2$.",
+      "limitation": "This is a scalar fixed-variance posterior, not SC-VAE's learned latent distribution, reconstruction objective, token count, or measured compression behavior.",
+      "sourceIds": [
+        "section-3-part-2"
+      ],
+      "claimIds": [
+        "c7"
+      ],
+      "illustrative": true
+    }
+  ],
+  "quiz": [
+    {
+      "question": "Suppose two mesh sheets cross a primal grid edge without defining inside and outside. Which O-Voxel mechanism most directly records the event?",
+      "options": [
+        {
+          "text": "A sign change in a learned signed-distance field.",
+          "explanation": "Incorrect. The described conversion does not require an SDF or another scalar field."
+        },
+        {
+          "text": "A direct mesh-edge intersection flag with Hermite point and normal data.",
+          "explanation": "Correct. Direct intersections activate connectivity and provide local geometric constraints."
+        },
+        {
+          "text": "A high metallic value stored at the neighboring voxels.",
+          "explanation": "Incorrect. Metallic ratio is a material attribute and does not determine surface connectivity."
+        }
+      ],
+      "answer": 1,
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c3"
+      ]
+    },
+    {
+      "question": "In the illustrative QEF example $e(v)=(v-0.2)^2+(v-0.6)^2+2(v-0.4)^2$ with $v\\in[0,1]$, which value minimizes the objective?",
+      "options": [
+        {
+          "text": "$v=0.2$",
+          "explanation": "Incorrect. This satisfies one target but produces nonzero pulls from the other terms."
+        },
+        {
+          "text": "$v=0.4$",
+          "explanation": "Correct. Setting $e'(v)=8v-3.2$ to zero gives $v=0.4$, inside the constraint."
+        },
+        {
+          "text": "$v=0.6$",
+          "explanation": "Incorrect. This satisfies the other plane target but not the balanced objective."
+        }
+      ],
+      "answer": 1,
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c4"
+      ]
+    },
+    {
+      "question": "Which conclusion is justified by the paper's material-only reconstruction report?",
+      "options": [
+        {
+          "text": "It beats every prior material encoder on a shared benchmark.",
+          "explanation": "Incorrect. The paper reports no suitable matched baseline for that task."
+        },
+        {
+          "text": "Its reported scores show faithful reconstruction within the proposed evaluation, without a comparative material-only ranking.",
+          "explanation": "Correct. This respects both the measurements and the missing matched baseline."
+        },
+        {
+          "text": "Its opacity channel guarantees correct translucent appearance under every renderer.",
+          "explanation": "Incorrect. Representing opacity does not guarantee universal rendering accuracy."
+        }
+      ],
+      "answer": 1,
+      "sourceIds": [
+        "section-4"
+      ],
+      "claimIds": [
+        "c14"
+      ]
+    }
+  ],
+  "id": "native-and-compact-structured-latents-for-3d-generation",
+  "createdAt": "2026-10-02T00:15:38.971Z",
+  "pipelineVersion": "subjects-lessons-v1",
+  "sources": [
+    {
+      "id": "abstract",
+      "label": "Original paper · abstract",
+      "url": "https://arxiv.org/abs/2512.14692",
+      "digest": "fabb18eefd50e50cb5986b8829c9085a1fb81e1c9abd2407947a0e23eb5f3841",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:12:35.275Z"
+    },
+    {
+      "id": "section-1",
+      "label": "1 Introduction",
+      "url": "https://arxiv.org/html/2512.14692#S1",
+      "digest": "15d4c4edef5f5f18bf020018e25ec061bbdcc133ffe9bfd099c80c238a413402",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:12:35.275Z"
+    },
+    {
+      "id": "section-2",
+      "label": "2 Related Work",
+      "url": "https://arxiv.org/html/2512.14692#S2",
+      "digest": "7b6e990489740422db9e09f3ee7d59ec45fea90063ea2626c3415cec1c5016e2",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:12:35.275Z"
+    },
+    {
+      "id": "section-3",
+      "label": "3 Method",
+      "url": "https://arxiv.org/html/2512.14692#S3",
+      "digest": "0f2b7fbd023f20338326fda7c6db7869b662e8f7b6a950e729e0684aa8e04e9f",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:12:35.275Z"
+    },
+    {
+      "id": "section-3-part-2",
+      "label": "3 Method · part 2",
+      "url": "https://arxiv.org/html/2512.14692#S3",
+      "digest": "a4d14c8f22cf8ecb259457c7bdb5754996d1ef2844204a2a95c9dda6e69d962b",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:12:35.275Z"
+    },
+    {
+      "id": "section-4",
+      "label": "4 Experiments",
+      "url": "https://arxiv.org/html/2512.14692#S4",
+      "digest": "b59f6263f1b798046c33ad5bd36515ebfaa67697a5c2d9356337b86c816193b3",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:12:35.275Z"
+    },
+    {
+      "id": "section-4-part-2",
+      "label": "4 Experiments · part 2",
+      "url": "https://arxiv.org/html/2512.14692#S4",
+      "digest": "02dfc186ac6820984515c0dddb17a55e6b38fa6b79dc08cb6433e4be16eb2ded",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:12:35.275Z"
+    },
+    {
+      "id": "section-5",
+      "label": "5 Conclusion",
+      "url": "https://arxiv.org/html/2512.14692#S5",
+      "digest": "47b5fd37c0954b737d4233cab7659a526ac8b90b322918d89b5898cea7c3ac4e",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:12:35.275Z"
+    }
+  ],
+  "review": {
+    "status": "passed",
+    "reviewedAt": "2026-10-02T00:15:38.972Z",
+    "contentDigest": "806fb9632c54d7fd7f34dd9fbcccc026895d330a0ee646bebeddc0d5642521ca"
+  }
+}

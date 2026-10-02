@@ -1,0 +1,785 @@
+{
+  "version": 1,
+  "sectionId": "s4",
+  "title": "Replay preserves experience while changing the training order",
+  "introduction": "Consider three symbolic experiences of the form $e=(s,a,r,s')$. In this constructed example, $e_\\alpha$ is explicitly nonterminal, so its target includes a continuation term. The walkthrough follows $e_\\gamma$ into the persistent replay pool, selects the earlier $e_\\alpha$ uniformly without removing it, and constructs the paper's target $y_\\alpha=r_\\alpha+\\gamma\\max_{a'}Q(s'_\\alpha,a';\\theta_{i-1})$. A later draw can reuse the same stored transition.",
+  "entities": [
+    {
+      "id": "e-alpha",
+      "label": "eα",
+      "meaning": "A previously stored, nonterminal transition identified as eα."
+    },
+    {
+      "id": "e-beta",
+      "label": "eβ",
+      "meaning": "A different previously stored transition identified as eβ."
+    },
+    {
+      "id": "e-gamma",
+      "label": "eγ",
+      "meaning": "The newly arriving transition identified as eγ."
+    },
+    {
+      "id": "s-alpha",
+      "label": "sα",
+      "meaning": "The history state at the start of transition eα."
+    },
+    {
+      "id": "a-alpha",
+      "label": "aα",
+      "meaning": "The action recorded in transition eα."
+    },
+    {
+      "id": "r-alpha",
+      "label": "rα",
+      "meaning": "The immediate reward recorded in transition eα."
+    },
+    {
+      "id": "s-alpha-next",
+      "label": "sα′",
+      "meaning": "The next history state recorded in the nonterminal transition eα."
+    },
+    {
+      "id": "q-alpha-u",
+      "label": "Qold(u)",
+      "meaning": "The previous-iteration Q-network value Q(sα′,u;θi−1) for legal next action u."
+    },
+    {
+      "id": "q-alpha-v",
+      "label": "Qold(v)",
+      "meaning": "The previous-iteration Q-network value Q(sα′,v;θi−1) for legal next action v."
+    },
+    {
+      "id": "qmax-alpha",
+      "label": "maxQold",
+      "meaning": "The maximum previous-iteration value over legal actions a′ of Q(sα′,a′;θi−1)."
+    },
+    {
+      "id": "gamma",
+      "label": "γ",
+      "meaning": "The per-step discount factor."
+    },
+    {
+      "id": "y-alpha",
+      "label": "yα",
+      "meaning": "The Bellman target rα + γ max over legal actions a′ of Q(sα′,a′;θi−1) for nonterminal eα."
+    },
+    {
+      "id": "q-alpha",
+      "label": "Qcur",
+      "meaning": "The current Q-network prediction Q(sα,aα;θi) for the recorded state-action pair in eα."
+    },
+    {
+      "id": "theta-before",
+      "label": "θi",
+      "meaning": "The current Q-network parameters before the illustrated stochastic gradient step."
+    },
+    {
+      "id": "theta-after",
+      "label": "θpost",
+      "meaning": "The parameters produced by the illustrated stochastic gradient step from θi; θpost is a local alias, not another paper iteration index."
+    }
+  ],
+  "objects": [
+    {
+      "id": "arrival",
+      "form": "vector",
+      "label": "Arriving experience",
+      "detail": "New transition eγ from the current interaction",
+      "sourceIds": [
+        "section-4"
+      ],
+      "claimIds": [
+        "c4"
+      ]
+    },
+    {
+      "id": "replay",
+      "form": "bank",
+      "label": "Replay memory D",
+      "detail": "Persistent collection containing eα, eβ, and eγ",
+      "sourceIds": [
+        "section-4"
+      ],
+      "claimIds": [
+        "c4",
+        "c5",
+        "c6"
+      ]
+    },
+    {
+      "id": "sample",
+      "form": "vector",
+      "label": "Uniform replay sample",
+      "detail": "Uniformly copied transition retained in replay",
+      "sourceIds": [
+        "section-4"
+      ],
+      "claimIds": [
+        "c4",
+        "c5",
+        "c6"
+      ]
+    },
+    {
+      "id": "next-values",
+      "form": "vector",
+      "label": "Next-action values",
+      "detail": "Previous-iteration values at the next state",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c2",
+        "c3"
+      ]
+    },
+    {
+      "id": "target",
+      "form": "vector",
+      "label": "Bellman target",
+      "detail": "Sampled reward plus discounted best continuation",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c2"
+      ]
+    },
+    {
+      "id": "prediction",
+      "form": "vector",
+      "label": "Current prediction",
+      "detail": "Current value for the sampled state-action pair",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c3"
+      ]
+    },
+    {
+      "id": "q-network",
+      "form": "module",
+      "label": "Q-network update",
+      "detail": "Gradient step comparing target and prediction",
+      "sourceIds": [
+        "section-2",
+        "section-4"
+      ],
+      "claimIds": [
+        "c3",
+        "c4",
+        "c5"
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "id": "r-append",
+      "from": "arrival",
+      "to": "replay",
+      "label": "store transition",
+      "dashed": false,
+      "sourceIds": [
+        "section-4"
+      ],
+      "claimIds": [
+        "c4"
+      ]
+    },
+    {
+      "id": "r-sample",
+      "from": "replay",
+      "to": "sample",
+      "label": "sample uniformly",
+      "dashed": false,
+      "sourceIds": [
+        "section-4"
+      ],
+      "claimIds": [
+        "c4",
+        "c5",
+        "c6"
+      ]
+    },
+    {
+      "id": "r-evaluate-next",
+      "from": "sample",
+      "to": "next-values",
+      "label": "evaluate next state",
+      "dashed": false,
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c2",
+        "c3"
+      ]
+    },
+    {
+      "id": "r-max-to-target",
+      "from": "next-values",
+      "to": "target",
+      "label": "take best continuation",
+      "dashed": false,
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c2"
+      ]
+    },
+    {
+      "id": "r-reward-to-target",
+      "from": "sample",
+      "to": "target",
+      "label": "supply sampled reward",
+      "dashed": false,
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c2"
+      ]
+    },
+    {
+      "id": "r-evaluate-current",
+      "from": "sample",
+      "to": "prediction",
+      "label": "evaluate recorded pair",
+      "dashed": false,
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c3"
+      ]
+    },
+    {
+      "id": "r-target-update",
+      "from": "target",
+      "to": "q-network",
+      "label": "supply training target",
+      "dashed": false,
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c2",
+        "c3"
+      ]
+    },
+    {
+      "id": "r-prediction-update",
+      "from": "prediction",
+      "to": "q-network",
+      "label": "supply current prediction",
+      "dashed": false,
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c3"
+      ]
+    }
+  ],
+  "beats": [
+    {
+      "title": "A new transition joins persistent replay",
+      "explanation": "The interaction has produced $e_\\gamma$, and replay stores it beside earlier transitions $e_\\alpha$ and $e_\\beta$. The same bank changes from two displayed items to three. The paper's finite replay eventually overwrites older experiences, but this displayed collection is not a capacity measurement.",
+      "sourceIds": [
+        "section-4"
+      ],
+      "claimIds": [
+        "c4",
+        "c6"
+      ],
+      "objects": [
+        {
+          "objectId": "arrival",
+          "status": "active",
+          "entityIds": [
+            "e-gamma"
+          ]
+        },
+        {
+          "objectId": "replay",
+          "status": "active",
+          "entityIds": [
+            "e-alpha",
+            "e-beta",
+            "e-gamma"
+          ]
+        },
+        {
+          "objectId": "sample",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "next-values",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "target",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "prediction",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "q-network",
+          "status": "pending",
+          "entityIds": []
+        }
+      ],
+      "relationships": [
+        {
+          "relationshipId": "r-append",
+          "entityIds": [
+            "e-gamma"
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Uniform replay selects an earlier experience",
+      "explanation": "A uniform draw selects the already stored $e_\\alpha$ rather than automatically using the newest transition. Its identity and recorded fields are copied into the sample while replay survives unchanged. Every retained transition receives equal sampling treatment; no priority score is introduced.",
+      "sourceIds": [
+        "section-4"
+      ],
+      "claimIds": [
+        "c4",
+        "c5",
+        "c6"
+      ],
+      "objects": [
+        {
+          "objectId": "arrival",
+          "status": "retained",
+          "entityIds": [
+            "e-gamma"
+          ]
+        },
+        {
+          "objectId": "replay",
+          "status": "retained",
+          "entityIds": [
+            "e-alpha",
+            "e-beta",
+            "e-gamma"
+          ]
+        },
+        {
+          "objectId": "sample",
+          "status": "active",
+          "entityIds": [
+            "e-alpha",
+            "s-alpha",
+            "a-alpha",
+            "r-alpha",
+            "s-alpha-next"
+          ]
+        },
+        {
+          "objectId": "next-values",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "target",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "prediction",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "q-network",
+          "status": "pending",
+          "entityIds": []
+        }
+      ],
+      "relationships": [
+        {
+          "relationshipId": "r-sample",
+          "entityIds": [
+            "e-alpha"
+          ]
+        }
+      ]
+    },
+    {
+      "title": "The sample supplies both sides of the error",
+      "explanation": "Because the constructed $e_\\alpha=(s_\\alpha,a_\\alpha,r_\\alpha,s'_\\alpha)$ is nonterminal, the previous-iteration network evaluates legal actions at $s'_\\alpha$. In parallel, the current network evaluates the recorded pair $(s_\\alpha,a_\\alpha)$. These computations use different fields of the same replayed transition and are not sequential dependencies.",
+      "sourceIds": [
+        "section-2",
+        "section-4"
+      ],
+      "claimIds": [
+        "c2",
+        "c3",
+        "c4"
+      ],
+      "objects": [
+        {
+          "objectId": "arrival",
+          "status": "retained",
+          "entityIds": [
+            "e-gamma"
+          ]
+        },
+        {
+          "objectId": "replay",
+          "status": "retained",
+          "entityIds": [
+            "e-alpha",
+            "e-beta",
+            "e-gamma"
+          ]
+        },
+        {
+          "objectId": "sample",
+          "status": "retained",
+          "entityIds": [
+            "e-alpha",
+            "s-alpha",
+            "a-alpha",
+            "r-alpha",
+            "s-alpha-next"
+          ]
+        },
+        {
+          "objectId": "next-values",
+          "status": "active",
+          "entityIds": [
+            "s-alpha-next",
+            "q-alpha-u",
+            "q-alpha-v",
+            "qmax-alpha"
+          ]
+        },
+        {
+          "objectId": "target",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "prediction",
+          "status": "active",
+          "entityIds": [
+            "s-alpha",
+            "a-alpha",
+            "q-alpha"
+          ]
+        },
+        {
+          "objectId": "q-network",
+          "status": "retained",
+          "entityIds": [
+            "theta-before"
+          ]
+        }
+      ],
+      "relationships": [
+        {
+          "relationshipId": "r-evaluate-next",
+          "entityIds": [
+            "s-alpha-next"
+          ]
+        },
+        {
+          "relationshipId": "r-evaluate-current",
+          "entityIds": [
+            "s-alpha",
+            "a-alpha"
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Reward and continuation form the nonterminal target",
+      "explanation": "The target becomes $y_\\alpha=r_\\alpha+\\gamma\\max_{a'}Q(s'_\\alpha,a';\\theta_{i-1})$. The continuation term is present because $e_\\alpha$ was declared nonterminal. This combines its recorded reward with the paper's previous-iteration bootstrap value without importing a later target-network schedule.",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c2",
+        "c3"
+      ],
+      "objects": [
+        {
+          "objectId": "arrival",
+          "status": "retained",
+          "entityIds": [
+            "e-gamma"
+          ]
+        },
+        {
+          "objectId": "replay",
+          "status": "retained",
+          "entityIds": [
+            "e-alpha",
+            "e-beta",
+            "e-gamma"
+          ]
+        },
+        {
+          "objectId": "sample",
+          "status": "retained",
+          "entityIds": [
+            "e-alpha",
+            "s-alpha",
+            "a-alpha",
+            "r-alpha",
+            "s-alpha-next"
+          ]
+        },
+        {
+          "objectId": "next-values",
+          "status": "retained",
+          "entityIds": [
+            "s-alpha-next",
+            "q-alpha-u",
+            "q-alpha-v",
+            "qmax-alpha"
+          ]
+        },
+        {
+          "objectId": "target",
+          "status": "active",
+          "entityIds": [
+            "r-alpha",
+            "gamma",
+            "qmax-alpha",
+            "y-alpha"
+          ]
+        },
+        {
+          "objectId": "prediction",
+          "status": "retained",
+          "entityIds": [
+            "s-alpha",
+            "a-alpha",
+            "q-alpha"
+          ]
+        },
+        {
+          "objectId": "q-network",
+          "status": "retained",
+          "entityIds": [
+            "theta-before"
+          ]
+        }
+      ],
+      "relationships": [
+        {
+          "relationshipId": "r-max-to-target",
+          "entityIds": [
+            "qmax-alpha"
+          ]
+        },
+        {
+          "relationshipId": "r-reward-to-target",
+          "entityIds": [
+            "r-alpha"
+          ]
+        }
+      ]
+    },
+    {
+      "title": "The sampled error updates the Q-network",
+      "explanation": "The active update compares $y_\\alpha$ with $Q(s_\\alpha,a_\\alpha;\\theta_i)$ and takes one stochastic gradient step. The alias $\\theta_{post}$ denotes the result of this illustrated step, not a new source-defined iteration index. Replay remains available, so the update consumes neither $e_\\alpha$ nor the rest of the pool.",
+      "sourceIds": [
+        "section-2",
+        "section-4"
+      ],
+      "claimIds": [
+        "c3",
+        "c4",
+        "c5"
+      ],
+      "objects": [
+        {
+          "objectId": "arrival",
+          "status": "retained",
+          "entityIds": [
+            "e-gamma"
+          ]
+        },
+        {
+          "objectId": "replay",
+          "status": "retained",
+          "entityIds": [
+            "e-alpha",
+            "e-beta",
+            "e-gamma"
+          ]
+        },
+        {
+          "objectId": "sample",
+          "status": "retained",
+          "entityIds": [
+            "e-alpha",
+            "s-alpha",
+            "a-alpha",
+            "r-alpha",
+            "s-alpha-next"
+          ]
+        },
+        {
+          "objectId": "next-values",
+          "status": "retained",
+          "entityIds": [
+            "s-alpha-next",
+            "q-alpha-u",
+            "q-alpha-v",
+            "qmax-alpha"
+          ]
+        },
+        {
+          "objectId": "target",
+          "status": "retained",
+          "entityIds": [
+            "r-alpha",
+            "gamma",
+            "qmax-alpha",
+            "y-alpha"
+          ]
+        },
+        {
+          "objectId": "prediction",
+          "status": "retained",
+          "entityIds": [
+            "s-alpha",
+            "a-alpha",
+            "q-alpha"
+          ]
+        },
+        {
+          "objectId": "q-network",
+          "status": "active",
+          "entityIds": [
+            "theta-before",
+            "y-alpha",
+            "q-alpha",
+            "theta-after"
+          ]
+        }
+      ],
+      "relationships": [
+        {
+          "relationshipId": "r-target-update",
+          "entityIds": [
+            "y-alpha"
+          ]
+        },
+        {
+          "relationshipId": "r-prediction-update",
+          "entityIds": [
+            "q-alpha"
+          ]
+        }
+      ]
+    },
+    {
+      "title": "A later draw can reuse the same experience",
+      "explanation": "After the completed step, replay still contains $e_\\alpha$, $e_\\beta$, and $e_\\gamma$. A later uniform draw may select $e_\\alpha$ again, preserving its transition identity while starting a new Q-learning computation under the then-current parameters. The pending next-values, target, and prediction belong to that new computation; they do not erase the values already used in the preceding update. This potential reuse is the paper's data-efficiency benefit and does not imply prioritized replay.",
+      "sourceIds": [
+        "section-4"
+      ],
+      "claimIds": [
+        "c4",
+        "c5",
+        "c6"
+      ],
+      "objects": [
+        {
+          "objectId": "arrival",
+          "status": "retained",
+          "entityIds": [
+            "e-gamma"
+          ]
+        },
+        {
+          "objectId": "replay",
+          "status": "retained",
+          "entityIds": [
+            "e-alpha",
+            "e-beta",
+            "e-gamma"
+          ]
+        },
+        {
+          "objectId": "sample",
+          "status": "active",
+          "entityIds": [
+            "e-alpha",
+            "s-alpha",
+            "a-alpha",
+            "r-alpha",
+            "s-alpha-next"
+          ]
+        },
+        {
+          "objectId": "next-values",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "target",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "prediction",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "q-network",
+          "status": "retained",
+          "entityIds": [
+            "theta-after"
+          ]
+        }
+      ],
+      "relationships": [
+        {
+          "relationshipId": "r-sample",
+          "entityIds": [
+            "e-alpha"
+          ]
+        }
+      ]
+    }
+  ],
+  "takeaway": "Replay preserves a shared pool of transition identities while uniform draws change the training order and permit reuse. For the explicitly nonterminal $e_\\alpha$, the selected tuple supplies both its Bellman target and the recorded pair whose current prediction is updated, without consuming the stored transition.",
+  "sourceIds": [
+    "section-2",
+    "section-4"
+  ],
+  "claimIds": [
+    "c2",
+    "c3",
+    "c4",
+    "c5",
+    "c6"
+  ],
+  "lessonId": "playing-atari-with-deep-reinforcement-learning",
+  "parentContentDigest": "dea357e042e145f76f7254448988d0f29c625604fe3dadb2c25619e8633a047e",
+  "review": {
+    "status": "source-passed",
+    "reviewedAt": "2026-10-01T23:40:16.924Z",
+    "contentDigest": "f502e323d5e52c577efd3840243f320ace1a27806e9827fd3a658ca0c4c1ff9b",
+    "rendererDigest": "2cc690a7105c5faca75e22053e83674a2cf2e227ae22afe88cc4662d09c98bb4",
+    "visualReviewedAt": null
+  }
+}

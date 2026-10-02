@@ -1,0 +1,425 @@
+{
+  "title": "From Latent Tiles to Scalable Denoisers",
+  "summary": "DiT replaces the diffusion U-Net with a patch-based transformer and shows, under controlled ImageNet experiments, that greater forward-pass compute tracks better sample quality.",
+  "prerequisites": [
+    "Gaussian noise and conditional probability",
+    "Transformer tokens and residual blocks",
+    "Variational autoencoders and latent spaces",
+    "Image generation evaluation with FID"
+  ],
+  "objectives": [
+    "Derive the forward noising equation and noise-prediction objective.",
+    "Trace a noisy VAE latent through patchification, conditioning, and decoding.",
+    "Explain how patch size changes token count with little effect on parameter count.",
+    "Distinguish the controlled scaling evidence from broader scaling claims.",
+    "Interpret the reported FID results under their evaluation conditions."
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "mechanism",
+      "statement": "DiT replaces the usual convolutional U-Net denoiser with a transformer operating on patches of a compressed image representation.",
+      "conditions": "Latent diffusion with a frozen VAE and spatial latent inputs.",
+      "sourceIds": [
+        "abstract"
+      ]
+    },
+    {
+      "id": "c2",
+      "kind": "equation",
+      "statement": "The forward process can sample a noisy state directly by scaling clean data and independent standard Gaussian noise.",
+      "conditions": "Gaussian diffusion at timestep t with a prescribed cumulative noise coefficient.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c3",
+      "kind": "equation",
+      "statement": "The simple denoising loss is squared error between predicted noise and the particular noise used to corrupt the example.",
+      "conditions": "Noise-prediction parameterization of the reverse-process mean.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c4",
+      "kind": "mechanism",
+      "statement": "The image is encoded once into a smaller spatial latent; diffusion occurs there, and the sampled latent is decoded back to pixels.",
+      "conditions": "Two-stage latent diffusion with the encoder frozen during diffusion-model training.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c5",
+      "kind": "mechanism",
+      "statement": "Patchification maps an I-by-I latent into a sequence whose length grows quadratically as patch width shrinks.",
+      "conditions": "Square latent with non-overlapping square patches whose width p divides I.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c6",
+      "kind": "result",
+      "statement": "Halving patch width quadruples token count and raises transformer computation while leaving downstream parameter count essentially unchanged.",
+      "conditions": "Fixed latent side length and transformer configuration; comparison concerns the paper's patchification design.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c7",
+      "kind": "mechanism",
+      "statement": "adaLN-Zero begins each transformer block as an identity map by zero-initializing learned residual gates.",
+      "conditions": "DiT block whose conditioning MLP produces dimension-wise residual scaling parameters.",
+      "sourceIds": [
+        "section-3-part-2"
+      ]
+    },
+    {
+      "id": "c8",
+      "kind": "result",
+      "statement": "Among the four tested conditioning designs, adaLN-Zero achieved the best reported FID while tying for the lowest forward-pass cost.",
+      "conditions": "DiT-XL/2 variants trained with different conditioning blocks and compared over training, including at 400K iterations.",
+      "sourceIds": [
+        "section-5"
+      ]
+    },
+    {
+      "id": "c9",
+      "kind": "caveat",
+      "statement": "The paper uses theoretical Gflops because parameter count omits important input-resolution costs, while acknowledging that no single complexity measure is universally best.",
+      "conditions": "Architectural complexity comparisons in image generation, not hardware latency or monetary cost.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c10",
+      "kind": "result",
+      "statement": "Across the 12-model sweep, lower FID was strongly associated with more forward-pass Gflops, whether compute grew through model dimensions or token count.",
+      "conditions": "DiT S/B/L/XL with patch sizes 8/4/2, evaluated after 400K training steps using FID-50K.",
+      "sourceIds": [
+        "section-5"
+      ]
+    },
+    {
+      "id": "c11",
+      "kind": "result",
+      "statement": "At the shared 7M-step DiT-XL/2 checkpoint, the headline guided FID of 2.27 must not be conflated with the unguided FID of 9.62 or attributed to guidance without that common training context.",
+      "conditions": "Class-conditional ImageNet 256 by 256, DiT-XL/2 trained for 7M steps, classifier-free guidance scale 1.50 for the guided result, and FID-50K computed with 250 DDPM sampling steps using the paper's evaluation pipeline.",
+      "sourceIds": [
+        "section-5"
+      ]
+    },
+    {
+      "id": "c12",
+      "kind": "result",
+      "statement": "Increasing the number of reverse-process steps did not erase the quality gap caused by using a smaller backbone in the tested comparison.",
+      "conditions": "Models trained for 400K steps; FID-10K measured across the paper's specified sampling-step sweep.",
+      "sourceIds": [
+        "section-5-part-2"
+      ]
+    },
+    {
+      "id": "c13",
+      "kind": "caveat",
+      "statement": "All principal scaling experiments used a fixed pretrained VAE and therefore test transformer denoisers inside a hybrid convolutional-transformer pipeline.",
+      "conditions": "The experimental setup using Stable Diffusion's pretrained VAE with an eightfold spatial downsampling factor.",
+      "sourceIds": [
+        "section-4"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "s1",
+      "title": "The architectural question hiding inside diffusion",
+      "markdown": "A diffusion model needs a neural network that reads a noisy state and predicts information needed to reverse the corruption. Before DiT, image diffusion systems generally assigned that job to a convolutional U-Net. Peebles and Xie isolate a different question: is that U-Net-shaped inductive bias essential, or can a comparatively standard Vision Transformer serve as the denoising backbone?\n\nTheir answer is the Diffusion Transformer, or DiT. It is not a transformer that emits pixels autoregressively. It is a transformer repeatedly evaluated inside a diffusion sampler. Nor is the complete system convolution-free: the reported experiments retain an off-the-shelf convolutional VAE, while the transformer replaces the DDPM backbone in latent space. This boundary matters because the paper's evidence supports architectural substitution for the latent denoiser, not the claim that every component of image generation benefits from removing convolutions.\n\nThe paper evaluates scalability through theoretical forward-pass Gflops rather than parameter count alone. That choice captures computation caused by spatial resolution and sequence length, but it is not a direct measurement of wall-clock latency, memory traffic, energy, or deployment cost.",
+      "sourceIds": [
+        "abstract",
+        "section-1",
+        "section-2",
+        "section-3",
+        "section-4"
+      ],
+      "claimIds": [
+        "c1",
+        "c9",
+        "c13"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s2",
+      "title": "The denoising target before the transformer",
+      "markdown": "Let $x_0$ denote clean data, $t$ a diffusion timestep, $\\bar{\\alpha}_t$ a fixed cumulative signal coefficient, $\\mathbf{I}$ the identity covariance, and $\\epsilon_t\\sim\\mathcal{N}(0,\\mathbf{I})$ independent Gaussian noise. The forward process samples\n\n$$x_t=\\sqrt{\\bar{\\alpha}_t}x_0+\\sqrt{1-\\bar{\\alpha}_t}\\epsilon_t.$$\n\nThus $\\bar{\\alpha}_t$ controls the signal-to-noise mixture: values near one preserve more of $x_0$, while values near zero leave mostly noise. A network with parameters $\\theta$ predicts $\\epsilon_\\theta(x_t)$, and its simple objective is\n\n$$\\mathcal{L}_{\\mathrm{simple}}(\\theta)=\\lVert\\epsilon_\\theta(x_t)-\\epsilon_t\\rVert_2^2.$$\n\nHere $\\lVert\\cdot\\rVert_2^2$ means the sum of squared component errors. For a small illustrative calculation, take scalar $x_0=2$, $\\bar{\\alpha}_t=0.64$, and sampled noise $\\epsilon_t=-0.5$. Then\n\n$$x_t=\\sqrt{0.64}(2)+\\sqrt{0.36}(-0.5)=0.8(2)+0.6(-0.5)=1.3.$$\n\nIf the network predicts $-0.2$, the illustrative loss is $(-0.2-(-0.5))^2=0.09$. This arithmetic demonstrates the target, not a reported training example. DiT also learns a reverse covariance $\\Sigma_\\theta$ using the fuller variational objective; the simple noise loss alone does not describe that entire training procedure.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c2",
+        "c3"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s3",
+      "title": "Compression first, then a sequence of latent tiles",
+      "markdown": "The pipeline first maps an image $x$ into a compressed spatial representation $z=E(x)$ using a frozen VAE encoder. In the paper’s 256-by-256 experiments, an RGB image of shape $256\\times256\\times3$ becomes a latent of shape $32\\times32\\times4$, reflecting the encoder’s eightfold spatial downsampling. The forward diffusion process corrupts this latent, and DiT receives the resulting noised latent at each timestep. Once the reverse process has produced a sampled latent, the fixed VAE decoder maps it back to pixels as $x=D(z)$. The scaling experiments therefore evaluate transformer denoisers within a hybrid pipeline whose compressor and decoder are held constant.\n\nTo feed a spatial latent into a transformer, DiT divides it into non-overlapping square patches. Let the latent have shape $I\\times I\\times C$, let each patch have width $p$, and assume that $p$ divides $I$. There are $I/p$ patches along each spatial axis, so the sequence length is\n\n$$T=\\left(\\frac{I}{p}\\right)^2.$$\n\nEach patch contains $p^2C$ scalar latent entries. A learned linear projection maps that flattened patch to one token of hidden dimension $d$, and fixed sine-cosine positional embeddings preserve the patch’s location in the latent grid. For the paper’s $32\\times32\\times4$ latent, $p=4$ produces an $8\\times8$ token grid, hence $T=64$; $p=2$ produces a $16\\times16$ grid, hence $T=256$. Halving patch width quadruples the number of tokens because it doubles the count along both spatial axes.\n\nThe token sequence then passes through the DiT blocks. After the final block, a linear decoder maps every token to a tensor of shape $p\\times p\\times2C$. The factor of two supplies outputs for both the noise prediction and the diagonal reverse-process covariance parameterization. Rearranging these per-token tensors into their original patch locations reconstructs two full spatial outputs with the same height and width as the noised latent.\n\nPatch width is consequently a direct compute control. Reducing $p$ gives the transformer more spatial tokens without materially increasing the parameters in its downstream blocks. It does, however, increase the work performed over the sequence: the paper states that halving $p$ at least quadruples total transformer Gflops. This separates two scaling routes that parameter count alone would blur—making the transformer deeper or wider, and making it process a finer latent tokenization.",
+      "sourceIds": [
+        "section-3",
+        "section-4"
+      ],
+      "claimIds": [
+        "c4",
+        "c5",
+        "c6",
+        "c13"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s4",
+      "title": "Conditioning the residual stream without extra tokens",
+      "markdown": "After patchification, $N$ transformer blocks process the sequence at hidden width $d$. The denoiser must also know the timestep $t$ and class label $c$. The paper compares four ways to provide them: append conditioning tokens, add cross-attention, modulate layer normalization with adaLN, or use adaLN-Zero.\n\nIn adaLN, embeddings of $t$ and $c$ determine dimension-wise scale $\\gamma$ and shift $\\beta$ for normalization. adaLN-Zero additionally predicts residual scaling vectors $\\alpha$. Its conditioning MLP is initialized so every $\\alpha$ is zero; at initialization, the attention and MLP residual updates contribute nothing, making each full block an identity map. This is an initialization property, not a claim that the trained blocks remain identities.\n\nIn the controlled DiT-XL/2 comparison, adaLN-Zero delivered lower FID than cross-attention and in-context conditioning while remaining among the cheapest designs in Gflops. This result does not establish that adaLN-Zero must win for every dataset, conditioning modality, or transformer architecture.",
+      "sourceIds": [
+        "section-3",
+        "section-3-part-2",
+        "section-5"
+      ],
+      "claimIds": [
+        "c7",
+        "c8"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s5",
+      "title": "Why smaller patches are a compute dial",
+      "markdown": "DiT exposes two distinct ways to increase forward-pass computation. One can enlarge the transformer by increasing depth $N$, hidden width $d$, and head count, or keep the configuration fixed and reduce patch width $p$, thereby increasing $T$. The latter is especially revealing because parameter count stays approximately fixed even as the model performs more token computation.\n\nA common misconception is that the paper merely shows that more parameters improve generation. Its controlled patch-size comparisons contradict that reading: decreasing $p$ increased Gflops and improved FID while total parameters were effectively unchanged. In the 12-model sweep—four configurations crossed with three patch sizes—the reported association between Gflops and FID held at 400K training steps. That is strong evidence within this design space, but correlation across these deliberately scaled architectures is not a universal causal law for arbitrary models.\n\nThe illustrative scaling control plots $L(N)=1+4N^{-0.3}$, where $N$ is a resource multiplier and $L$ is an invented loss-like quantity. Increasing $N$ shrinks the excess term $4N^{-0.3}$ but with diminishing returns. Use it to predict the direction and curvature of a generic power law only. Its coefficients were not fit to DiT, it does not display FID or Gflops, and it cannot choose an optimal allocation between model size, tokens, data, and training steps.",
+      "sourceIds": [
+        "section-3",
+        "section-5"
+      ],
+      "claimIds": [
+        "c5",
+        "c6",
+        "c10"
+      ],
+      "figureId": "f2"
+    },
+    {
+      "id": "s6",
+      "title": "Guidance changes the sampling condition, not the backbone",
+      "markdown": "Classifier-free guidance combines an unconditional noise estimate with a conditional one. Write $\\epsilon_\\theta(x_t,\\emptyset)$ for the prediction using a learned null condition, $\\epsilon_\\theta(x_t,c)$ for class $c$, and $s$ for guidance scale. The paper gives the proportional form\n\n$$\\hat{\\epsilon}_\\theta(x_t,c)\\propto\\epsilon_\\theta(x_t,\\emptyset)+s\\left(\\epsilon_\\theta(x_t,c)-\\epsilon_\\theta(x_t,\\emptyset)\\right).$$\n\nThe model learns the null route by randomly dropping the condition during training. At $s=1$, the displayed combination reduces to the conditional prediction. Larger $s$ extrapolates farther from the unconditional estimate toward the conditional direction.\n\nThe guidance control depicts a different but analogous illustrative calculation: $v_{\\mathrm{uncond}}=-x$, $v_{\\mathrm{cond}}=-(x-1)$, and $v=v_{\\mathrm{uncond}}+w(v_{\\mathrm{cond}}-v_{\\mathrm{uncond}})$. Algebra gives $v=-x+w$, whose equilibrium is $x=w$. Predict how that equilibrium moves as $w$ changes. This scalar velocity field clarifies linear extrapolation; it is not an image sampler and shows no empirical quality-diversity curve.\n\nThis distinction is essential when reading the headline FID of 2.27. After the paper continued DiT-XL/2 training to 7M steps, the guided model at scale 1.50 achieved FID-50K 2.27 on class-conditional ImageNet 256 by 256, while the same benchmark table reports 9.62 for unguided DiT-XL/2. Both figures therefore share the 7M-step training context; their difference should not be interpreted as a comparison against the earlier 400K-step scaling checkpoint. Following the paper's comparison convention, these FID-50K results used 250 DDPM sampling steps and exported samples evaluated with ADM's TensorFlow suite.",
+      "sourceIds": [
+        "section-3",
+        "section-5"
+      ],
+      "claimIds": [
+        "c11"
+      ],
+      "figureId": "f3"
+    },
+    {
+      "id": "s7",
+      "title": "What the experiments establish—and leave open",
+      "markdown": "The central scaling comparison crosses four transformer configurations—S, B, L, and XL—with patch sizes 8, 4, and 2. All 12 models were trained on class-conditional ImageNet with the same optimization settings: AdamW, a constant learning rate of $1\\times10^{-4}$, no weight decay, batch size 256, horizontal-flip augmentation, and an exponential moving average decay of 0.9999. The reported results use the EMA weights. At 400K training iterations, FID-50K improved as forward-pass Gflops increased, whether the added computation came from greater depth and width or from the longer sequence created by smaller patches. Because changing patch size leaves the downstream parameter count approximately fixed, those comparisons show that parameter count alone does not explain the observed trend.\n\nThis evidence supports a controlled architectural conclusion: within the tested DiT family, allocating more computation to the denoising backbone was strongly associated with better sample quality. The study measures that computation with theoretical Gflops, which incorporate sequence length and spatial resolution in a way parameter counts do not. Gflops nevertheless do not determine elapsed time across different hardware or implementations, so the result predicts architectural computation rather than universal deployment speed.\n\nThe training-compute analysis adds another distinction. The paper estimates training compute as model Gflops multiplied by batch size, training steps, and a factor of three that approximates the backward pass as twice the forward-pass cost. Under that estimate, smaller DiTs eventually became less compute-efficient than larger models trained for fewer steps. More optimization steps and more computation per denoiser evaluation were therefore not interchangeable in the tested range.\n\nNor could extra reverse-process evaluations erase the backbone gap. For models trained for 400K iterations, the authors measured FID-10K using 16, 32, 64, 128, 256, and 1000 sampling steps. DiT-L/2 at 1000 steps consumed 80.7 Tflops per generated image and obtained FID-10K 25.9, whereas DiT-XL/2 at 128 steps consumed 15.2 Tflops and obtained the better FID-10K of 23.7. In this comparison, spending more test-time compute on repeated calls to the smaller denoiser did not substitute for a more capable denoiser at each step.\n\nThe headline 256-by-256 benchmark belongs to a later training regime. DiT-XL/2 was continued to 7M steps, after which the unguided model reported FID-50K 9.62. Classifier-free guidance at scale 1.50 yielded FID-50K 2.27 from that same training context. Following the paper’s comparison convention, these values were computed from 50,000 exported samples generated with 250 DDPM steps and evaluated using ADM’s TensorFlow suite. The table also reports precision 0.83 and recall 0.57 for the scale-1.50 result, compared with precision 0.67 and recall 0.67 without guidance. The improved FID thus accompanies a changed precision–recall balance rather than summarizing every aspect of the generated distribution.\n\nThe scope of the conclusion follows the experiment. The models generate class-conditional ImageNet images at 256 and 512 resolution; text conditioning was proposed as future work rather than tested here. Every principal experiment uses the same pretrained Stable Diffusion VAE, so the results isolate changes to the transformer denoiser but do not show how jointly scaling or replacing the compressor would behave. FID is also sensitive to evaluation details, which is why the shared sample-export and TensorFlow evaluation procedure matters for comparisons. Within those conditions, the paper establishes that a patch-based transformer can replace the latent diffusion U-Net and that increasing its forward-pass computation—through model dimensions or token count—consistently improves the reported generation metrics.",
+      "sourceIds": [
+        "section-4",
+        "section-5",
+        "section-5-part-2",
+        "section-6"
+      ],
+      "claimIds": [
+        "c9",
+        "c10",
+        "c11",
+        "c12",
+        "c13"
+      ],
+      "figureId": null
+    }
+  ],
+  "figures": [
+    {
+      "id": "f2",
+      "kind": "scaling",
+      "title": "Diminishing returns in an illustrative power law",
+      "question": "When the resource multiplier grows, does the invented excess-loss term fall at a constant rate or with diminishing returns?",
+      "caption": "The control evaluates the illustrative law L(N)=1+4N^(-0.3), showing a decreasing loss-like value as the resource multiplier increases.",
+      "limitation": "The coefficients are invented and not fitted to DiT; the plot is neither an empirical FID curve nor an optimal compute-allocation rule.",
+      "sourceIds": [
+        "section-5"
+      ],
+      "claimIds": [
+        "c10"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "f3",
+      "kind": "guidance",
+      "title": "Linear extrapolation between two toy fields",
+      "question": "How does increasing guidance weight w move the equilibrium of the combined scalar velocity field?",
+      "caption": "Combining the fixed unconditional field -x and conditional field -(x-1) yields -x+w, so the toy equilibrium moves to x=w.",
+      "limitation": "This is a scalar illustrative field, not image diffusion, an empirical quality-diversity curve, or a simulation of DiT samples.",
+      "sourceIds": [
+        "section-3",
+        "section-5"
+      ],
+      "claimIds": [
+        "c11"
+      ],
+      "illustrative": true
+    }
+  ],
+  "quiz": [
+    {
+      "question": "For a fixed 32-by-32 latent and unchanged transformer configuration, what happens when patch width falls from 4 to 2?",
+      "options": [
+        {
+          "text": "Token count rises from 64 to 256, increasing forward-pass compute.",
+          "explanation": "Correct: T=(I/p)^2, so halving p quadruples T while the paper says downstream parameter count changes little."
+        },
+        {
+          "text": "Token count doubles from 64 to 128 because patch width is halved.",
+          "explanation": "Incorrect: token count depends on patch width in both spatial dimensions, producing a fourfold change."
+        },
+        {
+          "text": "Parameter count must quadruple while token count remains fixed.",
+          "explanation": "Incorrect: the paper uses patch size specifically to vary token count and Gflops with approximately fixed parameters."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c5",
+        "c6"
+      ]
+    },
+    {
+      "question": "What is distinctive about adaLN-Zero at initialization?",
+      "options": [
+        {
+          "text": "It removes all residual connections permanently.",
+          "explanation": "Incorrect: residual updates are initially gated to zero, but their learned gates can change during training."
+        },
+        {
+          "text": "It initializes each full DiT block as an identity function.",
+          "explanation": "Correct: its conditioning MLP initially outputs zero residual scaling vectors alpha."
+        },
+        {
+          "text": "It appends timestep and class embeddings as ordinary image tokens.",
+          "explanation": "Incorrect: that describes the paper's in-context conditioning alternative."
+        }
+      ],
+      "answer": 1,
+      "sourceIds": [
+        "section-3",
+        "section-3-part-2"
+      ],
+      "claimIds": [
+        "c7",
+        "c8"
+      ]
+    },
+    {
+      "question": "Which conclusion stays within the evidence supplied for the paper?",
+      "options": [
+        {
+          "text": "More sampling steps always let a smaller DiT surpass a larger DiT.",
+          "explanation": "Incorrect: the tested sweep found that extra sampling compute did not compensate for less model compute."
+        },
+        {
+          "text": "Forward-pass Gflops predict deployment latency identically on every device.",
+          "explanation": "Incorrect: theoretical Gflops omit hardware and application-specific effects."
+        },
+        {
+          "text": "Within the tested ImageNet DiT sweep, higher model Gflops were strongly associated with lower FID.",
+          "explanation": "Correct: this matches the controlled 12-model result without claiming a universal law."
+        }
+      ],
+      "answer": 2,
+      "sourceIds": [
+        "section-2",
+        "section-5",
+        "section-5-part-2"
+      ],
+      "claimIds": [
+        "c9",
+        "c10",
+        "c12"
+      ]
+    }
+  ],
+  "id": "scalable-diffusion-models-with-transformers",
+  "createdAt": "2026-10-01T23:31:51.287Z",
+  "pipelineVersion": "subjects-lessons-v1",
+  "sources": [
+    {
+      "id": "abstract",
+      "label": "Original paper · abstract",
+      "url": "https://arxiv.org/abs/2212.09748",
+      "digest": "f1743eb5efe473222b8a078ed700879761c7f0ea2ccb11589bda4c4f56c453c0"
+    },
+    {
+      "id": "section-1",
+      "label": "1 Introduction",
+      "url": "https://arxiv.org/html/2212.09748#S1",
+      "digest": "6fa54997ed4c8d2e21447bd20f16f91ae89e04861809550492801e3df06b278c"
+    },
+    {
+      "id": "section-2",
+      "label": "2 Related Work",
+      "url": "https://arxiv.org/html/2212.09748#S2",
+      "digest": "1c1792ea88f1f8d275dd46457a8461ec32fef7c680bad03bd5768be46a2fb525"
+    },
+    {
+      "id": "section-3",
+      "label": "3 Diffusion Transformers",
+      "url": "https://arxiv.org/html/2212.09748#S3",
+      "digest": "b174199ce1e155627fe270bbfc454b1206c7a82a0147c9ec3224ca807ec8fe89"
+    },
+    {
+      "id": "section-3-part-2",
+      "label": "3 Diffusion Transformers · part 2",
+      "url": "https://arxiv.org/html/2212.09748#S3",
+      "digest": "b92b14b0d58fa1408aa45c59abbe81a7fd3b0b62eb19be474d7d00ee99708570"
+    },
+    {
+      "id": "section-4",
+      "label": "4 Experimental Setup",
+      "url": "https://arxiv.org/html/2212.09748#S4",
+      "digest": "608944b13c0482a3dfa4d1d3f75331126e82579ca32b1006e160c7405dbb6bc2"
+    },
+    {
+      "id": "section-5",
+      "label": "5 Experiments",
+      "url": "https://arxiv.org/html/2212.09748#S5",
+      "digest": "0a8d1a5884ff92dc870a717feea69cd9afac68e566593471f5738a5792e22940"
+    },
+    {
+      "id": "section-5-part-2",
+      "label": "5 Experiments · part 2",
+      "url": "https://arxiv.org/html/2212.09748#S5",
+      "digest": "958ce9868f869ae8b8dc0f760b952f35d02d6ab8b11f761a9e56f610918063ff"
+    },
+    {
+      "id": "section-6",
+      "label": "6 Conclusion",
+      "url": "https://arxiv.org/html/2212.09748#S6",
+      "digest": "262e06d76a9482de027e83ce6baab4de95229c5717b63ac69a8b045803adffdc"
+    }
+  ],
+  "review": {
+    "status": "passed",
+    "reviewedAt": "2026-10-02T02:22:31.743Z",
+    "contentDigest": "f9a009df45e9fefeb98b5fa3f1d05db1c5a5508b91f9177596499e7261242327"
+  }
+}

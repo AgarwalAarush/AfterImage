@@ -1,0 +1,438 @@
+{
+  "title": "From Pixels to Patch Sentences: Reconstructing Vision Transformer",
+  "summary": "Vision Transformer turns fixed image patches into tokens, applies a largely standard encoder, and shows why large-scale pre-training can compensate for weaker vision-specific bias.",
+  "prerequisites": [
+    "Vectors, matrices, and learned linear projections",
+    "Softmax weights and normalization",
+    "Pre-training and fine-tuning stages"
+  ],
+  "objectives": [
+    "Derive the ViT token sequence from image and patch dimensions.",
+    "Trace patch and class tokens through attention and residual blocks.",
+    "Explain how patch size affects sequence length and attention cost.",
+    "Relate weak visual inductive bias to reliance on large-scale pre-training.",
+    "Interpret reported transfer results within their experimental limits."
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "mechanism",
+      "statement": "ViT represents an image as a sequence of linearly embedded, fixed-size patches and processes that sequence with a standard Transformer encoder.",
+      "conditions": "For the pure ViT architecture described in the paper, rather than its optional CNN-hybrid variant.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c2",
+      "kind": "equation",
+      "statement": "For an image of height H, width W, and non-overlapping square patches of width P, the patch-token count is N=HW/P².",
+      "conditions": "Assumes H and W are divisible by P and patches do not overlap.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c3",
+      "kind": "mechanism",
+      "statement": "Each flattened patch is mapped by a trainable linear projection into the encoder's D-dimensional latent space.",
+      "conditions": "For patches flattened from P by P spatial cells with C channels.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c4",
+      "kind": "mechanism",
+      "statement": "For classification, ViT prepends a learned class token; its state at the output of the Transformer encoder serves as the image representation used by the classification head.",
+      "conditions": "For the classification architecture and heads described in the paper.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c5",
+      "kind": "mechanism",
+      "statement": "Learned position embeddings are added before encoding so token identity includes position as well as patch content.",
+      "conditions": "For the paper's standard ViT, which uses learned one-dimensional position embeddings.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c6",
+      "kind": "mechanism",
+      "statement": "Each encoder layer applies pre-normalized multi-head self-attention followed by a pre-normalized two-layer GELU MLP, with a residual connection around each block.",
+      "conditions": "For the encoder equations in the paper; the MLP has two layers and GELU.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c7",
+      "kind": "caveat",
+      "statement": "Compared with CNNs, ViT builds substantially less image-specific inductive bias into its layers: CNNs encode locality, two-dimensional neighborhood structure, and translation equivariance throughout, whereas ViT uses global self-attention and injects two-dimensional structure only sparingly.",
+      "conditions": "Comparison concerns architectural inductive bias, not whether trained ViTs can learn local or spatial behavior.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c8",
+      "kind": "caveat",
+      "statement": "Smaller patches create longer token sequences and consequently make the Transformer more computationally expensive.",
+      "conditions": "At a fixed image resolution; this statement does not quantify runtime on a particular device.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c9",
+      "kind": "result",
+      "statement": "With ImageNet pre-training, ViT-Large underperformed ViT-Base and BiT models outperformed ViT; the gap narrowed with ImageNet-21k, while JFT-300M revealed the full benefit of larger ViTs.",
+      "conditions": "In the reported ImageNet-transfer comparisons across ImageNet, ImageNet-21k, and JFT-300M pre-training.",
+      "sourceIds": [
+        "section-4-part-2"
+      ]
+    },
+    {
+      "id": "c10",
+      "kind": "result",
+      "statement": "Under the paper's controlled JFT-300M scaling study, ViTs reached the same average five-dataset performance with roughly two to four times less pre-training compute than ResNets.",
+      "conditions": "Applies to the architectures, schedules, compute accounting, and five-dataset average in that controlled study.",
+      "sourceIds": [
+        "section-4-part-2"
+      ]
+    },
+    {
+      "id": "c11",
+      "kind": "result",
+      "statement": "JFT-300M-pre-trained ViT-H/14 reported 88.55% ± 0.04 ImageNet accuracy and 77.63% ± 0.23 mean VTAB accuracy across three fine-tuning runs.",
+      "conditions": "Means from three fine-tuning runs in Table 2; JFT-300M supervised pre-training and the paper's stated fine-tuning setup.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c12",
+      "kind": "result",
+      "statement": "The paper's attention-distance analysis found both global and local behavior among low-layer heads: some attended across most of the image, while others maintained consistently small attention distances.",
+      "conditions": "For the analyzed trained models and the paper's attention-distance measure; attention weights alone are not causal explanations.",
+      "sourceIds": [
+        "section-4-part-2"
+      ]
+    },
+    {
+      "id": "c13",
+      "kind": "result",
+      "statement": "The preliminary masked-patch self-supervised ViT-B/16 result improved over training from scratch but remained behind supervised pre-training.",
+      "conditions": "For the reported ViT-B/16 masked-patch experiment on ImageNet, not self-supervised ViTs generally.",
+      "sourceIds": [
+        "section-4-part-2"
+      ]
+    },
+    {
+      "id": "c14",
+      "kind": "caveat",
+      "statement": "The paper leaves detection, segmentation, and stronger self-supervised methods as future challenges rather than established ViT results.",
+      "conditions": "Boundary of the experiments reported in this paper.",
+      "sourceIds": [
+        "section-5"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "s1",
+      "title": "The wager: remove the convolutional scaffold",
+      "markdown": "The paper's central wager is unusually clean: an image classifier need not place a convolutional network underneath or around attention. Instead, it can translate an image into a token sequence and reuse a largely standard Transformer encoder. That simplicity matters. The contribution is not merely that attention appears somewhere in a vision system; earlier systems already did that. It is the demonstration that patch tokens, ordinary global self-attention, and sufficiently large supervised pre-training can form a competitive transfer-learning recipe.\n\nThree prerequisites organize the lesson. A **token embedding** is a vector consumed by the encoder. **Inductive bias** is a structural preference built into a model before it sees data—for example, a convolution assumes local, repeated processing across positions. **Transfer learning** first fits representations on a source dataset and then adapts them to a downstream task. ViT weakens the first kind of prior and relies heavily on the third process. This trade is the thread connecting its mechanism to its empirical behavior.",
+      "sourceIds": [
+        "abstract",
+        "section-1",
+        "section-3"
+      ],
+      "claimIds": [
+        "c1",
+        "c7"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s2",
+      "title": "Cutting an image into a sentence",
+      "markdown": "Let an input image be $\\mathbf{x}\\in\\mathbb{R}^{H\\times W\\times C}$, where $H$ and $W$ are its spatial dimensions and $C$ is its number of channels. ViT divides the image into non-overlapping square patches of side length $P$. Assuming that $H$ and $W$ are divisible by $P$, the patch grid has $H/P$ rows and $W/P$ columns, so the number of patches is\n\n$$N=\\frac{H}{P}\\frac{W}{P}=\\frac{HW}{P^2}.$$\n\nThis conversion is the bridge from a two-dimensional image to the one-dimensional sequence expected by a standard Transformer. Each patch contains $P\\times P$ spatial cells and $C$ channel values per cell. Flattening patch $i$ therefore produces\n\n$$\\mathbf{x}_p^i\\in\\mathbb{R}^{P^2C}.$$\n\nAll flattened patches are transformed by the same learned projection matrix\n\n$$\\mathbf{E}\\in\\mathbb{R}^{(P^2C)\\times D},$$\n\nwhich gives the patch embedding $\\mathbf{x}_p^i\\mathbf{E}\\in\\mathbb{R}^D$. The projection does more than reshape the data: its learned weights combine the raw values within a patch to form the $D$ features that the encoder will process. Sharing $\\mathbf{E}$ across patch positions keeps every token in the encoder’s fixed-width latent space. Patch location is not encoded by this projection itself; ViT adds a separate learned position embedding when assembling the encoder input.\n\nFor a concrete calculation, consider an $8\\times8$ single-channel image with $P=2$. The image is partitioned into a $4\\times4$ patch grid, giving\n\n$$N=\\frac{8\\cdot8}{2^2}=16.$$\n\nEach flattened patch contains $2^2\\cdot1=4$ values. If the encoder width is $D=6$, then $\\mathbf{E}$ has shape $4\\times6$, and each of the 16 patches becomes a six-dimensional token. The classification architecture subsequently prepends one learned class token, so the encoder receives 17 sequence positions before position embeddings are added.\n\nPatch size controls both the granularity of the visual input and the sequence length. If the same $8\\times8$ image instead uses $P=4$, the grid contains only $2\\times2=4$ patches, followed by the class token. More generally, at fixed image resolution, halving $P$ multiplies $N$ by four. The Transformer must then process four times as many patch positions. Because dense self-attention forms pairwise comparisons between sequence positions, its score array grows quadratically with sequence length; this is why the paper identifies smaller patches as computationally more expensive.\n\nThe patch boundaries also determine what information is combined before attention begins. Values inside one patch are mixed immediately by the linear projection, while information from different patches can interact only after the resulting tokens enter the Transformer. ViT does not apply a convolutional feature extractor in this pure architecture: the projected raw patches themselves form the visual token sequence. That deliberately simple construction makes it possible to use a largely standard Transformer encoder, while leaving the model to learn most spatial relationships from data rather than building local two-dimensional neighborhoods into every layer.",
+      "sourceIds": [
+        "section-3",
+        "section-4"
+      ],
+      "claimIds": [
+        "c1",
+        "c2",
+        "c3",
+        "c8"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s3",
+      "title": "Assembling the encoder input",
+      "markdown": "ViT constructs its initial sequence as\n\n$$\\mathbf{z}_0=[\\mathbf{x}_{\\mathrm{class}};\\,\\mathbf{x}_p^1\\mathbf{E};\\,\\ldots;\\,\\mathbf{x}_p^N\\mathbf{E}]+\\mathbf{E}_{\\mathrm{pos}},$$\n\nwhere $\\mathbf{x}_{\\mathrm{class}}\\in\\mathbb{R}^D$ is a learned class token, the semicolon denotes concatenation along the sequence axis, and $\\mathbf{E}_{\\mathrm{pos}}\\in\\mathbb{R}^{(N+1)\\times D}$ supplies one learned position vector per sequence element. Thus $\\mathbf{z}_0$ has shape $(N+1)\\times D$.\n\nPatch content alone cannot distinguish two identical patches occurring in different places. Position embeddings break that ambiguity. The paper uses learned one-dimensional embeddings, not a mandatory hand-designed two-dimensional encoding. Yet the trained embeddings exhibited row-column and distance structure in the authors' analysis. That is evidence that spatial organization can be learned; it does not mean the architecture began with a convolution-like spatial prior.\n\nThe extra class token is an information collector rather than an image patch. After $L$ encoder layers, the model takes its state at sequence position zero, $\\mathbf{z}_L^0$, normalizes it, and calls the result $\\mathbf{y}$. A classification head maps $\\mathbf{y}$ to class predictions. A common misconception is that ViT averages patch predictions. This architecture instead learns how the class token interacts with all patch tokens, then classifies from that single final state.",
+      "sourceIds": [
+        "section-3",
+        "section-4-part-2"
+      ],
+      "claimIds": [
+        "c4",
+        "c5"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s4",
+      "title": "What one encoder layer actually changes",
+      "markdown": "For layer $\\ell\\in\\{1,\\ldots,L\\}$, the paper writes\n\n$$\\mathbf{z}'_\\ell=\\operatorname{MSA}(\\operatorname{LN}(\\mathbf{z}_{\\ell-1}))+\\mathbf{z}_{\\ell-1},$$\n\n$$\\mathbf{z}_\\ell=\\operatorname{MLP}(\\operatorname{LN}(\\mathbf{z}'_\\ell))+\\mathbf{z}'_\\ell.$$\n\nHere $\\operatorname{LN}$ is layer normalization, $\\operatorname{MSA}$ is multi-head self-attention, and $\\operatorname{MLP}$ is a two-layer feed-forward network with a GELU nonlinearity. Normalization is applied before each transformation, so the layer is pre-normalized. Each transformation is then added to its input through a residual connection. Self-attention can exchange information among sequence positions, whereas the MLP applies the same learned position-wise transformation independently to every token.\n\nThe attention control isolates the normalization step for one constructed query. Its fixed compatibility scores are $[2,1,0,-1]$, and a positive temperature $T$ produces\n\n$$a_j=\\frac{\\exp(s_j/T)}{\\sum_k\\exp(s_k/T)}.$$\n\nThe $a_j$ are dimensionless, nonnegative, and sum to one. Lowering $T$ enlarges score differences after division: the score $2$ receives a larger share of the total weight, while the lower-scoring positions receive less. Raising $T$ compresses those differences and moves the four weights toward a more even distribution. Temperature therefore controls concentration without changing the ordering of these fixed scores.\n\nIn an actual attention head, the scores come from learned query–key comparisons and the normalized weights combine value vectors. Multiple heads perform this operation using different learned projections. The constructed control holds the four scores fixed so that changing $T$ reveals only the softmax effect; it reports no empirical property of a trained ViT head. The paper’s separate analysis of trained models found that some low-layer heads had long attention distances while others remained local, showing that global connectivity permits—but does not force—broad information integration.",
+      "sourceIds": [
+        "section-3",
+        "section-4-part-2"
+      ],
+      "claimIds": [
+        "c6",
+        "c12"
+      ],
+      "figureId": "f2"
+    },
+    {
+      "id": "s5",
+      "title": "Patch size, reach, and the missing CNN prior",
+      "markdown": "Patch width has a squared effect on sequence length. Halving $P$ at fixed $H$ and $W$ multiplies $N$ by four. Because dense self-attention compares token positions pairwise, its attention matrix grows quadratically in sequence length: moving from $N$ to $4N$ creates sixteen times as many patch-to-patch score positions, before accounting for the class token. This is a mathematical consequence of dense attention, not a runtime measurement for the paper's hardware.\n\nViT's attention is global, but “global” does not mean every learned head must spread weight uniformly across the image. The paper's attention-distance analysis found some early heads spanning much of the image and other early heads remaining localized; distance generally increased with depth. The distinction matters: architectural **capacity** for global interaction is not the same as learned use of that capacity.\n\nCNNs hard-code locality, two-dimensional neighborhoods, and translation equivariance throughout their layers. Pure ViT uses two-dimensional structure explicitly mainly when cutting patches and when interpolating position embeddings for a new fine-tuning resolution. Consequently, it must learn more spatial regularity from examples. This is not proof that CNN priors are bad. It predicts that they can help when data are scarce—and the reported scale experiments support precisely that conditional interpretation.",
+      "sourceIds": [
+        "section-3",
+        "section-4",
+        "section-4-part-2"
+      ],
+      "claimIds": [
+        "c7",
+        "c8",
+        "c12"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s6",
+      "title": "Why scale changes the architectural contest",
+      "markdown": "The reported comparison is not “Transformers always beat CNNs.” On ImageNet-scale pre-training, large ViTs lagged comparable convolutional models and could even underperform smaller ViTs. With ImageNet-21k, the gap narrowed; only with JFT-300M did the larger variants show their full advantage. A second study using JFT subsets likewise found stronger overfitting by ViTs at smaller scales and better outcomes at sufficiently large scales.\n\nThe scaling control below is deliberately abstract: it plots the invented law $L(N)=1+4N^{-0.3}$, where $N$ is a resource multiplier and $L$ is an illustrative loss. Predict whether doubling $N$ removes a fixed amount of loss or a shrinking amount. The latter occurs because the excess term decays sublinearly. This teaches diminishing returns, not the paper's fitted curve: its coefficients are invented, it compares no architectures, and it cannot locate the empirical crossover between ViT and ResNet.\n\nIn the controlled JFT-300M study, the paper reports that ViTs used about $2$–$4\\times$ less pre-training compute to attain the same average performance across five datasets. That finding is tied to the tested model families and training setup. The authors explicitly note elsewhere that schedules, optimizers, and weight decay can influence efficiency, so the result should not be promoted to a universal hardware law.",
+      "sourceIds": [
+        "section-1",
+        "section-4",
+        "section-4-part-2"
+      ],
+      "claimIds": [
+        "c9",
+        "c10"
+      ],
+      "figureId": "f3"
+    },
+    {
+      "id": "s7",
+      "title": "Reading the results without outrunning them",
+      "markdown": "Under supervised JFT-300M pre-training and the paper’s fine-tuning procedure, ViT-H/14 reported $88.55\\%$ ImageNet accuracy and a $77.63\\%$ mean across the 19-task VTAB suite. Table 2 gives means and standard deviations over three fine-tuning runs: $88.55\\%\\pm0.04$ for ImageNet and $77.63\\%\\pm0.23$ for VTAB. The model was fine-tuned on ImageNet at resolution $518$, and the reported setup used Polyak averaging with factor $0.9999$. These are transfer results for a 632-million-parameter ViT-Huge model with $14\\times14$ patches after large-scale supervised pre-training; they do not imply comparable performance when the architecture is trained from scratch on a small dataset.\n\nThe paper’s preliminary masked-patch self-supervision experiment provides a narrower comparison. In that experiment, ViT-B/16 reached $79.9\\%$ ImageNet accuracy, two percentage points above training from scratch but four points below supervised pre-training. The result shows that masked-patch prediction learned a useful representation in this particular setup, while leaving a substantial gap to the supervised recipe. It does not establish the same gain for other model sizes, datasets, or self-supervised objectives.\n\nThe broader conclusion is conditional on both task and scale. The reported experiments establish strong classification transfer and show that abundant pre-training data can compensate for ViT’s weaker image-specific inductive bias. Detection and segmentation remained proposed future work rather than demonstrated outcomes. Likewise, attention maps and attention-distance measurements describe where trained heads assign weight, but do not by themselves provide a causal account of a prediction. ViT’s contribution is therefore a simple and scalable image-classification architecture with compelling results under the tested pre-training and fine-tuning conditions—not a universal replacement for convolution or a removal of the need for data.",
+      "sourceIds": [
+        "section-4",
+        "section-4-part-2",
+        "section-5"
+      ],
+      "claimIds": [
+        "c11",
+        "c13",
+        "c14"
+      ],
+      "figureId": null
+    }
+  ],
+  "figures": [
+    {
+      "id": "f2",
+      "kind": "attention",
+      "title": "Temperature reshapes a fixed softmax distribution",
+      "question": "When temperature decreases for the fixed scores, does attention become more concentrated on the largest score?",
+      "caption": "Softmax normalizes the fixed illustrative scores [2,1,0,-1] after division by a positive temperature.",
+      "limitation": "The scores are fixed and illustrative, not learned ViT similarities or a measured attention head; the control shows weights only.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c6"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "f3",
+      "kind": "scaling",
+      "title": "Diminishing returns in an invented power law",
+      "question": "When the resource multiplier doubles, is the reduction in illustrative excess loss constant or progressively smaller?",
+      "caption": "The illustrative law L(N)=1+4N^(-0.3) shows how a resource multiplier can yield diminishing loss reductions.",
+      "limitation": "The coefficients are invented for teaching, not fitted to ViT results, and the control cannot compare architectures or identify a data-scale crossover.",
+      "sourceIds": [
+        "section-4-part-2"
+      ],
+      "claimIds": [
+        "c9",
+        "c10"
+      ],
+      "illustrative": true
+    }
+  ],
+  "quiz": [
+    {
+      "question": "For a 32 by 32 image divided into non-overlapping 4 by 4 patches, how many tokens enter the encoder after adding one class token?",
+      "options": [
+        {
+          "text": "65 tokens",
+          "explanation": "Correct: there are (32×32)/(4²)=64 patch tokens, plus one class token."
+        },
+        {
+          "text": "64 tokens",
+          "explanation": "This counts the patches correctly but omits the prepended class token."
+        },
+        {
+          "text": "17 tokens",
+          "explanation": "This would match 16 patches plus a class token, not the stated dimensions."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c2",
+        "c4"
+      ]
+    },
+    {
+      "question": "Which interpretation best matches the paper's data-scale experiments?",
+      "options": [
+        {
+          "text": "ViT always outperforms comparable CNNs, even with small pre-training datasets.",
+          "explanation": "Incorrect: the paper reports a disadvantage for large ViTs at smaller pre-training scales."
+        },
+        {
+          "text": "CNN priors help at smaller scales, while ViT becomes more competitive as pre-training data grows.",
+          "explanation": "Correct: this conditional conclusion matches the reported crossover pattern and the inductive-bias discussion."
+        },
+        {
+          "text": "Patch size alone determines whether ViT beats a CNN.",
+          "explanation": "Incorrect: patch size affects sequence length and cost, but the reported comparison also depends on data, model, and training conditions."
+        }
+      ],
+      "answer": 1,
+      "sourceIds": [
+        "section-1",
+        "section-4-part-2"
+      ],
+      "claimIds": [
+        "c7",
+        "c9"
+      ]
+    },
+    {
+      "question": "What can be concluded from the paper's preliminary masked-patch experiment?",
+      "options": [
+        {
+          "text": "It established self-supervision as superior to supervised ViT pre-training.",
+          "explanation": "Incorrect: the reported self-supervised result remained four percentage points behind supervised pre-training."
+        },
+        {
+          "text": "It proved the same gain for every ViT size and downstream task.",
+          "explanation": "Incorrect: the evidence concerns a particular ViT-B/16 ImageNet experiment."
+        },
+        {
+          "text": "It improved over training from scratch in that setup, while leaving a gap to supervised pre-training.",
+          "explanation": "Correct: this preserves both the reported improvement and its stated limitation."
+        }
+      ],
+      "answer": 2,
+      "sourceIds": [
+        "section-4-part-2",
+        "section-5"
+      ],
+      "claimIds": [
+        "c13",
+        "c14"
+      ]
+    }
+  ],
+  "id": "vit",
+  "createdAt": "2026-10-01T23:57:56.772Z",
+  "pipelineVersion": "subjects-lessons-v1",
+  "sources": [
+    {
+      "id": "abstract",
+      "label": "Original paper · abstract",
+      "url": "https://arxiv.org/abs/2010.11929",
+      "digest": "2519d883b5c415a860f3921bd2e19d3c98574a7df1d05aee93ee254ad3597cba",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:55:53.760Z"
+    },
+    {
+      "id": "main-text",
+      "label": "Original paper · unsectioned main text",
+      "url": "https://arxiv.org/html/2010.11929",
+      "digest": "1826acef46c3017ffd187bf8d570fd479106840256c56ef4d48667b9ca0c8d27",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:55:53.760Z"
+    },
+    {
+      "id": "section-1",
+      "label": "1 Introduction",
+      "url": "https://arxiv.org/html/2010.11929#S1",
+      "digest": "1ceec3ccb6ded417d699325ac5a0c7a780cf8e3f565f46993e47adb575641560",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:55:53.760Z"
+    },
+    {
+      "id": "section-2",
+      "label": "2 Related Work",
+      "url": "https://arxiv.org/html/2010.11929#S2",
+      "digest": "5c5ca503161aec175434b9d3c33fef3d00e767e54112d468d2063d94197506fb",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:55:53.760Z"
+    },
+    {
+      "id": "section-3",
+      "label": "3 Method",
+      "url": "https://arxiv.org/html/2010.11929#S3",
+      "digest": "c46b7c116e9d12cadc58278acd8541e25d581e75aba7c1474da31586ac5a348c",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:55:53.760Z"
+    },
+    {
+      "id": "section-4",
+      "label": "4 Experiments",
+      "url": "https://arxiv.org/html/2010.11929#S4",
+      "digest": "dc6b6baba0d56796d73a95d92cbed5cd349bd132ac2b36a57af4277db46b6cde",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:55:53.760Z"
+    },
+    {
+      "id": "section-4-part-2",
+      "label": "4 Experiments · part 2",
+      "url": "https://arxiv.org/html/2010.11929#S4",
+      "digest": "a526b28ff08ab95a44ded134b30c0114fb54ae3be8414c6dd3e9ae8413a988d1",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:55:53.760Z"
+    },
+    {
+      "id": "section-5",
+      "label": "5 Conclusion",
+      "url": "https://arxiv.org/html/2010.11929#S5",
+      "digest": "5f5a951e8492f653d2a82a0149197e35d6e27da7af88cff45b4087a65d07739e",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:55:53.760Z"
+    }
+  ],
+  "review": {
+    "status": "passed",
+    "reviewedAt": "2026-10-02T02:21:51.077Z",
+    "contentDigest": "45abbdd5b06034c2aa66aaec83579ca0b6ee8fcc2449f54e03b12144b9e18b30"
+  }
+}

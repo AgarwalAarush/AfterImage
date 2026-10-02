@@ -1,0 +1,450 @@
+{
+  "title": "The Denoiser and the Compass: How Guided Diffusion Overtook GANs",
+  "summary": "Dhariwal and Nichol pair an ablated diffusion architecture with classifier-gradient steering, gaining a controllable fidelity–diversity trade-off and leading reported image metrics.",
+  "prerequisites": [
+    "Vectors, Gaussian noise, means, variances, and gradients",
+    "Conditional probability and Bayes-style factorization",
+    "Mean-squared error and the distinction between training and sampling",
+    "Basic familiarity with residual networks, attention, normalization, FID, precision, and recall"
+  ],
+  "objectives": [
+    "Explain how a noise-prediction model defines successive reverse-diffusion transitions.",
+    "Derive the classifier-guided mean shift and interpret the guidance scale.",
+    "Distinguish architectural improvements from sampling-time guidance.",
+    "Read the paper’s FID, precision, and recall results under their stated datasets and sampling conditions.",
+    "Identify what the paper does not establish, including speed parity and unlabeled guidance."
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "mechanism",
+      "statement": "Diffusion generation begins at a highly corrupted state and repeatedly applies learned reverse transitions until it reaches an image-like state.",
+      "conditions": "High-level diffusion process with timesteps from T down to 0.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c2",
+      "kind": "equation",
+      "statement": "The denoiser is trained to predict the Gaussian noise used to construct a noisy training example, using squared prediction error.",
+      "conditions": "Training examples formed from a data image x_0, sampled timestep t, and diagonal-Gaussian noise epsilon.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c3",
+      "kind": "mechanism",
+      "statement": "Each stochastic reverse transition is modeled as a diagonal Gaussian whose mean can be computed from the predicted noise; its variance may be fixed or learned.",
+      "conditions": "DDPM-style stochastic reverse sampling under the paper’s Gaussian parameterization.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c4",
+      "kind": "mechanism",
+      "statement": "The adopted variance parameterization interpolates between the upper and lower reverse-process variance bounds in log space, and the hybrid objective $L_{\\mathrm{simple}}+\\lambda L_{\\mathrm{vlb}}$ jointly trains the noise and variance predictions; in the reported setup, this learned-variance approach permits sampling with fewer steps without much loss of sample quality.",
+      "conditions": "Improved diffusion setup adopted throughout the reported experiments.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c5",
+      "kind": "result",
+      "statement": "The architecture study found compounding FID improvements from multiple heads, attention at several resolutions, and BigGAN-style resampling blocks; residual rescaling did not help in that ablation.",
+      "conditions": "ImageNet 128×128, batch size 256, 250 sampling steps, with FID evaluated at 700K and 1200K training iterations.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c6",
+      "kind": "equation",
+      "statement": "Adaptive group normalization applies a learned scale and bias, derived from timestep and class embeddings, after group normalization of a residual-block activation.",
+      "conditions": "Residual blocks in the paper’s improved architecture.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c7",
+      "kind": "mechanism",
+      "statement": "Classifier guidance requires a classifier trained on noisy states and uses the input gradient of its target-class log probability to steer sampling.",
+      "conditions": "Classifier p_phi(y|x_t,t) trained on the same noising distribution as the diffusion model.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c8",
+      "kind": "equation",
+      "statement": "Under a local low-curvature approximation, guidance preserves the reverse covariance and shifts the Gaussian mean from mu to mu plus Sigma times the classifier gradient.",
+      "conditions": "Stochastic reverse transition, with classifier log-probability locally approximated to first order around mu.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c9",
+      "kind": "mechanism",
+      "statement": "For deterministic DDIM sampling, conditioning is introduced by modifying the predicted noise through the conditional score rather than applying the stochastic mean-shift derivation directly.",
+      "conditions": "DDIM-style deterministic sampling; bar-alpha_t denotes cumulative signal retention.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c10",
+      "kind": "result",
+      "statement": "Increasing guidance beyond one raised precision and Inception Score while reducing recall; because FID and sFID depend on both fidelity and diversity, their best reported values occurred at an intermediate guidance scale.",
+      "conditions": "Class-conditional ImageNet 128×128 scale sweep reported in the guidance analysis.",
+      "sourceIds": [
+        "section-4-part-2"
+      ]
+    },
+    {
+      "id": "c11",
+      "kind": "result",
+      "statement": "At ImageNet 256×256, the reported ADM-G model achieved FID 4.59 and recall 0.52, compared with BigGAN-deep at FID 6.95 and recall 0.28.",
+      "conditions": "Table 5 evaluation using the entire training set as reference and a common metric codebase; ADM-G uses 250 steps unless identified as the 25-step variant.",
+      "sourceIds": [
+        "section-2",
+        "section-5"
+      ]
+    },
+    {
+      "id": "c12",
+      "kind": "result",
+      "statement": "Guidance and two-stage upsampling were complementary: guiding the lower-resolution model and then upsampling produced the paper’s best high-resolution FIDs.",
+      "conditions": "ImageNet 256×256 and 512×512 two-stage experiments; only the lower-resolution model was guided.",
+      "sourceIds": [
+        "section-5"
+      ]
+    },
+    {
+      "id": "c13",
+      "kind": "caveat",
+      "statement": "The comparison did not eliminate diffusion’s sampling-speed disadvantage because generation still required multiple denoising-network evaluations.",
+      "conditions": "Sampling-time comparison with GAN generators in the paper’s 2021 setting.",
+      "sourceIds": [
+        "section-7"
+      ]
+    },
+    {
+      "id": "c14",
+      "kind": "caveat",
+      "statement": "The proposed guidance method did not provide a demonstrated fidelity–diversity control mechanism for unlabeled datasets.",
+      "conditions": "Classifier guidance as presented in the paper, requiring class labels for classifier training.",
+      "sourceIds": [
+        "section-7"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "s1",
+      "title": "What exactly had to be beaten?",
+      "markdown": "The paper’s title can invite an overbroad reading. Its claim is not that every diffusion model dominates every GAN, nor that diffusion is faster. The contribution is a particular combination: an improved denoising architecture for unconditional synthesis, plus classifier-gradient guidance for conditional synthesis. The authors evaluate sample distributions with several imperfect summaries.\n\nFID compares generated and reference distributions in an Inception-V3 feature space; lower is better. Precision estimates how much generated output lies on the data manifold and is used here as a fidelity indicator. Recall estimates how much of the data manifold the generator covers and is used as a diversity indicator. These are related but not interchangeable. A method can make prototypical, convincing images while omitting unusual modes, raising precision while lowering recall.\n\nThat distinction motivates the paper. GAN truncation already offered a fidelity–diversity lever. The authors sought an analogous lever for diffusion while also improving the underlying model. Their metric protocol matters: they used the entire training set as the reference batch and, where possible, recomputed models’ metrics in one codebase because implementation details can alter FID. Thus, “beat” means outperforming named baselines on reported metrics under specified evaluations—not proving universal perceptual superiority.",
+      "sourceIds": [
+        "section-1",
+        "section-2",
+        "section-8"
+      ],
+      "claimIds": [
+        "c10",
+        "c11",
+        "c13"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s2",
+      "title": "Prerequisite: noise is a coordinate, not merely corruption",
+      "markdown": "Let $x_0$ denote a clean data image, $t\\in\\{1,\\ldots,T\\}$ a noise level, $x_t$ its corrupted version, and $\\epsilon$ diagonal-Gaussian noise. Increasing $t$ lowers the signal-to-noise ratio until $x_T$ is nearly noise. Generation runs in the opposite direction: $x_T\\rightarrow x_{T-1}\\rightarrow\\cdots\\rightarrow x_0$.\n\nThe `noise` experiment makes one narrow prerequisite tangible. It draws a seeded Gaussian vector in $D$ dimensions and shows the distribution of its Euclidean norm. Changing $\\sigma$ stretches lengths; changing $D$ changes both typical radius and concentration. The reference radius is $\\sigma\\sqrt D$. For an illustrative calculation, if $D=4$ and $\\sigma=0.5$, then\n\n$$\\sigma\\sqrt D=0.5\\sqrt4=1.$$\n\nThis is not a picture of four physical spatial axes and does not simulate image diffusion. It only helps explain why a high-dimensional Gaussian endpoint has a predictable scale and why “start from noise” is a structured probabilistic statement.\n\nAt training time, the network is not simply handed pairs from a fixed corruption level. A clean image, timestep, and noise draw are sampled, and the denoiser $\\epsilon_\\theta(x_t,t)$—with parameters $\\theta$—predicts the added noise. The loss\n\n$$L_{\\mathrm{simple}}=\\lVert\\epsilon_\\theta(x_t,t)-\\epsilon\\rVert_2^2$$\n\npenalizes disagreement with the known draw. The timestep input tells one shared network which noise regime it must undo.",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c1",
+        "c2"
+      ],
+      "figureId": "f-noise"
+    },
+    {
+      "id": "s3",
+      "title": "From a noise estimate to a reverse chain",
+      "markdown": "A noise predictor becomes a generator by parameterizing each step of a reverse chain:\n\n$$p_\\theta(x_{t-1}\\mid x_t)=\\mathcal N\\!\\left(x_{t-1};\\mu_\\theta(x_t,t),\\Sigma_\\theta(x_t,t)\\right).$$\n\nHere $p_\\theta$ is the learned reverse distribution, $\\mu_\\theta$ is its mean, and $\\Sigma_\\theta$ is its diagonal covariance. The predicted noise $\\epsilon_\\theta(x_t,t)$ determines the mean through the DDPM parameterization: estimating the corruption in $x_t$ provides the direction needed to move toward a less noisy state. Sampling repeats this transition from $x_T$ down to $x_0$, drawing from the Gaussian at each stochastic step.\n\nThe model also predicts an interpolation coefficient $v$ for its variance:\n\n$$\\Sigma_\\theta(x_t,t)=\\exp\\!\\left(v\\log\\beta_t+(1-v)\\log\\tilde\\beta_t\\right).$$\n\nThe quantities $\\beta_t$ and $\\tilde\\beta_t$ are the upper and lower reverse-variance bounds at timestep $t$. Variance is measured in squared image-value units, while $v$ is dimensionless. When $v=1$, the expression gives $\\beta_t$; when $v=0$, it gives $\\tilde\\beta_t$. Because the interpolation occurs in log variance, intermediate values are geometric rather than arithmetic mixtures. For a constructed scalar calculation with $\\beta_t=0.04$, $\\tilde\\beta_t=0.01$, and $v=0.5$,\n\n$$\\Sigma_\\theta=\\exp\\!\\left(\\tfrac12\\log0.04+\\tfrac12\\log0.01\\right)=\\sqrt{0.0004}=0.02.$$\n\nThus the midpoint in log space is $0.02$, not the arithmetic midpoint $0.025$. This calculation illustrates the parameterization; the numbers are not reported experimental settings.\n\nTraining uses the hybrid objective\n\n$$L_{\\mathrm{simple}}+\\lambda L_{\\mathrm{vlb}},$$\n\nwhere $L_{\\mathrm{simple}}$ trains the noise estimate, $L_{\\mathrm{vlb}}$ supplies learning signal for the probabilistic reverse model and its variance, and the dimensionless weight $\\lambda$ controls that contribution. The paper adopts learned variance because it permits fewer reverse steps with little loss of sample quality in the reported setup.\n\nFor fewer than 50 sampling steps, the experiments instead use DDIM. Setting DDIM’s reverse noise to zero makes the trajectory from latent noise to image deterministic for a fixed model and starting point. This changes the sampling rule, not the denoiser’s training target, and it is why stochastic DDPM guidance and deterministic DDIM guidance use related but distinct conditioning formulas.",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c3",
+        "c4"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s4",
+      "title": "Architecture before guidance",
+      "markdown": "The first advance is architectural rather than a new diffusion objective. Starting from a U-Net—downsampling residual blocks, an upsampling path, and same-resolution skip connections—the authors ablated depth versus width, attention configuration, attention resolution, resampling blocks, and residual scaling.\n\nUnder ImageNet 128×128 training with batch size 256 and 250 sampling steps, multiple attention heads, attention at $32\\times32$, $16\\times16$, and $8\\times8$, and BigGAN-style up/downsampling blocks improved FID and compounded. Residual connection scaling by $1/\\sqrt2$ did not improve that table. Greater depth helped eventual performance but cost wall-clock time, so it was not retained. The final default used two residual blocks per resolution, variable width, 64 channels per attention head, multiresolution attention, BigGAN resampling blocks, and adaptive group normalization.\n\nAdaGN is\n\n$$\\operatorname{AdaGN}(h,y)=y_s\\operatorname{GroupNorm}(h)+y_b,$$\n\nwhere $h$ is an intermediate activation and $y=[y_s,y_b]$ is projected from timestep and class embeddings. The `normalization` experiment uses five fixed scalar activations and shows ordinary standardization after an offset. It is useful for seeing that normalization separates location and scale before modulation. It is not GroupNorm over a real feature tensor, does not learn $y_s$ or $y_b$, and does not reproduce AdaGN training. The crucial paper-specific point is that time and class information enter as an affine transformation of normalized features, not merely as raw addition.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c5",
+        "c6"
+      ],
+      "figureId": "f-normalization"
+    },
+    {
+      "id": "s5",
+      "title": "Classifier guidance: adding a compass to the denoiser",
+      "markdown": "Let $y$ be a desired class and $p_\\phi(y\\mid x_t,t)$ a classifier with parameters $\\phi$, trained on noisy images at their timesteps. Its gradient\n\n$$g=\\nabla_{x_t}\\log p_\\phi(y\\mid x_t,t)$$\n\npoints locally toward changes in the current noisy state that increase target-class log probability. The desired transition is proportional to\n\n$$p_{\\theta,\\phi}(x_t\\mid x_{t+1},y)\\propto p_\\theta(x_t\\mid x_{t+1})p_\\phi(y\\mid x_t).$$\n\nFor a Gaussian reverse step $\\mathcal N(\\mu,\\Sigma)$, the paper linearizes the classifier log probability around $x_t=\\mu$. Assuming its curvature is small relative to $\\Sigma^{-1}$, completing the square gives\n\n$$\\mathcal N(\\mu+\\Sigma g,\\Sigma).$$\n\nWith guidance scale $s$, the shift becomes $s\\Sigma g$. A small illustrative one-dimensional example makes the roles explicit: if $\\mu=0.2$, $\\Sigma=0.04$, $g=3$, and $s=2$, the guided mean is\n\n$$0.2+2(0.04)(3)=0.44.$$\n\nThe covariance remains $0.04$ in this local approximation. This arithmetic is illustrative, not a reported setting.\n\nThe `guidance` experiment compares two fixed scalar velocity fields and linearly extrapolates between them with weight $w$. It teaches how a control signal can move an equilibrium and why a scale larger than one is extrapolation rather than simple interpolation. It is not the paper’s image sampler, classifier gradient, Gaussian transition, or empirical fidelity–diversity curve.\n\nA common misconception is that guidance retrains the denoiser or merely filters completed images. Here it modifies every sampling step using gradients through a separate noisy-image classifier. For deterministic DDIM, the Gaussian mean-shift derivation does not apply directly. Instead the conditional score modifies the noise estimate:\n\n$$\\hat\\epsilon(x_t)=\\epsilon_\\theta(x_t)-\\sqrt{1-\\bar\\alpha_t}\\,\\nabla_{x_t}\\log p_\\phi(y\\mid x_t),$$\n\nwhere $\\bar\\alpha_t$ is cumulative signal retention. The ordinary DDIM update then consumes $\\hat\\epsilon$.",
+      "sourceIds": [
+        "section-4"
+      ],
+      "claimIds": [
+        "c7",
+        "c8",
+        "c9"
+      ],
+      "figureId": "f-guidance"
+    },
+    {
+      "id": "s6",
+      "title": "The scale knob and what the measurements say",
+      "markdown": "For the class-conditional ImageNet $128\\times128$ model, the guidance-scale sweep measures a trade-off rather than a uniformly improving curve. Once the classifier-gradient scale exceeds $1$, precision and Inception Score rise while recall falls: samples become more concentrated around classifier-favored modes, increasing measured fidelity while reducing measured coverage. Because FID and sFID reflect both fidelity and diversity, their best values occur at an intermediate scale rather than at the strongest guidance. These conclusions are specific to the reported scale sweep; the figure does not imply that increasing guidance always improves the generated distribution.\n\nThe higher-resolution comparison makes the gain concrete. On ImageNet $256\\times256$, using the entire training set as the reference and a common metric implementation where recomputation was possible, BigGAN-deep reported FID $6.95$, sFID $7.36$, precision $0.87$, and recall $0.28$. ADM-G with the standard $250$-step ImageNet sampler reported FID $4.59$, sFID $5.25$, precision $0.82$, and recall $0.52$. Thus ADM-G had lower FID and substantially higher recall, while BigGAN-deep had higher precision. The $25$-step DDIM variant of ADM-G reported FID $5.44$ and recall $0.49$, showing that the comparison remains conditioned on the stated sampler and number of denoising evaluations.\n\nGuidance and two-stage upsampling also improved different aspects of the result. In the two-stage setup, a low-resolution diffusion model first generated an image and an upsampling diffusion model then produced the target resolution; only the lower-resolution model received classifier guidance. At $256\\times256$, with a $64\\times64$ base and $250$ steps for both stages, unguided ADM-U reported FID $7.49$, precision $0.72$, and recall $0.63$, while guided single-stage ADM-G reported FID $4.59$, precision $0.82$, and recall $0.52$. Combining lower-resolution guidance with upsampling produced FID $3.94$, precision $0.83$, and recall $0.53$.\n\nThe complementary pattern also appeared at $512\\times512$, whose two-stage system used a $128\\times128$ base. With $250$ steps in both stages, ADM-U reported FID $9.96$, precision $0.75$, and recall $0.64$; single-stage ADM-G reported FID $7.72$, precision $0.87$, and recall $0.42$; and their combination reported FID $3.85$, precision $0.84$, and recall $0.53$. Under these settings, upsampling retained comparatively high recall, guidance supplied the stronger fidelity–diversity control, and guiding the base model before upsampling yielded the paper’s best reported high-resolution FIDs.",
+      "sourceIds": [
+        "section-4-part-2",
+        "section-5"
+      ],
+      "claimIds": [
+        "c10",
+        "c11",
+        "c12"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s7",
+      "title": "Boundaries of the result",
+      "markdown": "The reported gains have clear boundaries. First, diffusion sampling remained slower than GAN sampling because producing one image required repeated denoising-network evaluations. The 25-step DDIM variants reduced that cost and achieved FIDs comparable to BigGAN-deep under the paper’s ImageNet evaluations, but they still used 25 forward passes rather than a single generator pass. Single-step distillation was identified as a promising direction, not as a solved part of this method.\n\nSecond, classifier guidance as demonstrated requires class labels and a classifier trained on the same noisy-state distribution as the diffusion model. Its fidelity–diversity control comes from scaling $\\nabla_{x_t}\\log p_\\phi(y\\mid x_t,t)$ during sampling. Without labels or another trained discriminative signal, the paper provides no demonstrated counterpart to that control. Synthetic labels, a discriminator that separates data from model samples, and text-based conditioning are proposed as future possibilities rather than validated results here.\n\nThird, stronger guidance does not improve every property simultaneously. Increasing the scale sharpens the classifier-induced preference for favored class modes, which raised precision and Inception Score while reducing recall in the reported sweep. FID and sFID reached their best values at intermediate scales because they respond to both fidelity and coverage. The method therefore supplies a controllable trade-off, not a guarantee that more guidance always produces a better sample distribution.\n\nFinally, the headline comparisons are tied to their evaluation conditions. The architecture ablations used ImageNet $128\\times128$, batch size 256, 250 sampling steps, and FID measurements at specified training iterations. The larger ImageNet comparisons used the full training set as the reference and a common metric implementation where public samples or models permitted recomputation; some marked values came from earlier papers. FID, precision, recall, and Inception Score summarize different aspects of generated distributions and are imperfect proxies for human judgment. The results support superiority over the named baselines on those reported metrics and settings, not universal optimality across datasets, compute budgets, sampling speeds, or perceptual criteria.",
+      "sourceIds": [
+        "section-2",
+        "section-3",
+        "section-5",
+        "section-7"
+      ],
+      "claimIds": [
+        "c13",
+        "c14"
+      ],
+      "figureId": null
+    }
+  ],
+  "figures": [
+    {
+      "id": "f-noise",
+      "kind": "noise",
+      "title": "Where Gaussian noise lives in high dimension",
+      "question": "If sigma stays fixed while dimension increases, how do the typical norm and its relative concentration change?",
+      "caption": "A seeded Gaussian sample shows a norm histogram, the reference RMS radius $\\sigma\\sqrt D$, and the measured mean radius. Use it to connect the diffusion endpoint with high-dimensional Gaussian scale.",
+      "limitation": "This is a Gaussian norm demonstration only: $D$ is not rendered as physical dimensions, and the experiment does not implement image noising, a schedule, training, or reverse diffusion.",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c1",
+        "c2"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "f-normalization",
+      "kind": "normalization",
+      "title": "Normalize first, then modulate",
+      "question": "When the same offset is added to every fixed activation, what changes before standardization, and what remains after mean subtraction and division by population standard deviation?",
+      "caption": "Five fixed activations illustrate centering and scaling, preparing the distinction between normalized features and the learned scale-and-bias modulation used by AdaGN.",
+      "limitation": "This is one illustrative vector with ordinary standardization, not GroupNorm on image features, a residual block, learned embeddings, or the paper’s measured AdaGN ablation.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c6"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "f-guidance",
+      "kind": "guidance",
+      "title": "A guidance weight can extrapolate",
+      "question": "As $w$ increases above one, where does the equilibrium of the toy combined velocity field move, and why is that not evidence of image-quality improvement?",
+      "caption": "The fixed fields $v_{\\mathrm{uncond}}=-x$ and $v_{\\mathrm{cond}}=-(x-1)$ combine as $v=v_{\\mathrm{uncond}}+w(v_{\\mathrm{cond}}-v_{\\mathrm{uncond}})$, moving the illustrative equilibrium to $x=w$.",
+      "limitation": "This scalar field is not classifier-guided diffusion, contains no covariance or noisy-image classifier, and supplies no empirical fidelity, diversity, FID, or recall prediction.",
+      "sourceIds": [
+        "section-4",
+        "section-4-part-2"
+      ],
+      "claimIds": [
+        "c8",
+        "c10"
+      ],
+      "illustrative": true
+    }
+  ],
+  "quiz": [
+    {
+      "question": "In a one-dimensional stochastic reverse step, suppose $\\mu=0.5$, $\\Sigma=0.1$, classifier gradient $g=2$, and guidance scale $s=3$. Under the paper’s local Gaussian approximation, what is the guided mean?",
+      "options": [
+        {
+          "text": "$0.7$",
+          "explanation": "This includes $\\Sigma g$ but omits the stated guidance scale $s=3$."
+        },
+        {
+          "text": "$1.1$",
+          "explanation": "Correct: $\\mu+s\\Sigma g=0.5+3(0.1)(2)=1.1$."
+        },
+        {
+          "text": "$6.5$",
+          "explanation": "This effectively multiplies the gradient without the covariance factor, contrary to the mean-shift formula."
+        }
+      ],
+      "answer": 1,
+      "sourceIds": [
+        "section-4"
+      ],
+      "claimIds": [
+        "c8"
+      ]
+    },
+    {
+      "question": "Why does the deterministic DDIM case use a modified noise prediction rather than directly reusing the stochastic mean-shift derivation?",
+      "options": [
+        {
+          "text": "DDIM has no timestep input.",
+          "explanation": "Incorrect. The denoiser remains timestep-conditioned."
+        },
+        {
+          "text": "DDIM cannot use class information.",
+          "explanation": "Incorrect. The paper conditions DDIM through the score-derived modification of the noise estimate."
+        },
+        {
+          "text": "The Gaussian transition derivation assumes a stochastic reverse process, while zero-noise DDIM is deterministic.",
+          "explanation": "Correct. The paper explicitly separates the stochastic Gaussian derivation from its score-based DDIM conditioning rule."
+        }
+      ],
+      "answer": 2,
+      "sourceIds": [
+        "section-4"
+      ],
+      "claimIds": [
+        "c9"
+      ]
+    },
+    {
+      "question": "Under the paper’s interpretation of the scale sweep, what is the best-supported expectation when classifier guidance is increased beyond 1?",
+      "options": [
+        {
+          "text": "Precision tends to rise while recall tends to fall, and the best FID may occur at an intermediate scale.",
+          "explanation": "Correct. The reported sweep presents guidance as a fidelity–diversity trade-off rather than a monotonic improvement in every metric."
+        },
+        {
+          "text": "Precision and recall must both rise because the classifier supplies additional information.",
+          "explanation": "Incorrect. The reported recall decreases as stronger guidance concentrates samples around favored modes."
+        },
+        {
+          "text": "Sampling becomes single-pass because a sharper classifier replaces denoising steps.",
+          "explanation": "Incorrect. Guidance modifies the repeated sampling process and does not remove its multiple forward passes."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-4-part-2",
+        "section-7"
+      ],
+      "claimIds": [
+        "c10",
+        "c13"
+      ]
+    }
+  ],
+  "id": "diffusion-models-beat-gans-on-image",
+  "createdAt": "2026-10-01T23:10:57.003Z",
+  "pipelineVersion": "subjects-lessons-v1",
+  "sources": [
+    {
+      "id": "abstract",
+      "label": "Original paper · abstract",
+      "url": "https://arxiv.org/abs/2105.05233",
+      "digest": "c04e999a57c8220b1d059b82e426584ed7f145cebacca7efba398012767ca227"
+    },
+    {
+      "id": "section-1",
+      "label": "1 Introduction",
+      "url": "https://arxiv.org/html/2105.05233#S1",
+      "digest": "603411227396a73a932d953ed19caf782cffa2b34146be38846a70f81e442333"
+    },
+    {
+      "id": "section-2",
+      "label": "2 Background",
+      "url": "https://arxiv.org/html/2105.05233#S2",
+      "digest": "72edc3c9aa0fb4ed18327eef41faeba2af5330969dafdd74872926265f84d3cd"
+    },
+    {
+      "id": "section-3",
+      "label": "3 Architecture Improvements",
+      "url": "https://arxiv.org/html/2105.05233#S3",
+      "digest": "60d749807ea7ae7cf9aceb4c88f93be73ac3e246b4d6f22e483610d9b00baa7d"
+    },
+    {
+      "id": "section-4",
+      "label": "4 Classifier Guidance",
+      "url": "https://arxiv.org/html/2105.05233#S4",
+      "digest": "c1397d56a756253dd84d133fb75f91d340fdc089544f063c1ece0502feff5392"
+    },
+    {
+      "id": "section-4-part-2",
+      "label": "4 Classifier Guidance · part 2",
+      "url": "https://arxiv.org/html/2105.05233#S4",
+      "digest": "c40131b7c7e7a0be315e44aa25096609080066cfd284bc8b74e1a1cb6deb1c98"
+    },
+    {
+      "id": "section-5",
+      "label": "5 Results",
+      "url": "https://arxiv.org/html/2105.05233#S5",
+      "digest": "88c36035602e532929535c2f0ea0a92c7c31afbc386615403601086e212d4125"
+    },
+    {
+      "id": "section-6",
+      "label": "6 Related Work",
+      "url": "https://arxiv.org/html/2105.05233#S6",
+      "digest": "e83259f1816632f78265fd8aabd78c6198f683c3d1af20bb973fc8890d1bf31c"
+    },
+    {
+      "id": "section-7",
+      "label": "7 Limitations and Future Work",
+      "url": "https://arxiv.org/html/2105.05233#S7",
+      "digest": "c53a6aea23972a0c9746b0b8481aee6a99c3a71c824f4306fed417d117aeeab8"
+    },
+    {
+      "id": "section-8",
+      "label": "8 Conclusion",
+      "url": "https://arxiv.org/html/2105.05233#S8",
+      "digest": "400eb27d871e85117d76abcbce9b6a261af99aa88c882263395ad6ec678fe3a1"
+    },
+    {
+      "id": "section-9",
+      "label": "9 Acknowledgements",
+      "url": "https://arxiv.org/html/2105.05233#S9",
+      "digest": "8f5f04a13dc92d1df306abe162dc82ea4aa1a5ed870933de3b7c51f92d6c2d60"
+    }
+  ],
+  "review": {
+    "status": "passed",
+    "reviewedAt": "2026-10-02T02:13:51.212Z",
+    "contentDigest": "c3257719cfb54dd2a0c2545441682a854ebf125ea8cc268463756b59ee601cdd"
+  }
+}

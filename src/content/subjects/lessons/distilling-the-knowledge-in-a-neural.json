@@ -1,0 +1,421 @@
+{
+  "title": "Teaching with the Whole Distribution",
+  "summary": "Knowledge distillation trains a deployable model to match a cumbersome teacher’s softened class distribution, preserving useful relationships that hard labels discard.",
+  "prerequisites": [
+    "Softmax probability distributions from class logits",
+    "Cross-entropy between target and predicted distributions",
+    "Logits as unnormalized class scores",
+    "Ensembles of multiple trained models"
+  ],
+  "objectives": [
+    "Explain why soft targets convey more information than one-hot labels.",
+    "Calculate temperature-scaled softmax probabilities for a small example.",
+    "Describe training with both soft targets and hard labels.",
+    "Interpret the reported results within their experimental conditions.",
+    "Distinguish distillation from deploying an ensemble."
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "mechanism",
+      "statement": "The paper treats knowledge as an input-to-output mapping that can be transferred across model architectures, rather than as a particular set of parameters.",
+      "conditions": "Conceptual account of transferring behavior from a cumbersome teacher to a smaller model.",
+      "sourceIds": [
+        "section-1"
+      ]
+    },
+    {
+      "id": "c2",
+      "kind": "mechanism",
+      "statement": "Soft targets expose relationships among incorrect classes that a single hard label cannot express.",
+      "conditions": "Multiclass prediction where the teacher assigns nonzero probabilities to several classes.",
+      "sourceIds": [
+        "section-1"
+      ]
+    },
+    {
+      "id": "c3",
+      "kind": "equation",
+      "statement": "At temperature $T>0$, class $i$ receives probability $q_i=\\frac{\\exp(z_i/T)}{\\sum_j\\exp(z_j/T)}$, where $z_i$ is its logit.",
+      "conditions": "A softmax output layer over the model’s class logits.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c4",
+      "kind": "mechanism",
+      "statement": "Distillation uses the same elevated temperature to generate teacher targets and evaluate student probabilities during soft-target training, then uses $T=1$ after training.",
+      "conditions": "The paper’s simplest form of distillation.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c5",
+      "kind": "equation",
+      "statement": "For soft-target cross-entropy, the gradient with respect to student logit $z_i$ is $\\frac{1}{T}(q_i-p_i)$, with $p_i$ the teacher probability.",
+      "conditions": "Teacher and student probabilities are computed at the same temperature $T$.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c6",
+      "kind": "mechanism",
+      "statement": "When hard and soft losses are combined, the paper multiplies the soft-target contribution by $T^2$ to compensate for temperature-dependent gradient shrinkage.",
+      "conditions": "Training with both label cross-entropy at $T=1$ and soft-target cross-entropy at elevated $T$.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c7",
+      "kind": "result",
+      "statement": "On the reported MNIST setup, a smaller unregularized network made 146 test errors, while matching the large network’s temperature-20 soft targets reduced this to 74.",
+      "conditions": "MNIST; teacher with two 1200-unit hidden layers; student with two 800-unit hidden layers; transfer temperature 20.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c8",
+      "kind": "result",
+      "statement": "In the speech experiment, a distilled single acoustic model nearly matched the ten-model ensemble on both reported metrics.",
+      "conditions": "Reported ASR systems with the same 85M-parameter architecture; 10-model ensemble; selected distillation temperature 2 and hard-target relative weight 0.5.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c9",
+      "kind": "result",
+      "statement": "Soft targets strongly reduced overfitting in the paper’s reduced-data speech experiment.",
+      "conditions": "The 85M-parameter speech model trained on 3% of the data; teacher soft targets were obtained using the full training set.",
+      "sourceIds": [
+        "section-6"
+      ]
+    },
+    {
+      "id": "c10",
+      "kind": "mechanism",
+      "statement": "The paper’s specialists focus on confusable class subsets and merge all other classes into a dustbin class.",
+      "conditions": "Very-large-class problems using a generalist plus independently trained specialists.",
+      "sourceIds": [
+        "section-5"
+      ]
+    },
+    {
+      "id": "c11",
+      "kind": "caveat",
+      "statement": "The paper did not demonstrate distilling the specialist ensemble back into one large network.",
+      "conditions": "The reported JFT specialist experiments.",
+      "sourceIds": [
+        "section-8"
+      ]
+    },
+    {
+      "id": "c12",
+      "kind": "caveat",
+      "statement": "The best temperature depends on student capacity; a severely constrained MNIST student favored an intermediate range.",
+      "conditions": "MNIST student with two hidden layers of 30 units each.",
+      "sourceIds": [
+        "section-3"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "s1",
+      "title": "Deployment Changes What a Good Model Looks Like",
+      "markdown": "Training and deployment impose different constraints. During training, one can afford a large regularized network or an ensemble whose averaged predictions generalize well. Serving that system to many users can make its latency and computation unacceptable. The paper’s proposal is therefore not simply to shrink parameters: first train a cumbersome teacher, then train a more deployable student to reproduce the teacher’s learned mapping.\n\nThis depends on separating knowledge from its physical representation. The teacher’s parameters are not copied into the student. Instead, its behavior on inputs becomes supervision. That allows the student to have a different architecture or capacity while learning an approximation to the same input-to-output function. Ordinary ensemble averaging still requires every member at inference; distillation moves information from that ensemble into one model before deployment.",
+      "sourceIds": [
+        "abstract",
+        "section-1"
+      ],
+      "claimIds": [
+        "c1"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s2",
+      "title": "Why One Label Is an Information Bottleneck",
+      "markdown": "For a labeled example, a hard target says only which class is correct. A teacher distribution can additionally say which alternatives resemble the example. A probability vector such as $(0.90,0.09,0.01)$ and one such as $(0.90,0.01,0.09)$ share the same winning class but teach different relationships among the two errors. The paper calls these distributions soft targets.\n\nThat extra structure is especially important when a confident teacher assigns tiny probabilities to incorrect classes. Their relative sizes can reveal whether one input resembles one alternative more than another. This does not mean every teacher probability is truth: the student is learning the teacher’s generalization pattern, including any mistakes or biases it contains.\n\nThe illustrative attention control below uses fixed scores $[2,1,0,-1]$, divides them by a positive temperature, and applies softmax. Although labeled as attention weights by its contract, its normalized computation is the same temperature operation needed here. Predict what happens to the gap between the largest and smallest weights as temperature rises. It is useful for seeing softening, but it is not a trained teacher, measured class distribution, or reproduction of the paper’s experiments.",
+      "sourceIds": [
+        "section-1",
+        "section-2"
+      ],
+      "claimIds": [
+        "c2",
+        "c3"
+      ],
+      "figureId": "f1"
+    },
+    {
+      "id": "s3",
+      "title": "Temperature Reveals the Teacher’s Secondary Preferences",
+      "markdown": "Let $z_i$ be the student logit for class $i$, let $i$ range over all classes, and let $T>0$ be temperature. The student probability is\n\n$$q_i=\\frac{\\exp(z_i/T)}{\\sum_j\\exp(z_j/T)}.$$\n\nThe teacher uses the same formula with teacher logits $v_i$, producing targets $p_i$. At $T=1$, softmax has its usual form. Increasing $T$ divides every logit difference by a larger number, yielding a higher-entropy, less peaked distribution. Distillation generates $p_i$ at elevated $T$ and trains $q_i$ at that same temperature. In deployment, the student returns to $T=1$.\n\nHere is an illustrative calculation, not a reported paper result. Suppose a teacher has logits $(2,1,0)$. At $T=1$, the unnormalized values are approximately $(7.389,2.718,1)$, whose sum is $11.107$. Thus the probabilities are approximately $(0.665,0.245,0.090)$. At $T=2$, the scaled logits are $(1,0.5,0)$ and exponentiation gives $(2.718,1.649,1)$, summing to $5.367$. The softened probabilities are approximately $(0.506,0.307,0.186)$. The ranking remains unchanged, but the secondary classes now contribute much more visible training signal.",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c3",
+        "c4"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s4",
+      "title": "What the Student Actually Optimizes",
+      "markdown": "Let $C_{\\mathrm{soft}}$ denote cross-entropy from teacher probabilities $p_i$ to student probabilities $q_i$, both computed at elevated $T$. Its gradient with respect to student logit $z_i$ is\n\n$$\\frac{\\partial C_{\\mathrm{soft}}}{\\partial z_i}=\\frac{1}{T}(q_i-p_i).$$\n\nWhen labels are available, the paper combines this with $C_{\\mathrm{hard}}$, the cross-entropy between the true one-hot label and the student’s $T=1$ prediction. A convenient description is\n\n$$L=\\alpha T^2 C_{\\mathrm{soft}}+\\beta C_{\\mathrm{hard}},$$\n\nwhere $\\alpha$ and $\\beta$ are chosen weights. This notation summarizes the paper’s weighted combination; it does not assert universal default values. The $T^2$ factor matters because the soft-target gradients shrink approximately as $1/T^2$. Without compensation, changing temperature would unintentionally change the balance between teacher imitation and labeled supervision.\n\nThe optimizer control shows plain gradient descent on the illustrative scalar function $f(x)=x^2/2$, starting from $x=3$ for 12 updates. Changing its learning rate changes the iterates. Use it to predict whether a larger stable step reaches the minimum faster. This isolates how gradient scale affects update size, but it does not implement distillation, cross-entropy, a neural network, or the paper’s optimizer.",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c5",
+        "c6"
+      ],
+      "figureId": "f2"
+    },
+    {
+      "id": "s5",
+      "title": "Why Logit Matching Appears at High Temperature",
+      "markdown": "The paper also explains a connection to squared-error logit matching. Let $N$ be the number of classes. If $T$ is large relative to the logit magnitudes and the teacher and student logits are separately centered so that $\\sum_j z_j=\\sum_j v_j=0$, then the gradient is approximately\n\n$$\\frac{\\partial C}{\\partial z_i}\\approx\\frac{1}{NT^2}(z_i-v_i).$$\n\nThis has the same direction as the gradient of a squared difference between corresponding logits, up to a common scale. The centering condition is essential because adding the same constant to every logit leaves softmax probabilities unchanged; raw logits otherwise contain an arbitrary shared offset.\n\nThe normalization control makes that prerequisite tangible with fixed activations $[-2,-1,0,2,6]$. An offset changes every raw activation, while standardization subtracts the vector’s mean and divides by its population standard deviation. Predict whether adding a shared offset changes the standardized values. This is only an illustrative vector operation—not BatchNorm, LayerNorm, logit matching, or a training implementation—but it clarifies why removing a common offset permits a meaningful componentwise comparison.\n\nAt finite temperature, probability matching is not identical to treating every logit discrepancy equally. Very negative logits receive less attention, which may suppress noise but can also discard useful information. The paper treats which effect dominates as empirical, not guaranteed.",
+      "sourceIds": [
+        "section-2",
+        "section-3"
+      ],
+      "claimIds": [
+        "c5",
+        "c12"
+      ],
+      "figureId": "f3"
+    },
+    {
+      "id": "s6",
+      "title": "Reading the Evidence Without Overgeneralizing",
+      "markdown": "The MNIST results show the mechanism under specific architectures and augmentation conditions. The large teacher had two 1200-unit hidden layers and made 67 test errors. A smaller two-layer, 800-unit model without regularization made 146; when trained with the teacher’s soft targets at $T=20$, it made 74. This supports substantial transfer in that setup, not a universal promise that every student will equal its teacher. Capacity mattered: with only 30 units per layer, temperatures from 2.5 to 4 worked better than higher or lower values.\n\nThe speech study used an approximately 85-million-parameter acoustic architecture trained from about 2000 hours of English speech. Its baseline achieved 58.9% frame accuracy and 10.9% word error rate. Averaging ten models gave 61.1% and 10.7%; the distilled single model gave 60.8% and 10.7%. The reported distillation search included temperatures $1,2,5,10$, with $2$ selected, and assigned relative weight $0.5$ to hard-target cross-entropy.\n\nA separate reduced-data result highlights regularization: using 3% of the speech data, hard targets gave 44.5% test frame accuracy, whereas soft targets derived from a teacher trained on all data gave 57.0%. This comparison does not mean the teacher needed only 3% of the data; its targets imported regularities learned from the full set.",
+      "sourceIds": [
+        "section-3",
+        "section-4",
+        "section-6"
+      ],
+      "claimIds": [
+        "c7",
+        "c8",
+        "c9",
+        "c12"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s7",
+      "title": "Misconceptions, Specialists, and Boundaries",
+      "markdown": "A common misconception is that distillation merely copies the teacher’s winning class. That would reduce the transfer to hard pseudo-labels and discard the relative probabilities among alternatives—the information the method is designed to preserve. Elevated temperature is likewise a training device: the teacher produces softened targets at temperature $T>1$, the student is evaluated at the same temperature for the soft-target loss, and the trained student returns to $T=1$ for prediction.\n\nFor very large label spaces, the paper extends this idea with a generalist-plus-specialists ensemble. A generalist covers all classes. Each specialist concentrates on a confusable subset while merging every other class into a single dustbin class, which keeps its output layer manageable. Specialists are initialized from the generalist and trained on data balanced between their special subset and randomly sampled remaining examples; the dustbin logit is then corrected for the deliberate oversampling.\n\nThe confusable subsets are derived by clustering classes that the generalist tends to predict together. Once those subsets are fixed, the specialists can be trained independently, unlike a mixture of experts whose learned gating assignments change as the experts change. At inference, the generalist’s most probable class determines which specialists are relevant. Their distributions are reconciled with the generalist by finding a full class distribution $\\mathbf q$ that minimizes\n\n$$KL(\\mathbf p^g,\\mathbf q)+\\sum_{m\\in A_k}KL(\\mathbf p^m,\\mathbf q),$$\n\nwhere $\\mathbf p^g$ is the generalist distribution, $A_k$ is the active specialist set, and each specialist’s dustbin probability is compared with the total probability that $\\mathbf q$ assigns to classes outside that specialist’s subset. The paper parameterizes $\\mathbf q=\\operatorname{softmax}(\\mathbf z)$ at $T=1$ and optimizes $\\mathbf z$ separately for each image.\n\nOn JFT, the authors trained 61 independent specialists, each covering 300 classes plus a dustbin class. Adding them to the generalist raised overall top-1 test accuracy from 25.0% to 26.1%, a 4.4% relative improvement under that experimental setup. This result evaluates the generalist-plus-specialists ensemble itself. The paper had not yet shown that the specialists’ knowledge could be distilled back into one large network.\n\nThe reported temperatures, loss weights, architectures, and gains are therefore experimental choices rather than universal defaults. Distillation transfers the teacher’s learned behavior, so it can preserve useful class relationships but can also transmit teacher errors. Its supported claim is conditional: with suitable transfer data, student capacity, and optimization, softened teacher probabilities can provide richer supervision than a single hard label and can help a deployable student approximate a cumbersome model.",
+      "sourceIds": [
+        "section-1",
+        "section-2",
+        "section-5",
+        "section-7",
+        "section-8"
+      ],
+      "claimIds": [
+        "c2",
+        "c4",
+        "c10",
+        "c11"
+      ],
+      "figureId": null
+    }
+  ],
+  "figures": [
+    {
+      "id": "f1",
+      "kind": "attention",
+      "title": "Temperature Softens a Fixed Score Distribution",
+      "question": "As temperature increases, how does the gap between the largest and smallest normalized weights change?",
+      "caption": "Four fixed illustrative scores $[2,1,0,-1]$ are divided by a positive temperature and passed through softmax, exposing how temperature changes concentration.",
+      "limitation": "This displays normalized attention weights from fixed scores, not a measured teacher, learned token similarity, class experiment, or full distillation simulation.",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c3",
+        "c4"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "f2",
+      "kind": "optimizer",
+      "title": "Gradient Scale Changes Update Size",
+      "question": "Within the stable range shown, how does increasing the learning rate change the 12-step approach to the quadratic minimum?",
+      "caption": "Plain gradient descent updates the illustrative scalar quadratic $f(x)=x^2/2$ from $x=3$ for 12 iterates while the learning rate controls step size.",
+      "limitation": "This is ordinary scalar gradient descent, not Adam, RMSProp, neural-network training, or an implementation of the paper’s combined distillation loss.",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c5",
+        "c6"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "f3",
+      "kind": "normalization",
+      "title": "Removing a Shared Offset",
+      "question": "If the same offset is added to every activation, do the standardized values change?",
+      "caption": "For the fixed vector $[-2,-1,0,2,6]$, standardization subtracts the mean and divides by the population standard deviation as the raw offset changes.",
+      "limitation": "This is one illustrative vector, not BatchNorm, LayerNorm, trained logits, or a reproduction of the paper’s zero-mean approximation.",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c5"
+      ],
+      "illustrative": true
+    }
+  ],
+  "quiz": [
+    {
+      "question": "A teacher assigns $(0.70,0.20,0.10)$ to three classes, while its hard label identifies only the first. Under the paper’s motivation, what extra information do the soft targets provide?",
+      "options": [
+        {
+          "text": "They encode the teacher’s relative preference between the two incorrect classes.",
+          "explanation": "Correct. The probabilities show that the second class is considered more plausible than the third."
+        },
+        {
+          "text": "They prove that the second class is objectively similar to the first.",
+          "explanation": "Incorrect. They express the teacher’s learned behavior, which can contain errors or bias."
+        },
+        {
+          "text": "They eliminate the need for any labeled objective in all settings.",
+          "explanation": "Incorrect. The paper reports that adding a lower-weight hard-label objective can improve training when labels are available."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-1",
+        "section-2"
+      ],
+      "claimIds": [
+        "c2",
+        "c6"
+      ]
+    },
+    {
+      "question": "During the paper’s simplest distillation procedure, which temperature schedule is correct?",
+      "options": [
+        {
+          "text": "Teacher at high temperature, student at 1 during matching and deployment.",
+          "explanation": "Incorrect. Teacher and student must use the same elevated temperature for the soft-target matching term."
+        },
+        {
+          "text": "Teacher and student at the same high temperature during matching, then student at 1 for deployment.",
+          "explanation": "Correct. This preserves a common softened target space during training and ordinary predictions afterward."
+        },
+        {
+          "text": "Teacher at 1, student at high temperature permanently.",
+          "explanation": "Incorrect. This reverses the described procedure and incorrectly retains elevated temperature at inference."
+        }
+      ],
+      "answer": 1,
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c4"
+      ]
+    },
+    {
+      "question": "What is the defensible conclusion from the reported 3%-of-speech-data experiment?",
+      "options": [
+        {
+          "text": "The teacher itself learned the full task using only 3% of the speech data.",
+          "explanation": "Incorrect. The soft targets came from a model trained on the full training set."
+        },
+        {
+          "text": "Soft targets guaranteed 57.0% test frame accuracy for any architecture.",
+          "explanation": "Incorrect. The number belongs to the stated 85M-parameter speech setup, not a universal guarantee."
+        },
+        {
+          "text": "In that setup, soft targets transferred regularities learned from full data and greatly reduced reduced-data overfitting.",
+          "explanation": "Correct. The soft-target model reached 57.0% versus 44.5% test frame accuracy for hard-target training on the same 3% subset."
+        }
+      ],
+      "answer": 2,
+      "sourceIds": [
+        "section-6"
+      ],
+      "claimIds": [
+        "c9"
+      ]
+    }
+  ],
+  "id": "distilling-the-knowledge-in-a-neural",
+  "createdAt": "2026-10-01T23:21:58.002Z",
+  "pipelineVersion": "subjects-lessons-v1",
+  "sources": [
+    {
+      "id": "abstract",
+      "label": "Original paper · abstract",
+      "url": "https://arxiv.org/abs/1503.02531",
+      "digest": "642f3201a1a4faa64c2ba2f1a2070621c3358b210fe2d61d4627fb8d0e794663"
+    },
+    {
+      "id": "section-1",
+      "label": "1 Introduction",
+      "url": "https://arxiv.org/html/1503.02531#S1",
+      "digest": "6d4010f3b8315afd925cf1773262eb9a2f4e741aff38fca7c35ca9d2e3381834"
+    },
+    {
+      "id": "section-2",
+      "label": "2 Distillation",
+      "url": "https://arxiv.org/html/1503.02531#S2",
+      "digest": "fbd972c5695f080953d1ef5443c724f4e104c3578869dfe395f986686529f47a"
+    },
+    {
+      "id": "section-3",
+      "label": "3 Preliminary experiments on MNIST",
+      "url": "https://arxiv.org/html/1503.02531#S3",
+      "digest": "ca80a48db3500ae341edb13ea3b610fc9ed6a1811f9f423855adb819062deda5"
+    },
+    {
+      "id": "section-4",
+      "label": "4 Experiments on speech recognition",
+      "url": "https://arxiv.org/html/1503.02531#S4",
+      "digest": "a25078694ab4c5e372a3e86acb62d919e6791db487cb521234c0c9ec1ad35af7"
+    },
+    {
+      "id": "section-5",
+      "label": "5 Training ensembles of specialists on very big datasets",
+      "url": "https://arxiv.org/html/1503.02531#S5",
+      "digest": "e96febc73c1ae874f89f62470d8a45af2dc2199ee51dbe03ba31e81c58bbaee2"
+    },
+    {
+      "id": "section-6",
+      "label": "6 Soft Targets as Regularizers",
+      "url": "https://arxiv.org/html/1503.02531#S6",
+      "digest": "c80f6061beb19e516f1ea521fbf65948e51eca9d1c466e2609c440547cb6bc84"
+    },
+    {
+      "id": "section-7",
+      "label": "7 Relationship to Mixtures of Experts",
+      "url": "https://arxiv.org/html/1503.02531#S7",
+      "digest": "c20384e11b24f4dc8822faf5af381f08a4f7b2d7a6276b17d86ce63facd64170"
+    },
+    {
+      "id": "section-8",
+      "label": "8 Discussion",
+      "url": "https://arxiv.org/html/1503.02531#S8",
+      "digest": "56d7eb1ca547356269a41e5b746c44e30cbe9ee67b3404fa2c308d84e81d3c70"
+    }
+  ],
+  "review": {
+    "status": "passed",
+    "reviewedAt": "2026-10-02T01:54:04.891Z",
+    "contentDigest": "213097c12ab1d7dae3cb4395d35c4a2b3f3205d963730f0f9d6ff5c575fc45c8"
+  }
+}

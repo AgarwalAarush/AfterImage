@@ -1,0 +1,487 @@
+{
+  "title": "From Pixels and Prompts to Robot Motions: Reconstructing OpenVLA",
+  "summary": "OpenVLA turns fused visual features and language instructions into discretized action tokens, enabling an open 7B robot policy that can be adapted efficiently.",
+  "prerequisites": [
+    "Basic probability and cross-entropy",
+    "Transformer token sequences",
+    "Imitation learning from robot demonstrations",
+    "Robot action vectors"
+  ],
+  "objectives": [
+    "Explain how OpenVLA represents continuous robot control as token prediction.",
+    "Trace an image and instruction through the model to a seven-dimensional action.",
+    "Calculate an illustrative action bin and cross-entropy loss.",
+    "Compare pretraining, full fine-tuning, LoRA, and inference quantization.",
+    "Interpret reported robot results within their evaluation conditions."
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "result",
+      "statement": "OpenVLA is a 7B-parameter VLA trained on 970,000 robot demonstrations from Open X-Embodiment.",
+      "conditions": "Model scale and training corpus reported for the released OpenVLA model.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c2",
+      "kind": "mechanism",
+      "statement": "The architecture concatenates DINOv2 and SigLIP visual features, projects them into the language embedding space, and uses a Llama 2 7B backbone.",
+      "conditions": "Architecture depicted for OpenVLA with an image observation and language instruction as inputs.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c3",
+      "kind": "mechanism",
+      "statement": "OpenVLA predicts a seven-dimensional robot control action from an image and a language instruction.",
+      "conditions": "Single-step action prediction in the architecture described by Figure 2.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c4",
+      "kind": "equation",
+      "statement": "For each action component, OpenVLA discretizes a continuous value into one of 256 bins whose interval spans the training-data 1st to 99th quantiles.",
+      "conditions": "Each action dimension is discretized separately; the paper does not provide the exact endpoint and clipping convention in the supplied main-body excerpt.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c5",
+      "kind": "mechanism",
+      "statement": "The model emits action tokens through the language-model vocabulary and trains with cross-entropy only on those predicted action positions.",
+      "conditions": "OpenVLA VLA fine-tuning after continuous actions have been converted into token sequences.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c6",
+      "kind": "mechanism",
+      "statement": "OpenVLA repurposes the 256 least-used Llama vocabulary entries as action tokens because only 100 reserved special tokens were available.",
+      "conditions": "Tokenizer modification used for the 256-bin action representation.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c7",
+      "kind": "result",
+      "statement": "The final model uses 224 by 224 pixel images because a 384 by 384 alternative showed no evaluation improvement and required three times longer training in the authors’ comparison.",
+      "conditions": "The authors’ VLA evaluations comparing two input resolutions during model development.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c8",
+      "kind": "result",
+      "statement": "Fine-tuning the visual encoder was important for the reported VLA performance, contrary to a common VLM practice of freezing it.",
+      "conditions": "The authors’ OpenVLA development experiments; the excerpt does not provide a numerical ablation result.",
+      "sourceIds": [
+        "section-3-part-2"
+      ]
+    },
+    {
+      "id": "c9",
+      "kind": "result",
+      "statement": "The final pretraining run traversed the robot dataset 27 times.",
+      "conditions": "The final OpenVLA training run, after observing continued real-robot improvement with higher action-token accuracy.",
+      "sourceIds": [
+        "section-3-part-2"
+      ]
+    },
+    {
+      "id": "c10",
+      "kind": "result",
+      "statement": "The out-of-the-box comparison used 170 rollouts on BridgeData V2 tasks and 60 on Google robot tasks.",
+      "conditions": "Seventeen BridgeData V2 tasks with ten trials each and twelve Google robot tasks with five trials each.",
+      "sourceIds": [
+        "section-5"
+      ]
+    },
+    {
+      "id": "c11",
+      "kind": "result",
+      "statement": "OpenVLA was comparable to RT-2-X on the Google robot evaluation and significantly better on BridgeData V2 despite using 7B rather than 55B parameters.",
+      "conditions": "The paper’s matched out-of-the-box evaluations on the two robot embodiments and stated task suites.",
+      "sourceIds": [
+        "section-5"
+      ]
+    },
+    {
+      "id": "c12",
+      "kind": "result",
+      "statement": "In downstream adaptation, narrow single-instruction tasks sometimes favored Diffusion Policy, whereas pretrained generalist policies did better on diverse language-conditioned tasks.",
+      "conditions": "Seven Franka tasks using 10–150 demonstrations per task; compared methods did not all share identical observation and control specifications.",
+      "sourceIds": [
+        "section-5",
+        "section-5-part-2"
+      ]
+    },
+    {
+      "id": "c13",
+      "kind": "result",
+      "statement": "Rank-32 LoRA updated 97.6 million parameters and achieved 68.2% mean success, close to full fine-tuning’s 69.7% in the selected fine-tuning evaluation.",
+      "conditions": "Thirty-three rollouts across selected Franka-Tabletop tasks using the smaller SigLIP-only OpenVLA variant described in the paper’s footnote.",
+      "sourceIds": [
+        "section-5-part-2"
+      ]
+    },
+    {
+      "id": "c14",
+      "kind": "result",
+      "statement": "In the tested quantized-inference evaluation, int4 used 7.0 GB and achieved 71.9% mean success, while bfloat16 used 16.8 GB and achieved 71.3%.",
+      "conditions": "Evaluated OpenVLA variant pretrained on the smaller OpenX data mixture also used by Octo, with a SigLIP-only vision backbone. Eight representative BridgeData V2 tasks and 80 rollouts per approach; values are mean success with standard error.",
+      "sourceIds": [
+        "section-5-part-2"
+      ]
+    },
+    {
+      "id": "c15",
+      "kind": "caveat",
+      "statement": "OpenVLA accepts only a single image and does not incorporate proprioception or observation history.",
+      "conditions": "Capabilities of the current model described in the paper, rather than possible future extensions.",
+      "sourceIds": [
+        "section-6"
+      ]
+    },
+    {
+      "id": "c16",
+      "kind": "caveat",
+      "statement": "The reported policy remained below 90% success on typical tested tasks, so state-of-the-art performance should not be read as dependable task completion.",
+      "conditions": "Tasks evaluated in the paper; this is not a universal upper bound on every possible task or adaptation.",
+      "sourceIds": [
+        "section-6"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "s1",
+      "title": "The interface shift: control as language modeling",
+      "markdown": "A robot policy must turn what the robot sees and what a person requests into an action. OpenVLA’s distinctive move is to place that control problem inside a pretrained vision-language model: an image and a natural-language instruction condition the prediction of a seven-dimensional action. It is therefore not merely a language model that writes a plan for a separate controller. Its output tokens encode the robot command itself.\n\nThis matters because a vision-language backbone already offers a shared representational space for visual and linguistic concepts. OpenVLA then adapts that backbone with robot demonstrations: examples pairing observations and instructions with actions. The released model has 7B parameters and was trained on 970k demonstrations drawn from Open X-Embodiment. The intended benefit is transfer across objects, scenes, instructions, and robot embodiments, followed by adaptation to a target setup.\n\nA useful prerequisite is imitation learning. If a demonstration contains observation $o_t$, instruction $l$, and expert action $a_t$, supervised imitation asks a policy $\\pi_\\theta$ to make $\\pi_\\theta(o_t,l)$ agree with $a_t$. OpenVLA changes the representation of the output, but it remains imitation learning from demonstrated actions rather than reinforcement learning from reward.",
+      "sourceIds": [
+        "section-1",
+        "section-3"
+      ],
+      "claimIds": [
+        "c1",
+        "c3"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s2",
+      "title": "Building one multimodal token stream",
+      "markdown": "## Building one multimodal token stream\n\nOpenVLA starts from the pretrained Prismatic-7B vision-language model. Its visual encoder has two components, SigLIP and DINOv2, which process the same input image separately. For corresponding image positions, the encoder concatenates the two resulting feature vectors along the channel dimension. The purpose is to combine complementary pretrained representations: SigLIP supplies higher-level semantic features, while DINOv2 supplies lower-level spatial features. The paper reports that adding DINOv2 had previously improved spatial reasoning in Prismatic and attributes part of OpenVLA’s manipulation performance to this fused representation. That spatial information matters because a command such as “pick up the cup” requires both identifying the instructed object and locating it well enough to produce a control action.\n\nThe fused visual features cannot be passed directly to Llama 2 because they do not initially inhabit the language model’s input space. A learned two-layer MLP projector maps each fused feature vector into that embedding space. The projected image embeddings are then processed by the 7B-parameter Llama 2 backbone together with embeddings for the natural-language instruction. This is the standard patch-as-token interface used by the underlying vision-language architecture: a vision encoder produces a sequence of feature vectors, and the projector converts that sequence into embeddings the language model can consume. The visual embeddings remain continuous internal representations; they are distinct from both text tokens and the discrete action tokens emitted at the output.\n\nRobot training changes what this multimodal sequence is used to predict. Starting from the pretrained Prismatic backbone, OpenVLA is fine-tuned end to end on observation–instruction–action examples. Given one observation image and one instruction, the model autoregressively predicts tokens encoding a seven-dimensional robot command. Each action dimension is discretized separately before training, so the output sequence contains one categorical bin identity for each component rather than seven raw floating-point values. The transformer therefore connects two different interfaces: projected visual and language embeddings provide the conditioning context, while repurposed vocabulary entries represent the target control values.\n\nThe visual encoder is adapted during this robot-action training rather than held fixed. The authors found this fine-tuning crucial for good VLA performance and hypothesized that features preserved from Internet-scale pretraining did not by themselves capture enough of the fine-grained spatial detail required for precise control. Consequently, OpenVLA is not simply using a frozen image representation followed by a newly trained control head. Gradients from action-token prediction update the visual encoder, projector, and language-model backbone so that the complete pretrained vision-language computation becomes a visuomotor policy.\n\nThe model’s conditioning information nevertheless has a clear boundary. OpenVLA receives a single image, not an observation history, proprioceptive measurements, or multiple camera views. Its prediction can use only the robot and scene information recoverable from that current image together with the instruction. If velocity, contact state, occluded geometry, or another control-relevant variable cannot be inferred from those inputs, the model has no direct measurement of it. This limitation helps explain why adding temporal context and proprioception remains a meaningful direction for improving dexterity and reliability.",
+      "sourceIds": [
+        "section-2",
+        "section-3"
+      ],
+      "claimIds": [
+        "c2",
+        "c3"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s3",
+      "title": "Turning continuous motion into a finite vocabulary",
+      "markdown": "Robot commands are continuous vectors, whereas the language-model head predicts categorical tokens. OpenVLA connects these representations by discretizing each action dimension separately into 256 bins. Let $a_j$ be component $j$ of an $N$-dimensional action, and let $q_{1,j}$ and $q_{99,j}$ be that component’s 1st and 99th quantiles in the training data. For values inside this interval, the stated uniform construction can be represented as\n\n$$\n\\Delta_j=\\frac{q_{99,j}-q_{1,j}}{256},\\qquad\nb_j=\\left\\lfloor\\frac{a_j-q_{1,j}}{\\Delta_j}\\right\\rfloor,\n$$\n\nwhere $\\Delta_j$ has the same physical units as $a_j$ and $b_j\\in\\{0,\\ldots,255\\}$ is dimensionless. The exact handling of interval endpoints and values outside the quantiles is not specified here, so this expression should be applied only to values strictly inside bins. Using quantiles limits the influence of rare extreme actions that would otherwise widen the interval and make the bins coarser over the commonly observed range.\n\nFor a constructed example, suppose one coordinate has $q_1=-1$, $q_{99}=1$, and $a=0.25390625$, all in the same action unit. Its bin width is\n\n$$\n\\Delta=\\frac{1-(-1)}{256}=0.0078125,\n$$\n\nand its bin index is\n\n$$\nb=\\left\\lfloor\\frac{0.25390625-(-1)}{0.0078125}\\right\\rfloor=\\lfloor160.5\\rfloor=160.\n$$\n\nBecause the chosen value lies strictly inside bin 160 rather than on a bin boundary, this illustrative result does not depend on an unresolved boundary-assignment convention. Applying this operation independently to every component converts one continuous action into $N$ discrete integers. OpenVLA associates those integers with action tokens by repurposing the 256 least-used entries in the Llama tokenizer, because only 100 reserved special tokens were available. The resulting symbols are categorical control targets: their vocabulary identities encode bins, not natural-language meanings.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c4",
+        "c6"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s4",
+      "title": "What the training objective actually rewards",
+      "markdown": "Let $y_j$ denote the correct token for action dimension $j$, and let $p_\\theta(y_j\\mid o,l,y_{<j})$ be the model’s predicted probability for that token given image $o$, instruction $l$, and earlier target tokens $y_{<j}$. The sequence negative log-likelihood over the action-token positions can be written as\n\n$$\n\\mathcal{L}_{\\mathrm{act}}^{\\mathrm{sum}}(\\theta)=-\\sum_{j=1}^{N}\\log p_\\theta(y_j\\mid o,l,y_{<j}).\n$$\n\nHere $\\theta$ denotes trainable parameters and $N=7$ for the pictured OpenVLA action. The paper states that cross-entropy is evaluated on action tokens only, but it does not specify whether the implementation sums these token losses, averages them by $N$, or applies an equivalent normalization elsewhere. Thus $\\mathcal{L}_{\\mathrm{act}}^{\\mathrm{sum}}$ is the action sequence’s negative log-likelihood up to an unspecified normalization; a mean convention, $\\mathcal{L}_{\\mathrm{act}}^{\\mathrm{mean}}=\\mathcal{L}_{\\mathrm{act}}^{\\mathrm{sum}}/N$, is equally consistent with the stated objective.\n\nFor an illustrative three-token target assigned probabilities $0.7$, $0.8$, and $0.9$, the summed negative log-likelihood is $-\\log(0.7)-\\log(0.8)-\\log(0.9)\\approx0.685$, while its mean per action token is approximately $0.228$. These values illustrate two possible reduction conventions and should not be interpreted as OpenVLA’s reported training-loss scale. Under either convention, raising the probability of the demonstrated bins lowers the loss.\n\nA common misconception is that Internet pretraining lets the model control robots without robot data. It does not. Pretraining supplies visual and linguistic representations; OpenVLA still requires extensive robot-action fine-tuning to associate those representations with commands. Even design choices familiar from ordinary VLMs did not transfer unchanged: the authors found that fine-tuning the vision encoder was crucial, and the final run completed 27 epochs. They also selected 224-by-224 inputs after 384-by-384 inputs showed no evaluation advantage in their comparison while taking three times longer to train.",
+      "sourceIds": [
+        "section-3",
+        "section-3-part-2"
+      ],
+      "claimIds": [
+        "c5",
+        "c7",
+        "c8",
+        "c9"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s5",
+      "title": "What low-rank adaptation changes—and what it leaves fixed",
+      "markdown": "Full downstream fine-tuning updates all model weights. OpenVLA also evaluates LoRA as a parameter-efficient alternative, applying rank-$r$ adapters to every linear layer while leaving the underlying pretrained weights fixed. Rank controls the dimensionality available to each learned update: a larger $r$ permits more independent directions of change, but increases the number of trainable parameters and can increase memory use. It does not by itself guarantee better robot performance.\n\nThe low-rank figure illustrates this capacity trade-off with a constructed diagonal $6\\times6$ matrix whose singular values are $[6,4,3,2,1,0.5]$. Selecting rank $r$ retains the first $r$ singular components. The displayed retained-energy fraction is\n\n$$\nE(r)=\\frac{\\sum_{i=1}^{r}\\sigma_i^2}{\\sum_{i=1}^{6}\\sigma_i^2},\n$$\n\nwhere the singular values and $E(r)$ are dimensionless. Increasing the rank monotonically preserves more of this fixed matrix’s squared singular-value energy: the control changes approximation capacity, not the original spectrum. This constructed calculation explains what a rank constraint means in linear algebra; the reported OpenVLA results, rather than this example, determine how a chosen LoRA rank behaved during policy adaptation.\n\nIn the selected Franka-Tabletop evaluation, rank-32 LoRA trained 97.6 million parameters and achieved $68.2\\%\\pm7.5\\%$ mean success, compared with $69.7\\%\\pm7.2\\%$ for full fine-tuning. Rank 64 doubled the trainable count to 195.2 million but had the same reported mean success of $68.2\\%$, within a slightly different standard error. These results were computed from 33 rollouts per approach using a smaller OpenVLA variant with a SigLIP-only vision backbone. Under those conditions, the authors found rank 32 to offer the preferred performance–compute trade-off; that comparison does not establish rank 32 as optimal for every task or for the main fused DINOv2–SigLIP checkpoint.",
+      "sourceIds": [
+        "section-4",
+        "section-5-part-2"
+      ],
+      "claimIds": [
+        "c13"
+      ],
+      "figureId": "fig-low-rank"
+    },
+    {
+      "id": "s6",
+      "title": "Reading the robot evaluations without erasing their conditions",
+      "markdown": "The out-of-the-box evaluation covered two embodiments. BridgeData V2 used 17 tasks with ten trials each, for 170 rollouts per method; the Google robot used 12 tasks with five trials each, for 60 rollouts. The paper describes A/B evaluation with matched task and initial-state sets. Under those conditions, OpenVLA was comparable to the 55B RT-2-X on the Google robot and significantly better on BridgeData V2 despite having 7B parameters.\n\nThat result does not establish a universal 7B-versus-55B scaling law. The systems differed in training data, cleaning, visual encoders, and co-training strategy. The authors report that RT-2-X retained an advantage in semantic generalization, while OpenVLA had a larger curated robot corpus and fused visual features. Model size alone is therefore not an adequate causal explanation.\n\nAdaptation results also require care. Seven Franka tasks used 10–150 demonstrations each. Diffusion Policy was competitive with or better than the generalist policies on some narrow, single-instruction tasks, while pretrained policies were stronger on more diverse tasks involving multiple objects and language grounding. The full Diffusion Policy additionally used observation history, proprioception, action chunks, and a different coordinate convention, whereas a separate matched variant removed those advantages. The evidence supports a conditional strength in diverse language-grounded adaptation, not dominance over every specialized controller.",
+      "sourceIds": [
+        "section-5",
+        "section-5-part-2"
+      ],
+      "claimIds": [
+        "c10",
+        "c11",
+        "c12"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s7",
+      "title": "Quantization is a systems intervention, not just smaller numbers",
+      "markdown": "Inference quantization stores or computes with lower-precision weights to reduce memory demand, but its effect on a robot includes timing. The illustrative control below uniformly rounds the fixed vector $[-0.8,-0.3,0.1,0.7]$ to levels on $[-1,1]$. Predict how increasing bit width changes reconstruction error. The displayed mean-squared error is\n\n$$\n\\mathrm{MSE}=\\frac{1}{4}\\sum_{i=1}^{4}(x_i-\\hat{x}_i)^2,\n$$\n\nwhere $x_i$ is an original scalar and $\\hat{x}_i$ its rounded value. Uniform rounding makes the numerical bit-width/error tradeoff visible for this fixed vector. Robot task success also depends on execution timing and closed-loop dynamics, which the following policy evaluation measures.\n\nThe quantized-inference experiments used an OpenVLA variant pretrained on the smaller OpenX data mixture also used by Octo, with a SigLIP-only vision backbone. In its 80-rollout evaluation over eight representative BridgeData V2 tasks, int4 used 7.0 GB and obtained $71.9\\%\\pm4.7\\%$ success; bfloat16 used 16.8 GB and obtained $71.3\\%\\pm4.8\\%$. Int8, despite being numerically more precise, ran at only 1.2 Hz on the evaluated A5000 and had lower task success. The authors connected that loss to a mismatch with the 5 Hz data-collection controller; offline token accuracy was comparable. Thus precision, memory, implementation overhead, control frequency, and closed-loop dynamics interact. More bits do not automatically yield a better deployed robot policy.",
+      "sourceIds": [
+        "section-5-part-2",
+        "section-5-part-3"
+      ],
+      "claimIds": [
+        "c14"
+      ],
+      "figureId": "fig-quantization"
+    },
+    {
+      "id": "s8",
+      "title": "The boundary of the contribution",
+      "markdown": "OpenVLA establishes a reusable approach to visuomotor control: fuse complementary pretrained visual features, project image patches into an LLM embedding space, represent each continuous action component with a discrete token, train on diverse robot trajectories, and adapt the resulting policy through full or parameter-efficient fine-tuning. The contribution is an open 7B model and training pipeline together with evidence that this action-token interface can support multiple robot embodiments and downstream tasks under the reported evaluation conditions.\n\nIts sensory and temporal interface remains restricted. The current policy receives a single image, without multiple camera views, proprioceptive state, or observation history. It predicts individual actions rather than temporally smoothed action chunks. Inference throughput is also insufficient for some high-frequency systems, including the 50 Hz ALOHA setting discussed by the authors. These properties limit the policy’s access to motion and robot-state information and constrain the control rates at which it can be deployed.\n\nReported benchmark leadership should not be interpreted as dependable task completion. OpenVLA typically remained below 90% success on the tested tasks, and its results do not establish safety or reliability outside those evaluations. Several design questions also remain open: how VLA performance changes with base-model scale, whether joint training on robot actions and Internet-scale vision-language data better preserves semantic capabilities, and which visual features are most suitable for control.\n\nThe scientifically bounded conclusion is that OpenVLA demonstrates a scalable, open action-token policy with promising cross-robot performance and practical adaptation routes. Its evidence supports that recipe under specific datasets, embodiments, task suites, control frequencies, and fine-tuning configurations—not a universal foundation policy or a guarantee of robust operation in arbitrary environments.",
+      "sourceIds": [
+        "section-5-part-2",
+        "section-6"
+      ],
+      "claimIds": [
+        "c15",
+        "c16"
+      ],
+      "figureId": null
+    }
+  ],
+  "figures": [
+    {
+      "id": "fig-low-rank",
+      "kind": "low-rank",
+      "title": "Rank as retained linear structure",
+      "question": "How does increasing retained rank change the energy preserved from the fixed singular-value spectrum?",
+      "caption": "A fixed diagonal 6-by-6 matrix with singular values [6,4,3,2,1,0.5] retains its first r singular components and displays retained energy.",
+      "limitation": "This is a diagonal singular-value truncation, not a trained LoRA update or a reported OpenVLA compression, accuracy, or memory result.",
+      "sourceIds": [
+        "section-5-part-2"
+      ],
+      "claimIds": [
+        "c13"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "fig-quantization",
+      "kind": "quantization",
+      "title": "Precision and reconstruction error",
+      "question": "For the fixed vector, how does changing the number of bits affect available levels and reconstruction MSE?",
+      "caption": "Uniform scalar quantization rounds [-0.8,-0.3,0.1,0.7] to evenly spaced levels on [-1,1], exposing the relationship between bit width and reconstruction error.",
+      "limitation": "This is not NF4 or the paper’s codec, model-weight distribution, throughput measurement, or robot evaluation; its MSE cannot predict task success.",
+      "sourceIds": [
+        "section-5-part-2",
+        "section-5-part-3"
+      ],
+      "claimIds": [
+        "c14"
+      ],
+      "illustrative": true
+    }
+  ],
+  "quiz": [
+    {
+      "question": "Assume an action component lies inside its 1st-to-99th-quantile interval. What operation makes it predictable by OpenVLA’s language-model head?",
+      "options": [
+        {
+          "text": "Map it into one of 256 uniform bins and use the corresponding action token.",
+          "explanation": "Correct. Each action dimension is separately discretized, after which the language model predicts its repurposed vocabulary token."
+        },
+        {
+          "text": "Append the raw floating-point value as natural-language text.",
+          "explanation": "Incorrect. The described mechanism uses discrete action bins rather than decimal strings."
+        },
+        {
+          "text": "Predict a reward and let reinforcement learning select the movement.",
+          "explanation": "Incorrect. The stated training objective is supervised next-token prediction on demonstrated action tokens."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c4",
+        "c5",
+        "c6"
+      ]
+    },
+    {
+      "question": "Why does the paper’s int8 result not justify the rule that more quantization bits always improve deployed control?",
+      "options": [
+        {
+          "text": "Int8 necessarily changes the policy into an open-loop controller.",
+          "explanation": "Incorrect. Bit width alone does not define open-loop versus closed-loop control."
+        },
+        {
+          "text": "Inference overhead reduced the tested int8 control rate, changing dynamics relative to the data-collection rate.",
+          "explanation": "Correct. On the evaluated A5000, int8 ran at 1.2 Hz while the relevant controller data were collected at 5 Hz."
+        },
+        {
+          "text": "The int8 model used a different seven-dimensional action vocabulary.",
+          "explanation": "Incorrect. The supplied evidence attributes the loss to inference speed, not a changed action vocabulary."
+        }
+      ],
+      "answer": 1,
+      "sourceIds": [
+        "section-5-part-3"
+      ],
+      "claimIds": [
+        "c14"
+      ]
+    },
+    {
+      "question": "Which conclusion best respects the scope of the reported downstream comparison?",
+      "options": [
+        {
+          "text": "OpenVLA must outperform every specialized imitation learner on every robot task.",
+          "explanation": "Incorrect. Diffusion Policy remained competitive or better on some narrow single-instruction tasks."
+        },
+        {
+          "text": "A single image is always sufficient because Internet pretraining reconstructs missing temporal state.",
+          "explanation": "Incorrect. Single-image input is explicitly identified as a limitation, and no such reconstruction guarantee is reported."
+        },
+        {
+          "text": "OpenVLA is especially promising when adaptation requires grounding multiple instructions among multiple objects.",
+          "explanation": "Correct. That is where the reported pretrained generalist policies showed their clearest relative strength, under the tested Franka settings."
+        }
+      ],
+      "answer": 2,
+      "sourceIds": [
+        "section-5-part-2",
+        "section-6"
+      ],
+      "claimIds": [
+        "c12",
+        "c15"
+      ]
+    }
+  ],
+  "id": "openvla",
+  "createdAt": "2026-10-02T00:01:36.614Z",
+  "pipelineVersion": "subjects-lessons-v1",
+  "sources": [
+    {
+      "id": "abstract",
+      "label": "Original paper · abstract",
+      "url": "https://arxiv.org/abs/2406.09246",
+      "digest": "af8a6ee7cd0dfd7faeebdfc896963bbe4fa9b2aa0c4c3de4f92fe2e756db5da3",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:58:22.733Z"
+    },
+    {
+      "id": "main-text",
+      "label": "Original paper · unsectioned main text",
+      "url": "https://arxiv.org/html/2406.09246",
+      "digest": "8012db1a9b22e1402c2ffbc04c84bd1b8740c1080281ab5dbc97b517d7d062b5",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:58:22.733Z"
+    },
+    {
+      "id": "section-1",
+      "label": "1 Introduction",
+      "url": "https://arxiv.org/html/2406.09246#S1",
+      "digest": "71fc3545a456a576a255123c90a6e89c2dcd318fb750c400372b5193759f0304",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:58:22.733Z"
+    },
+    {
+      "id": "section-2",
+      "label": "2 Related Work",
+      "url": "https://arxiv.org/html/2406.09246#S2",
+      "digest": "dd1f9aafe308394df1f244151c9fa6c40bab6a1b65e749fe50365698d322624b",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:58:22.733Z"
+    },
+    {
+      "id": "section-3",
+      "label": "3 The OpenVLA Model",
+      "url": "https://arxiv.org/html/2406.09246#S3",
+      "digest": "cf16b6419cea9f28acf36681c0cee1a2cafffe71b2441a374a87476751e13123",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:58:22.733Z"
+    },
+    {
+      "id": "section-3-part-2",
+      "label": "3 The OpenVLA Model · part 2",
+      "url": "https://arxiv.org/html/2406.09246#S3",
+      "digest": "96e5db58f6e7300ed026fa709036f70319edcda5d3377a2b291e8eaba24aab0b",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:58:22.733Z"
+    },
+    {
+      "id": "section-4",
+      "label": "4 The OpenVLA Codebase",
+      "url": "https://arxiv.org/html/2406.09246#S4",
+      "digest": "d966160c42c19b4893d14ebf2c31f435b4521701657ba5ac8d0bccd0429f9889",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:58:22.733Z"
+    },
+    {
+      "id": "section-5",
+      "label": "5 Experiments",
+      "url": "https://arxiv.org/html/2406.09246#S5",
+      "digest": "b150ad22e4c509c2293368f09315e2d5f0066555a017ddfe3c4b0358625f705d",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:58:22.733Z"
+    },
+    {
+      "id": "section-5-part-2",
+      "label": "5 Experiments · part 2",
+      "url": "https://arxiv.org/html/2406.09246#S5",
+      "digest": "dbc847255b5b639adf1e5edbbc5c1fff8e1463c3de3f3313dbeb5bd169d029c0",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:58:22.733Z"
+    },
+    {
+      "id": "section-5-part-3",
+      "label": "5 Experiments · part 3",
+      "url": "https://arxiv.org/html/2406.09246#S5",
+      "digest": "c7268b79ad7e617d8058249bc23aa731d56d5789b15c7fb5fcb2500ed009cee6",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:58:22.733Z"
+    },
+    {
+      "id": "section-6",
+      "label": "6 Discussion and Limitations",
+      "url": "https://arxiv.org/html/2406.09246#S6",
+      "digest": "1bfb97e8e124ec6ca7fe47dd09e0948814ec40409df16721ea7b6415d92fcfa8",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:58:22.733Z"
+    }
+  ],
+  "review": {
+    "status": "passed",
+    "reviewedAt": "2026-10-02T02:26:47.228Z",
+    "contentDigest": "bc765391f8b7ef4e15d3535148c0657e4538a9daf95deff2239e389f7885707e"
+  }
+}

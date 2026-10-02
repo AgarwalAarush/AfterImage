@@ -1,0 +1,476 @@
+{
+  "title": "Ellipsoids into Images: How 3D Gaussian Splatting Trades Ray Marching for Ordered Rasterization",
+  "summary": "The paper turns an adaptively refined set of anisotropic 3D Gaussians into a differentiable, visibility-aware splatting pipeline that renders captured scenes in real time.",
+  "prerequisites": [
+    "Basic vectors, matrices, and covariance",
+    "Perspective camera projection and Jacobians",
+    "Front-to-back alpha compositing",
+    "Gradient-based optimization",
+    "Structure-from-Motion as camera calibration plus sparse point recovery"
+  ],
+  "objectives": [
+    "Explain why the method uses explicit 3D Gaussians rather than a sampled implicit field.",
+    "Derive how a valid anisotropic covariance is parameterized and projected to an image-space footprint.",
+    "Trace the optimization loop, including cloning, splitting, pruning, and opacity control.",
+    "Calculate front-to-back alpha compositing for a small illustrative pixel.",
+    "Explain how tile sorting makes rendering fast and where its visibility approximation can fail or pop into view."
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "mechanism",
+      "statement": "The method initializes its explicit scene representation from the sparse point cloud produced during Structure-from-Motion camera calibration.",
+      "conditions": "For captured real scenes with images and corresponding cameras calibrated by SfM.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c2",
+      "kind": "mechanism",
+      "statement": "Each primitive carries a 3D mean, covariance, opacity, and spherical-harmonic appearance parameters.",
+      "conditions": "For the paper's learned Gaussian scene representation.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c3",
+      "kind": "mechanism",
+      "statement": "The primitive is differentiable in 3D and can be projected into a 2D splat for alpha compositing.",
+      "conditions": "When rendering the explicit representation from a calibrated camera.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c4",
+      "kind": "equation",
+      "statement": "Under the local affine approximation of camera projection, covariance transforms as $\\Sigma'=JW\\Sigma W^TJ^T$.",
+      "conditions": "Given viewing transformation $W$ and projection Jacobian $J$ at the Gaussian mean.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c5",
+      "kind": "equation",
+      "statement": "The optimized covariance is constructed as $\\Sigma=RSS^TR^T$, permitting separate scale and rotation parameters while preserving covariance validity.",
+      "conditions": "With scaling matrix $S$ and a rotation matrix $R$ obtained from a normalized quaternion.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c6",
+      "kind": "equation",
+      "statement": "The training objective mixes an $L_1$ image loss with D-SSIM using weight $\\lambda$.",
+      "conditions": "For the image reconstruction optimization; the paper reports $\\lambda=0.2$ in all its tests.",
+      "sourceIds": [
+        "section-5"
+      ]
+    },
+    {
+      "id": "c7",
+      "kind": "mechanism",
+      "statement": "Density control targets Gaussians whose average view-space positional-gradient magnitude is high.",
+      "conditions": "During the paper's post-warm-up adaptive densification process.",
+      "sourceIds": [
+        "section-5"
+      ]
+    },
+    {
+      "id": "c8",
+      "kind": "mechanism",
+      "statement": "A small Gaussian in an under-reconstructed region is cloned and the copy is moved along the positional-gradient direction.",
+      "conditions": "When a small primitive has been selected for densification.",
+      "sourceIds": [
+        "section-5"
+      ]
+    },
+    {
+      "id": "c9",
+      "kind": "mechanism",
+      "statement": "A large selected Gaussian is replaced by two smaller Gaussians rather than merely duplicated.",
+      "conditions": "For large Gaussians in high-variance regions selected by density control.",
+      "sourceIds": [
+        "section-5"
+      ]
+    },
+    {
+      "id": "c10",
+      "kind": "mechanism",
+      "statement": "The rasterizer duplicates each Gaussian for every overlapped tile, builds keys from tile identity and view-space depth, and performs one GPU radix sort.",
+      "conditions": "After view-frustum, guard-band, and tile intersection culling in the paper's rasterizer.",
+      "sourceIds": [
+        "section-6"
+      ]
+    },
+    {
+      "id": "c11",
+      "kind": "caveat",
+      "statement": "Tile-level depth sorting avoids per-pixel sorting, so alpha compositing is only approximate in some geometric configurations.",
+      "conditions": "When differently shaped or intersecting splats do not share one exact depth order across every pixel in a tile.",
+      "sourceIds": [
+        "section-6"
+      ]
+    },
+    {
+      "id": "c12",
+      "kind": "mechanism",
+      "statement": "The renderer terminates a pixel on opacity saturation rather than imposing a fixed maximum number of gradient-receiving splats.",
+      "conditions": "During forward rasterization and its corresponding backward pass.",
+      "sourceIds": [
+        "section-6"
+      ]
+    },
+    {
+      "id": "c13",
+      "kind": "result",
+      "statement": "On the paper's three real-scene dataset groups, the 30K model rendered at 134, 154, and 137 FPS while using hundreds of megabytes for optimized parameters.",
+      "conditions": "Table 1, Ours-30K, evaluated at native input resolutions; the paper states evaluation results used an A6000 GPU except for the Mip-NeRF360 comparison.",
+      "sourceIds": [
+        "section-6",
+        "section-7"
+      ]
+    },
+    {
+      "id": "c14",
+      "kind": "result",
+      "statement": "An ablation limiting gradients to the ten front-most splats substantially degraded the Truck result, supporting the unrestricted-gradient design.",
+      "conditions": "The paper's Limited-BW ablation with $N=10$ on the Truck scene.",
+      "sourceIds": [
+        "section-7-part-2"
+      ]
+    },
+    {
+      "id": "c15",
+      "kind": "caveat",
+      "statement": "Sparse view coverage can produce artifacts, while large Gaussians and simplified visibility handling can cause popping.",
+      "conditions": "Novel views in poorly observed regions or cases where large primitives cross culling or depth-order boundaries.",
+      "sourceIds": [
+        "section-7-part-2"
+      ]
+    },
+    {
+      "id": "c16",
+      "kind": "caveat",
+      "statement": "The explicit representation has a significant memory cost relative to NeRF-based alternatives.",
+      "conditions": "For the paper's unoptimized training prototype and large trained scenes.",
+      "sourceIds": [
+        "section-7-part-2"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "s1",
+      "title": "The bottleneck the paper chooses to remove",
+      "markdown": "Novel-view synthesis asks for the color seen by a camera placed somewhere other than the captured viewpoints. A NeRF commonly represents a continuous field and repeatedly samples it along every camera ray. That is flexible, but finding occupied matter among empty samples is expensive.\n\nThis paper changes the computational object. It begins with calibrated images and the sparse 3D points that Structure-from-Motion (SfM) already produces. Each initial point becomes an explicit primitive, and optimization turns that sparse seed into a scene-sized collection of Gaussians. A Gaussian stores a mean $\\mu\\in\\mathbb{R}^3$, covariance $\\Sigma\\in\\mathbb{R}^{3\\times3}$, opacity parameter $\\alpha$, and spherical-harmonic coefficients for view-dependent color. The representation is unstructured: primitives can move, change shape, appear, and disappear without occupying a regular voxel grid.\n\nThe central contribution is therefore not merely “use blobs.” It is a three-part fit: differentiable anisotropic primitives, adaptive control of how many primitives exist, and a visibility-aware tile rasterizer. The first supports fitting; the second repairs insufficient or overly coarse geometry; the third makes the fitted model practical to render.",
+      "sourceIds": [
+        "abstract",
+        "section-1",
+        "section-3"
+      ],
+      "claimIds": [
+        "c1",
+        "c2"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s2",
+      "title": "From a 3D ellipsoid to a screen-space splat",
+      "markdown": "A Gaussian centered at $\\mu$ assigns influence according to displacement $d=x-\\mu$:\n\n$$G(x)=\\exp\\!\\left(-\\tfrac12 d^T\\Sigma^{-1}d\\right).$$\n\nHere $x\\in\\mathbb{R}^3$ is a world-space location, $d$ is its offset from the mean, and $\\Sigma$ controls the ellipsoid's orientation and squared axis scales. The paper's printed equation writes $x$ inside the quadratic; centering it as $x-\\mu$ makes explicit the preceding statement that the Gaussian is centered at $\\mu$.\n\nRendering requires a 2D footprint. Let $W$ be the viewing transformation from world coordinates toward camera coordinates, and let $J$ be the Jacobian—the local linear approximation—of perspective projection at the primitive. The transformed covariance is\n\n$$\\Sigma'=JW\\Sigma W^TJ^T.$$\n\nDropping the depth row and column yields the $2\\times2$ image-plane covariance used for the elliptical splat. This is a local projection, not ray marching through an entire field.\n\nThe spatial experiment below isolates one useful intuition: increasing a Gaussian width spreads influence over more nearby pixels. Its radial function is fixed to $\\exp[-r^2/(2\\sigma^2)]$. Predict which grid cells gain influence as $\\sigma$ grows, then remember the boundary: this toy is a 2D radial footprint, whereas the paper learns oriented 3D covariances, projects them through a camera, and composites many splats.",
+      "sourceIds": [
+        "section-4"
+      ],
+      "claimIds": [
+        "c3",
+        "c4"
+      ],
+      "figureId": "f1"
+    },
+    {
+      "id": "s3",
+      "title": "Valid anisotropy without constrained matrix updates",
+      "markdown": "Directly updating the nine entries of $\\Sigma$ is dangerous: an arbitrary gradient step can produce a matrix that is not positive semidefinite and therefore is not a physical covariance. The paper instead factorizes\n\n$$\\Sigma=RSS^TR^T,$$\n\nwhere $S$ is a scaling matrix and $R$ is a rotation matrix. It stores a three-component scale vector $s$ and a quaternion $q$; normalizing $q$ gives a valid rotation. Because $SS^T$ has nonnegative eigenvalues and rotation preserves them, the construction keeps $\\Sigma$ valid.\n\nAnisotropy means the three scales need not match. A thin, rotated ellipsoid can align with a surface or elongated feature, while one isotropic scalar can only grow or shrink a sphere. This is representational efficiency, not an assertion that every Gaussian is a literal piece of surface geometry. The learned collection is optimized to reproduce images.\n\nA common misconception is that Gaussian splatting discards volumetric image formation. It changes the representation and rendering algorithm, but front-to-back alpha compositing retains the same basic transmittance structure: earlier opacity reduces how much later color reaches the pixel. What disappears is the need to probe many arbitrary locations along each ray to discover where density lies.",
+      "sourceIds": [
+        "section-2",
+        "section-4",
+        "section-7-part-2"
+      ],
+      "claimIds": [
+        "c5"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s4",
+      "title": "The fitting loop grows and edits its own representation",
+      "markdown": "Training repeatedly renders a known camera view, compares it with its captured image, and updates position, opacity, covariance factors, and spherical-harmonic coefficients. The reported objective is\n\n$$\\mathcal L=(1-\\lambda)\\mathcal L_1+\\lambda\\mathcal L_{\\mathrm{D\\text{-}SSIM}},$$\n\nwhere $\\mathcal L_1$ is pixelwise absolute error, $\\mathcal L_{\\mathrm{D\\text{-}SSIM}}$ is a structural-dissimilarity term, and $\\lambda=0.2$ in the reported tests.\n\nParameter optimization alone cannot reliably repair a sparse initial point set. The paper therefore interleaves it with density control. Large average view-space position gradients flag primitives in poorly represented regions. A small flagged Gaussian is cloned and the copy moves with the positional gradient, expanding coverage. A large flagged Gaussian is instead replaced with two smaller samples, increasing spatial resolution without treating one broad footprint as adequate detail. Nearly transparent primitives are culled, and periodic opacity resets help remove floaters.\n\nThe optimizer figure is deliberately narrow. It shows ordinary gradient descent on the illustrative scalar $f(x)=x^2/2$, from $x_0=3$, so $x_{t+1}=x_t-\\eta x_t=(1-\\eta)x_t$. For the illustrative choice $\\eta=0.25$, $x_1=2.25$ and $x_2=1.6875$. Use it to predict how learning rate changes convergence over 12 updates. It does not reproduce the paper's multidimensional stochastic optimization, activations, schedules, densification, or rasterizer gradients.",
+      "sourceIds": [
+        "section-5"
+      ],
+      "claimIds": [
+        "c6",
+        "c7",
+        "c8",
+        "c9"
+      ],
+      "figureId": "f2"
+    },
+    {
+      "id": "s5",
+      "title": "One pixel: ordering, opacity, and a worked calculation",
+      "markdown": "Suppose ordered splats $i=1,\\dots,N$ overlap one pixel from front to back. Let $c_i$ be a scalar color for simplicity, $\\alpha_i\\in[0,1]$ its evaluated footprint times learned opacity, and\n\n$$T_i=\\prod_{j=1}^{i-1}(1-\\alpha_j)$$\n\nbe transmittance reaching splat $i$. The pixel color over a black background is\n\n$$C=\\sum_{i=1}^N T_i\\alpha_i c_i.$$\n\nConsider an explicitly illustrative two-splat example: front red intensity $c_1=1$ with $\\alpha_1=0.5$, followed by dark intensity $c_2=0.2$ with $\\alpha_2=0.25$. Then $T_1=1$ and $T_2=1-0.5=0.5$, so\n\n$$C=(1)(0.5)(1)+(0.5)(0.25)(0.2)=0.5+0.025=0.525.$$\n\nReversing their order gives $C'=0.25(0.2)+(0.75)(0.5)(1)=0.425$. Thus sorting is not bookkeeping: alpha compositing is order-dependent. Also notice that the accumulated opacity is $0.5+0.5\\cdot0.25=0.625$, not $0.75$; the second splat is attenuated by the first.\n\nThis arithmetic explains both visibility and early termination. Once accumulated opacity is sufficiently saturated, later contributions are negligible. The paper uses saturation as its stopping criterion rather than an arbitrary fixed count of splats, allowing every contributing splat before termination to receive gradients.",
+      "sourceIds": [
+        "section-2",
+        "section-6"
+      ],
+      "claimIds": [
+        "c11",
+        "c12",
+        "c14"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s6",
+      "title": "Why the renderer sorts tiles instead of pixels",
+      "markdown": "The screen is divided into $16\\times16$-pixel tiles. After culling, each Gaussian is instantiated once for every tile its projected footprint overlaps. A key combines tile ID with view-space depth, enabling one GPU radix sort to group instances by tile and approximately order them front-to-back. Each tile's thread block loads packets into shared memory; individual pixel threads test overlap and composite their relevant splats.\n\nThe crucial speed choice is that there is no second exact sort for every pixel. Consequently, a single tile-level ordering can be imperfect where extended Gaussians overlap or exchange relative depth across the tile. The authors report that the approximation becomes negligible as splats approach pixel size, but it remains an approximation rather than exact per-pixel visibility.\n\nFor backpropagation, the renderer revisits tile lists in reverse instead of storing an arbitrarily long list for every pixel. This permits an arbitrary number of blended primitives to receive gradients with constant per-pixel overhead. The reported ablation is instructive: limiting gradients to the ten front-most splats degraded Truck PSNR by 11 dB under that test. That result supports this design under the stated ablation; it does not prove that every possible truncation or scene must lose exactly 11 dB.",
+      "sourceIds": [
+        "section-6",
+        "section-7-part-2"
+      ],
+      "claimIds": [
+        "c10",
+        "c11",
+        "c12",
+        "c14"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s7",
+      "title": "Reading the evidence without outrunning it",
+      "markdown": "The reported real-time result follows from a specific trained representation and evaluation setup. For Ours-30K, Table 1 reports 134 FPS on Mip-NeRF360, 154 FPS on Tanks&Temples, and 137 FPS on Deep Blending, with optimized-parameter storage of 734 MB, 411 MB, and 676 MB, respectively. These results use native input resolutions; the paper reports an A6000 GPU for its evaluations except the cited Mip-NeRF360 comparison. They establish real-time rendering under those benchmark conditions, not a hardware- or resolution-independent guarantee.\n\nThe allocation figure provides a constructed way to reason about one cost of an explicit representation. It places nine live tokens into a fixed 16-slot reservation and varies the block width. The live count remains nine, while the control changes how those elements are grouped and therefore how many reserved positions appear as padding. A width that packs the nine elements into fewer partially filled blocks wastes fewer slots. The displayed quantities are slot counts rather than bytes, and the experiment illustrates allocation overhead rather than reproducing the Gaussian renderer’s storage scheme.\n\nThat calculation connects to the method because every learned Gaussian is a concrete stored element with a mean, opacity, covariance factors, and spherical-harmonic appearance coefficients. Unlike an implicit field queried through a compact network, the explicit model must keep the trained collection resident for rasterization. In the reported large scenes, optimized parameters occupy several hundred megabytes; rendering additionally uses 30–500 MB for the rasterizer depending on scene size and image resolution. The unoptimized training prototype could exceed 20 GB of peak GPU memory. The figure’s padding is therefore an analogy for explicit reservation overhead, while the paper’s tables supply the actual measured memory values.\n\nThe representation’s limitations also follow from its geometry and visibility approximation. Sparse view coverage leaves some regions weakly constrained, where optimization can produce coarse, elongated, or splotchy Gaussians. Large Gaussians can appear abruptly when guard-band culling changes their inclusion, and the tile-level depth order can switch their blending order because it is not an exact per-pixel visibility solution. The authors identify more principled culling, antialiasing, and regularization as possible remedies, and note that very large scenes may require a lower position learning rate. These are qualified failure modes of the evaluated method, not evidence that every scene or viewpoint will exhibit them.",
+      "sourceIds": [
+        "section-6",
+        "section-7",
+        "section-7-part-2"
+      ],
+      "claimIds": [
+        "c13",
+        "c15",
+        "c16"
+      ],
+      "figureId": "f3"
+    }
+  ],
+  "figures": [
+    {
+      "id": "f1",
+      "kind": "spatial",
+      "title": "How width changes a Gaussian footprint",
+      "question": "As the width increases, which grid locations should acquire larger influence: only the center, or locations farther from the center as well?",
+      "caption": "Illustrative 2D grid of the fixed radial footprint $\\exp[-r^2/(2\\sigma^2)]$; the width control changes how broadly influence spreads.",
+      "limitation": "This is not a trained 3D scene, a camera-projected anisotropic covariance, a ray integral, or measured rendering performance.",
+      "sourceIds": [
+        "section-4"
+      ],
+      "claimIds": [
+        "c3",
+        "c4"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "f2",
+      "kind": "optimizer",
+      "title": "A tiny model of gradient-step sensitivity",
+      "question": "For the fixed quadratic and twelve updates, how does increasing the learning rate change the rate and stability with which $x_t$ approaches zero?",
+      "caption": "Illustrative ordinary gradient descent on $f(x)=x^2/2$ from $x=3$; the control changes the learning rate across 12 iterates.",
+      "limitation": "This is plain scalar gradient descent, not the paper's stochastic optimizer, parameter activations, scheduling, density control, or differentiable rasterizer.",
+      "sourceIds": [
+        "section-5"
+      ],
+      "claimIds": [
+        "c6",
+        "c7"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "f3",
+      "kind": "memory",
+      "title": "Live elements versus reserved slots",
+      "question": "With nine live tokens, which block width reduces allocation padding compared with the fixed 16-slot reservation?",
+      "caption": "Illustrative allocation of nine live tokens in a 16-slot layout; changing block width changes visible padding against a fixed reservation.",
+      "limitation": "This is slot allocation only: it provides no byte or latency measurements, allocator implementation, Gaussian attributes, training peak, or reported compression result.",
+      "sourceIds": [
+        "section-6",
+        "section-7-part-2"
+      ],
+      "claimIds": [
+        "c13",
+        "c16"
+      ],
+      "illustrative": true
+    }
+  ],
+  "quiz": [
+    {
+      "question": "Two overlapping splats have different colors and nonzero opacities. Under front-to-back alpha compositing, what generally happens if their order is reversed?",
+      "options": [
+        {
+          "text": "The color can change because the first splat attenuates the second.",
+          "explanation": "Correct. Transmittance for a later contribution includes the product of earlier $(1-\\alpha)$ factors."
+        },
+        {
+          "text": "The color is unchanged because alpha contributions commute.",
+          "explanation": "Incorrect. The attenuation factors attach to an ordering, so differently colored translucent splats generally do not commute."
+        },
+        {
+          "text": "Both splats become fully opaque.",
+          "explanation": "Incorrect. Reordering does not alter the individual opacity values or force accumulated opacity to one."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-2",
+        "section-6"
+      ],
+      "claimIds": [
+        "c11",
+        "c12"
+      ]
+    },
+    {
+      "question": "Why does the paper optimize scale and rotation factors instead of unconstrained entries of the covariance matrix?",
+      "options": [
+        {
+          "text": "To guarantee that all three axis scales are equal.",
+          "explanation": "Incorrect. Separate scale components specifically allow anisotropy."
+        },
+        {
+          "text": "To keep the constructed covariance valid while allowing anisotropic orientation and scale.",
+          "explanation": "Correct. $RSS^TR^T$ remains positive semidefinite when $R$ is a valid rotation."
+        },
+        {
+          "text": "To eliminate the need for camera projection.",
+          "explanation": "Incorrect. The 3D covariance must still be projected using the viewing transform and projection Jacobian."
+        }
+      ],
+      "answer": 1,
+      "sourceIds": [
+        "section-4"
+      ],
+      "claimIds": [
+        "c4",
+        "c5"
+      ]
+    },
+    {
+      "question": "Which conclusion is defensible from the reported 134–154 FPS entries for Ours-30K?",
+      "options": [
+        {
+          "text": "Every Gaussian-splatting implementation exceeds 134 FPS on every device and resolution.",
+          "explanation": "Incorrect. The measurements belong to particular datasets, resolutions, models, software, and hardware conditions."
+        },
+        {
+          "text": "Rendering speed is independent of scene size because the representation is explicit.",
+          "explanation": "Incorrect. The paper reports different speeds and rasterizer memory depending on scene size and image resolution."
+        },
+        {
+          "text": "The evaluated 30K models achieved real-time rates under the paper's stated benchmark conditions.",
+          "explanation": "Correct. All three reported values exceed 30 FPS, but the claim should remain tied to those evaluation conditions."
+        }
+      ],
+      "answer": 2,
+      "sourceIds": [
+        "section-6",
+        "section-7"
+      ],
+      "claimIds": [
+        "c13"
+      ]
+    }
+  ],
+  "id": "3d-gaussian-splatting-for-real-time",
+  "createdAt": "2026-10-01T23:05:30.629Z",
+  "pipelineVersion": "subjects-lessons-v1",
+  "sources": [
+    {
+      "id": "abstract",
+      "label": "Original paper · abstract",
+      "url": "https://arxiv.org/abs/2308.04079",
+      "digest": "5f0257f9c75e41e06ddc6539e97df2f117295fa87534ebd5ff390135c3f79d7f"
+    },
+    {
+      "id": "section-1",
+      "label": "1. Introduction",
+      "url": "https://arxiv.org/html/2308.04079#S1",
+      "digest": "d18d10743e09093bae0243e2165dbc3f710c1fb7d063d6f36f60bc40d43d2686"
+    },
+    {
+      "id": "section-2",
+      "label": "2. Related Work",
+      "url": "https://arxiv.org/html/2308.04079#S2",
+      "digest": "b22ae897818a847a5307f46393b99b9b1ab717493d0116e122aeb32efdbc6f3f"
+    },
+    {
+      "id": "section-2-part-2",
+      "label": "2. Related Work · part 2",
+      "url": "https://arxiv.org/html/2308.04079#S2",
+      "digest": "fa6babfbae6ec9c576db970c08da8e68b192f82e63926273d6b3b504ed7de2b7"
+    },
+    {
+      "id": "section-3",
+      "label": "3. Overview",
+      "url": "https://arxiv.org/html/2308.04079#S3",
+      "digest": "13e45e005d52313d2888221666df601ef4fa595c5a76e6c191f328e3689ac967"
+    },
+    {
+      "id": "section-4",
+      "label": "4. Differentiable 3D Gaussian Splatting",
+      "url": "https://arxiv.org/html/2308.04079#S4",
+      "digest": "067f763a29bb8ac880d7a7fba597de01ff55471b96f4514bffed86a7ff1f6040"
+    },
+    {
+      "id": "section-5",
+      "label": "5. Optimization with Adaptive Density Control of 3D Gaussians",
+      "url": "https://arxiv.org/html/2308.04079#S5",
+      "digest": "922143f88388afc0e93724b529f7597cfea49e48e9c74a67d42822687364c7d1"
+    },
+    {
+      "id": "section-6",
+      "label": "6. Fast Differentiable Rasterizer for Gaussians",
+      "url": "https://arxiv.org/html/2308.04079#S6",
+      "digest": "30869e56714edd326ef19a1560a4816b6b0d7c3f9de9d975f0ccd2e3e34ca5a3"
+    },
+    {
+      "id": "section-7",
+      "label": "7. Implementation, results and evaluation",
+      "url": "https://arxiv.org/html/2308.04079#S7",
+      "digest": "dbb84618d56d28bb1eccb2afe9f333b47b043c2cf45d230feb5942793faa2530"
+    },
+    {
+      "id": "section-7-part-2",
+      "label": "7. Implementation, results and evaluation · part 2",
+      "url": "https://arxiv.org/html/2308.04079#S7",
+      "digest": "0d18b7e010d359103cdb66a07cfae9a48f680ef1e84904045504bac2ece4a952"
+    },
+    {
+      "id": "section-8",
+      "label": "8. Discussion and Conclusions",
+      "url": "https://arxiv.org/html/2308.04079#S8",
+      "digest": "8c97f6fbd24632d95bc1a63669052911a8c8448a3ccaa4f7cc0680261471d69f"
+    }
+  ],
+  "review": {
+    "status": "passed",
+    "reviewedAt": "2026-10-02T01:48:06.740Z",
+    "contentDigest": "696124c06de0365243bf432b8be436cd8e927c0ece585b79eb316d956d85aa5d"
+  }
+}

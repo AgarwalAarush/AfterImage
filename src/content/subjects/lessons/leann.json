@@ -1,0 +1,493 @@
+{
+  "title": "The Index That Forgets: Recomputing Vectors with LEANN",
+  "summary": "LEANN shrinks vector-search storage by discarding exact embeddings, selectively recomputing promising candidates, and preserving graph hubs for navigation.",
+  "prerequisites": [
+    "Embedding vectors and similarity",
+    "Approximate nearest-neighbor search",
+    "Priority queues and graph traversal",
+    "Product quantization"
+  ],
+  "objectives": [
+    "Explain why LEANN recomputes exact embeddings rather than storing them.",
+    "Trace how approximate screening and exact distances work together during search.",
+    "Explain how preserving graph hubs protects navigation after pruning.",
+    "Interpret storage, recall, and latency results under the tested conditions."
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "equation",
+      "statement": "For Euclidean top-k search, the desired set contains k dataset vectors no farther from the query than every vector outside the set; Recall@K is the fraction of that exact set returned by approximate search.",
+      "conditions": "For a dataset in real d-dimensional space, Euclidean distance, and returned and ground-truth sets of size k.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c2",
+      "kind": "mechanism",
+      "statement": "A proximity-graph query performs best-first traversal with a bounded candidate queue, evaluating only a subset of nodes rather than scanning every stored vector.",
+      "conditions": "For the graph-based ANNS procedure described in the paper; increasing ef permits more candidates and computations.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c3",
+      "kind": "mechanism",
+      "statement": "LEANN's persistent index contains a pruned proximity graph and a highly compressed PQ table, while exact embeddings are discarded after construction and regenerated when needed.",
+      "conditions": "For LEANN's offline construction and online query workflow using the same local embedding generator.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c4",
+      "kind": "mechanism",
+      "statement": "LEANN interleaves approximate PQ screening with exact recomputation: approximate distances identify promising candidates, while exact distances govern subsequent graph exploration and final ranking.",
+      "conditions": "For two-level search with approximate queue AQ, exact queue EQ, and reranking ratio alpha.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c5",
+      "kind": "mechanism",
+      "statement": "Dynamic batching combines recomputation candidates from multiple exploration steps, accepting slightly stale exploration order to increase the effective GPU batch size.",
+      "conditions": "When query serving uses GPU embedding generation and accumulates candidates until a profiled batch threshold.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c6",
+      "kind": "equation",
+      "statement": "LEANN formulates graph pruning as minimizing total recomputed nodes while constraining graph metadata space to budget B and retrieval accuracy to at least tau.",
+      "conditions": "For a pruned graph stored as CSR with four-byte neighbor identifiers and search steps indexed up to ef.",
+      "sourceIds": [
+        "section-5"
+      ]
+    },
+    {
+      "id": "c7",
+      "kind": "mechanism",
+      "statement": "High-degree preserving pruning gives most nodes a lower degree limit while allowing a small high-degree subset to retain more connections, using degree as a proxy for navigation importance.",
+      "conditions": "For the paper's pruning algorithm, where ordinary nodes use limit m, selected hubs use limit M, and selection fraction is beta percent.",
+      "sourceIds": [
+        "section-5"
+      ]
+    },
+    {
+      "id": "c8",
+      "kind": "mechanism",
+      "statement": "LEANN's constrained build assigns each object to two centroid-defined shards, constructs shard graphs sequentially, discards temporary embeddings, and merges the resulting graphs.",
+      "conditions": "When a user specifies a peak-storage constraint for index construction.",
+      "sourceIds": [
+        "section-6"
+      ]
+    },
+    {
+      "id": "c9",
+      "kind": "mechanism",
+      "statement": "LEANN handles deletion by marking nodes inactive, and it can buffer additions so queries scan the buffer while graph insertion proceeds asynchronously.",
+      "conditions": "For the update procedures described by the paper; soft deletion retains the existing graph structure.",
+      "sourceIds": [
+        "section-6"
+      ]
+    },
+    {
+      "id": "c10",
+      "kind": "result",
+      "statement": "On the 76 GB RPJ-Wiki datastore, LEANN used 4 GB of index storage and achieved 25.5 percent downstream accuracy in the reported NQ RAG comparison.",
+      "conditions": "For 256-token chunks, 768-dimensional Contriever embeddings, Qwen3-4B generation, and the RTX 4090 evaluation summarized in Table 1.",
+      "sourceIds": [
+        "section-1",
+        "section-7"
+      ]
+    },
+    {
+      "id": "c11",
+      "kind": "result",
+      "statement": "At 90 percent Recall@3, LEANN retrieval took 2.48 seconds on NQ and 1.12 seconds on GPQA, compared with generation times of 20.86 and 69.60 seconds respectively.",
+      "conditions": "For the RTX 4090 Table 2 setup; the reported overheads were 10.6 percent for NQ and 1.6 percent for GPQA.",
+      "sourceIds": [
+        "section-7"
+      ]
+    },
+    {
+      "id": "c12",
+      "kind": "result",
+      "statement": "When all pruning methods halved average graph degree from 18 to 9, hub-preserving pruning performed comparably to the unpruned graph in recomputations needed for matched recall, while random pruning required up to 1.8 times more and a uniformly small degree cap up to 5.8 times more.",
+      "conditions": "For the NQ ablation varying ef at each recall target; the small-degree baseline failed to reach the two highest reported recall targets.",
+      "sourceIds": [
+        "section-7-part-2"
+      ]
+    },
+    {
+      "id": "c13",
+      "kind": "result",
+      "statement": "At a fixed target recall across the evaluated datasets, two-level search produced an average 1.4-fold speedup, and adding dynamic batching raised the average speedup to 1.8-fold.",
+      "conditions": "Relative to the paper's naive HNSW recomputation baseline in the Section 4 ablation.",
+      "sourceIds": [
+        "section-7-part-2"
+      ]
+    },
+    {
+      "id": "c14",
+      "kind": "caveat",
+      "statement": "LEANN's downstream gains were smaller on GPQA and HotpotQA because the Wikipedia datastore only partially supports GPQA and the evaluated retrieval setup was single-hop despite HotpotQA's multi-hop demands.",
+      "conditions": "For the paper's four-dataset RAG evaluation using RPJ-Wiki as the datastore.",
+      "sourceIds": [
+        "section-7-part-2"
+      ]
+    },
+    {
+      "id": "c15",
+      "kind": "caveat",
+      "statement": "LEANN exchanges some query-time computation and latency for lower persistent storage, so its advantage depends on storage being scarce and recomputation latency being acceptable to the application.",
+      "conditions": "Especially for the evaluated RAG workloads, where generation often dominated end-to-end latency; not a claim that retrieval latency is negligible in every workload.",
+      "sourceIds": [
+        "section-1",
+        "section-7"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "s1",
+      "title": "The storage problem hiding behind semantic search",
+      "markdown": "An embedding model maps each item into a vector $x_i\\in\\mathbb{R}^d$ and maps a query into $q\\in\\mathbb{R}^d$. Similar items should lie close under a chosen distance or have large cosine similarity. With Euclidean distance, the exact answer is a set $\\mathcal{S}_q$ satisfying\n\n$$\n|\\mathcal{S}_q|=k\\quad\\text{and}\\quad \\|q-x_i\\|\\leq\\|q-x_j\\|\n$$\n\nfor every $x_i\\in\\mathcal{S}_q$ and $x_j\\in\\mathcal{X}\\setminus\\mathcal{S}_q$, where $\\mathcal{X}=\\{x_1,\\ldots,x_N\\}$ is the dataset, $N$ is its item count, $d$ is the embedding dimension, and $k$ is the number requested.\n\nApproximate nearest-neighbor search avoids comparing $q$ with all $N$ vectors. Its quality is commonly measured by\n\n$$\n\\operatorname{Recall@K}=\\frac{|\\mathcal{S}_q\\cap\\mathcal{S}'_q|}{k},\n$$\n\nwhere $\\mathcal{S}'_q$ is the approximate result. This separates retrieval fidelity from downstream answer quality: high recall says that true neighbors were recovered, not that a language model answered correctly.\n\nThe difficulty motivating LEANN is physical storage. In the paper's 76 GB text example, conventional HNSW required 173 GB for embeddings plus 15 GB for graph metadata. The toy control below reveals ranked contexts from four fixed scores. Increasing $k$ changes only how many candidates appear; it does not model embeddings, graph traversal, recall, or generated answers. It is useful for distinguishing the top-$k$ output interface from the machinery used to find it.",
+      "sourceIds": [
+        "section-1",
+        "section-2"
+      ],
+      "claimIds": [
+        "c1"
+      ],
+      "figureId": "fig-retrieval"
+    },
+    {
+      "id": "s2",
+      "title": "The central bargain: store hints, regenerate evidence",
+      "markdown": "LEANN makes an unusual storage–computation trade: it does not persist the complete exact embedding table. During construction it embeds the items, builds a proximity graph, creates a compact product-quantization table, prunes the graph, and then discards the dense embeddings. The durable index is therefore composed chiefly of neighbor identifiers and short approximate codes.\n\nAt query time, the original items remain available. LEANN feeds selected items through the same encoder used during index construction to regenerate exact embeddings. This would be disastrous if every item had to be re-embedded, but a proximity graph normally visits only a small portion of the collection. A bounded priority queue $C$ orders candidates by query distance; the search expands promising nodes and follows their adjacency lists. Its size bound $ef$ is a quality knob: a larger $ef$ permits broader exploration and more distance computations.\n\nThis clarifies the paper's contribution. LEANN does not eliminate vectors as a mathematical representation. It eliminates most *stored exact vectors*, reconstructing a strategically chosen subset during each query. Nor does it operate without an index: the compact graph is what makes selective recomputation possible. The bargain is attractive when disk capacity matters more than the additional seconds of embedding work.",
+      "sourceIds": [
+        "section-2",
+        "section-3"
+      ],
+      "claimIds": [
+        "c2",
+        "c3",
+        "c15"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s3",
+      "title": "Two distance levels inside one traversal",
+      "markdown": "Highly compressed PQ codes are cheap but inaccurate. Using them alone to steer the entire traversal can send search down detours or omit a true neighbor; reranking afterward cannot recover an item that traversal never found. LEANN therefore interleaves two levels.\n\nFirst, it computes approximate distances for newly exposed neighbors and records them in an approximate queue $AQ$. Second, it selects the most promising $\\alpha\\%$ of eligible entries, where $\\alpha$ is the reranking ratio. Their original items are embedded again, and their exact distances enter an exact queue $EQ$. Exact distances choose which nodes drive later exploration, while approximate distances screen out many expensive recomputations. Because $AQ$ retains previously seen nodes, an earlier candidate may become eligible later.\n\nA small illustrative calculation shows why screening and exact checking are different jobs. Suppose four PQ distance estimates are $0.20,0.31,0.44,0.80$, and $\\alpha=50\\%$. Selecting the best half sends the first two candidates for exact recomputation. If their exact distances are $0.35$ and $0.24$, their order reverses: the second candidate should be explored first. This arithmetic is illustrative, not a reported experiment or LEANN parameter setting.\n\nThe quantization control uses the fixed vector $[-0.8,-0.3,0.1,0.7]$ and uniform levels on $[-1,1]$. Changing the bit count changes reconstructed values and mean-squared error. It illustrates lossy approximation, but not LEANN's learned PQ codebooks, its graph, or retrieval accuracy.",
+      "sourceIds": [
+        "section-3",
+        "section-4"
+      ],
+      "claimIds": [
+        "c3",
+        "c4"
+      ],
+      "figureId": "fig-quantization"
+    },
+    {
+      "id": "s4",
+      "title": "Batching bends the order without changing the goal",
+      "markdown": "Naively regenerating one embedding at a time underuses a GPU. Even batching all neighbors exposed by one node may produce a small batch, particularly after approximate screening. LEANN relaxes strict best-first order and accumulates promising nodes across several exploration steps. Once the batch reaches a profiled target size, their embeddings are computed together.\n\nThe price is slight staleness: while a batch is forming, the algorithm has not yet obtained exact distances that could refine the next expansion order. The benefit is higher embedding throughput. These are separate optimizations: two-level search reduces *which* candidates need exact embeddings; dynamic batching improves *how* the selected embeddings are computed.\n\nIn the paper's fixed-recall ablation, two-level search averaged a $1.4\\times$ speedup over naive graph recomputation, with up to $1.6\\times$. Adding dynamic batching increased the average to $1.8\\times$ and the peak to $2.0\\times$. These figures apply to the evaluated datasets and baseline, not to every encoder or device. In a latency-sensitive service with cheap storage and little downstream computation, accepting staleness and seconds of retrieval may be unattractive even if the index is smaller.",
+      "sourceIds": [
+        "section-4",
+        "section-7-part-2"
+      ],
+      "claimIds": [
+        "c5",
+        "c13",
+        "c15"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s5",
+      "title": "Why the graph keeps its hubs",
+      "markdown": "Discarding exact embeddings does not remove graph metadata. LEANN represents outgoing neighbor identifiers in compressed sparse row form, so its graph-space model is\n\n$$\n\\operatorname{Space}(G_1)=\\sum_{v\\in V(G_1)}\\deg(v)s_{\\text{edge}}\\leq B,\n$$\n\nwhere $G_1$ is the pruned graph, $V(G_1)$ its node set, $\\deg(v)$ the out-degree of node $v$, $s_{\\text{edge}}$ the bytes per stored edge identifier, and $B$ the metadata budget. It seeks to reduce\n\n$$\nT(G_1)=\\sum_{i=1}^{ef}|V_i|\n$$\n\nwhile requiring $\\operatorname{Acc}(G_1)\\geq\\tau$. Here $V_i$ is the set of nodes recomputed at exploration step $i$, $ef$ bounds the candidate queue, $\\operatorname{Acc}$ denotes retrieval accuracy, and $\\tau$ is its required threshold.\n\nUniform pruning is tempting but can destroy useful routes. LEANN instead treats high degree as a proxy for navigation importance. Most nodes receive a low limit $m$, while the top $\\beta\\%$ by degree may retain as many as $M$ edges. Bidirectional connections formed during insertion can still use the higher limit, helping ordinary nodes reach hubs.\n\nThe graph control repeatedly averages scalar features on a three-node chain using self-inclusive neighborhoods. It demonstrates how topology transports information and how repeated local steps spread an initial signal. It is not LEANN's best-first search, pruning algorithm, directed adjacency structure, or a trained GCN; symmetric degree normalization is also outside the control. Its narrow lesson is that removing a seemingly local connection can alter multi-step reachability.",
+      "sourceIds": [
+        "section-5"
+      ],
+      "claimIds": [
+        "c6",
+        "c7"
+      ],
+      "figureId": "fig-graph"
+    },
+    {
+      "id": "s6",
+      "title": "Building and changing the index under a budget",
+      "markdown": "Peak construction space matters because temporarily materializing every dense embedding would undermine a storage-constrained deployment. LEANN's optional build pipeline first runs $k$-means on a small corpus subset to obtain $k$ centroids. Each object is embedded sequentially, assigned to its two nearest centroids, and then its temporary embedding is discarded. The repeated symbol $k$ here counts shards and is unrelated to the top-$k$ results defined earlier.\n\nLEANN next recomputes embeddings one shard at a time, builds a shard graph, and discards those embeddings again. Assigning each passage to two shards creates overlap for global connectivity. During merging, a duplicated node receives the higher of its two HNSW levels; lower-layer edge lists are combined, with random dropping when degree exceeds $M$. The paper explicitly leaves more advanced merge pruning for future work.\n\nUpdates avoid rebuilding everything. Insertions use lighter recomputation and simplified selection; batched additions can wait in a temporary buffer, which queries scan alongside the main graph until asynchronous insertion occurs. Deletions are soft: an inactive marker suppresses results without physically reorganizing the graph. That preserves connectivity and lowers update cost, but it also means deletion is not immediate graph compaction.",
+      "sourceIds": [
+        "section-6"
+      ],
+      "claimIds": [
+        "c8",
+        "c9"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s7",
+      "title": "Reading the results without erasing their conditions",
+      "markdown": "The central storage result comes from a specific large evaluation: RPJ-Wiki was split into 60 million 256-token passages and embedded into 768 dimensions with Contriever. In the reported Table 1 comparison, the raw text occupied 76 GB, HNSW occupied 188 GB, and LEANN occupied 4 GB—2 GB each for vectors and metadata as categorized by that table. LEANN and HNSW both obtained 25.5% downstream accuracy in the stated NQ RAG setup using Qwen3-4B on an RTX 4090.\n\nAt 90% Recall@3, LEANN retrieval took 2.48 seconds for NQ, alongside 20.86 seconds of generation, and 1.12 seconds for GPQA, alongside 69.60 seconds of generation. Thus the reported retrieval shares were 10.6% and 1.6%. This supports a workload-specific conclusion: extra retrieval was modest relative to generation in those RAG pipelines. It does not establish negligible latency for an interactive search box with no generation stage.\n\nThe pruning ablation provides more direct mechanism evidence. Reducing average degree from 18 to 9, hub-preserving pruning needed a number of recomputations comparable to the original graph at matched recall. Random pruning required up to $1.8\\times$ more, and a uniformly smaller degree cap required up to $5.8\\times$ more and failed to reach the two highest recall targets.\n\nA common misconception is that a 90% retrieval target guarantees equally strong answers. It does not. Downstream performance also depends on whether the datastore contains the needed evidence and whether retrieval structure matches the question. The paper reports smaller gains on GPQA because Wikipedia was partly out of distribution, and on HotpotQA because the setup retrieved only one hop for questions requiring multi-hop reasoning. LEANN demonstrates a strong storage–accuracy trade under its evaluated encoders, datasets, hardware, and RAG timing. Encoder cost, access frequency, graph distribution, storage pressure, and the downstream workload determine whether that trade is desirable elsewhere.",
+      "sourceIds": [
+        "section-1",
+        "section-7",
+        "section-7-part-2"
+      ],
+      "claimIds": [
+        "c10",
+        "c11",
+        "c12",
+        "c14",
+        "c15"
+      ],
+      "figureId": null
+    }
+  ],
+  "figures": [
+    {
+      "id": "fig-retrieval",
+      "kind": "retrieval",
+      "title": "Top-k changes the returned set",
+      "question": "As k increases, which lower-ranked fixed contexts become visible while all four scores remain unchanged?",
+      "caption": "An illustrative ranking with fixed candidate scores 0.9, 0.7, 0.5, and 0.2; the control changes only how many ranked contexts are revealed.",
+      "limitation": "This is not an actual corpus, embedding computation, graph search, retrieval-quality measurement, or generated answer.",
+      "sourceIds": [
+        "section-1",
+        "section-2"
+      ],
+      "claimIds": [
+        "c1"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "fig-quantization",
+      "kind": "quantization",
+      "title": "Compression introduces reconstruction error",
+      "question": "How does increasing the number of uniform quantization levels change the reconstructed vector and its mean-squared error?",
+      "caption": "The fixed illustrative vector is rounded to uniformly spaced levels on [-1,1]; the bit control changes the available levels and resulting reconstruction error.",
+      "limitation": "This is uniform scalar quantization, not LEANN's product-quantization table, a trained codebook, or a measured retrieval result.",
+      "sourceIds": [
+        "section-3",
+        "section-4"
+      ],
+      "claimIds": [
+        "c3",
+        "c4"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "fig-graph",
+      "kind": "graph",
+      "title": "Local links shape multi-step propagation",
+      "question": "After repeated self-inclusive neighbor averaging, how far does the initial feature at the first node propagate along the fixed chain?",
+      "caption": "A three-node chain begins with scalar features [1,0,0]; each step replaces a feature with its self-inclusive neighborhood mean.",
+      "limitation": "This is not LEANN's directed proximity graph, best-first traversal, pruning procedure, or a trained GCN, and it does not use symmetric degree normalization.",
+      "sourceIds": [
+        "section-5"
+      ],
+      "claimIds": [
+        "c6",
+        "c7"
+      ],
+      "illustrative": true
+    }
+  ],
+  "quiz": [
+    {
+      "question": "Suppose PQ ranks candidate A ahead of B, but exact recomputation finds B closer to the query. Under LEANN's two-level search, which candidate should guide exploration first once both exact distances are available?",
+      "options": [
+        {
+          "text": "Candidate A, because the approximate ranking is permanent.",
+          "explanation": "Incorrect. Approximate distances screen candidates, but they do not override available exact distances."
+        },
+        {
+          "text": "Candidate B, because exact distances govern exploration.",
+          "explanation": "Correct. LEANN uses exact distances to maintain traversal quality after selective recomputation."
+        },
+        {
+          "text": "Both must be discarded because their rankings disagree.",
+          "explanation": "Incorrect. Ranking disagreement is an expected consequence of lossy approximation and motivates exact recomputation."
+        }
+      ],
+      "answer": 1,
+      "sourceIds": [
+        "section-4"
+      ],
+      "claimIds": [
+        "c4"
+      ]
+    },
+    {
+      "question": "Under an equal edge budget, why can preserving high-degree nodes outperform randomly deleting the same number of edges?",
+      "options": [
+        {
+          "text": "High-degree nodes are treated as navigation hubs that retain useful routes.",
+          "explanation": "Correct. LEANN uses degree as a proxy for importance and preserves more connections around selected hubs."
+        },
+        {
+          "text": "High-degree nodes store exact embeddings for every other node.",
+          "explanation": "Incorrect. Hub status concerns graph connectivity, not storage of every embedding."
+        },
+        {
+          "text": "Random deletion always increases the number of nodes in the graph.",
+          "explanation": "Incorrect. It removes edges rather than adding nodes; the concern is impaired navigability."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-5",
+        "section-7-part-2"
+      ],
+      "claimIds": [
+        "c7",
+        "c12"
+      ]
+    },
+    {
+      "question": "Which conclusion is justified by LEANN's reported NQ timing, where retrieval was 2.48 seconds and generation was 20.86 seconds at 90% Recall@3?",
+      "options": [
+        {
+          "text": "LEANN retrieval is negligible for every vector-search application.",
+          "explanation": "Incorrect. The relative cost depends on the downstream workload, hardware, encoder, and latency requirements."
+        },
+        {
+          "text": "In that evaluated RAG pipeline, generation dominated end-to-end time.",
+          "explanation": "Correct. Under the stated conditions, retrieval was reported as 10.6% of retrieval-plus-generation time."
+        },
+        {
+          "text": "The timing proves that 90% recall guarantees a correct generated answer.",
+          "explanation": "Incorrect. Recall measures neighbor recovery, not factual correctness or downstream answer quality."
+        }
+      ],
+      "answer": 1,
+      "sourceIds": [
+        "section-7"
+      ],
+      "claimIds": [
+        "c1",
+        "c11",
+        "c15"
+      ]
+    }
+  ],
+  "id": "leann",
+  "createdAt": "2026-10-02T00:31:03.836Z",
+  "pipelineVersion": "subjects-lessons-v1",
+  "sources": [
+    {
+      "id": "abstract",
+      "label": "Original paper · abstract",
+      "url": "https://arxiv.org/abs/2506.08276",
+      "digest": "6211bc2c29fb7c25cc3890ae92c313919b6e9de14a3715bbc69cd806d0c097be",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:28:50.996Z"
+    },
+    {
+      "id": "main-text",
+      "label": "Original paper · unsectioned main text",
+      "url": "https://arxiv.org/html/2506.08276",
+      "digest": "3f8d647edbf4d32f0b410b5a7f11c553b6479dc2f50e75e097005c9c8d98315f",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:28:50.996Z"
+    },
+    {
+      "id": "section-1",
+      "label": "1 Introduction",
+      "url": "https://arxiv.org/html/2506.08276#S1",
+      "digest": "66757ef803dbf395ae040a084ed858236e2a74656ac0b323f1224aa794c60ab9",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:28:50.996Z"
+    },
+    {
+      "id": "section-2",
+      "label": "2 Background",
+      "url": "https://arxiv.org/html/2506.08276#S2",
+      "digest": "99aef99a6b22663ffee746fb9b48b099a738f0dcf56da8916656fb4a4ad4e23f",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:28:50.996Z"
+    },
+    {
+      "id": "section-3",
+      "label": "3 LEANN Overview",
+      "url": "https://arxiv.org/html/2506.08276#S3",
+      "digest": "a8a2e24befe7295a157252d19631dd674bd07b5553d9884fc06283025285b237",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:28:50.996Z"
+    },
+    {
+      "id": "section-4",
+      "label": "4 Graph-based Recomputation",
+      "url": "https://arxiv.org/html/2506.08276#S4",
+      "digest": "00e7998a6434fd9ac5f1cd2893293d81e84cd3ff7089fc7b4d6334a134241109",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:28:50.996Z"
+    },
+    {
+      "id": "section-5",
+      "label": "5 Compact Graph Structure",
+      "url": "https://arxiv.org/html/2506.08276#S5",
+      "digest": "afde5b0c01c954553d21d4c29360542558d0ecb84edff8251272e19d29f9dbc7",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:28:50.996Z"
+    },
+    {
+      "id": "section-6",
+      "label": "6 Index Building and Update",
+      "url": "https://arxiv.org/html/2506.08276#S6",
+      "digest": "57855f46edfd0ca573612bcf0b8a522f29dfb7a9e2538b3f27d878213becf35f",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:28:50.996Z"
+    },
+    {
+      "id": "section-7",
+      "label": "7 Evaluation",
+      "url": "https://arxiv.org/html/2506.08276#S7",
+      "digest": "0003d0bbe1435232b87e28394a2933b82ea49577fa2ac499af1c0faa9ff7dd05",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:28:50.996Z"
+    },
+    {
+      "id": "section-7-part-2",
+      "label": "7 Evaluation · part 2",
+      "url": "https://arxiv.org/html/2506.08276#S7",
+      "digest": "b47d3c7934fa78ae5bbe66c9a5347f838f9ec211a5c05663c4f4becaa9f957fc",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:28:50.996Z"
+    },
+    {
+      "id": "section-8",
+      "label": "8 Related Work",
+      "url": "https://arxiv.org/html/2506.08276#S8",
+      "digest": "c1eb22b8df31e064bc23a3522e4f5545fa9b1900e960bf7f8937b87c69534a83",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:28:50.996Z"
+    },
+    {
+      "id": "section-9",
+      "label": "9 Conclusions",
+      "url": "https://arxiv.org/html/2506.08276#S9",
+      "digest": "8b74ff1227b0a38fcfa0eac5ba47bd5af08eaa3caa0409aa7611e13581a0f35c",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:28:50.996Z"
+    }
+  ],
+  "review": {
+    "status": "passed",
+    "reviewedAt": "2026-10-02T00:31:03.838Z",
+    "contentDigest": "0b00df03516bbcf30741ca482ab3ea94416b30a6d0283a9588d08816275a5067"
+  }
+}

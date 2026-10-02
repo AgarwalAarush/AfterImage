@@ -1,0 +1,504 @@
+{
+  "title": "Predict What Matters, Then Act: Inside V-JEPA 2",
+  "summary": "V-JEPA 2 learns predictive video features from observation, then adds action conditioning so a robot can compare imagined latent futures with visual goals.",
+  "prerequisites": [
+    "Basic vectors, averages, and absolute differences",
+    "Video frames, image patches, and neural-network encoders",
+    "No prior robotics or self-supervised learning knowledge"
+  ],
+  "objectives": [
+    "Explain why V-JEPA 2 predicts representations instead of pixels.",
+    "Reconstruct masked pretraining and action-conditioned post-training.",
+    "Calculate an L1 latent prediction loss using a small example.",
+    "Explain how receding-horizon planning selects and executes actions.",
+    "Interpret reported results within their evaluation conditions."
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "mechanism",
+      "statement": "V-JEPA 2 pretraining predicts representations of masked video patches from the visible patches rather than reconstructing their pixels.",
+      "conditions": "During action-free self-supervised pretraining with the mask-denoising feature-prediction objective.",
+      "sourceIds": [
+        "section-1-part-2",
+        "section-2"
+      ]
+    },
+    {
+      "id": "c2",
+      "kind": "equation",
+      "statement": "The pretraining objective minimizes the L1 distance between predictor outputs at masked locations and stop-gradient targets produced by an exponential-moving-average encoder.",
+      "conditions": "For masked video view x, target video y, online encoder parameters theta, predictor parameters phi, and EMA parameters theta-bar.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c3",
+      "kind": "mechanism",
+      "statement": "After pretraining, the video encoder is frozen and a new action-conditioned predictor learns next-frame representations from prior representations, actions, and end-effector states.",
+      "conditions": "During V-JEPA 2-AC post-training on the robot-interaction subset of Droid.",
+      "sourceIds": [
+        "section-1-part-2",
+        "section-3"
+      ]
+    },
+    {
+      "id": "c4",
+      "kind": "equation",
+      "statement": "V-JEPA 2-AC minimizes the sum of a teacher-forcing loss and a two-step rollout loss with respect to predictor parameters.",
+      "conditions": "The reported implementation uses T=15 transitions for teacher forcing and T=2 for the rollout term.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c5",
+      "kind": "mechanism",
+      "statement": "Planning scores an action sequence by the L1 distance between its predicted terminal representation and the encoded goal image.",
+      "conditions": "Given a current encoded frame, current end-effector state, visual goal, and fixed planning horizon.",
+      "sourceIds": [
+        "section-3",
+        "section-4"
+      ]
+    },
+    {
+      "id": "c6",
+      "kind": "mechanism",
+      "statement": "The controller executes only the first action of the selected sequence, observes the resulting state, and replans.",
+      "conditions": "During closed-loop model-predictive control with image goals.",
+      "sourceIds": [
+        "section-3",
+        "section-4"
+      ]
+    },
+    {
+      "id": "c7",
+      "kind": "result",
+      "statement": "The 1B-parameter ViT-g384 model reached 77.3 top-1 accuracy on Something-Something v2 and an 88.2 average across six classification tasks.",
+      "conditions": "Using the frozen-encoder attentive-probe protocols and higher-resolution evaluation reported for ViT-g384.",
+      "sourceIds": [
+        "section-5"
+      ]
+    },
+    {
+      "id": "c8",
+      "kind": "result",
+      "statement": "V-JEPA 2 ViT-g384 achieved 39.7 mean-class action recall-at-5 on EK100 action anticipation.",
+      "conditions": "On the EK100 validation set with one-second anticipation, a frozen backbone, and a trained attentive probe.",
+      "sourceIds": [
+        "section-6"
+      ]
+    },
+    {
+      "id": "c9",
+      "kind": "result",
+      "statement": "The action-conditioned model was trained with under 62 hours of Droid video and deployed without additional training data from either test lab.",
+      "conditions": "For Franka-arm experiments using raw videos, end-effector signals, monocular RGB input, and visual goals.",
+      "sourceIds": [
+        "section-3",
+        "section-4"
+      ]
+    },
+    {
+      "id": "c10",
+      "kind": "result",
+      "statement": "V-JEPA 2-AC averaged 80% success for cup pick-and-place and 65% for box pick-and-place across the two labs.",
+      "conditions": "Ten trials per task configuration in each lab, with supplied intermediate image subgoals and closed-loop execution.",
+      "sourceIds": [
+        "section-4-part-2"
+      ]
+    },
+    {
+      "id": "c11",
+      "kind": "result",
+      "statement": "The aligned 1B vision encoder and 8B language model obtained 84.0 PerceptionTest test accuracy and 76.9 TempCompass multiple-choice accuracy.",
+      "conditions": "Using the full 88.5-million-sample alignment dataset; PerceptionTest used supervised fine-tuning while the other reported Table 8 evaluations were zero-shot.",
+      "sourceIds": [
+        "section-7-part-2"
+      ]
+    },
+    {
+      "id": "c12",
+      "kind": "caveat",
+      "statement": "System-level encoder comparisons are not direct pretraining-controlled comparisons because the encoders use different training data and protocols.",
+      "conditions": "Even where the downstream attentive-probe evaluation protocol is shared.",
+      "sourceIds": [
+        "section-5"
+      ]
+    },
+    {
+      "id": "c13",
+      "kind": "caveat",
+      "statement": "Longer autoregressive rollouts accumulate prediction error while longer planning horizons enlarge the action-sequence search space.",
+      "conditions": "For long-horizon planning with the learned action-conditioned world model.",
+      "sourceIds": [
+        "section-4-part-2",
+        "section-9"
+      ]
+    },
+    {
+      "id": "c14",
+      "kind": "caveat",
+      "statement": "The demonstrated robot controller depends on image goals and was sensitive to camera placement because action coordinates had to be inferred from monocular images without explicit calibration.",
+      "conditions": "In the reported Franka-arm deployments, where camera positions were manually tried before selecting a workable view.",
+      "sourceIds": [
+        "section-4-part-2",
+        "section-9"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "s1",
+      "title": "The split at the heart of the system",
+      "markdown": "V-JEPA 2 separates two learning problems that are often blended together. First, it learns from observation: given an incomplete video, what representation should occupy the missing regions? This stage uses internet-scale images and videos but no robot actions. Second, V-JEPA 2-AC learns intervention: given the robot's current visual state, its physical end-effector state, and a candidate action, what representation should come next?\n\nThat separation is the central contribution. Observation data are plentiful enough to train a large visual encoder, whereas robot interaction data are scarce. The paper therefore pretrains on more than one million hours of video, freezes the resulting encoder, and uses under 62 hours of robot video to train an action-conditioned predictor. The result is not one model that magically acquires control from passive viewing. It is a staged system in which broad visual prediction supplies the state space and robot trajectories teach how actions move within that space.\n\nA useful prerequisite is the distinction between an observation and a state representation. A frame $x_k$ is an array of pixels at time $k$. An encoder $E$ maps it to $z_k=E(x_k)$, a grid of feature vectors. These features are learned coordinates, not a human-readable inventory of objects. Every later prediction and goal comparison is only as informative as what $E$ preserves.",
+      "sourceIds": [
+        "abstract",
+        "section-1",
+        "section-3",
+        "section-5"
+      ],
+      "claimIds": [
+        "c1",
+        "c3",
+        "c9"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s2",
+      "title": "Learning by hiding pieces of video",
+      "markdown": "Pretraining begins by dividing a video into spatiotemporal tubelets and dropping selected tokens. The online encoder $E_{\\theta}$ processes only the visible view $x$. A predictor $P_{\\phi}$ receives those visible features plus learned mask tokens $\\Delta_y$ that identify missing positions. Its task is to predict the target features at those positions.\n\nThe toy patch control pictures an $8\\times8$ grid and deterministically hides a chosen fraction. Before moving the control, predict how the visible-token count will change. The display then counts visible and masked cells exactly. This isolates the information bottleneck: a larger mask leaves less direct evidence and requires the predictor to use surrounding spatial and temporal structure. It does not run V-JEPA 2, produce embeddings, or measure reconstruction quality.\n\nThe paper's target is supplied by a second encoder whose parameters $\\overline{\\theta}$ are an exponential moving average of the online parameters $\\theta$. The objective is\n\n$$\n\\min_{\\theta,\\phi,\\Delta_y}\\left\\lVert P_{\\phi}\\!\\left(\\Delta_y,E_{\\theta}(x)\\right)-\\operatorname{sg}\\!\\left(E_{\\overline{\\theta}}(y)\\right)\\right\\rVert_1.\n$$\n\nHere $y$ is the target video, $\\operatorname{sg}$ stops gradients through the target, and $\\lVert v\\rVert_1=\\sum_i|v_i|$. The loss is applied only at masked patches. The EMA target and stop-gradient make the two sides asymmetric and are used to prevent collapse. Because the prediction target is a learned feature rather than every pixel, the objective can emphasize predictable structure without requiring exact synthesis of incidental texture.",
+      "sourceIds": [
+        "section-1",
+        "section-1-part-2",
+        "section-2"
+      ],
+      "claimIds": [
+        "c1",
+        "c2"
+      ],
+      "figureId": "fig-patches"
+    },
+    {
+      "id": "s3",
+      "title": "A small loss calculation",
+      "markdown": "Consider an illustrative masked location whose target feature is $t=(1,-2,0.5)$ and whose predicted feature is $\\hat t=(0.7,-1.4,0.1)$. The unnormalized L1 error is\n\n$$\n\\lVert\\hat t-t\\rVert_1=|0.7-1|+|-1.4-(-2)|+|0.1-0.5|=0.3+0.6+0.4=1.3.\n$$\n\nIf we report the mean absolute error across the three coordinates, it is $1.3/3\\approx0.433$. This arithmetic is illustrative; these values are not paper measurements. It nevertheless shows what the training signal rewards: moving the predicted feature toward the teacher feature coordinate by coordinate. It does not demand that the model reproduce a particular RGB pixel.\n\nThe distinction matters. Saying that V-JEPA 2 “predicts video” can suggest a conventional video generator whose output is inspected as pixels. During this pretraining objective, however, the comparison happens in representation space. That can discard unpredictable visual detail, but it also creates a limitation: if the representation omits information required for a downstream decision, a later predictor cannot recover it merely by planning harder.",
+      "sourceIds": [
+        "section-1",
+        "section-2",
+        "section-5"
+      ],
+      "claimIds": [
+        "c1",
+        "c2"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s4",
+      "title": "Adding actions without rewriting the visual world",
+      "markdown": "Robot post-training freezes $E$ and encodes every frame independently as $z_k=E(x_k)\\in\\mathbb{R}^{H\\times W\\times D}$, where $H$ and $W$ are feature-map dimensions and $D$ is the embedding width. The end-effector state $s_k\\in\\mathbb{R}^7$ contains three position coordinates, three orientation coordinates, and one gripper coordinate. The action $a_k\\in\\mathbb{R}^7$ is the change in that state between adjacent frames.\n\nA block-causal transformer $P_{\\phi}$ sees current and earlier feature maps, actions, and end-effector states, but not future inputs. Teacher forcing compares each one-step prediction $\\hat z_{k+1}$ with the encoded observed successor:\n\n$$\n\\mathcal{L}_{\\mathrm{TF}}(\\phi)=\\frac{1}{T}\\sum_{k=1}^{T}\\lVert\\hat z_{k+1}-z_{k+1}\\rVert_1.\n$$\n\nThe paper also feeds a prediction back into the model and evaluates a two-step rollout loss $\\mathcal{L}_{\\mathrm{rollout}}$. Training minimizes\n\n$$\nL(\\phi)=\\mathcal{L}_{\\mathrm{TF}}(\\phi)+\\mathcal{L}_{\\mathrm{rollout}}(\\phi).\n$$\n\nThe scalar recurrence control offers a deliberately smaller analogy: $h_t=a h_{t-1}+u_t$ with one impulse $u_0=1$. Increasing retention $a$ makes the impulse decay more slowly over 12 steps. Predict which setting preserves a detectable effect longer, then inspect the sequence. This clarifies how repeated state reuse can retain or attenuate information, but it is not V-JEPA 2-AC's transformer, learned latent space, action conditioning, or empirical rollout error.",
+      "sourceIds": [
+        "section-1-part-2",
+        "section-3"
+      ],
+      "claimIds": [
+        "c3",
+        "c4"
+      ],
+      "figureId": "fig-state"
+    },
+    {
+      "id": "s5",
+      "title": "Planning by comparing imagined endings",
+      "markdown": "At deployment, the current frame $x_k$ and goal image $x_g$ are encoded separately as $z_k=E(x_k)$ and $z_g=E(x_g)$. Starting from the current end-effector state $s_k$ and visual representation $z_k$, the action-conditioned predictor autoregressively evaluates what would happen under a proposed sequence of actions $\\hat a_{1:T}$. The planner assigns that sequence the terminal energy\n\n$$\n\\mathcal{E}(\\hat a_{1:T};z_k,s_k,z_g)=\\left\\lVert P(\\hat a_{1:T};s_k,z_k)-z_g\\right\\rVert_1.\n$$\n\nHere $P(\\hat a_{1:T};s_k,z_k)$ is the representation predicted after all $T$ proposed actions, while $z_g$ is the representation of the desired image. Planning therefore searches for\n\n$$\na_{1:T}^{\\star}=\\operatorname*{arg\\,min}_{\\hat a_{1:T}}\\mathcal{E}(\\hat a_{1:T};z_k,s_k,z_g).\n$$\n\nA lower energy means that the predicted terminal feature map is closer, coordinate by coordinate, to the encoded goal. The comparison occurs in the frozen encoder's representation space, so success depends on that representation preserving the visual distinctions needed for control. If two physically important configurations receive insufficiently distinct representations, minimizing this energy cannot reliably distinguish them.\n\nThe paper approximately solves this continuous action-search problem with the cross-entropy method. For every time index in the planning horizon, the method maintains a Gaussian distribution over action coordinates, initially with zero mean and unit variance. It samples a population of complete action trajectories from this sequence of distributions, rolls each trajectory through V-JEPA 2-AC, and computes its terminal goal energy. The trajectories with the lowest energies form an elite set. Their population mean and variance then replace the Gaussian parameters, concentrating the next round of samples around action sequences that produced more goal-like predicted endings. After several refinement rounds, the mean sequence of the refined Gaussians is returned as the selected trajectory. Thus the predictor supplies a differentiable-looking latent dynamics model, but the reported controller searches by repeated sampling and elite refitting rather than directly emitting an action.\n\nOnly the first action $a_1^{\\star}$ is sent to the robot. Once that motion completes, the camera supplies a new frame, the encoder computes a new $z_{k+1}$, and the entire optimization is run again from the newly observed state. This is receding-horizon model-predictive control: later actions in the selected sequence guide the evaluation of the first action, but they are not committed in advance. Replanning allows observed outcomes to correct deviations between the predicted rollout and the physical scene.\n\nIn the reported deployments, sampled actions were constrained to an L1 ball of radius $0.075$ around the origin because larger motions were relatively out of distribution for the learned model; an individual command corresponded to a maximum end-effector displacement of approximately $13\\,\\mathrm{cm}$. For the direct planning comparison in Lab 2, V-JEPA 2-AC used 800 samples, 10 refinement iterations, and a horizon of 1 on a single NVIDIA RTX 4090, requiring 16 seconds to compute an action. Those values describe that benchmark configuration rather than a general speed of the method.\n\nLonger horizons create two coupled difficulties. Autoregressive prediction errors accumulate as predicted representations are fed forward, making terminal energies less reliable, while the space of possible action sequences expands rapidly with horizon length, making sampling-based optimization harder. The pick-and-place experiments consequently divided the task using supplied image subgoals: an image of the object grasped, an image with the object near its destination, and the final placement image. The controller optimized toward these goals for 4, 10, and 4 time steps respectively. This structure enabled closed-loop composition of grasping, transport, and placement, while leaving selection of the intermediate goals outside the demonstrated planning mechanism.",
+      "sourceIds": [
+        "section-3",
+        "section-4",
+        "section-4-part-2"
+      ],
+      "claimIds": [
+        "c5",
+        "c6",
+        "c13"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s6",
+      "title": "What the evaluations actually establish",
+      "markdown": "The evidence spans distinct settings and should not be merged into one vague claim of “understanding.” With a frozen encoder and trained attentive probes, the higher-resolution ViT-g384 reached 77.3 top-1 accuracy on Something-Something v2 and an 88.2 average across six motion and appearance tasks. On EK100, a probe using context ending one second before the action reached 39.7 mean-class action recall-at-5. This is a closed kitchen vocabulary and does not establish open-world anticipation.\n\nLanguage capability required another alignment stage. With a 1B vision encoder, Llama 3.1 8B backbone, and 88.5 million alignment samples, the reported system obtained 84.0 on PerceptionTest and 76.9 on TempCompass. Those numbers describe the complete aligned system under Table 8's conditions, not the self-supervised encoder alone.\n\nFor robotics, V-JEPA 2-AC averaged 80% cup and 65% box pick-and-place success across two labs. Each task used ten trials per lab and intermediate image subgoals. The deployment was zero-shot with respect to those labs: no additional training data were collected there. It was not zero-data learning overall, because action conditioning had already been trained on Droid robot trajectories.",
+      "sourceIds": [
+        "section-4-part-2",
+        "section-5",
+        "section-6",
+        "section-7-part-2"
+      ],
+      "claimIds": [
+        "c7",
+        "c8",
+        "c9",
+        "c10",
+        "c11",
+        "c12"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s7",
+      "title": "Limits that shape the conclusion",
+      "markdown": "Three limits constrain what the results imply. First, system comparisons do not fully isolate architecture: baseline encoders were pretrained on different datasets and with different objectives, even where the downstream probe protocol was shared. The results support system-level comparisons, not a clean causal claim that representation prediction alone explains every gap.\n\nSecond, autoregressive error grows with rollout length, while the number of candidate action sequences grows rapidly with planning horizon. The demonstrated pick-and-place procedure therefore used supplied intermediate image subgoals. That is meaningful closed-loop control, but not autonomous decomposition of an arbitrary long instruction.\n\nThird, the controller assumes visual goal images and an uncalibrated monocular camera. Because the robot's action axes may not be identifiable when its base is absent from view, the authors manually tried camera placements before selecting one that worked. This sensitivity, together with object-dependent grasp failures, limits claims of environment-independent robustness. The paper establishes that staged latent prediction can support real robot planning under these conditions; it does not establish a universally grounded simulator, unrestricted long-horizon planner, or language-directed robot policy.",
+      "sourceIds": [
+        "section-4-part-2",
+        "section-5",
+        "section-6",
+        "section-9"
+      ],
+      "claimIds": [
+        "c12",
+        "c13",
+        "c14"
+      ],
+      "figureId": null
+    }
+  ],
+  "figures": [
+    {
+      "id": "fig-patches",
+      "kind": "patches",
+      "title": "How masking changes available evidence",
+      "question": "As the masked fraction rises, how do the visible and masked patch counts change?",
+      "caption": "An illustrative 8 by 8 grid uses a deterministic mask to show the exact visible and hidden patch counts as the masked fraction changes.",
+      "limitation": "This control does not run an encoder or measure reconstruction quality; it only visualizes patch availability.",
+      "sourceIds": [
+        "section-1-part-2",
+        "section-2"
+      ],
+      "claimIds": [
+        "c1",
+        "c2"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "fig-state",
+      "kind": "state",
+      "title": "Repeated prediction and information decay",
+      "question": "Which retention value keeps the initial impulse influential for more of the 12-step recurrence?",
+      "caption": "A scalar recurrence applies one initial impulse and displays how changing retention alters its decay across 12 steps.",
+      "limitation": "This is not a selective or learned world-model rollout and contains no video features, actions, or transformer attention.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c3",
+        "c4"
+      ],
+      "illustrative": true
+    }
+  ],
+  "quiz": [
+    {
+      "question": "Suppose two candidate action sequences end with latent L1 distances 1.8 and 0.9 from the same encoded goal. Under equation (5) alone, which sequence is preferred?",
+      "options": [
+        {
+          "text": "The sequence with distance 0.9.",
+          "explanation": "Correct. The specified planner minimizes terminal L1 distance to the goal representation."
+        },
+        {
+          "text": "The sequence with distance 1.8.",
+          "explanation": "Incorrect. A larger energy is worse under the stated minimization objective."
+        },
+        {
+          "text": "They are necessarily equivalent.",
+          "explanation": "Incorrect. They could become equivalent under an additional rule, but equation (5) ranks 0.9 below 1.8."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c5"
+      ]
+    },
+    {
+      "question": "What is added when moving from action-free V-JEPA 2 pretraining to V-JEPA 2-AC post-training?",
+      "options": [
+        {
+          "text": "A frozen encoder is discarded and pixels become the only targets.",
+          "explanation": "Incorrect. The pretrained encoder is retained and frozen, and prediction remains in its feature space."
+        },
+        {
+          "text": "An action-conditioned predictor learns from robot actions and end-effector states.",
+          "explanation": "Correct. This supplies the intervention information absent from passive-video pretraining."
+        },
+        {
+          "text": "A language model directly emits all robot actions.",
+          "explanation": "Incorrect. The reported robot planner uses latent dynamics, image goals, and model-predictive control."
+        }
+      ],
+      "answer": 1,
+      "sourceIds": [
+        "section-1-part-2",
+        "section-3"
+      ],
+      "claimIds": [
+        "c3"
+      ]
+    },
+    {
+      "question": "Which conclusion is justified by the reported pick-and-place experiments?",
+      "options": [
+        {
+          "text": "The model solves unrestricted long-horizon manipulation without subgoals.",
+          "explanation": "Incorrect. Pick-and-place used intermediate image subgoals, and the paper identifies long-horizon prediction and search as limitations."
+        },
+        {
+          "text": "The model is insensitive to camera placement in any new environment.",
+          "explanation": "Incorrect. Camera placement was manually explored, and the paper reports sensitivity to viewpoint."
+        },
+        {
+          "text": "The post-trained model supported closed-loop control in two unseen labs under visual-goal conditions.",
+          "explanation": "Correct. This matches the deployment scope without extending it to unrestricted goals or viewpoints."
+        }
+      ],
+      "answer": 2,
+      "sourceIds": [
+        "section-4",
+        "section-4-part-2",
+        "section-9"
+      ],
+      "claimIds": [
+        "c9",
+        "c10",
+        "c13",
+        "c14"
+      ]
+    }
+  ],
+  "id": "v-jepa-2",
+  "createdAt": "2026-10-02T00:11:36.223Z",
+  "pipelineVersion": "subjects-lessons-v1",
+  "sources": [
+    {
+      "id": "abstract",
+      "label": "Original paper · abstract",
+      "url": "https://arxiv.org/abs/2506.09985",
+      "digest": "10f7288c2ef41755939efd2f120eee1d696dff20a57aa1e582e95b6e11679217",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:09:28.999Z"
+    },
+    {
+      "id": "section-1",
+      "label": "1 Introduction",
+      "url": "https://arxiv.org/html/2506.09985#S1",
+      "digest": "78858da5c98e7185c9fc388f094c1c51b9272db249e34e6977b9e0afb445a570",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:09:28.999Z"
+    },
+    {
+      "id": "section-1-part-2",
+      "label": "1 Introduction · part 2",
+      "url": "https://arxiv.org/html/2506.09985#S1",
+      "digest": "02b43291b7dec90ab051bea28c8e1711dc32b28e6a283a79ccbea1b63e777978",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:09:28.999Z"
+    },
+    {
+      "id": "section-2",
+      "label": "2 V-JEPA 2: Scaling Self-Supervised Video Pretraining",
+      "url": "https://arxiv.org/html/2506.09985#S2",
+      "digest": "c26c62c5277cf47bec4dbde2e0df0e47fe9d00055083e0f89096b9531e12241f",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:09:28.999Z"
+    },
+    {
+      "id": "section-2-part-2",
+      "label": "2 V-JEPA 2: Scaling Self-Supervised Video Pretraining · part 2",
+      "url": "https://arxiv.org/html/2506.09985#S2",
+      "digest": "e11499a2b5144620b37a6a7eedcdcc23b143a4ea20b5a5b8de287ef479bb6dd0",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:09:28.999Z"
+    },
+    {
+      "id": "section-3",
+      "label": "3 V-JEPA 2-AC: Learning an Action-Conditioned World Model",
+      "url": "https://arxiv.org/html/2506.09985#S3",
+      "digest": "46b804500e641358f708bff4aa8c6be67ed2bac4912c438d55648f759e0b2a64",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:09:28.999Z"
+    },
+    {
+      "id": "section-4",
+      "label": "4 Planning: Zero-shot Robot Control",
+      "url": "https://arxiv.org/html/2506.09985#S4",
+      "digest": "826b45ec652381ddb86550814115ad609e9392cfca3d5a3daf9bd1545dda528d",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:09:28.999Z"
+    },
+    {
+      "id": "section-4-part-2",
+      "label": "4 Planning: Zero-shot Robot Control · part 2",
+      "url": "https://arxiv.org/html/2506.09985#S4",
+      "digest": "2b4fa19f036f4dee22167543a0fdbe3c299207b6e19e341567218fdd9b31140a",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:09:28.999Z"
+    },
+    {
+      "id": "section-5",
+      "label": "5 Understanding: Probe-based Classification",
+      "url": "https://arxiv.org/html/2506.09985#S5",
+      "digest": "84faee7640ff501f6fa8b5574cc8970cbdb76ccbaa69018126d75e0077705c02",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:09:28.999Z"
+    },
+    {
+      "id": "section-6",
+      "label": "6 Prediction: Probe-based Action Anticipation",
+      "url": "https://arxiv.org/html/2506.09985#S6",
+      "digest": "262eb71c78760549de14bb1dde7ecde6a83b5a268f26a84e81fd3ce362a148ff",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:09:28.999Z"
+    },
+    {
+      "id": "section-7",
+      "label": "7 Understanding : Video Question Answering",
+      "url": "https://arxiv.org/html/2506.09985#S7",
+      "digest": "3c8812dcc10126badb7fa2f7baa4fbb388eeaec39cdf3912b27301e4091d38cd",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:09:28.999Z"
+    },
+    {
+      "id": "section-7-part-2",
+      "label": "7 Understanding : Video Question Answering · part 2",
+      "url": "https://arxiv.org/html/2506.09985#S7",
+      "digest": "c42db09b0f797b6a7691e2247b641cd23f6d9e14910c6fa207b82eb430f3fbfc",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:09:28.999Z"
+    },
+    {
+      "id": "section-8",
+      "label": "8 Related Work",
+      "url": "https://arxiv.org/html/2506.09985#S8",
+      "digest": "999d3eb0b0a685a516a9fa93e676a66a5518e2d1ce4bf4a9b3e910a20b49d5a5",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:09:28.999Z"
+    },
+    {
+      "id": "section-9",
+      "label": "9 Conclusion",
+      "url": "https://arxiv.org/html/2506.09985#S9",
+      "digest": "4063f56c84e65a257d9e9df33a93afc35472e12b3ff08215473fd3d69a1c292f",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:09:28.999Z"
+    }
+  ],
+  "review": {
+    "status": "passed",
+    "reviewedAt": "2026-10-02T02:16:28.000Z",
+    "contentDigest": "6172dc2dcd4f1eac6e3e42c549d4964c30f46473c732a603e2924c59d837e9bd"
+  }
+}

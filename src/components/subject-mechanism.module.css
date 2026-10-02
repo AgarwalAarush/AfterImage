@@ -1,0 +1,20 @@
+.walkthrough { margin:30px 0; padding:24px; border:1px solid var(--line); border-radius:12px; background:var(--paper); }
+.heading { display:flex; justify-content:space-between; align-items:start; gap:18px; }
+.heading h3 { margin:0; font:500 16px/1.5 var(--font-sans); }
+.introduction { margin-top:14px; }
+.introduction > :last-child { margin-bottom:0; }
+.canvas { width:100%; margin-top:16px; overflow:auto; }
+.canvas svg { display:block; width:100%; min-width:380px; height:auto; }
+.canvas g[data-object] rect, .canvas g[data-relationship] { transition:fill .18s,stroke .18s,opacity .18s; }
+.beat { margin-top:16px; padding-top:20px; border-top:1px solid var(--line); }
+.beat h4 { margin:0 0 12px; font:500 16px/1.5 var(--font-sans); }
+.relationships { margin:12px 0 0; padding:0; list-style:none; color:var(--muted); font:12px/1.65 var(--font-sans); }
+.relationships li { margin-top:6px; }
+.controls { display:flex; align-items:center; justify-content:space-between; gap:16px; margin-top:22px; }
+.controls nav { display:flex; gap:8px; }
+.controls nav button { padding:8px 3px; }
+.controls nav button span { display:block; height:5px; width:16px; border-radius:3px; background:var(--line); }
+.controls nav button[aria-current] span { background:var(--accent); }
+.takeaway { margin-top:24px; border-left:2px solid var(--accent); padding-left:16px; }
+@media (prefers-reduced-motion:reduce) { .canvas g[data-object] rect, .canvas g[data-relationship] { transition:none; } }
+@media print { .heading button,.controls { display:none; } }

@@ -1,0 +1,449 @@
+{
+  "title": "A Scene Hidden in a Function: Reconstructing NeRF One Ray at a Time",
+  "summary": "NeRF encodes one static scene in an MLP, renders it through differentiable volume integration, and uses positional encoding plus hierarchical sampling to recover detailed novel views.",
+  "prerequisites": [
+    "Camera rays defined by origin, direction, and distance",
+    "MLPs built from fully connected layers",
+    "Exponential attenuation from accumulated density",
+    "Differentiable optimization fundamentals",
+    "Sampling from probability distributions"
+  ],
+  "objectives": [
+    "Distinguish spatial density from direction-dependent emitted color.",
+    "Derive discrete alpha compositing from continuous volume rendering.",
+    "Explain how positional encoding and hierarchical sampling serve different roles.",
+    "Interpret comparisons and ablations within their dataset conditions.",
+    "Identify the assumptions and practical limits of the original NeRF method."
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "mechanism",
+      "statement": "NeRF represents a static scene as a continuous function from spatial position and viewing direction to density and emitted RGB color.",
+      "conditions": "For a static scene represented by the paper’s per-scene MLP.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c2",
+      "kind": "mechanism",
+      "statement": "Density depends only on position, while color may also depend on viewing direction, encouraging consistent geometry without forbidding view-dependent appearance.",
+      "conditions": "Under the network factorization used in the paper.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c3",
+      "kind": "equation",
+      "statement": "A ray’s expected color is the integral of local color times density and accumulated transmittance along the ray.",
+      "conditions": "For a camera ray between near and far bounds in the continuous volume-rendering model.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c4",
+      "kind": "equation",
+      "statement": "The sampled renderer uses front-to-back alpha compositing, where each sample’s weight combines survival to that sample with termination inside its interval.",
+      "conditions": "For ordered ray samples with interval lengths δᵢ, densities σᵢ, and colors cᵢ.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c5",
+      "kind": "mechanism",
+      "statement": "Stratified sampling places one random sample in each evenly spaced depth bin, allowing optimization to query continuously varying positions rather than a permanently fixed grid.",
+      "conditions": "For N bins partitioning the ray interval from tₙ to t_f.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c6",
+      "kind": "mechanism",
+      "statement": "The paper’s positional encoding maps each scalar coordinate to sine and cosine features at powers-of-two frequencies before the MLP.",
+      "conditions": "For the fixed, non-learned encoding γ with L frequency bands.",
+      "sourceIds": [
+        "section-5"
+      ]
+    },
+    {
+      "id": "c7",
+      "kind": "mechanism",
+      "statement": "Hierarchical sampling converts coarse rendering weights into a piecewise-constant depth distribution and draws additional samples where visible contributions are expected.",
+      "conditions": "For the paper’s jointly optimized coarse and fine networks and inverse-transform resampling.",
+      "sourceIds": [
+        "section-5"
+      ]
+    },
+    {
+      "id": "c8",
+      "kind": "equation",
+      "statement": "Training minimizes the summed squared RGB errors of both coarse and fine ray renderings.",
+      "conditions": "For a sampled batch of training rays with known target pixel colors.",
+      "sourceIds": [
+        "section-5"
+      ]
+    },
+    {
+      "id": "c9",
+      "kind": "result",
+      "statement": "On the realistic synthetic benchmark, the complete model obtained 31.01 PSNR, 0.947 SSIM, and 0.081 LPIPS.",
+      "conditions": "Averages over eight realistic synthetic scenes, using 100 input images, spatial encoding L=10, and (N_c,N_f)=(64,128).",
+      "sourceIds": [
+        "section-6-part-2"
+      ]
+    },
+    {
+      "id": "c10",
+      "kind": "result",
+      "statement": "The ablation evidence attributes larger quantitative benefits to positional encoding and view dependence than to hierarchical sampling on the realistic synthetic scenes.",
+      "conditions": "The component-removal rows of Table 2, averaged over the paper’s eight realistic synthetic scenes.",
+      "sourceIds": [
+        "section-6-part-2"
+      ]
+    },
+    {
+      "id": "c11",
+      "kind": "result",
+      "statement": "On the real forward-facing benchmark, NeRF led the listed methods in PSNR and SSIM, but LLFF had the lower LPIPS value.",
+      "conditions": "Eight handheld forward-facing scenes, with 20–62 images per scene and one eighth held out for testing.",
+      "sourceIds": [
+        "section-6"
+      ]
+    },
+    {
+      "id": "c12",
+      "kind": "caveat",
+      "statement": "The original method remains expensive to optimize and render despite hierarchical sampling.",
+      "conditions": "For the original paper’s method and hardware-era implementation; the supplied evidence does not cover later accelerations.",
+      "sourceIds": [
+        "section-7"
+      ]
+    },
+    {
+      "id": "c13",
+      "kind": "caveat",
+      "statement": "A trained NeRF is less directly interpretable than explicit meshes or voxel grids, making expected quality and failure modes difficult to analyze.",
+      "conditions": "When the scene is encoded implicitly in deep-network weights rather than an explicit sampled representation.",
+      "sourceIds": [
+        "section-7"
+      ]
+    },
+    {
+      "id": "c14",
+      "kind": "mechanism",
+      "statement": "The original training procedure fits a separate continuous volume representation for every scene and requires RGB images, camera calibration, and scene bounds.",
+      "conditions": "For the per-scene optimization procedure described in the paper.",
+      "sourceIds": [
+        "section-5"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "s1",
+      "title": "1. The problem is not merely filling in pixels",
+      "markdown": "Novel-view synthesis asks: given photographs of a scene from known cameras, what should a new camera see? A useful solution must account for occlusion, geometry, and appearance that changes with viewing direction. NeRF’s distinctive move is to optimize a continuous scene function rather than store a color at every voxel or directly predict one requested image.\n\nA camera ray is\n\n$$\\mathbf r(t)=\\mathbf o+t\\mathbf d,$$\n\nwhere $\\mathbf o\\in\\mathbb R^3$ is the camera origin, $\\mathbf d\\in\\mathbb R^3$ is a unit viewing direction, and $t$ is distance along the ray. Near and far bounds $t_n,t_f$ delimit the modeled interval. The training observations are RGB pixels paired with camera poses, intrinsics, and bounds. Each pixel identifies a ray and its target color.\n\nThis is per-scene fitting, not a pretrained model that immediately reconstructs arbitrary new scenes. The network parameters become that particular scene’s representation. Because rendering from those parameters is differentiable, disagreement between a rendered ray and its observed pixel can send gradients back through compositing and into the scene function.",
+      "sourceIds": [
+        "abstract",
+        "section-1",
+        "section-5"
+      ],
+      "claimIds": [
+        "c1",
+        "c8",
+        "c14"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s2",
+      "title": "2. What the five-dimensional field predicts",
+      "markdown": "Write the learned field as\n\n$$F_\\Theta:(\\mathbf x,\\mathbf d)\\mapsto(\\mathbf c,\\sigma).$$\n\nHere $\\Theta$ denotes the MLP weights; $\\mathbf x=(x,y,z)$ is a spatial position; $\\mathbf d$ is the Cartesian unit viewing direction corresponding to two angular degrees of freedom; $\\mathbf c=(r,g,b)$ is emitted RGB color; and $\\sigma$ is volume density. Thus “5D” counts three positional plus two directional degrees of freedom. It does **not** mean that the reconstructed geometry has five spatial dimensions.\n\nThe factorization matters: $\\sigma=\\sigma(\\mathbf x)$ depends only on position, while $\\mathbf c=\\mathbf c(\\mathbf x,\\mathbf d)$ may also change with direction. Density can therefore describe common spatial structure across cameras, while color can express view-dependent effects such as a specular highlight changing as the observer moves. Direction-dependent color does not mean that geometry changes with the camera: direction enters the color branch, not the density prediction.\n\nIn the paper’s architecture, eight fully connected layers process the position $\\mathbf x$ and produce both $\\sigma$ and a feature vector. That feature is then concatenated with $\\mathbf d$ and passed through an additional layer to produce RGB color. Because the MLP represents a continuous function, it can be queried at arbitrary spatial positions along a ray rather than only at the cells of a stored voxel array. Those field values still require the visibility calculation in the next section before they become a pixel color.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c1",
+        "c2"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s3",
+      "title": "3. A pixel is an ordered visibility calculation",
+      "markdown": "A ray does not simply average every color it encounters: density near the camera can hide colors farther away. In the continuous model,\n\n$$C(\\mathbf r)=\\int_{t_n}^{t_f}T(t)\\,\\sigma(\\mathbf r(t))\\,\\mathbf c(\\mathbf r(t),\\mathbf d)\\,dt,$$\n\nwith\n\n$$T(t)=\\exp\\left(-\\int_{t_n}^{t}\\sigma(\\mathbf r(s))\\,ds\\right).$$\n\nHere $C(\\mathbf r)$ is the expected ray color, $\\mathbf r(t)=\\mathbf o+t\\mathbf d$ is the ray, $t_n$ and $t_f$ are its near and far bounds, $s$ is a dummy depth variable, and $T(t)$ is the accumulated transmittance—the fraction of visibility surviving to depth $t$.\n\nFor a sampled finite ray, let interval $i$ have length $\\delta_i=t_{i+1}-t_i$, sampled density $\\sigma_i=\\sigma(\\mathbf r(t_i))$, and sampled color $\\mathbf c_i=\\mathbf c(\\mathbf r(t_i),\\mathbf d)$. Its opacity is\n\n$$\\alpha_i=1-\\exp(-\\sigma_i\\delta_i).$$\n\nStarting with full visibility, $T_1=1$, the recurrence is\n\n$$w_i=T_i\\alpha_i,\\qquad T_{i+1}=T_i(1-\\alpha_i).$$\n\nThus $w_i$ is the fraction of the ray assigned to color $\\mathbf c_i$, while $T_{i+1}$ is the fraction that survives the interval. Repeated substitution gives\n\n$$T_i=\\exp\\left(-\\sum_{j<i}\\sigma_j\\delta_j\\right),$$\n\nand the sampled foreground color is\n\n$$\\widehat C(\\mathbf r)=\\sum_{i=1}^{N}w_i\\mathbf c_i\n=\\sum_{i=1}^{N}T_i\\left(1-e^{-\\sigma_i\\delta_i}\\right)\\mathbf c_i.$$\n\nFor a finite ray with background color $\\mathbf c_{\\mathrm{bg}}$, the residual transmittance contributes\n\n$$\\widehat C_{\\mathrm{final}}(\\mathbf r)=\\sum_{i=1}^{N}w_i\\mathbf c_i+T_{N+1}\\mathbf c_{\\mathrm{bg}}.$$\n\nConsider an original illustrative construction with four unit-length intervals, so every $\\delta_i=1$. Keep the sample positions fixed at $0.5,1.5,2.5,3.5$, choose densities\n\n$$\\left(\\sigma_1,\\sigma_2,\\sigma_3,\\sigma_4\\right)=(1,0.5,1.5,0.75),$$\n\nand use the fixed colors\n\n$$\\begin{aligned}\n\\mathbf c_1&=(0.85,0.25,0.15),&\n\\mathbf c_2&=(0.20,0.65,0.35),\\\\\n\\mathbf c_3&=(0.20,0.35,0.85),&\n\\mathbf c_4&=(0.80,0.65,0.20).\n\\end{aligned}$$\n\nThese intervals, densities, positions, and colors are chosen teaching inputs rather than paper measurements. Applying the recurrence gives:\n\n| Interval | $\\sigma_i$ | $\\alpha_i$ | prefix $T_i$ | weight $w_i$ |\n|---|---:|---:|---:|---:|\n| $S_1$ | $1.00$ | $0.632121$ | $1.000000$ | $0.632121$ |\n| $S_2$ | $0.50$ | $0.393469$ | $0.367879$ | $0.144749$ |\n| $S_3$ | $1.50$ | $0.776870$ | $0.223130$ | $0.173343$ |\n| $S_4$ | $0.75$ | $0.527633$ | $0.049787$ | $0.026269$ |\n\nAfter the fourth interval, the residual is\n\n$$T_5=0.023518.$$\n\nUsing a white background, $\\mathbf c_{\\mathrm{bg}}=(1,1,1)$, the final pixel is\n\n$$\\begin{aligned}\n\\widehat C_{\\mathrm{final}}\n&=\\sum_{i=1}^{4}w_i\\mathbf c_i+T_5(1,1,1)\\\\\n&\\approx(0.645454,\\,0.353380,\\,0.321594).\n\\end{aligned}$$\n\nNow vary only the front density $\\sigma_1$ from $0$ to $4$, leaving every position, unit interval length, later density, sample color, and white background fixed. Increasing $\\sigma_1$ raises $\\alpha_1$ and therefore $w_1$. At the same time, $T_2=e^{-\\sigma_1\\delta_1}$ falls. Every later weight contains this reduced prefix transmittance, and the residual background weight $T_5$ does too, so all later and background contributions decrease. The control makes front-to-back compositing visible: increasing the contribution of the near interval reduces the light that can reach every later interval and the background.",
+      "sourceIds": [
+        "section-4"
+      ],
+      "claimIds": [
+        "c3",
+        "c4"
+      ],
+      "figureId": "fig-spatial"
+    },
+    {
+      "id": "s4",
+      "title": "4. Continuous queries need high-frequency coordinates",
+      "markdown": "To estimate the integral, NeRF partitions $[t_n,t_f]$ into $N$ equal bins and randomly draws one depth in each bin. This stratification covers the ray while avoiding a permanently fixed lattice. Across optimization iterations, the MLP is evaluated at continuously varying coordinates.\n\nRaw-coordinate MLPs nevertheless tended to produce overly smooth high-frequency geometry and appearance. The paper therefore applies a fixed encoding separately to each scalar coordinate:\n\n$$\\gamma(p)=\\big(\\sin(2^0\\pi p),\\cos(2^0\\pi p),\\ldots,\\sin(2^{L-1}\\pi p),\\cos(2^{L-1}\\pi p)\\big).$$\n\nHere $p$ is one scalar coordinate, $L$ is the number of frequency bands, and $\\gamma(p)\\in\\mathbb R^{2L}$. The learned mapping becomes $F'_\\Theta\\circ\\gamma$. In the reported experiments, the paper used $L=10$ for position and $L=4$ for direction.\n\nThis encoding does not itself discover edges, increase the number of photographs, or guarantee recovery of detail. It supplies oscillatory basis features that make high-frequency variation easier for the MLP to fit. Nor is “more frequencies” automatically better: on the realistic synthetic ablation, increasing spatial $L$ from 10 to 15 did not improve the reported metrics, while reducing it to 5 lowered performance. In those comparisons, the maximum frequency for viewing direction scaled proportionally with the spatial encoding. The ablation therefore tests paired position/direction bandwidths rather than isolating spatial $L$ alone.",
+      "sourceIds": [
+        "section-4",
+        "section-5",
+        "section-6-part-2"
+      ],
+      "claimIds": [
+        "c5",
+        "c6",
+        "c9",
+        "c10"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s5",
+      "title": "5. Spend fine samples where the coarse pass found evidence",
+      "markdown": "Uniform sampling wastes queries in empty space and behind already opaque content. NeRF’s hierarchical procedure trains two networks. First, the coarse network evaluates $N_c$ stratified samples and produces weights\n\n$$w_i=T_i\\left(1-e^{-\\sigma_i\\delta_i}\\right).$$\n\nAfter normalization,\n\n$$\\widehat w_i=\\frac{w_i}{\\sum_j w_j},$$\n\nthe weights define a piecewise-constant probability density along the ray. Here $N_c$ is the number of coarse samples and $\\widehat w_i$ is the normalized weight of interval $i$. Inverse-transform sampling draws $N_f$ additional locations, where $N_f$ is the fine-sample count. The fine network is evaluated at the union of the original and added locations, and the full set is composited in depth order.\n\nThe conceptual distinction is important. Positional encoding changes **what variations the MLP can readily fit**. Hierarchical sampling changes **where computation is allocated along a ray**. It does not delete the coarse pass, and it is not simply “pick the single most opaque point.” Multiple separated intervals may receive fine samples.\n\nThis resembles importance sampling, but the paper uses the new samples as a nonuniform discretization of the integration domain rather than as independent estimates of the entire integral. The coarse rendering also receives its own reconstruction loss so its weights learn to guide the fine sampler.",
+      "sourceIds": [
+        "section-5"
+      ],
+      "claimIds": [
+        "c7",
+        "c8"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s6",
+      "title": "6. Learning the field from images",
+      "markdown": "For a batch $\\mathcal R$ of camera rays, let $C(\\mathbf r)$ be the observed RGB target, $\\widehat C_c(\\mathbf r)$ the coarse prediction, and $\\widehat C_f(\\mathbf r)$ the fine prediction. Training minimizes\n\n$$\\mathcal L=\\sum_{\\mathbf r\\in\\mathcal R}\\left(\\lVert\\widehat C_c(\\mathbf r)-C(\\mathbf r)\\rVert_2^2+\\lVert\\widehat C_f(\\mathbf r)-C(\\mathbf r)\\rVert_2^2\\right).$$\n\nHere $\\mathcal L$ is total batch loss and $\\lVert\\cdot\\rVert_2^2$ is squared Euclidean RGB error. The differentiable chain is: parameters $\\Theta$ determine densities and colors; those determine alphas, transmittances, and ray colors; ray-color errors then determine gradients for $\\Theta$. Agreement across many camera rays encourages one field to explain multiple photographs.\n\nThe optimizer control illustrates repeated loss-reducing updates on the scalar objective $f(x)=x^2/2$. Starting from $x=3$, its 12 steps follow $x_{k+1}=(1-\\eta)x_k$, where $k$ is the iteration and $\\eta$ the learning rate. The contraction factor $|1-\\eta|$ determines how quickly the magnitude shrinks, and the sign of $1-\\eta$ determines whether successive iterates alternate. Predict those two effects before moving the control. NeRF applies optimization to the coarse and fine networks through the differentiable rendering chain described above: both rendered predictions are compared with the same observed RGB target. Agreement on training rays alone does not establish accurate novel views; camera coverage and the learned representation also matter.",
+      "sourceIds": [
+        "section-5"
+      ],
+      "claimIds": [
+        "c8",
+        "c12",
+        "c14"
+      ],
+      "figureId": "fig-optimizer"
+    },
+    {
+      "id": "s7",
+      "title": "7. What the evidence establishes—and what it does not",
+      "markdown": "The reported comparisons use PSNR and SSIM as higher-is-better image-fidelity and structural-similarity measures, while LPIPS is a lower-is-better perceptual-distance measure. These metrics summarize different notions of resemblance; none alone proves geometric correctness, physical scene understanding, or artifact-free motion between views.\n\nOn the eight-scene realistic synthetic benchmark, the complete model averaged 31.01 PSNR, 0.947 SSIM, and 0.081 LPIPS with 100 input images and the reported $(N_c,N_f)=(64,128)$ setup. Removing positional encoding, view dependence, or hierarchical sampling degraded the reported benchmark metrics. The individual changes differ across metrics, so the ablation supports these choices under its tested configuration without establishing one universal ranking across capture regimes. When the spatial frequency count changed from 10 to 5 or 15, the direction encoding frequency changed proportionally; those rows compare paired encoding bandwidths, not spatial encoding alone.\n\nOn the real forward-facing dataset—eight scenes, 20–62 handheld images, and one eighth held out—NeRF reported 26.50 PSNR and 0.811 SSIM, exceeding the listed baselines on those measures. Its LPIPS was 0.250, whereas LLFF’s lower value of 0.212 was better. “Outperformed prior work” must therefore retain its metric and dataset conditions.\n\nSeveral boundaries matter. The formulation models a static scene and assumes known or estimated camera parameters and scene bounds. It optimizes a separate network per scene, so it is not instant feed-forward reconstruction of unseen scenes. As a general identifiability inference—not a measured paper result—photographs that never constrain a hidden surface cannot uniquely determine it. Differentiable rendering supplies gradients from observations; it does not create missing observations. Direction-dependent color represents non-Lambertian appearance, but the evidence does not establish a general physical decomposition of lighting and material.\n\nFinally, the original method remained computationally expensive despite hierarchical sampling, and an implicit network is harder to inspect than a mesh or voxel grid.",
+      "sourceIds": [
+        "section-5",
+        "section-6",
+        "section-6-part-2",
+        "section-7"
+      ],
+      "claimIds": [
+        "c9",
+        "c10",
+        "c11",
+        "c12",
+        "c13",
+        "c14"
+      ],
+      "figureId": null
+    }
+  ],
+  "figures": [
+    {
+      "id": "fig-spatial",
+      "kind": "volume-rendering",
+      "title": "Front-to-back visibility along a finite NeRF ray",
+      "question": "With all sample positions, interval lengths, later densities, and colors fixed, how does increasing only the front density $\\sigma_1$ redistribute the sample weights and residual background weight?",
+      "caption": "Four constructed unit-length intervals expose the recurrence $\\alpha_i=1-e^{-\\sigma_i\\delta_i}$, $w_i=T_i\\alpha_i$, and $T_{i+1}=T_i(1-\\alpha_i)$ along one finite ray.",
+      "limitation": "This illustrative calculation composites fixed colors and densities; it does not predict a learned radiance field, alter sampling, or measure reconstruction quality.",
+      "sourceIds": [
+        "section-4"
+      ],
+      "claimIds": [
+        "c3",
+        "c4"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "fig-optimizer",
+      "kind": "optimizer",
+      "title": "A tiny model of iterative loss reduction",
+      "question": "From $x=3$, how does changing the learning rate alter the 12 ordinary gradient-descent iterates on $f(x)=x^2/2$?",
+      "caption": "Illustrative ordinary gradient descent on a scalar quadratic shows how a differentiable objective can drive repeated parameter updates.",
+      "limitation": "This is plain gradient descent on one scalar quadratic, not Adam, an MLP, NeRF’s RGB loss landscape, a rendering process, or measured convergence.",
+      "sourceIds": [
+        "section-1",
+        "section-5"
+      ],
+      "claimIds": [
+        "c8",
+        "c12"
+      ],
+      "illustrative": true
+    }
+  ],
+  "quiz": [
+    {
+      "question": "Assume two ordered ray samples have identical density, interval length, and emitted-color magnitude. Why can the nearer sample contribute more to the rendered pixel?",
+      "options": [
+        {
+          "text": "Its weight is not attenuated by density at earlier samples, whereas the farther sample’s transmittance may be smaller.",
+          "explanation": "Correct. Each weight is $T_i\\alpha_i$; accumulated density before a farther sample can reduce $T_i$."
+        },
+        {
+          "text": "NeRF always assigns a larger density to the nearest sample.",
+          "explanation": "Incorrect. The premise gives equal densities, and the architecture contains no universal nearest-sample rule."
+        },
+        {
+          "text": "Direction-dependent color forces all distant samples to zero.",
+          "explanation": "Incorrect. Viewing direction can affect color, but it does not automatically erase distant contributions."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-4"
+      ],
+      "claimIds": [
+        "c3",
+        "c4"
+      ]
+    },
+    {
+      "question": "Suppose a NeRF preserves positional encoding but replaces hierarchical sampling with many uniformly placed samples. Which capability is most directly removed?",
+      "options": [
+        {
+          "text": "The ability to represent direction-dependent color.",
+          "explanation": "Incorrect. View dependence is controlled by providing direction to the color branch, not by hierarchical sampling."
+        },
+        {
+          "text": "The mechanism that reallocates additional ray samples according to coarse rendering weights.",
+          "explanation": "Correct. Hierarchical sampling specifically turns normalized coarse weights into a distribution for additional samples."
+        },
+        {
+          "text": "The sine-and-cosine features that help fit high-frequency functions.",
+          "explanation": "Incorrect. The premise explicitly preserves positional encoding."
+        }
+      ],
+      "answer": 1,
+      "sourceIds": [
+        "section-3",
+        "section-5"
+      ],
+      "claimIds": [
+        "c2",
+        "c6",
+        "c7"
+      ]
+    },
+    {
+      "question": "Under the reported real forward-facing comparison, which conclusion is justified?",
+      "options": [
+        {
+          "text": "NeRF was best on every reported metric.",
+          "explanation": "Incorrect. LLFF had lower, and therefore better, LPIPS: 0.212 versus NeRF’s 0.250."
+        },
+        {
+          "text": "NeRF’s results prove superior performance for dynamic and unbounded scenes.",
+          "explanation": "Incorrect. Those settings were not established by the supplied experiment evidence."
+        },
+        {
+          "text": "NeRF led the listed methods in PSNR and SSIM, while LLFF led in LPIPS.",
+          "explanation": "Correct. The reported real-scene values support precisely this metric-conditioned conclusion."
+        }
+      ],
+      "answer": 2,
+      "sourceIds": [
+        "section-6"
+      ],
+      "claimIds": [
+        "c11"
+      ]
+    }
+  ],
+  "id": "nerf-representing-scenes-as-neural-radiance",
+  "createdAt": "2026-10-01T23:13:38.557Z",
+  "pipelineVersion": "subjects-lessons-v1",
+  "sources": [
+    {
+      "id": "abstract",
+      "label": "Original paper · abstract",
+      "url": "https://arxiv.org/abs/2003.08934",
+      "digest": "b42ddd6e369fb465012952fef7f6e648e223c8d45ff040c1935195535000dffd",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:04:45.698Z"
+    },
+    {
+      "id": "section-1",
+      "label": "1 Introduction",
+      "url": "https://arxiv.org/html/2003.08934#S1",
+      "digest": "128e041400c803c880ddbf0d0a6677714a47881e3aae088b6a4ffac34d20e79a",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:04:45.698Z"
+    },
+    {
+      "id": "section-2",
+      "label": "2 Related Work",
+      "url": "https://arxiv.org/html/2003.08934#S2",
+      "digest": "9a62e370ce7e1af2ce5d0a330f86c6c0687b9f474b178d9abac10dec4ab3b02a",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:04:45.698Z"
+    },
+    {
+      "id": "section-3",
+      "label": "3 Neural Radiance Field Scene Representation",
+      "url": "https://arxiv.org/html/2003.08934#S3",
+      "digest": "24631af8529b326c4e3960a42c77bbc0eef6ad5bab074fc7b5d188c602c3d7c6",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:04:45.698Z"
+    },
+    {
+      "id": "section-4",
+      "label": "4 Volume Rendering with Radiance Fields",
+      "url": "https://arxiv.org/html/2003.08934#S4",
+      "digest": "0302bc220c416f45ae6a0fcd9338a7cb0e85327e4153dccd63a418b651fbabaf",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:04:45.698Z"
+    },
+    {
+      "id": "section-5",
+      "label": "5 Optimizing a Neural Radiance Field",
+      "url": "https://arxiv.org/html/2003.08934#S5",
+      "digest": "17a7bc23573ae99ba6f91d6b0ec1350f66e74f812f0c95ae3da77e3b979eab9d",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:04:45.698Z"
+    },
+    {
+      "id": "section-6",
+      "label": "6 Results",
+      "url": "https://arxiv.org/html/2003.08934#S6",
+      "digest": "ac69ce8e1beb56ca765b2dd9a3deb181634d32f18dcd3382cdfcced7f8375733",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:04:45.698Z"
+    },
+    {
+      "id": "section-6-part-2",
+      "label": "6 Results · part 2",
+      "url": "https://arxiv.org/html/2003.08934#S6",
+      "digest": "8ec80cb21dade3cbc2fdba2488a1d2d5f010fa322ba48d2afef5593003eea952",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:04:45.698Z"
+    },
+    {
+      "id": "section-7",
+      "label": "7 Conclusion",
+      "url": "https://arxiv.org/html/2003.08934#S7",
+      "digest": "96f9cb414063414c36fc81b2246222730018b22a09e5d3058583bc39b6a20cc7",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:04:45.698Z"
+    }
+  ],
+  "review": {
+    "status": "passed",
+    "reviewedAt": "2026-10-02T02:08:50.385Z",
+    "contentDigest": "b3a1eb8a5d93aa51cc53b32c7174950b541f66c5d1326406f2c81374338b4ce4"
+  }
+}

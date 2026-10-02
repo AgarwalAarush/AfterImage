@@ -1,0 +1,425 @@
+{
+  "title": "Borrowing a Distribution You Cannot See",
+  "summary": "Proxy-KD aligns an accessible proxy to a black-box teacher, then trains a smaller student with teacher sequences and confidence-weighted proxy distributions.",
+  "prerequisites": [
+    "Conditional language model probabilities",
+    "Negative log-likelihood and cross-entropy",
+    "KL divergence and softmax",
+    "Means, variances, standard deviations, and sigmoid functions"
+  ],
+  "objectives": [
+    "Distinguish hard sequence labels from soft token distributions.",
+    "Trace Proxy-KD from proxy alignment through student training.",
+    "Compute the sample weight that regulates proxy supervision.",
+    "Interpret results within the stated model and evaluation conditions.",
+    "Explain why an accessible but unaligned proxy can harm distillation."
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "mechanism",
+      "statement": "A black-box teacher exposes generated outputs but not the output distributions or internal states used by conventional white-box distillation.",
+      "conditions": "The teacher is accessible only through generated responses rather than parameters or token-level probabilities.",
+      "sourceIds": [
+        "section-1",
+        "section-3"
+      ]
+    },
+    {
+      "id": "c2",
+      "kind": "mechanism",
+      "statement": "Proxy-KD inserts a larger accessible proxy between the black-box teacher and the smaller student.",
+      "conditions": "The proxy is a white-box language model whose output probabilities can be evaluated during student training.",
+      "sourceIds": [
+        "section-1",
+        "section-3"
+      ]
+    },
+    {
+      "id": "c3",
+      "kind": "result",
+      "statement": "The training corpus is divided into 10% warm-up data, 45% proxy-alignment data, and 45% student-distillation data.",
+      "conditions": "This is the split specified by the method and instantiated on the paper's one-million-sequence training corpus.",
+      "sourceIds": [
+        "section-3",
+        "section-4"
+      ]
+    },
+    {
+      "id": "c4",
+      "kind": "equation",
+      "statement": "The proxy-alignment objective combines negative log-likelihood on teacher sequences with an iterative DPO preference term that is maximized—or equivalently negated and minimized—to favor teacher responses over proxy-generated responses.",
+      "conditions": "At iteration i, the preceding proxy is the reference model and each preference triple contains a prompt, teacher response, and sampled proxy response; the paper prints a positive log-sigmoid term, so its preference-improving direction must be treated as maximization or as minimization after negation.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c5",
+      "kind": "equation",
+      "statement": "The student objective adds teacher-sequence negative log-likelihood to a weighted forward KL divergence from proxy to student, scaled by alpha.",
+      "conditions": "The KL term uses accessible proxy and student token distributions under response-prefix contexts. The paper describes token-level supervision but writes sequence-level notation and does not specify whether positional losses are summed or averaged; its sample weight is derived from the proxy log-likelihood of the teacher sequence.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c6",
+      "kind": "mechanism",
+      "statement": "The sample weight is the sigmoid of a standardized proxy log-likelihood for the teacher-generated response.",
+      "conditions": "The mean and standard deviation are computed over the student-distillation dataset; a nonzero standard deviation is required.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c7",
+      "kind": "caveat",
+      "statement": "A proxy is an approximation to the teacher, so residual proxy-teacher discrepancies motivate reducing soft-label influence on poorly aligned samples.",
+      "conditions": "The weighting heuristic uses proxy likelihood of the observed teacher response as an alignment-quality signal rather than direct access to the teacher distribution.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c8",
+      "kind": "result",
+      "statement": "With the Llama-2-7B student, the reported six-benchmark average is 56.78 for Proxy-KD and 53.66 for the authors' vanilla black-box KD implementation.",
+      "conditions": "GPT-4 is the teacher, Llama-2-70B is the Proxy-KD proxy backbone, and evaluation uses zero-shot greedy decoding on the six listed benchmarks.",
+      "sourceIds": [
+        "section-4",
+        "section-5"
+      ]
+    },
+    {
+      "id": "c9",
+      "kind": "result",
+      "statement": "Removing proxy alignment produced large reported drops on BBH, GSM8K, and MMLU, while CSQA increased slightly.",
+      "conditions": "The ablation uses Llama-2-7B as student and Llama-2-70B as proxy; differences are relative to the full student objective.",
+      "sourceIds": [
+        "section-4",
+        "section-5"
+      ]
+    },
+    {
+      "id": "c10",
+      "kind": "result",
+      "statement": "Replacing weighted KL with standard KL lowered scores on most, but not all, reported benchmarks.",
+      "conditions": "In the stated ablation, ARC increased by 0.72 while AGIEval, BBH, CSQA, GSM8K, and MMLU decreased.",
+      "sourceIds": [
+        "section-4",
+        "section-5"
+      ]
+    },
+    {
+      "id": "c11",
+      "kind": "result",
+      "statement": "The aligned Llama-2-70B proxy produced better proxy and student performance than the aligned Llama-2-13B proxy.",
+      "conditions": "The comparison changes proxy backbone capacity within the paper's tested Llama-2 proxy setting.",
+      "sourceIds": [
+        "section-5"
+      ]
+    },
+    {
+      "id": "c12",
+      "kind": "caveat",
+      "statement": "Proxy alignment and online proxy sampling add training overhead, and the experiments cover only Llama-family proxy and student backbones.",
+      "conditions": "These limitations concern the evaluated implementation and restrict claims about cost and generalization to other backbone families.",
+      "sourceIds": [
+        "section-7"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "s1",
+      "title": "The missing object in black-box distillation",
+      "markdown": "A language model defines a conditional distribution over the next token. Let $x$ denote a prompt, $y=(y_1,\\ldots,y_T)$ a response, $\\pi_t$ the teacher, $\\pi_p$ the proxy, and $\\pi_s$ the student. A white-box teacher can reveal probabilities such as $\\pi_t(y_j\\mid x,y_{<j})$, where $y_{<j}$ is the prefix before token $j$. A black-box service may instead return only one completed sequence $y$.\n\nThat difference matters. A returned token is a **hard label**: it identifies what was generated. A full distribution is a **soft label**: it also says how probability was divided among alternatives. Conventional response-based distillation can compare teacher and student distributions, but that comparison is unavailable when the teacher exposes only text. Ordinary black-box distillation therefore trains the student on teacher-generated input-output pairs.\n\nThe attention control gives a small prerequisite intuition. It divides four fixed scores by a positive temperature and applies softmax. Raising temperature spreads probability across alternatives; lowering it concentrates probability near the largest score. The control is not a measured attention head or a model of Proxy-KD. Its useful lesson is narrower: one selected outcome conceals information that remains visible in the entire normalized distribution. Proxy-KD is designed to recover an accessible approximation to that richer signal.",
+      "sourceIds": [
+        "section-1",
+        "section-2",
+        "section-3"
+      ],
+      "claimIds": [
+        "c1"
+      ],
+      "figureId": "fig-attention"
+    },
+    {
+      "id": "s2",
+      "title": "The proxy as a distributional bridge",
+      "markdown": "Proxy-KD introduces $\\pi_p$, typically a larger white-box model than $\\pi_s$. The proxy does not unlock the proprietary teacher. Instead, it learns from outputs that the teacher already provides, after which its own token probabilities can be inspected.\n\nThe dataset $\\mathcal{D}=\\{(x,y)\\}$ contains prompts $x$ and teacher-generated responses $y$. The method divides it into disjoint roles: $\\mathcal{D}_w$ uses 10% for proxy warm-up, $\\mathcal{D}_p$ uses 45% for proxy alignment, and $\\mathcal{D}_s$ uses 45% for student distillation. In the reported corpus of one million sequences, these portions contain 100,000, 450,000, and 450,000 examples.\n\nThe separation creates a two-stage pipeline. First, make an accessible model imitate the black-box teacher well enough to act as a distributional bridge. Second, train the student from two complementary channels: the teacher's actual sequences and the aligned proxy's accessible distributions. Calling the proxy a bridge is important: it is neither the teacher itself nor merely an intermediate model trained without special alignment.",
+      "sourceIds": [
+        "section-1",
+        "section-3",
+        "section-4"
+      ],
+      "claimIds": [
+        "c2",
+        "c3"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s3",
+      "title": "Stage one: align before distilling",
+      "markdown": "Warm-up first teaches $\\pi_p$ basic response generation on $\\mathcal{D}_w$. On $\\mathcal{D}_p$, supervised alignment minimizes\n\n$$\\mathcal{L}_{\\text{Proxy-NLL}}=\\mathbb{E}_{(x,y)\\sim\\mathcal{D}_p}\\left[-\\log \\pi_p(y\\mid x)\\right].$$\n\nHere $\\mathbb{E}$ is an average over examples, and $\\pi_p(y\\mid x)$ is the proxy probability of the complete teacher response. Sequence log-probability is normally the sum of conditional token log-probabilities.\n\nThe method then adds preference optimization. At iteration $i$, it pairs teacher response $y$ with proxy response $\\hat y$ for the same $x$. The paper's DPO expression compares how the current proxy $\\pi_p^{(i)}$ changes the relative support for each response against the preceding proxy $\\pi_p^{(i-1)}$:\n\n$$J_{\\mathrm{DPO}}^{(i)}=\\log\\sigma\\!\\left(\\beta\\log\\frac{\\pi_p^{(i)}(y\\mid x)}{\\pi_p^{(i-1)}(y\\mid x)}-\\beta\\log\\frac{\\pi_p^{(i)}(\\hat y\\mid x)}{\\pi_p^{(i-1)}(\\hat y\\mid x)}\\right).$$\n\nThe sigmoid $\\sigma(z)=1/(1+e^{-z})$ maps a real number into $(0,1)$, while $\\beta$ controls preference strength. Preference learning must **maximize** this displayed log-sigmoid, or equivalently minimize $-J_{\\mathrm{DPO}}^{(i)}$. Minimizing the positive expression as printed would reverse the intended preference. Thus, when combining it with the NLL as an ordinary minimized objective, the operational form is $\\mathcal{L}_{\\text{Proxy-NLL}}^{(i)}-\\mathbb{E}[J_{\\mathrm{DPO}}^{(i)}]$. The paper writes the positive log-sigmoid and then adds its expected value under the name “loss,” leaving this sign convention ambiguous; the preference-improving direction resolves that ambiguity. Training repeats for a fixed number of iterations or until convergence.\n\nA common misconception is that any large accessible proxy automatically supplies teacher-like soft labels. It does not. Unless aligned, its probabilities express its own behavior. In the paper's ablation, skipping alignment caused drops of 10.40 on BBH, 5.53 on GSM8K, and 3.26 on MMLU, although CSQA rose by 0.86. Thus alignment was broadly important in this setting, not uniformly beneficial on every individual benchmark.",
+      "sourceIds": [
+        "section-3",
+        "section-4",
+        "section-5"
+      ],
+      "claimIds": [
+        "c4",
+        "c9"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s4",
+      "title": "Stage two: two signals for the student",
+      "markdown": "On $\\mathcal{D}_s$, the hard-label channel minimizes\n\n$$\\mathcal{L}_{\\text{Student-NLL}}=\\mathbb{E}_{(x,y)\\sim\\mathcal{D}_s}\\left[-\\log\\pi_s(y\\mid x)\\right].$$\n\nThis preserves direct supervision from sequences actually generated by the black-box teacher. For a response position $j$, define the teacher-forced prefix context $c_j=(x,y_{<j})$ and the accessible next-token distributions\n\n$$p_j(z)=\\pi_p(z\\mid c_j),\\qquad q_j(z)=\\pi_s(z\\mid c_j),$$\n\nwhere $z$ ranges over vocabulary tokens. A token-level soft-label contribution is then\n\n$$D_{\\mathrm{KL}}(p_j\\|q_j)=\\sum_z p_j(z)\\log\\frac{p_j(z)}{q_j(z)}.$$\n\nThe response-level contribution aggregates these divergences over positions, for example as $K(x,y)=\\sum_{j=1}^{T}D_{\\mathrm{KL}}(p_j\\|q_j)$ or as the corresponding positional mean. The paper states that supervision is token-level but writes the ambiguous shorthand $D_{\\mathrm{KL}}(\\pi_p(y\\mid x)\\|\\pi_s(y\\mid x))$ and does not specify whether positions are summed or averaged. Accordingly, $K(x,y)$ denotes the implementation's chosen positional aggregation rather than a divergence over complete-response distributions, and\n\n$$\\mathcal{L}_{\\text{Student-KL}}=\\mathbb{E}_{(x,y)\\sim\\mathcal{D}_s}[K(x,y)].$$\n\nProxy-KD does not discard the black-box outputs after aligning the proxy. Its final objective is\n\n$$\\mathcal{L}_{\\text{Student}}=\\mathcal{L}_{\\text{Student-NLL}}+\\alpha\\mathcal{L}_{\\text{Weight-KL}},$$\n\nwhere $\\alpha$ controls the strength of weighted soft supervision. This pairing prevents a misleading interpretation: the student is not trained solely to clone the proxy. Teacher sequences remain an explicit anchor, while the proxy contributes next-token information about alternatives under the observed response prefixes.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c5"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s5",
+      "title": "Trust the proxy sample by sample",
+      "markdown": "Even an aligned proxy can disagree with the inaccessible teacher distribution. Because that distribution cannot be inspected, the method scores an observable surrogate: how likely the proxy finds the teacher's actual response. Define $\\ell(x,y)=\\log\\pi_p(y\\mid x)$, its dataset mean $\\mu=\\mathbb{E}[\\ell]$, and its population standard deviation $\\gamma=\\sqrt{\\mathbb{V}\\mathrm{ar}[\\ell]}$. As defined in the previous section, this is the raw complete-sequence log-likelihood,\n\n$$\\ell(x,y)=\\sum_{j=1}^{T}\\log\\pi_p(y_j\\mid x,y_{<j}),$$\n\nnot a length-normalized or per-token average. The sample weight is\n\n$$w(x,y)=\\sigma\\left(\\frac{\\ell(x,y)-\\mu}{\\gamma}\\right),$$\n\nand, using $K(x,y)$ for the position-aggregated token-level proxy-to-student KL defined above,\n\n$$\\mathcal{L}_{\\text{Weight-KL}}=\\mathbb{E}_{(x,y)\\sim\\mathcal{D}_s}\\left[w(x,y)K(x,y)\\right].$$\n\nConsider an illustrative three-example batch with log-likelihoods $[-3,-2,-1]$. Its mean is $\\mu=-2$, variance is $2/3$, and $\\gamma=\\sqrt{2/3}\\approx0.816$. The standardized values are approximately $[-1.225,0,1.225]$, giving weights $[0.227,0.500,0.773]$. Thus the example whose teacher response receives the greatest proxy likelihood contributes about $0.773K$ if its aggregated token-level KL value is $K$, while the lowest-likelihood example contributes about $0.227K$. These numbers are illustrative, not paper measurements.\n\nThe normalization control pictures the prerequisite computation on five fixed activations. Changing a common offset changes the raw values but not their standardized values, because the mean shifts with them. It is only a one-vector standardization demonstration, not a complete training layer. In Proxy-KD, standardization similarly makes the weight depend on relative log-likelihood within $\\mathcal{D}_s$, followed by a sigmoid that bounds it between zero and one.\n\nBecause the score sums token log-probabilities, it reflects more than proxy–teacher alignment. Response length and token-level difficulty can affect the weight independently: each token log-probability is nonpositive, so longer teacher responses generally accumulate more-negative sequence log-likelihoods and may be downweighted partly because of their length, while responses containing tokens that the proxy finds difficult can be downweighted for that reason as well. The heuristic therefore does not prove that a high-weight proxy distribution equals the hidden teacher distribution; it only prioritizes samples for which the proxy assigns relatively strong raw complete-sequence likelihood to the observed teacher response.",
+      "sourceIds": [
+        "section-3",
+        "section-5"
+      ],
+      "claimIds": [
+        "c6",
+        "c7",
+        "c10"
+      ],
+      "figureId": "fig-normalization"
+    },
+    {
+      "id": "s6",
+      "title": "What the reported evidence establishes",
+      "markdown": "The main experiment uses GPT-4 as black-box teacher, Llama-2-70B or Llama-2-13B as proxy, and Llama-1-7B or Llama-2-7B as student. Evaluation covers AGIEval, ARC-Challenge, BBH, CSQA, GSM8K, and MMLU with zero-shot greedy decoding.\n\nFor the Llama-2-7B student, Proxy-KD reports scores of 36.59, 71.09, 53.40, 75.18, 53.07, and 51.35 across those benchmarks, averaging 56.78. The authors' vanilla black-box KD implementation averages 53.66 under its listed comparison. This supports an improvement under the paper's checkpoints, corpus, training recipe, and evaluation procedure; it is not evidence that every proxy, student, or task will improve.\n\nThe ablations sharpen the mechanism claim. Removing the proxy reverts to hard-label training and lowers several scores. Removing preference optimization hurts proxy and student performance on several benchmarks, though not every entry moves in the same direction. Replacing weighted KL with unweighted KL lowers five of six listed scores, while ARC rises from 71.09 to 71.81. Finally, the aligned 70B proxy outperforms the aligned 13B proxy and yields a stronger student in the paper's capacity comparison. These are conditional comparisons, not a universal scaling law.",
+      "sourceIds": [
+        "section-4",
+        "section-5"
+      ],
+      "claimIds": [
+        "c8",
+        "c9",
+        "c10",
+        "c11"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s7",
+      "title": "Boundaries of the bridge",
+      "markdown": "Proxy-KD exchanges one access problem for additional training work. Aligning a large proxy costs time, and preference optimization requires online sampling from that proxy. The experiments used one training epoch, Adam, LoRA, mixed precision, and eight 80GB A100 GPUs; those implementation conditions matter when judging practicality.\n\nExternal validity is also limited. The proxy and student experiments cover Llama-family backbones, not alternatives such as Qwen or Mistral. The proxy-quality signal is indirect: high proxy likelihood for a teacher sequence is not direct measurement of distance from the teacher's hidden token distribution. Moreover, the reported advantage is empirical rather than guaranteed; individual ablations include exceptions such as the ARC increase without weighting and the CSQA increase without alignment.\n\nThe defensible conclusion is therefore specific. When black-box teacher sequences are available, an aligned, inspectable proxy can provide useful soft supervision in addition to those sequences. The paper's evidence indicates that alignment quality, proxy capacity, and sample weighting matter in its tested setting. It does not establish that a proxy reconstructs the proprietary model's internals or that its gains transfer unchanged to other backbones, compute budgets, decoding rules, or data distributions.",
+      "sourceIds": [
+        "section-4",
+        "section-5",
+        "section-7"
+      ],
+      "claimIds": [
+        "c7",
+        "c10",
+        "c11",
+        "c12"
+      ],
+      "figureId": null
+    }
+  ],
+  "figures": [
+    {
+      "id": "fig-attention",
+      "kind": "attention",
+      "title": "A hard choice hides a soft distribution",
+      "question": "As temperature increases, how does probability move among the four fixed scores?",
+      "caption": "Four illustrative scores [2, 1, 0, -1] are divided by a positive temperature and normalized with softmax, exposing probability mass that a single selected outcome would hide.",
+      "limitation": "This shows normalized illustrative attention weights, not a measured model head, learned token similarity, or the teacher and proxy distributions in Proxy-KD.",
+      "sourceIds": [
+        "section-1",
+        "section-3"
+      ],
+      "claimIds": [
+        "c1"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "fig-normalization",
+      "kind": "normalization",
+      "title": "From relative score to bounded weight",
+      "question": "If the same offset is added to every activation, what changes after mean subtraction and standard-deviation scaling?",
+      "caption": "Five fixed activations [-2, -1, 0, 2, 6] show how subtracting the mean and dividing by population standard deviation converts raw values into relative standardized scores.",
+      "limitation": "This is one illustrative vector and not a full normalization layer; it does not compute Proxy-KD log-likelihoods, KL losses, or empirical sample weights.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c6"
+      ],
+      "illustrative": true
+    }
+  ],
+  "quiz": [
+    {
+      "question": "Assume teacher sequences are available but teacher token probabilities are not. What new training signal does an aligned white-box proxy enable?",
+      "options": [
+        {
+          "text": "A forward KL signal from accessible proxy distributions to the student.",
+          "explanation": "Correct. The proxy exposes soft distributions that can be compared with the student's distributions."
+        },
+        {
+          "text": "Direct recovery of the teacher's hidden states.",
+          "explanation": "Incorrect. Proxy-KD does not gain access to proprietary internal states."
+        },
+        {
+          "text": "Removal of teacher-sequence supervision from student training.",
+          "explanation": "Incorrect. Teacher sequences remain in the student's negative-log-likelihood term."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c1",
+        "c2",
+        "c5"
+      ]
+    },
+    {
+      "question": "For illustrative proxy log-likelihoods [-3, -2, -1], using their population mean and standard deviation, which sample receives the largest sigmoid weight?",
+      "options": [
+        {
+          "text": "The sample with log-likelihood -3.",
+          "explanation": "Incorrect. It has the most negative standardized score and therefore the smallest sigmoid weight."
+        },
+        {
+          "text": "The sample with log-likelihood -2.",
+          "explanation": "Incorrect. It equals the mean, so its standardized score is zero and its weight is 0.5."
+        },
+        {
+          "text": "The sample with log-likelihood -1.",
+          "explanation": "Correct. It is above the mean by the largest amount and receives the largest weight."
+        }
+      ],
+      "answer": 2,
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c6"
+      ]
+    },
+    {
+      "question": "Which conclusion best matches the paper's evidence about sample weighting?",
+      "options": [
+        {
+          "text": "Weighting improved every benchmark in the ablation.",
+          "explanation": "Incorrect. Replacing weighted KL with standard KL increased ARC while reducing five other listed scores."
+        },
+        {
+          "text": "Weighting usually helped in the tested ablation, but its benefit was not universal across benchmarks.",
+          "explanation": "Correct. Five of six reported benchmark scores fell without weighting, while ARC rose."
+        },
+        {
+          "text": "Weighting proves that the proxy distribution equals the hidden teacher distribution.",
+          "explanation": "Incorrect. The weight uses proxy likelihood of an observed teacher response, not direct access to the teacher distribution."
+        }
+      ],
+      "answer": 1,
+      "sourceIds": [
+        "section-3",
+        "section-4",
+        "section-5"
+      ],
+      "claimIds": [
+        "c7",
+        "c10"
+      ]
+    }
+  ],
+  "id": "knowledge-distillation-of-black-box-large",
+  "createdAt": "2026-10-02T00:29:25.947Z",
+  "pipelineVersion": "subjects-lessons-v1",
+  "sources": [
+    {
+      "id": "abstract",
+      "label": "Original paper · abstract",
+      "url": "https://arxiv.org/abs/2401.07013",
+      "digest": "b04b0e189607de38cf0b72464c21bb8d16ace0371f30cb395b13a6b67a3aac3b",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:25:27.680Z"
+    },
+    {
+      "id": "section-1",
+      "label": "1 Introduction",
+      "url": "https://arxiv.org/html/2401.07013#S1",
+      "digest": "f9b22b56fda52a089de452bc1bf80a27553dc79403bfb768aa160fc29a51d172",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:25:27.680Z"
+    },
+    {
+      "id": "section-2",
+      "label": "2 Related Work",
+      "url": "https://arxiv.org/html/2401.07013#S2",
+      "digest": "3e1bfeb7fd6cfb352f4b025701d97e2cb9f144565c757807b733379f573ff9f2",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:25:27.680Z"
+    },
+    {
+      "id": "section-3",
+      "label": "3 Method",
+      "url": "https://arxiv.org/html/2401.07013#S3",
+      "digest": "c43b88ae4c754fc607c7bea26f885f983882a1496bbc2d79b8953293ad96e240",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:25:27.680Z"
+    },
+    {
+      "id": "section-4",
+      "label": "4 Experimental Setup",
+      "url": "https://arxiv.org/html/2401.07013#S4",
+      "digest": "a9af46c6c24d48df95db0fa896f72c5cb13e0068379ebde093315c8f624c01bc",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:25:27.680Z"
+    },
+    {
+      "id": "section-5",
+      "label": "5 Result and Analysis",
+      "url": "https://arxiv.org/html/2401.07013#S5",
+      "digest": "23eaa8776032046c9bb58370ba3034dede8e79777c19dd39b639088380950052",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:25:27.680Z"
+    },
+    {
+      "id": "section-6",
+      "label": "6 Conclusion",
+      "url": "https://arxiv.org/html/2401.07013#S6",
+      "digest": "e07b44ad2a320a9bed01668dd49bc2cf9a48038d52f55c885b0a0bd0b38ef900",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:25:27.680Z"
+    },
+    {
+      "id": "section-7",
+      "label": "Limitations",
+      "url": "https://arxiv.org/html/2401.07013#Sx1",
+      "digest": "7364463e96b2d1220f3daf1164a94f7c35b784b440331e66a6b44e8a7a9b4028",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:25:27.680Z"
+    }
+  ],
+  "review": {
+    "status": "passed",
+    "reviewedAt": "2026-10-02T00:29:25.948Z",
+    "contentDigest": "4bded231b8ea47197515371f7856cc87c0f7373b22501519cfccbdd4385dbf96"
+  }
+}

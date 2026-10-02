@@ -1,0 +1,481 @@
+{
+  "title": "Mooncake’s Moving Center: Scheduling the Cache, Not Just the GPUs",
+  "summary": "Mooncake separates prefill from decoding and makes KVCache placement, transfer, reuse, and future-load prediction central to serving long-context LLM requests under latency SLOs.",
+  "prerequisites": [
+    "Transformer attention and autoregressive generation",
+    "Latency, throughput, and service-level objectives",
+    "Caching, batching, and memory tiers"
+  ],
+  "objectives": [
+    "Explain why prefill and decoding benefit from separate resource pools.",
+    "Trace KVCache placement, transfer, and reuse through Mooncake's workflow.",
+    "Apply cache-aware scheduling trade-offs to a small example.",
+    "Distinguish early rejection from prediction-based early rejection.",
+    "Interpret the paper's results within their reported conditions."
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "mechanism",
+      "statement": "An LLM request has a parallel prefill stage that creates the first token and KVCache, followed by token-at-a-time autoregressive decoding that extends that cache.",
+      "conditions": "For the decoder-only Transformer inference model described by the paper.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c2",
+      "kind": "mechanism",
+      "statement": "Mooncake separates prefill and decoding while pooling otherwise underused CPU, DRAM, SSD, and RDMA resources into a disaggregated KVCache.",
+      "conditions": "In Mooncake’s cluster architecture; this is not a claim that every serving system has these resources or topology.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c3",
+      "kind": "mechanism",
+      "statement": "Mooncake’s separate GPUDirect-RDMA-based Messenger component handles KVCache block transfers across CPUs and GPUs.",
+      "conditions": "For the storage and transfer architecture described in the paper’s system overview.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c4",
+      "kind": "mechanism",
+      "statement": "Conductor chooses prefill and decoding resources using both workload state and the current distribution of reusable KVCache.",
+      "conditions": "For global request dispatch in Mooncake.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c5",
+      "kind": "mechanism",
+      "statement": "Cache-aware prefill scheduling estimates execution and queueing contributions to TTFT for each candidate instance, then selects the shortest estimated TTFT.",
+      "conditions": "For normal-condition prefill scheduling with the paper’s offline-derived duration predictor and current queue estimates.",
+      "sourceIds": [
+        "section-6"
+      ]
+    },
+    {
+      "id": "c6",
+      "kind": "mechanism",
+      "statement": "Chunked pipeline parallelism partitions a request’s input into bounded chunks that different prefill nodes can process simultaneously.",
+      "conditions": "For long-context prefill in a pipelined group of X nodes; the excerpt does not specify a universal value of X.",
+      "sourceIds": [
+        "section-5"
+      ]
+    },
+    {
+      "id": "c7",
+      "kind": "equation",
+      "statement": "The paper models KVCache occupation cost as cache size times processing time: $C=S T$, where $S$ is a request’s KVCache size and $T$ is its processing time.",
+      "conditions": "This is the paper’s theoretical occupation-cost abstraction, not a reported byte-second measurement from a benchmark.",
+      "sourceIds": [
+        "section-5"
+      ]
+    },
+    {
+      "id": "c8",
+      "kind": "mechanism",
+      "statement": "Mooncake overlaps layer-wise KVCache movement with prefill computation rather than waiting to transfer the entire cache only after computation finishes.",
+      "conditions": "For the asynchronous layer-wise loading and storing design described for Mooncake’s prefill pool.",
+      "sourceIds": [
+        "section-5"
+      ]
+    },
+    {
+      "id": "c9",
+      "kind": "mechanism",
+      "statement": "Early rejection checks both resource pools before prefill and bases admission on the more heavily loaded pool, reducing work spent on requests likely to fail later.",
+      "conditions": "For overloaded operation in Mooncake’s disaggregated two-stage architecture.",
+      "sourceIds": [
+        "section-7"
+      ]
+    },
+    {
+      "id": "c10",
+      "kind": "caveat",
+      "statement": "Admission based only on the decoding load visible now can oscillate because decoding happens after a prefill-induced delay.",
+      "conditions": "For early rejection without future-load prediction, especially when prefill is slow or the prefill pool is small.",
+      "sourceIds": [
+        "section-7"
+      ]
+    },
+    {
+      "id": "c11",
+      "kind": "mechanism",
+      "statement": "Mooncake’s implemented system-level predictor removes decoding work expected to finish before the prediction time and computes the average TBT ratio across decoding instances relative to $l_{tbt}$; it leaves request-level prediction for future work.",
+      "conditions": "For the overload-oriented policy implemented at the time of the paper; the paper distinguishes this system-level procedure from request-level prediction, which it leaves for future work.",
+      "sourceIds": [
+        "section-7"
+      ]
+    },
+    {
+      "id": "c12",
+      "kind": "result",
+      "statement": "In the paper’s simulated long-context comparison, Mooncake-[3P+1D] and Mooncake-[2P+2D] achieved 50%–525% higher throughput than vLLM-[4M] while satisfying the evaluated P90 TTFT and TBT SLOs.",
+      "conditions": "Dummy LLaMA2-70B-like model; Mooncake-[3P+1D] and Mooncake-[2P+2D] compared with vLLM-[4M]; simulated 16k–128k-token prompts, 512-token outputs, 50% cache ratio, and Poisson arrivals; compliance evaluated using P90 TTFT and TBT, with thresholds derived by multiplying the corresponding TTFT and TBT latency measurements at the lowest tested request rate by 10 and 5, respectively; vLLM processed requests individually in this experiment.",
+      "sourceIds": [
+        "section-2",
+        "section-8"
+      ]
+    },
+    {
+      "id": "c13",
+      "kind": "result",
+      "statement": "In the real-trace overload experiment, prediction-based early rejection produced the fewest rejections among the three evaluated policies.",
+      "conditions": "Mooncake cluster with 8 prefill and 8 decoding instances; 23,000-request real trace replayed at 2x speed.",
+      "sourceIds": [
+        "section-8"
+      ]
+    },
+    {
+      "id": "c14",
+      "kind": "caveat",
+      "statement": "The paper’s end-to-end results use a dummy model with the architecture of LLaMA2-70B rather than disclosing evaluation on Kimi’s proprietary model.",
+      "conditions": "Across the experimental results reported in the evaluation section.",
+      "sourceIds": [
+        "section-8"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "s1",
+      "title": "The split hidden inside one response",
+      "markdown": "A generated response looks continuous to a user, but its computation has two unlike phases. During **prefill**, the model processes the input tokens in parallel, produces the first output token, and constructs keys and values that later attention operations will need. During **decoding**, it generates one new token per autoregressive step and appends that token’s keys and values to the KVCache.\n\nThis distinction explains the two service metrics. **Time to first token (TTFT)** measures the delay from arrival to the first generated token and therefore emphasizes prefill and queueing. **Time between tokens (TBT)** measures the interval between successive output tokens and emphasizes decoding. A scheduler can improve throughput by enlarging decoding batches, yet make TBT worse; it can reuse a remote prefix, yet spend enough time fetching it to make TTFT worse.\n\nThe attention control below isolates one prerequisite. Four fixed scores are divided by a positive temperature and normalized with softmax:\n\n$$w_i=\\frac{\\exp(s_i/\\tau)}{\\sum_j\\exp(s_j/\\tau)},$$\n\nwhere $s_i$ is score $i$, $\\tau>0$ is temperature, and $w_i$ is its normalized weight. Lower temperature concentrates weight on the largest score. During autoregressive decoding, the scores for a new query are computed against keys from prior tokens, and the resulting weights combine their corresponding values. Retaining those prior keys and values in the KVCache therefore avoids recomputing them at every decoding step. The toy control shows only how fixed scores become weights; it does not depict the cached keys or values, Mooncake’s scheduler, a measured attention head, or KVCache transfer.",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c1"
+      ],
+      "figureId": "fig-attention"
+    },
+    {
+      "id": "s2",
+      "title": "The architectural inversion",
+      "markdown": "The paper’s central move is not merely “use a cache.” It reorganizes serving around the cache’s location and movement. Mooncake separates prefill instances from decoding instances and combines CPU, DRAM, SSD, and RDMA resources into a disaggregated KVCache. The global scheduler, **Conductor**, therefore chooses more than a GPU: it chooses a prefill group, a decoding instance, and a feasible route for the request’s state.\n\nA typical request proceeds as follows:\n\n1. Conductor identifies reusable prefix blocks and selects prefill and decoding resources.\n2. The prefill side loads useful remote blocks when reuse is worthwhile.\n3. It computes the uncached suffix, potentially in chunks, while writing newly produced KVCache.\n4. Messenger streams layer-wise KVCache toward the decoding node.\n5. After the complete cache reaches decoding-side DRAM, the request joins continuous batching, subject to a local SLO check.\n\nThe last check matters: load can change while prefill runs. A request accepted earlier may still be rejected at decoding, wasting its prefill computation. This is why Mooncake’s architecture and admission policy cannot be understood separately.",
+      "sourceIds": [
+        "section-1",
+        "section-3"
+      ],
+      "claimIds": [
+        "c2",
+        "c3",
+        "c4"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s3",
+      "title": "Blocks turn reuse into a placement problem",
+      "markdown": "Mooncake represents CPU-resident KVCache as paged blocks. Each block’s hash depends on both its own token block and the preceding prefix, so a reusable cache match identifies a connected prefix rather than an arbitrary collection of matching fragments. Conductor can use that prefix identity when choosing a prefill instance, while Messenger moves the corresponding blocks among CPUs and GPUs.\n\nIn the released trace, one block represents 512 tokens. If two requests share their first 12 hash IDs, their reusable prefix length is\n\n$$12\\ \\text{blocks}\\times512\\ \\frac{\\text{tokens}}{\\text{block}}=6144\\ \\text{tokens}.$$\n\nThe 512-token block size belongs to this trace representation and is not a universal deployment requirement. The trace analysis also shows why placement matters: cache policies determine which blocks remain available, while uneven block popularity can make replication useful for avoiding a single hot transfer source.\n\nThe figure’s constructed allocation example isolates the effect of block width. It places 9 live token slots into blocks within a fixed 16-slot display. For block width $b=4$, allocation must occur in whole blocks, so\n\n$$A=b\\left\\lceil\\frac{9}{b}\\right\\rceil=4\\lceil2.25\\rceil=12\\ \\text{slots},$$\n\nand the unused allocation is\n\n$$A-9=3\\ \\text{slots}.$$\n\nChanging the block-width control recomputes the number of whole blocks, the allocated slots, and the resulting padding while holding the 9 live tokens fixed. Smaller blocks can reduce rounding waste for this constructed occupancy, whereas larger blocks can increase padding when the live-token count is not divisible by the block width. These displayed slots are illustrative allocation units rather than physical bytes or measured latency; the calculation explains the granularity trade-off that paged KVCache introduces without claiming to reproduce Mooncake’s allocator.",
+      "sourceIds": [
+        "section-3",
+        "section-4"
+      ],
+      "claimIds": [
+        "c3"
+      ],
+      "figureId": "fig-memory"
+    },
+    {
+      "id": "s4",
+      "title": "Choosing between reuse and a shorter queue",
+      "markdown": "A common misconception is that the scheduler should always send a request to the node holding its longest cached prefix. That can be wrong because the best-cache node may also have a long queue.\n\nMooncake’s documented cache-aware prefill scheduler first predicts the execution time for each candidate from the request length and that instance’s prefix-cache hit length. It separately estimates waiting time by aggregating the predicted prefill times of queued requests, then uses\n\n$$\\widehat{T}_{\\mathrm{first}}(n)=\\widehat{T}_{\\mathrm{prefill}}(L,P_n)+\\widehat{T}_{\\mathrm{queue}}(n),$$\n\nwhere $n$ is a candidate instance, $L$ is input length, and $P_n$ is its matched prefix length. Conductor selects the candidate with the shortest estimated TTFT, provided the SLO is achievable.\n\nFor an illustrative application of that estimator, suppose node A’s cached prefix reduces predicted execution to 3 ms but its queue contributes 11 ms, while node B has no reusable prefix, a predicted execution time of 10 ms, and a 1 ms queue. The estimates are therefore 14 ms for A and 11 ms for B. Under these invented assumptions, B wins despite reusing less cache because its execution-plus-queue estimate is shorter.\n\nRemote cache movement is handled by a separate heuristic rather than by adding a reliable transfer-time prediction to Algorithm 1. The paper says transfer time is difficult to predict because it depends on data size and changing network congestion. It documents a comparison between estimated additional prefill time and transfer time when Conductor forwards a request and the cache location to an alternative instance, and then states that the alternative instance retrieves and retains the remote KVCache. Those statements do not establish a consistent inequality direction for choosing retrieval over recomputation. Separately, the paper says local computation is preferred when the best remote prefix match is no larger than the current local reusable prefix multiplied by a manually adjusted threshold. Repeated retrieval can replicate hot blocks across machines. Thus the documented TTFT ranking uses predicted prefill execution plus queueing, while the transfer-time comparison, threshold rule, retrieval, and hot-spot replication form subsequent cache-placement heuristics whose precise directional relationship is ambiguous in the paper.",
+      "sourceIds": [
+        "section-1",
+        "section-6"
+      ],
+      "claimIds": [
+        "c4",
+        "c5"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s5",
+      "title": "Long-context prefill as a moving pipeline",
+      "markdown": "Long prompts make prefill expensive, while spreading tensor parallelism across nodes can require frequent communication. Mooncake’s **chunked pipeline parallelism (CPP)** groups $X$ prefill nodes and partitions one request into chunks no longer than $\\text{prefill\\_chunk}$. Different nodes can process different chunks concurrently. Communication occurs at pipeline-stage boundaries and can overlap with computation.\n\nMooncake also moves KVCache layer by layer. Before a layer’s attention computation, it waits for that layer’s asynchronous cache load and launches the next load. After attention, it launches an asynchronous store. Thus computation and state movement form a pipeline rather than two wholly serial phases.\n\nThe paper summarizes cache occupation with\n\n$$C=S T,$$\n\nwhere $C$ is occupation cost, $S$ is the request’s KVCache size, and $T$ is its processing time. If two strategies hold the same illustrative $S=8$ GB but take 2 s and 5 s, their costs are $16$ GB·s and $40$ GB·s. Those numbers are illustrative arithmetic, not reported measurements. The equation clarifies why extending the lifetime of a large cache can matter even when its instantaneous size is unchanged.\n\nCPP should not be confused with ordinary chunked prefill inserted into decoding batches. Mooncake preserves separate pools because long-context prefill may need different cross-node parallelism, and because layer-wise movement reduces prefill-side VRAM residency.",
+      "sourceIds": [
+        "section-5"
+      ],
+      "claimIds": [
+        "c6",
+        "c7",
+        "c8"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s6",
+      "title": "Why admission control needs to look ahead",
+      "markdown": "Under overload, Mooncake counts only fully completed requests toward effective throughput. If a request finishes prefill and is then rejected because decoding has become too busy, the prefill computation has already been spent without producing a completed request. **Early Rejection** moves the decoding-load assessment ahead of prefill and admits a request according to the greater pressure across the prefill and decoding pools.\n\nA decision based only on current decoding load still has delayed feedback. Requests accepted now first occupy prefill and reach decoding later. A large accepted group can therefore make decoding crowded after a delay, causing admission to close. With fewer new requests entering prefill, decoding subsequently drains, admission reopens, and another group is accepted. This produces the reported anti-phase fluctuation between prefill and decoding load, especially when prefill takes longer or the prefill pool is smaller.\n\nThe figure uses the constructed scalar recurrence\n\n$$h_t=a h_{t-1}+u_t,$$\n\nwith a unitless state $h_t$, a unitless retention factor $a$, one initial impulse $u_0=1$, and $u_t=0$ afterward. Starting from $h_{-1}=0$ gives $h_0=1$ and, for later steps, $h_t=a^t$. Increasing the retention control $a$ makes the same initial effect decay more slowly across the 12 displayed steps. This calculation is an analogy for delayed persistence: a load-producing decision can continue affecting later system state even after the original admission event. It is not a fitted queueing model or a reproduction of Mooncake’s measured load.\n\nMooncake’s prediction-based policy addresses the actual scheduling problem by estimating aggregate decoding pressure at the future time when incoming requests are expected to finish prefill. Its implemented system-level method assumes a uniform decoding duration $t_d$, adds requests predicted to complete prefill by the future moment, removes decoding work predicted to finish before then, and evaluates the average TBT ratio relative to the decoding SLO $l_{tbt}$. This predicts the future aggregate state rather than each request’s exact output length or completion time, preserving the policy’s intended scope without implying request-level forecasting accuracy.",
+      "sourceIds": [
+        "section-2",
+        "section-7"
+      ],
+      "claimIds": [
+        "c9",
+        "c10",
+        "c11"
+      ],
+      "figureId": "fig-state"
+    },
+    {
+      "id": "s7",
+      "title": "Reading the evidence without stretching it",
+      "markdown": "The strongest reported gains are conditional. In the simulated long-context comparison, Mooncake-[3P+1D] and Mooncake-[2P+2D] were compared with vLLM-[4M] on 16k–128k-token prompts, 512-token outputs, a 50% cache ratio, and Poisson arrivals. SLO compliance was evaluated using P90 TTFT and P90 TBT. The TTFT threshold was derived by multiplying the corresponding TTFT latency measured at the lowest tested request rate by 10, and the TBT threshold was derived by multiplying the corresponding TBT latency measured at that rate by 5. Under those configurations and criteria, Mooncake reported 50%–525% higher throughput than vLLM. In this comparison, vLLM processed the disruptive long-context requests individually rather than in batches, whereas Mooncake’s separated prefill and decoding pools allowed batch processing without violating the evaluated TBT SLO. The result supports disaggregation for these workloads and configurations; it is not a universal 525% speedup.\n\nFor overload handling, an 8-prefill/8-decoding Mooncake cluster replayed 23,000 real-trace requests at 2× speed. The baseline rejected 4,183 requests, ordinary early rejection rejected 3,771, and prediction-based early rejection rejected 3,589. Within this experiment, checking admission before expensive prefill reduced wasted work, and predicting the later decoding load improved on a decision based only on current load. The comparison does not establish an optimal admission policy for every arrival distribution or cluster configuration.\n\nAll reported evaluation results used a dummy model with the architecture of LLaMA2-70B, not Kimi’s proprietary model. The evaluation also fixes particular hardware, workloads, SLO definitions, cache ratios, and prefill/decoding allocations, so its numerical gains should be interpreted within those conditions. The broader scientific contribution is the scheduling formulation: KVCache placement, reuse, movement, and delayed arrival at decoding are treated as first-class constraints when maximizing fully completed requests under TTFT and TBT SLOs.",
+      "sourceIds": [
+        "section-2",
+        "section-6",
+        "section-7",
+        "section-8",
+        "section-10"
+      ],
+      "claimIds": [
+        "c10",
+        "c11",
+        "c12",
+        "c13",
+        "c14"
+      ],
+      "figureId": null
+    }
+  ],
+  "figures": [
+    {
+      "id": "fig-attention",
+      "kind": "attention",
+      "title": "Temperature reshapes fixed attention weights",
+      "question": "As temperature decreases, how does the normalized weight on the fixed highest score change?",
+      "caption": "Four illustrative scores $[2,1,0,-1]$ are divided by a positive temperature and passed through softmax, showing how normalized attention weights redistribute.",
+      "limitation": "This is not a measured attention head or learned token similarity, and it does not simulate KVCache placement, transfer, or scheduling.",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c1"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "fig-memory",
+      "kind": "memory",
+      "title": "Block width and allocation padding",
+      "question": "For 9 live tokens in 16 displayed slots, which block widths leave the least padding?",
+      "caption": "A fixed 16-slot illustrative layout compares block allocation for 9 live tokens as block width changes; occupied and padded slots are shown explicitly.",
+      "limitation": "The display contains no physical byte or latency measurements and is not Mooncake’s allocator implementation.",
+      "sourceIds": [
+        "section-3",
+        "section-4"
+      ],
+      "claimIds": [
+        "c3"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "fig-state",
+      "kind": "state",
+      "title": "A delayed effect that decays over time",
+      "question": "How does increasing retention $a$ change the duration of the response to the same initial impulse?",
+      "caption": "The illustrative scalar recurrence $h_t=a h_{t-1}+u_t$ shows how one initial impulse persists for 12 steps as retention changes.",
+      "limitation": "This is only a scalar impulse response, not Mooncake’s queueing system, load predictor, or an empirical reproduction of its oscillations.",
+      "sourceIds": [
+        "section-7"
+      ],
+      "claimIds": [
+        "c10",
+        "c11"
+      ],
+      "illustrative": true
+    }
+  ],
+  "quiz": [
+    {
+      "question": "Node A has a longer reusable prefix, giving it a predicted prefill execution time of 3 ms, but its queue adds 11 ms. Node B has no reusable prefix, giving it a predicted execution time of 10 ms, and its queue adds 1 ms. Under Mooncake’s documented execution-plus-queue TTFT estimator, which node should be chosen?",
+      "options": [
+        {
+          "text": "Node A, because maximum prefix reuse always dominates.",
+          "explanation": "Incorrect. Mooncake does not maximize prefix reuse unconditionally; Algorithm 1 combines predicted prefill execution time with estimated queueing time."
+        },
+        {
+          "text": "Node B, because its estimated TTFT is shorter.",
+          "explanation": "Correct. Node A’s estimated TTFT is 3+11=14 ms, while node B’s is 10+1=11 ms, so the scheduler selects node B if the SLO is achievable."
+        },
+        {
+          "text": "Either node, because cache location is excluded from scheduling.",
+          "explanation": "Incorrect. Prefix-match length affects predicted prefill execution time, so cache distribution remains part of the scheduling decision."
+        }
+      ],
+      "answer": 1,
+      "sourceIds": [
+        "section-6"
+      ],
+      "claimIds": [
+        "c5"
+      ]
+    },
+    {
+      "question": "What distinguishes prediction-based early rejection from checking only the current decoding load?",
+      "options": [
+        {
+          "text": "It estimates decoding pressure when admitted requests are expected to arrive after prefill.",
+          "explanation": "Correct. The policy looks toward the later decoding state created by work currently entering or moving through prefill."
+        },
+        {
+          "text": "It guarantees the exact output length of every individual request.",
+          "explanation": "Incorrect. Mooncake reports a system-level strategy and leaves request-level prediction for future work."
+        },
+        {
+          "text": "It removes the decoding-stage SLO from admission decisions.",
+          "explanation": "Incorrect. Predicted TBT pressure remains central to determining decoding load."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-7"
+      ],
+      "claimIds": [
+        "c10",
+        "c11"
+      ]
+    },
+    {
+      "question": "Which interpretation of the reported 50%–525% throughput improvement is justified?",
+      "options": [
+        {
+          "text": "Every Mooncake deployment is at least 50% faster than every coupled server.",
+          "explanation": "Incorrect. The result is conditional on particular simulated workloads, configurations, baseline behavior, and SLOs."
+        },
+        {
+          "text": "KVCache reuse alone caused the entire improvement in every evaluated dataset.",
+          "explanation": "Incorrect. The experiment concerns the complete architecture, and the evidence does not isolate all gains as cache reuse alone."
+        },
+        {
+          "text": "Mooncake achieved that range in the reported simulated long-context comparison while meeting the same TTFT and TBT constraints as vLLM.",
+          "explanation": "Correct. This preserves both the experimental setting and the SLO condition attached to the result."
+        }
+      ],
+      "answer": 2,
+      "sourceIds": [
+        "section-8"
+      ],
+      "claimIds": [
+        "c12",
+        "c14"
+      ]
+    }
+  ],
+  "id": "mooncake",
+  "createdAt": "2026-10-01T23:57:14.251Z",
+  "pipelineVersion": "subjects-lessons-v1",
+  "sources": [
+    {
+      "id": "abstract",
+      "label": "Original paper · abstract",
+      "url": "https://arxiv.org/abs/2407.00079",
+      "digest": "8cb832e8996c7d9653100d67fa20859ed45be4c2e98d546f39df5b4c4fb00935",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:52:34.764Z"
+    },
+    {
+      "id": "section-1",
+      "label": "1 Introduction",
+      "url": "https://arxiv.org/html/2407.00079#S1",
+      "digest": "67c6e9bbf88b17f1f0fe63332277f90ea504623d5e693286170aab2ebbe8d9e5",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:52:34.764Z"
+    },
+    {
+      "id": "section-2",
+      "label": "2 Preliminary and Problem Definition",
+      "url": "https://arxiv.org/html/2407.00079#S2",
+      "digest": "e1927fff325b84e5de233f32bba27c0c2e8607809d4a08a692e2a6dd33795602",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:52:34.764Z"
+    },
+    {
+      "id": "section-3",
+      "label": "3 Overview of Mooncake’s Disaggregated Architecture",
+      "url": "https://arxiv.org/html/2407.00079#S3",
+      "digest": "9ef712c97969d74475e0d87577648ab1a47ce5e9f0f6d82c7cb7e88ec9407a7f",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:52:34.764Z"
+    },
+    {
+      "id": "section-4",
+      "label": "4 Sampled Real-world Request Trace",
+      "url": "https://arxiv.org/html/2407.00079#S4",
+      "digest": "1a4cbe090ff01305f6a585eb43ce102dafcf394873b144a761e2d3a4893d19dd",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:52:34.764Z"
+    },
+    {
+      "id": "section-5",
+      "label": "5 Implementation of the Prefill Pool",
+      "url": "https://arxiv.org/html/2407.00079#S5",
+      "digest": "609c99b836ae844056e7d728cad1de5d374c330a59a62a6d7edb46b565bb7466",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:52:34.764Z"
+    },
+    {
+      "id": "section-6",
+      "label": "6 KVCache-centric Scheduling",
+      "url": "https://arxiv.org/html/2407.00079#S6",
+      "digest": "7d3815321a7d4296c88184950dd5e7fe524c11df7a186a8b640cccffb254ea74",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:52:34.764Z"
+    },
+    {
+      "id": "section-7",
+      "label": "7 Overload-oriented Scheduling",
+      "url": "https://arxiv.org/html/2407.00079#S7",
+      "digest": "505620816bbb58e78e94c381cbad98ba45490955ef9c7310eb1e04c4a8cd3640",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:52:34.764Z"
+    },
+    {
+      "id": "section-8",
+      "label": "8 Evaluation",
+      "url": "https://arxiv.org/html/2407.00079#S8",
+      "digest": "ed0bff4e9913624cdaae99b709978eda31b63f68ababdf977e3a32ecf130abe1",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:52:34.764Z"
+    },
+    {
+      "id": "section-9",
+      "label": "9 Related Work",
+      "url": "https://arxiv.org/html/2407.00079#S9",
+      "digest": "709118a2f314d049614c6dfe36af1794705b480f02ce70ca87bb70884c51af4a",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:52:34.764Z"
+    },
+    {
+      "id": "section-10",
+      "label": "10 Future Work",
+      "url": "https://arxiv.org/html/2407.00079#S10",
+      "digest": "b57357ffcb568a377502cbca8391c90e3069183cf964c6d8366561c9ae7c0a6c",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:52:34.764Z"
+    },
+    {
+      "id": "section-11",
+      "label": "11 Conclusion",
+      "url": "https://arxiv.org/html/2407.00079#S11",
+      "digest": "64729fbbcb6d7d5957494453001e0e579d10e85da33c0fb8606862bc23dd643f",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:52:34.764Z"
+    }
+  ],
+  "review": {
+    "status": "passed",
+    "reviewedAt": "2026-10-02T02:17:22.228Z",
+    "contentDigest": "f1495c60134355a8f9268b2f010326876ed0386e3a1a10e83aacb10009720572"
+  }
+}

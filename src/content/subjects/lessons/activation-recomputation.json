@@ -1,0 +1,481 @@
+{
+  "title": "Spend Memory Where Recompute Is Expensive",
+  "summary": "The paper combines sequence-wise activation partitioning with selective attention recomputation to approach checkpointing-level memory savings without repeating whole transformer layers.",
+  "prerequisites": [
+    "Transformer forward-pass activations used during backpropagation",
+    "Tensor parallelism across accelerator groups",
+    "Activation recomputation for reduced memory use"
+  ],
+  "objectives": [
+    "Derive the approximate activation-memory formula and define its symbols.",
+    "Explain why tensor parallelism leaves some activations replicated.",
+    "Trace conversions between sequence-parallel and tensor-parallel regions.",
+    "Distinguish selective recomputation from full-layer checkpointing.",
+    "Interpret memory and timing results within the tested conditions."
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "mechanism",
+      "statement": "Full activation recomputation stores layer-boundary checkpoints and recreates the other required activations during backpropagation.",
+      "conditions": "Transformer training with layer-boundary checkpointing as defined by the paper.",
+      "sourceIds": [
+        "section-1",
+        "section-5"
+      ]
+    },
+    {
+      "id": "c2",
+      "kind": "caveat",
+      "statement": "The paper reports a 30–40% execution-time overhead from full activation recomputation in its training runs.",
+      "conditions": "The authors' transformer training runs; this is not asserted as a universal overhead.",
+      "sourceIds": [
+        "section-1",
+        "section-5"
+      ]
+    },
+    {
+      "id": "c3",
+      "kind": "equation",
+      "statement": "Without model parallelism, approximate stored activation memory per transformer layer is sbh(34+5as/h) bytes.",
+      "conditions": "The paper's accounting keeps major tensors, assumes 16-bit activations, uses one-byte dropout masks, and neglects small buffers.",
+      "sourceIds": [
+        "section-3",
+        "section-4"
+      ]
+    },
+    {
+      "id": "c4",
+      "kind": "equation",
+      "statement": "With the paper's baseline tensor parallelism, per-rank activation memory is sbh(10+24/t+5as/(ht)) bytes per layer.",
+      "conditions": "The Megatron-style tensor-parallel decomposition used in the paper, with tensor-parallel size t.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c5",
+      "kind": "mechanism",
+      "statement": "Tensor parallelism leaves layer-normalization and post-attention and post-MLP dropout activations replicated, producing the unsharded 10sbh term.",
+      "conditions": "The tensor-parallel layout analyzed in Equation 2.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c6",
+      "kind": "mechanism",
+      "statement": "Sequence parallelism partitions operations that are independent along the sequence dimension and converts between sequence-sharded and tensor-sharded regions.",
+      "conditions": "Sequence parallelism is combined with the paper's tensor-parallel transformer layout.",
+      "sourceIds": [
+        "section-4",
+        "section-4-part-2"
+      ]
+    },
+    {
+      "id": "c7",
+      "kind": "mechanism",
+      "statement": "The converter g performs all-gather in the forward pass and reduce-scatter in the backward pass, while its conjugate performs the reverse pairing.",
+      "conditions": "The MLP and analogous attention decompositions in the combined tensor-plus-sequence-parallel method.",
+      "sourceIds": [
+        "section-4",
+        "section-4-part-2"
+      ]
+    },
+    {
+      "id": "c8",
+      "kind": "result",
+      "statement": "The paper argues that combined tensor and sequence parallelism uses the same communication bandwidth as its tensor-parallel baseline because a ring all-reduce consists of reduce-scatter followed by all-gather.",
+      "conditions": "Bandwidth comparison for the stated ring-collective decomposition; latency and implementation effects may still differ.",
+      "sourceIds": [
+        "section-4-part-2"
+      ]
+    },
+    {
+      "id": "c9",
+      "kind": "equation",
+      "statement": "With tensor and sequence parallelism, approximate activation memory per layer becomes (sbh/t)(34+5as/h), exactly the nonparallel estimate divided by t.",
+      "conditions": "The paper's activation accounting and combined parallel layout.",
+      "sourceIds": [
+        "section-4-part-2"
+      ]
+    },
+    {
+      "id": "c10",
+      "kind": "caveat",
+      "statement": "Under the analyzed 1F1B pipeline schedule, the first pipeline stage stores the equivalent of L layers of activations even though it owns only L/p layers.",
+      "conditions": "A pressurized 1F1B schedule in which the first stage retains activations for p microbatches.",
+      "sourceIds": [
+        "section-4-part-2",
+        "section-5"
+      ]
+    },
+    {
+      "id": "c11",
+      "kind": "mechanism",
+      "statement": "Selective activation recomputation targets the attention operations after Q, K, and V formation because their stored tensors are large while their FLOPs per input element are low.",
+      "conditions": "The transformer attention decomposition analyzed by the paper.",
+      "sourceIds": [
+        "section-5"
+      ]
+    },
+    {
+      "id": "c12",
+      "kind": "equation",
+      "statement": "Combining tensor and sequence parallelism with selective recomputation reduces the paper's approximate total activation memory to 34sbhL/t bytes.",
+      "conditions": "Major transformer-layer activations under the paper's approximation; an interleaved pipeline schedule requires its stated multiplicative correction.",
+      "sourceIds": [
+        "section-5"
+      ]
+    },
+    {
+      "id": "c13",
+      "kind": "result",
+      "statement": "For the evaluated configurations, sequence parallelism and selective recomputation together reduced activation memory by about 5× relative to the tensor-parallel baseline and brought it below 20% of that baseline.",
+      "conditions": "Models from 22B to 1T parameters, tensor parallel size 8, sequence length 2048, mixed precision on the specified Selene A100 system, including the paper's Appendix B optimization.",
+      "sourceIds": [
+        "section-6"
+      ]
+    },
+    {
+      "id": "c14",
+      "kind": "result",
+      "statement": "The reported end-to-end throughput improvement over full recomputation ranged from 29.0% to 32.1% across the four evaluated model configurations.",
+      "conditions": "The 22B, 175B, 530B, and 1T configurations in Table 3, without data parallelism in those four primary measurements.",
+      "sourceIds": [
+        "section-6"
+      ]
+    },
+    {
+      "id": "c15",
+      "kind": "caveat",
+      "statement": "The paper does not compare its techniques experimentally with optimizer-state sharding or CPU-offloading approaches and leaves that analysis outside its scope.",
+      "conditions": "Scope of the reported study.",
+      "sourceIds": [
+        "section-1",
+        "section-2"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "s1",
+      "title": "The activation bill arrives during backward",
+      "markdown": "A training step cannot discard every forward-pass result immediately. Backpropagation needs selected intermediate tensors to calculate gradients. In this paper, an **activation** means any forward-created tensor needed for that calculation: it excludes model parameters and optimizer state, but includes objects such as dropout masks.\n\nLet $s$ be sequence length, $b$ microbatch size, $h$ hidden width, $a$ the number of attention heads, $L$ the number of transformer layers, $t$ tensor-parallel size, $p$ pipeline-parallel size, and $v$ vocabulary size. Each layer maps a tensor of shape $s\\times b\\times h$ back to that same shape; its MLP temporarily expands width to $4h$.\n\nThe conventional escape from insufficient memory is full activation recomputation: save checkpoints at layer boundaries, discard most internal activations, and rerun each layer's forward computation during backward. That saves memory but repeats expensive work. The authors observed 30–40% execution-time overhead in their runs. The paper's central question is therefore not simply “store or recompute?” It is: **which activations should be partitioned, which should be stored, and which are cheap enough to recreate?**",
+      "sourceIds": [
+        "section-1",
+        "section-3",
+        "section-4",
+        "section-5"
+      ],
+      "claimIds": [
+        "c1",
+        "c2"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s2",
+      "title": "Accounting before optimizing",
+      "markdown": "The paper first constructs an approximate byte budget. It assumes ordinary activations use 16-bit values, hence two bytes per element, while dropout masks use one byte. Small buffers are omitted: for layer normalization, for example, an $sbh$-element input dominates two $sb$-element statistics when $h$ is in the thousands.\n\nPer layer, the attention block contributes $11sbh+5as^2b$ bytes, the MLP contributes $19sbh$, and two layer normalizations contribute $4sbh$. Their sum is\n\n$$\nM_{\\mathrm{layer}}=sbh\\left(34+5\\frac{as}{h}\\right).\n$$\n\nHere $M_{\\mathrm{layer}}$ is approximate activation storage in bytes. The constant-like $34$ collects terms that scale as $sbh$. The attention-specific term can also be read as $5as^2b$, exposing its quadratic dependence on sequence length.\n\nA small illustrative calculation makes the scaling concrete. Take $s=8$, $b=1$, $h=16$, and $a=2$. Then $5as/h=5\\cdot2\\cdot8/16=5$, so\n\n$$\nM_{\\mathrm{layer}}=8\\cdot1\\cdot16\\cdot(34+5)=4{,}992\\ \\text{bytes}.\n$$\n\nThis number is illustrative, not a measured configuration. If $t=4$ and combined tensor-plus-sequence partitioning applies, the corresponding formula gives $4{,}992/4=1{,}248$ bytes per rank. The arithmetic teaches the division rule; it does not model allocator overhead or hardware memory use.",
+      "sourceIds": [
+        "section-3",
+        "section-4",
+        "section-4-part-2"
+      ],
+      "claimIds": [
+        "c3",
+        "c9"
+      ],
+      "figureId": "fig-normalization"
+    },
+    {
+      "id": "s3",
+      "title": "Why tensor parallelism leaves a memory floor",
+      "markdown": "Tensor parallelism divides the expensive attention and MLP matrix operations across $t$ accelerators. It therefore partitions many internal activations as well as parameters. But the layout studied here does not partition every tensor: layer normalization and the dropout operations after attention and the MLP remain replicated.\n\nThe resulting per-rank estimate is\n\n$$\nM_{\\mathrm{TP}}=sbh\\left(10+\\frac{24}{t}+5\\frac{as}{ht}\\right).\n$$\n\nThe terms containing $1/t$ shrink as the tensor-parallel group grows, but $10sbh$ does not. This is a memory floor: increasing $t$ cannot eliminate replicated storage. It also explains why “the model is tensor parallel” does **not** imply “all activations are divided by $t$.”\n\nThe normalization control below uses five fixed values and shows the mean subtraction and population-standard-deviation division for one vector. It is useful because it makes sequence independence visible: offsetting every value changes the raw vector, while standardization removes that common offset. In a transformer, normalization is performed independently for each token across hidden features; the paper exploits independence along the token sequence to shard these regions. The toy control is only one illustrative vector, not a complete LayerNorm implementation or a distributed performance measurement.",
+      "sourceIds": [
+        "section-4"
+      ],
+      "claimIds": [
+        "c4",
+        "c5"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s4",
+      "title": "Two layouts, joined at the boundary",
+      "markdown": "Sequence parallelism attacks the replicated term by splitting eligible regions along $s$. Consider the MLP path. Let $X$ be the layer-normalization input, $Y=\\operatorname{LayerNorm}(X)$, $A\\in\\mathbb{R}^{h\\times4h}$ and $B\\in\\mathbb{R}^{4h\\times h}$ the two weight matrices, $Z=\\operatorname{GeLU}(YA)$, $W=ZB$, and $V=\\operatorname{Dropout}(W)$. Superscript $s$ denotes a sequence shard, superscript $h$ a hidden-dimension shard, while subscripts identify ranks.\n\nEach rank normalizes its local $X_i^s$ to obtain $Y_i^s$. The linear map itself is tokenwise: computing one token's output does not mathematically depend on any other sequence position. The forward all-gather performed by converter $g$ is instead a consequence of the paper's chosen layout transition. It reconstructs $Y$ from its sequence shards so that every tensor-parallel rank can process the full sequence using its column shard of $A$, producing a hidden-dimension shard $Z_i^h$. Row shards of $B$ then produce partial outputs $W_i$ that must be summed. Rather than first summing a replicated $W$ and then slicing it, $\\bar g$ performs one reduce-scatter, directly producing sequence shards $W_i^s$ for local dropout.\n\nBackward reverses the collective roles: $g$ becomes reduce-scatter and $\\bar g$ becomes all-gather. The paper equates the bandwidth with the baseline ring all-reduces because each ring all-reduce itself comprises a reduce-scatter and an all-gather. This is a bandwidth statement, not a guarantee that collective latency is identical; the evaluation indeed notes implementation-level timing differences.",
+      "sourceIds": [
+        "section-4",
+        "section-4-part-2",
+        "section-6"
+      ],
+      "claimIds": [
+        "c6",
+        "c7",
+        "c8"
+      ],
+      "figureId": "fig-memory"
+    },
+    {
+      "id": "s5",
+      "title": "Selective recomputation follows the shape of attention",
+      "markdown": "After sequence parallelism, some large configurations still need recomputation. Recomputing only a subset of whole layers is coarse—especially when a device owns few layers—and treats expensive and inexpensive subcomputations alike. The paper instead selects a region inside every attention block: $QK^T$, softmax, softmax dropout, and attention over $V$, where $Q$, $K$, and $V$ denote query, key, and value tensors.\n\nThese operations create the $5as^2b$ storage contribution, equivalently the $5as/h$ factor inside the memory formula. Their activations can be large, yet the authors characterize their FLOPs per input element as low. Discarding and recreating this region removes the attention-specific storage term while retaining the costlier layer computations. With sequence and tensor parallelism, the approximate total becomes\n\n$$\nM_{\\mathrm{selective}}=34\\frac{sbhL}{t}.\n$$\n\nThe attention control uses fixed scores $[2,1,0,-1]$ divided by a positive temperature before softmax. Predict what happens as temperature falls: the largest score receives more of the normalized weight. This helps show why attention materializes normalized relationships, but it is not the paper's recomputation algorithm, a measured head, or a memory benchmark. The paper recomputes a defined group of attention intermediates; it does not alter their mathematical result or soften them with a new temperature.",
+      "sourceIds": [
+        "section-5"
+      ],
+      "claimIds": [
+        "c11",
+        "c12"
+      ],
+      "figureId": "fig-attention"
+    },
+    {
+      "id": "s6",
+      "title": "Pipeline pressure changes what one device retains",
+      "markdown": "A tempting misconception is that $p$-way pipeline parallelism divides activation memory uniformly by $p$. Under the analyzed 1F1B schedule, each stage owns $L/p$ layers, but the first stage holds activations for $p$ overlapping microbatches to keep the pipeline busy. Its retained layer-equivalents are therefore $p(L/p)=L$, not $L/p$.\n\nBefore selective recomputation, the paper approximates first-stage total activation memory as\n\n$$\nM_{\\mathrm{total}}=\\frac{sbhL}{t}\\left(34+5\\frac{as}{h}\\right).\n$$\n\nFor an interleaved schedule with $m$ interleaving stages, where $m$ is the interleaving count, the stated multiplier is $1+(p-1)/(pm)$. Thus pipeline scheduling and activation residency must be analyzed together.\n\nThe 16-slot memory control below provides a deliberately smaller analogy. Nine live tokens are placed into fixed-width blocks; changing block width changes padding relative to a fixed 16-slot reservation. It asks the reader to distinguish useful occupancy from reserved capacity. That distinction is relevant to memory reasoning, but the control performs slot allocation only. It does not reproduce pipeline timing, tensor lifetimes, physical bytes, or the paper's allocator.",
+      "sourceIds": [
+        "section-4-part-2",
+        "section-5"
+      ],
+      "claimIds": [
+        "c10",
+        "c12"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s7",
+      "title": "What the measurements establish—and what they do not",
+      "markdown": "The evaluation covered 22B, 175B, 530B, and 1T parameter configurations. All used $s=2048$, $v=51{,}200$, tensor-parallel size $t=8$, mixed precision, and the specified Selene system with 80GB A100 GPUs. The four primary end-to-end measurements did not use data parallelism.\n\nRelative to the tensor-parallel activation baseline, sequence parallelism and selective recomputation each cut memory nearly in half; together they reduced it by about $5\\times$ and brought it below 20% of baseline. In the single-layer 22B timing experiment, full recomputation raised combined time from 19.6 ms to 27.2 ms, whereas selective recomputation took 20.9 ms and selective-plus-sequence took 20.3 ms. Across the four end-to-end configurations, reported throughput improvements over full recomputation ranged from 29.0% to 32.1%.\n\nThose results support a specific conclusion: on these transformer shapes, schedules, collectives, and GPUs, finer activation placement and recomputation recovered most of full checkpointing's compute penalty while retaining large memory savings. They do not establish identical gains for different architectures, hardware, collective implementations, or pipeline schedules. The analysis also omits a direct experimental comparison with optimizer-state sharding and CPU offloading. Finally, the authors identify fragmentation, nonuniform pipeline allocation, and first-stage pressure as remaining work rather than solved consequences of the method.",
+      "sourceIds": [
+        "section-1",
+        "section-2",
+        "section-6",
+        "section-7"
+      ],
+      "claimIds": [
+        "c13",
+        "c14",
+        "c15"
+      ],
+      "figureId": null
+    }
+  ],
+  "figures": [
+    {
+      "id": "fig-normalization",
+      "kind": "normalization",
+      "title": "Sequence-independent normalization toy",
+      "question": "When the same offset is added to all five fixed activations, which displayed quantities change before and after standardization?",
+      "caption": "Five illustrative activations are offset, then standardized by subtracting their mean and dividing by their population standard deviation, exposing a token-local computation that can motivate sequence partitioning.",
+      "limitation": "This is one fixed illustrative vector, not a full LayerNorm training implementation, distributed collective, or measurement from the paper.",
+      "sourceIds": [
+        "section-4"
+      ],
+      "claimIds": [
+        "c5",
+        "c6"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "fig-memory",
+      "kind": "memory",
+      "title": "Stored values versus reserved slots",
+      "question": "For nine live tokens, how does changing block width alter padding compared with the fixed 16-slot reservation?",
+      "caption": "A 16-slot illustrative layout separates nine occupied token slots from padding, reinforcing that a storage layout can change unused reservation without changing the live token count.",
+      "limitation": "The control models slot allocation only; it has no physical byte or latency measurements and does not implement activation lifetimes, tensor parallelism, or pipeline scheduling.",
+      "sourceIds": [
+        "section-4",
+        "section-4-part-2"
+      ],
+      "claimIds": [
+        "c5",
+        "c9"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "fig-attention",
+      "kind": "attention",
+      "title": "Normalized attention from fixed scores",
+      "question": "As positive temperature decreases, how does the weight on the largest fixed score compare with the other three weights?",
+      "caption": "Four illustrative scores are divided by a positive temperature and normalized with softmax, showing the kind of attention relationship whose intermediates selective recomputation recreates unchanged.",
+      "limitation": "The scores are fixed and illustrative, not a measured attention head or learned token similarity; the control neither recomputes tensors nor measures memory or runtime.",
+      "sourceIds": [
+        "section-4",
+        "section-5"
+      ],
+      "claimIds": [
+        "c3",
+        "c11"
+      ],
+      "illustrative": true
+    }
+  ],
+  "quiz": [
+    {
+      "question": "Under the paper's activation accounting, what happens to per-rank activation memory when sequence parallelism is added to tensor parallelism with size t?",
+      "options": [
+        {
+          "text": "All major per-layer activation terms become divided by t.",
+          "explanation": "Correct. The combined formula is the nonparallel estimate divided by the tensor-parallel size."
+        },
+        {
+          "text": "Only the attention-specific term becomes divided by t.",
+          "explanation": "Incorrect. Tensor parallelism already partitions that term; sequence parallelism also removes the replicated 10sbh floor."
+        },
+        {
+          "text": "Activation memory becomes divided uniformly by pipeline size p.",
+          "explanation": "Incorrect. Under the analyzed 1F1B schedule, first-stage overlap prevents that uniform division."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-4",
+        "section-4-part-2"
+      ],
+      "claimIds": [
+        "c5",
+        "c9",
+        "c10"
+      ]
+    },
+    {
+      "question": "Why does selective recomputation target the attention operations after Q, K, and V are formed?",
+      "options": [
+        {
+          "text": "They have large stored intermediates but relatively low recomputation FLOPs per input element.",
+          "explanation": "Correct. This combination offers substantial storage reduction for modest repeated computation."
+        },
+        {
+          "text": "They are the only operations whose outputs are mathematically approximate.",
+          "explanation": "Incorrect. Recomputation is intended to reproduce the same attention results, not replace them with approximations."
+        },
+        {
+          "text": "They contain all transformer parameters and optimizer state.",
+          "explanation": "Incorrect. The paper's activation budget explicitly excludes parameters and optimizer state."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-4",
+        "section-5"
+      ],
+      "claimIds": [
+        "c11",
+        "c12"
+      ]
+    },
+    {
+      "question": "Which conclusion is justified by the reported end-to-end evaluation?",
+      "options": [
+        {
+          "text": "The method improved throughput by 29.0%–32.1% over full recomputation for the four tested configurations.",
+          "explanation": "Correct. That range is reported for the specified 22B through 1T configurations and experimental system."
+        },
+        {
+          "text": "The method guarantees at least 29% improvement for every transformer and accelerator.",
+          "explanation": "Incorrect. The measurements do not establish a hardware- or architecture-independent guarantee."
+        },
+        {
+          "text": "The method was shown experimentally superior to CPU offloading and optimizer-state sharding.",
+          "explanation": "Incorrect. The paper explicitly leaves such a comparison outside its scope."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-2",
+        "section-6"
+      ],
+      "claimIds": [
+        "c14",
+        "c15"
+      ]
+    }
+  ],
+  "id": "activation-recomputation",
+  "createdAt": "2026-10-02T00:25:19.775Z",
+  "pipelineVersion": "subjects-lessons-v1",
+  "sources": [
+    {
+      "id": "abstract",
+      "label": "Original paper · abstract",
+      "url": "https://arxiv.org/abs/2205.05198",
+      "digest": "1d0a7e91c564ca4fd137f4db25d6f18be2fcd125c07ae110d10fbffd90f45c7c",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:21:57.462Z"
+    },
+    {
+      "id": "section-1",
+      "label": "1 Introduction",
+      "url": "https://arxiv.org/html/2205.05198#S1",
+      "digest": "ab78acddd84d4be3426cf960ff5bbcdaf774d8dfdd202bcc8b9b4b880f20bf5c",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:21:57.462Z"
+    },
+    {
+      "id": "section-2",
+      "label": "2 Related Work",
+      "url": "https://arxiv.org/html/2205.05198#S2",
+      "digest": "17c0bff6bee4dbc9178f04eff1d6e805fd73ecc53d92dde258d9ee1b49416019",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:21:57.462Z"
+    },
+    {
+      "id": "section-3",
+      "label": "3 Transformer Architecture",
+      "url": "https://arxiv.org/html/2205.05198#S3",
+      "digest": "c8f7695fc636c77fad6842674b09f73813e8b360f66142c6b642a3b77bd1852b",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:21:57.462Z"
+    },
+    {
+      "id": "section-4",
+      "label": "4 Activation Memory",
+      "url": "https://arxiv.org/html/2205.05198#S4",
+      "digest": "0f45189cada9581cc162124665975544e3acd76d731ca03abe4fda3e1c488cfb",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:21:57.462Z"
+    },
+    {
+      "id": "section-4-part-2",
+      "label": "4 Activation Memory · part 2",
+      "url": "https://arxiv.org/html/2205.05198#S4",
+      "digest": "8fbbb6957d0bf19a738424b57051fafa2920c73e3828b8fa40ff4201c6ad9c32",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:21:57.462Z"
+    },
+    {
+      "id": "section-5",
+      "label": "5 Selective Activation Recomputation",
+      "url": "https://arxiv.org/html/2205.05198#S5",
+      "digest": "55b85a4712250d2d0c15c6425553968e28cf25146eb80aa0d0a680ee8ebe9479",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:21:57.462Z"
+    },
+    {
+      "id": "section-6",
+      "label": "6 Evaluations",
+      "url": "https://arxiv.org/html/2205.05198#S6",
+      "digest": "3f8c8c78a377ce3a0d1f1857bbb150a0cf861d9af2aa65fbef2d38550de63a48",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:21:57.462Z"
+    },
+    {
+      "id": "section-7",
+      "label": "7 Conclusions and Future Work",
+      "url": "https://arxiv.org/html/2205.05198#S7",
+      "digest": "566b06d73f6a2f168163a44583c4b814714f8499d040d2660394852896820e43",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:21:57.462Z"
+    }
+  ],
+  "review": {
+    "status": "passed",
+    "reviewedAt": "2026-10-02T00:25:19.775Z",
+    "contentDigest": "8f83ae6055e14920864ff9875a860aee080929d16d8c050744797c92d6a035e9"
+  }
+}

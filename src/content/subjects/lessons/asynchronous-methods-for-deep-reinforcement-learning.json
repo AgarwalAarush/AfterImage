@@ -1,0 +1,426 @@
+{
+  "title": "Many Clocks, One Learner: How A3C Replaced Replay with Parallel Experience",
+  "summary": "A3C stabilizes online deep reinforcement learning by letting diverse CPU actor-learners collect fresh trajectories and asynchronously update one shared policy and value model.",
+  "prerequisites": [
+    "Discounted returns and value functions",
+    "Policy gradients and advantage estimates",
+    "Gradient-based neural network optimization",
+    "On-policy and off-policy learning"
+  ],
+  "objectives": [
+    "Explain how parallel actor-learners reduce temporal correlation without replay.",
+    "Derive A3C's variable-length return and advantage estimate.",
+    "Trace how local trajectories produce asynchronous shared-model updates.",
+    "Interpret reported speed and robustness evidence under its conditions.",
+    "Distinguish empirical stabilization from guaranteed convergence."
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "mechanism",
+      "statement": "Experience replay stabilizes deep RL partly by reducing non-stationarity and temporal correlation, but it adds storage and restricts the straightforward approach to algorithms that can learn from older-policy data.",
+      "conditions": "Deep online RL when replayed samples were generated at earlier time steps, potentially under older policies.",
+      "sourceIds": [
+        "section-1"
+      ]
+    },
+    {
+      "id": "c2",
+      "kind": "mechanism",
+      "statement": "The paper’s alternative is to run several agents concurrently in separate environment instances so their collectively observed states are more varied than one agent’s consecutive stream.",
+      "conditions": "Multiple actor-learners execute in parallel on distinct copies of the environment.",
+      "sourceIds": [
+        "section-1"
+      ]
+    },
+    {
+      "id": "c3",
+      "kind": "mechanism",
+      "statement": "The four asynchronous variants cover one-step Sarsa, one-step Q-learning, n-step Q-learning, and advantage actor-critic.",
+      "conditions": "The multi-threaded framework introduced in the paper.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c4",
+      "kind": "mechanism",
+      "statement": "A3C maintains both an action policy and a state-value estimate; in the reported discrete-action implementation, the policy and value networks shared all non-output layers and used separate output heads.",
+      "conditions": "The paper’s reported convolutional discrete-action A3C implementation, with shared non-output layers and separate policy and value output heads.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c5",
+      "kind": "equation",
+      "statement": "For a rollout segment of length k, A3C estimates advantage as discounted observed rewards plus a bootstrapped terminal value, minus the critic’s value at the starting state.",
+      "conditions": "The segment contains k steps, k is no greater than t_max, and the final state is bootstrapped when appropriate.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c6",
+      "kind": "mechanism",
+      "statement": "A3C adds policy entropy to discourage the policy from becoming deterministic too early; beta controls this regularizer’s strength.",
+      "conditions": "The policy objective includes the paper’s entropy regularization term.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c7",
+      "kind": "mechanism",
+      "statement": "Shared RMSProp maintains one moving average of squared gradients across threads and updates it asynchronously without locks.",
+      "conditions": "The Shared RMSProp variant studied in the paper’s asynchronous implementation.",
+      "sourceIds": [
+        "section-7"
+      ]
+    },
+    {
+      "id": "c8",
+      "kind": "result",
+      "statement": "Under the reported subset-of-Atari comparison, every proposed asynchronous method trained a neural controller, while A3C outperformed the three tested value-based variants.",
+      "conditions": "Five Atari games; asynchronous methods used 16 CPU cores; the figure averaged the best five models from 50 learning-rate experiments, whereas DQN used five fixed-hyperparameter seeds on a K40 GPU.",
+      "sourceIds": [
+        "section-5"
+      ]
+    },
+    {
+      "id": "c9",
+      "kind": "result",
+      "statement": "Increasing the number of actor-learners produced substantial wall-clock speedups in the seven-game Atari analysis, but the gains were not uniformly linear across methods.",
+      "conditions": "Reference-score time ratios averaged over seven named Atari games, with thread counts up to 16.",
+      "sourceIds": [
+        "section-5-part-2",
+        "section-5"
+      ]
+    },
+    {
+      "id": "c10",
+      "kind": "caveat",
+      "statement": "Parallel online updates do not establish that replay is obsolete: replay may still improve data efficiency by reusing experience.",
+      "conditions": "Especially when environment interaction is expensive relative to model updating, as discussed for TORCS.",
+      "sourceIds": [
+        "section-6"
+      ]
+    },
+    {
+      "id": "c11",
+      "kind": "result",
+      "statement": "In the paper’s optimizer comparison, shared-statistics RMSProp was more robust to sampled learning rates and initializations than per-thread RMSProp, which was more robust than momentum SGD.",
+      "conditions": "Async n-step Q and A3C on Breakout, Beamrider, Seaquest, and Space Invaders; 50 sampled learning rates and random initializations per comparison.",
+      "sourceIds": [
+        "section-7"
+      ]
+    },
+    {
+      "id": "c12",
+      "kind": "caveat",
+      "statement": "The reported continuous-control results are not directly comparable with earlier task results when simulator contact-model changes also changed rewards.",
+      "conditions": "MuJoCo tasks whose contact model and reward definitions differed from the referenced earlier setup.",
+      "sourceIds": [
+        "section-9"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "s1",
+      "title": "The instability problem is a data-stream problem",
+      "markdown": "In reinforcement learning, an agent observes state $s_t$, chooses action $a_t$, receives scalar reward $r_t$, and moves to $s_{t+1}$. Its discounted return is\n\n$$R_t=\\sum_{j=0}^{\\infty}\\gamma^j r_{t+j},$$\n\nwhere $t$ is time, $j$ indexes future rewards, and $\\gamma\\in(0,1]$ discounts distant outcomes. For $\\gamma=1$, this definition assumes an episodic process that reaches a terminal state, after which future rewards contribute zero; more generally, the return requires the sum to converge. A policy $\\pi(a\\mid s)$ assigns action probabilities. The state value $V^\\pi(s)=\\mathbb{E}[R_t\\mid s_t=s]$ predicts return from a state; the action value $Q^\\pi(s,a)=\\mathbb{E}[R_t\\mid s_t=s,a_t=a]$ also conditions on the chosen action.\n\nA single online agent produces consecutive observations from one evolving trajectory. Those observations are correlated, while its changing policy makes the data distribution non-stationary. Replay buffers address both issues by storing and resampling past transitions. But stored experience costs memory and was naturally paired with off-policy methods that can update from behavior generated by an older policy. The paper asks whether parallel fresh experience can play the stabilizing role instead, opening the door to on-policy deep RL.",
+      "sourceIds": [
+        "section-1",
+        "section-3"
+      ],
+      "claimIds": [
+        "c1"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s2",
+      "title": "Replace one timeline with many",
+      "markdown": "The central architectural move is simple: create several actor-learners, give each its own environment instance, and let all of them update shared parameters. Because threads occupy different states and may use different exploration policies, their updates should be less correlated in time than updates from one consecutive trajectory.\n\nThis is neither a replay buffer nor a collection of independently trained agents. Experience remains local and fresh; the learned model is global. The paper implements the design with CPU threads on one machine and lock-free, Hogwild-style parameter updates, avoiding a separate parameter server. It applies the pattern to four underlying algorithms: one-step Q-learning, one-step Sarsa, n-step Q-learning, and advantage actor-critic.\n\nAsynchrony means a thread may compute from a local parameter snapshot while other threads change the shared model. Its gradient can therefore be somewhat stale. The proposal is that diverse, weakly correlated updates and high throughput make this tolerable in practice—not that every concurrent write is equivalent to a serial update or that convergence follows automatically.",
+      "sourceIds": [
+        "section-1",
+        "section-4",
+        "section-7"
+      ],
+      "claimIds": [
+        "c2",
+        "c3"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s3",
+      "title": "What each A3C worker computes",
+      "markdown": "A3C gives each worker two coupled predictions. The actor is $\\pi(a_t\\mid s_t;\\theta)$, a policy with parameters $\\theta$. The critic is $V(s_t;\\theta_v)$, a value estimate with parameters $\\theta_v$. The notation allows separate parameters, although the reported discrete-action networks shared non-output layers.\n\nA worker acts for at most $t_{\\max}$ steps, or stops earlier at a terminal state. It then processes the collected segment backward. For a state with $k$ available steps, where $1\\le k\\le t_{\\max}$, define\n\n$$G_t^{(k)}=\\sum_{i=0}^{k-1}\\gamma^i r_{t+i}+\\gamma^kV(s_{t+k};\\theta_v),$$\n\nand\n\n$$\\widehat A_t=G_t^{(k)}-V(s_t;\\theta_v).$$\n\nHere $i$ indexes rewards within the segment, $r_{t+i}$ is an observed reward, and the final term bootstraps from the critic. At a true terminal boundary that continuation value is zero. The actor update contains $\\nabla_\\theta\\log\\pi(a_t\\mid s_t;\\theta)\\widehat A_t$: an action with positive estimated advantage becomes more probable, while one with negative advantage becomes less probable. The critic learns toward $G_t^{(k)}$.\n\nThe state experiment below is a narrow intuition pump for discounting: it displays $h_t=a h_{t-1}+u_t$ after a single impulse. Raising retention $a$ makes that impulse decay more slowly. This resembles how larger $\\gamma$ preserves later rewards in a return, but it does not implement an actor, critic, trajectory bootstrap, or asynchronous update.",
+      "sourceIds": [
+        "section-3",
+        "section-4"
+      ],
+      "claimIds": [
+        "c4",
+        "c5"
+      ],
+      "figureId": "f-state"
+    },
+    {
+      "id": "s4",
+      "title": "A small return calculation",
+      "markdown": "Consider an illustrative three-step, nonterminal segment with $\\gamma=0.9$, rewards $(r_t,r_{t+1},r_{t+2})=(1,0,2)$, and critic estimate $V(s_{t+3})=4$. Suppose the critic currently predicts $V(s_t)=3$. Then\n\n$$G_t^{(3)}=1+0.9(0)+0.9^2(2)+0.9^3(4)=1+0+1.62+2.916=5.536.$$\n\nThe estimated advantage is\n\n$$\\widehat A_t=5.536-3=2.536.$$\n\nUnder the paper’s policy-gradient form, this positive multiplier reinforces the sampled action through $\\nabla_\\theta\\log\\pi(a_t\\mid s_t;\\theta)$. The same segment also supplies a target of $5.536$ for the critic at $s_t$. If $s_{t+3}$ were terminal, the bootstrap would vanish and the target would instead be $2.62$.\n\nThis arithmetic is illustrative, not a reported trajectory. Its important lesson is that n-step learning propagates several observed rewards in one update while still using the critic beyond a truncated nonterminal rollout. Near the segment’s end, fewer rewards remain, so $k$ varies across states. That is the paper’s forward-view mixture of return lengths.",
+      "sourceIds": [
+        "section-3",
+        "section-4"
+      ],
+      "claimIds": [
+        "c5"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s5",
+      "title": "Exploration and shared optimization",
+      "markdown": "A3C adds policy entropy $H(\\pi(s_t;\\theta))$ to the objective. Entropy rewards a spread-out action distribution, and coefficient $\\beta$ controls its influence. It is an exploration incentive, not a promise that every useful state will be visited.\n\nWorkers accumulate gradients over several actions and then apply them to shared parameters. The paper compared momentum SGD, RMSProp with separate per-thread squared-gradient statistics, and RMSProp with shared statistics. For gradient vector $\\Delta\\theta$, decay $\\alpha$, learning rate $\\eta$, stabilizer $\\epsilon$, and elementwise accumulator $g$, shared RMSProp uses\n\n$$g\\leftarrow\\alpha g+(1-\\alpha)(\\Delta\\theta)^2,$$\n\n$$\\theta\\leftarrow\\theta-\\eta\\frac{\\Delta\\theta}{\\sqrt{g+\\epsilon}}.$$\n\nThe optimizer experiment depicts ordinary scalar gradient descent on $f(x)=x^2/2$ from $x=3$: changing its learning rate changes twelve iterates. It usefully shows why step size can produce slow approach, rapid approach, or overshoot. It does not simulate RMSProp, shared statistics, stale gradients, locks, or RL noise; those mechanisms must be understood from the equations and architecture above.",
+      "sourceIds": [
+        "section-4",
+        "section-7"
+      ],
+      "claimIds": [
+        "c6",
+        "c7",
+        "c11"
+      ],
+      "figureId": "f-optimizer"
+    },
+    {
+      "id": "s6",
+      "title": "Reading the evidence without erasing its conditions",
+      "markdown": "On five Atari games, the paper compared DQN on one Nvidia K40 GPU with asynchronous methods on 16 CPU cores. All four asynchronous variants trained neural controllers, and A3C was the strongest of the four. But Figure 1 was not a symmetric selection protocol: asynchronous curves averaged the best five models among 50 sampled learning-rate experiments, whereas DQN averaged five seeds with fixed hyperparameters.\n\nThe broader Atari table reports A3C feedforward and recurrent agents after four days on 16 CPU cores and compares them with prior agents trained for longer on GPUs or, for Gorila, many machines. These results support the paper’s practical CPU claim under its evaluation protocol; they do not isolate asynchrony as the only causal difference among systems.\n\nScaling evidence is also conditional. Speedup was time for one thread to reach a fixed score divided by the corresponding time for $n$ threads, averaged over seven Atari games. Sixteen threads gave at least an order-of-magnitude speedup for every method, but not identical scaling: the table reports 24.1 for one-step Q and 12.5 for A3C. Those ratios mix throughput, exploration, and possible data-efficiency changes; they are not universal hardware laws.",
+      "sourceIds": [
+        "section-5",
+        "section-5-part-2"
+      ],
+      "claimIds": [
+        "c8",
+        "c9"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s7",
+      "title": "What the contribution does not establish",
+      "markdown": "A3C’s contribution is an empirical and architectural result, not a proof that experience replay is generally unnecessary. In the reported framework, parallel actor-learners generated varied streams of fresh experience and updated a shared model, providing enough decorrelation to train the tested online methods without replay. Replay can still improve data efficiency by reusing transitions, particularly when environment interaction is more expensive than model updating, as the authors note for TORCS.\n\nThe same distinction applies to optimization. Lock-free updates can be computed from parameters that have changed by the time a worker applies its gradient, so the observed stability of these nonlinear neural-network experiments does not establish general convergence. Shared RMSProp maintains one moving average of elementwise squared gradients across workers,\n\n$$g\\leftarrow\\alpha g+(1-\\alpha)(\\Delta\\theta)^2,$$\n\nand uses it to rescale the shared-parameter update,\n\n$$\\theta\\leftarrow\\theta-\\eta\\frac{\\Delta\\theta}{\\sqrt{g+\\epsilon}}.$$\n\nHere $\\Delta\\theta$ is an accumulated gradient, $\\alpha$ is the decay factor, $\\eta$ is the learning rate, and $\\epsilon$ prevents division by a vanishing denominator; all operations are elementwise. Sharing $g$ gives every worker a common coordinate-wise scale estimate and avoids a separate accumulator per thread. In the paper’s comparison—50 sampled learning rates and random initializations for asynchronous n-step Q-learning and A3C on Breakout, Beamrider, Seaquest, and Space Invaders—shared-statistics RMSProp tended to be more robust than per-thread RMSProp, which in turn tended to be more robust than momentum SGD. That ordering is conditional on this experiment, not a universal optimizer ranking.\n\nTransfer across domains is likewise qualified by the experimental conditions. A3C was evaluated on discrete Atari games, TORCS, visual maze navigation, and continuous-control tasks. For the MuJoCo experiments, continuous actions were sampled from a spherical normal policy parameterized by a mean vector and scalar variance; the policy and value networks did not share parameters, episodes were processed as single updates without bootstrapping, and differential-entropy regularization encouraged exploration. Changes to MuJoCo’s contact model also changed the rewards, so performance on most of those tasks was not directly comparable with the earlier referenced setup.\n\nThe durable scientific interpretation is therefore narrower and more useful: diverse parallel experience can stabilize fresh online updates under the tested conditions; short multi-step returns let rewards affect several preceding decisions; an actor and critic turn those returns into policy and value updates; and asynchronous shared optimization converts concurrent environment interaction into faster wall-clock learning. These findings establish practical behavior across the documented evaluations while leaving convergence, universal scaling, optimizer superiority, and the value of replay dependent on the algorithm and domain.",
+      "sourceIds": [
+        "section-6",
+        "section-7",
+        "section-9"
+      ],
+      "claimIds": [
+        "c7",
+        "c10",
+        "c11",
+        "c12"
+      ],
+      "figureId": null
+    }
+  ],
+  "figures": [
+    {
+      "id": "f-state",
+      "kind": "state",
+      "title": "Discount-like persistence in a scalar recurrence",
+      "question": "As retention a increases, how long does the single initial impulse remain visibly influential over the 12 displayed steps?",
+      "caption": "Illustrative scalar recurrence $h_t=a h_{t-1}+u_t$ with $u_0=1$: the retention control changes the decay of one impulse over 12 steps, providing intuition for temporal persistence.",
+      "limitation": "This is a fixed scalar impulse response, not A3C, a learned value function, an n-step return calculator, or an environment rollout.",
+      "sourceIds": [
+        "section-3",
+        "section-4"
+      ],
+      "claimIds": [
+        "c5"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "f-optimizer",
+      "kind": "optimizer",
+      "title": "Step size on a simple objective",
+      "question": "Which learning rates move x toward zero smoothly, oscillate across zero, or fail to contract during the 12 updates?",
+      "caption": "Illustrative ordinary gradient descent on $f(x)=x^2/2$ from $x=3$; the learning-rate control changes the twelve displayed iterates.",
+      "limitation": "The control implements plain scalar gradient descent only, not RMSProp, shared optimizer statistics, asynchronous writes, or reinforcement-learning gradients.",
+      "sourceIds": [
+        "section-4",
+        "section-7"
+      ],
+      "claimIds": [
+        "c7",
+        "c11"
+      ],
+      "illustrative": true
+    }
+  ],
+  "quiz": [
+    {
+      "question": "Assume two systems process the same total number of transitions. What most directly expresses the paper’s proposed stabilizing mechanism for the parallel system?",
+      "options": [
+        {
+          "text": "Its workers can occupy different states and use diverse exploration, reducing temporal correlation among online updates.",
+          "explanation": "Correct. Diversity across simultaneous environment streams is the proposed substitute for replay’s decorrelation role."
+        },
+        {
+          "text": "It repeatedly samples old transitions until every update is independent.",
+          "explanation": "Incorrect. The framework specifically avoids a replay memory; independence is not claimed."
+        },
+        {
+          "text": "It serializes every gradient in exact trajectory order.",
+          "explanation": "Incorrect. Updates are asynchronous and lock-free rather than exactly serialized by experience time."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-1",
+        "section-4"
+      ],
+      "claimIds": [
+        "c1",
+        "c2"
+      ]
+    },
+    {
+      "question": "For a nonterminal k-step A3C segment, which quantity is subtracted to form the advantage estimate?",
+      "options": [
+        {
+          "text": "The critic estimate at the starting state, $V(s_t;\\theta_v)$.",
+          "explanation": "Correct. The return target, including any final bootstrap, is compared with the starting-state baseline."
+        },
+        {
+          "text": "The entropy coefficient $\\beta$.",
+          "explanation": "Incorrect. Beta scales entropy regularization; it is not the value baseline."
+        },
+        {
+          "text": "The final bootstrap value $V(s_{t+k};\\theta_v)$.",
+          "explanation": "Incorrect. That value is discounted and added to the truncated return when the endpoint is nonterminal."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-4"
+      ],
+      "claimIds": [
+        "c5",
+        "c6"
+      ]
+    },
+    {
+      "question": "What is the safest interpretation of the reported 16-thread Atari speedups?",
+      "options": [
+        {
+          "text": "They show substantial reference-score speedups under the seven-game protocol, combining throughput and possible learning effects.",
+          "explanation": "Correct. The measurement is conditional on specified games, algorithms, reference scores, and hardware."
+        },
+        {
+          "text": "They prove any asynchronous RL method will scale linearly on every environment.",
+          "explanation": "Incorrect. Scaling differed across methods and the experiment cannot establish a universal law."
+        },
+        {
+          "text": "They show each transition became sixteen times more informative for A3C.",
+          "explanation": "Incorrect. Wall-clock speedup does not by itself identify per-transition information gain, and A3C’s reported ratio was 12.5."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-5",
+        "section-5-part-2"
+      ],
+      "claimIds": [
+        "c9"
+      ]
+    }
+  ],
+  "id": "asynchronous-methods-for-deep-reinforcement-learning",
+  "createdAt": "2026-10-01T23:33:43.596Z",
+  "pipelineVersion": "subjects-lessons-v1",
+  "sources": [
+    {
+      "id": "abstract",
+      "label": "Original paper · abstract",
+      "url": "https://arxiv.org/abs/1602.01783",
+      "digest": "ec52d52d4a8a301f164db25086efa19ad8ea878a97a6ecaff50d7e0f1ef291f5"
+    },
+    {
+      "id": "section-1",
+      "label": "1 Introduction",
+      "url": "https://arxiv.org/html/1602.01783#S1",
+      "digest": "31be8d30a4f3e2a9c6368be022c77ea710deb217a5e07f8e0609c791c524bfcd"
+    },
+    {
+      "id": "section-2",
+      "label": "2 Related Work",
+      "url": "https://arxiv.org/html/1602.01783#S2",
+      "digest": "30a692e532f0acd54073f83797e27fe37e307b9212e2bb3ded4fc8878a80a33a"
+    },
+    {
+      "id": "section-3",
+      "label": "3 Reinforcement Learning Background",
+      "url": "https://arxiv.org/html/1602.01783#S3",
+      "digest": "52428317ca68d592fb85836281951c01d551783c44d881bb86c75a0acd58d48c"
+    },
+    {
+      "id": "section-4",
+      "label": "4 Asynchronous RL Framework",
+      "url": "https://arxiv.org/html/1602.01783#S4",
+      "digest": "6f4994d2c1ac0673b67681318221d5e46c47e342ab486ccf877551c4a4f8f620"
+    },
+    {
+      "id": "section-5",
+      "label": "5 Experiments",
+      "url": "https://arxiv.org/html/1602.01783#S5",
+      "digest": "dc59c6c849a5dd70249a95f3f5237386a685ad696748492523805a5679c33d5a"
+    },
+    {
+      "id": "section-5-part-2",
+      "label": "5 Experiments · part 2",
+      "url": "https://arxiv.org/html/1602.01783#S5",
+      "digest": "92540e206b22aa1fd74d4c1aaf55b3d6a12588d982fa4f4f3193872d845a2fae"
+    },
+    {
+      "id": "section-6",
+      "label": "6 Conclusions and Discussion",
+      "url": "https://arxiv.org/html/1602.01783#S6",
+      "digest": "9dcbdfc7c1c72d0f473977a677491f50b88ed6af55d66d786cc646903c51a1c5"
+    },
+    {
+      "id": "section-7",
+      "label": "7 Optimization Details",
+      "url": "https://arxiv.org/html/1602.01783#S7",
+      "digest": "46f8f1764e2a5b4e17e786d42f1f960647b584c34cd6c84b956dd947618510c5"
+    },
+    {
+      "id": "section-8",
+      "label": "8 Experimental Setup",
+      "url": "https://arxiv.org/html/1602.01783#S8",
+      "digest": "77ddfb19e4b7c36ef1c4dfcbf9e53443ae3fd5598fb21e12d936f67541a4c80a"
+    },
+    {
+      "id": "section-9",
+      "label": "9 Continuous Action Control Using the MuJoCo Physics Simulator",
+      "url": "https://arxiv.org/html/1602.01783#S9",
+      "digest": "d21d32e1834fe467da4cacf577be367b0c555be02b543e3582b8fb24393a7cd5"
+    },
+    {
+      "id": "section-9-part-2",
+      "label": "9 Continuous Action Control Using the MuJoCo Physics Simulator · part 2",
+      "url": "https://arxiv.org/html/1602.01783#S9",
+      "digest": "9b671fb8a4883915a8c1714cb456260f2dcd8ba642e18112271c374ae280e6cf"
+    }
+  ],
+  "review": {
+    "status": "passed",
+    "reviewedAt": "2026-10-02T01:49:28.816Z",
+    "contentDigest": "fa0ab7676a2525181b38d1ae8ba87a993cf2f01f568eec88fb435400d054e106"
+  }
+}

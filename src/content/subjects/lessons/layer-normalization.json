@@ -1,0 +1,456 @@
+{
+  "title": "The Coordinate System Inside One Example",
+  "summary": "Layer normalization stabilizes a layer by standardizing its units within each example, then restoring learnable per-unit scale and bias without batch dependence.",
+  "prerequisites": [
+    "Vectors, means, and population variance",
+    "Linear layers and element-wise nonlinearities",
+    "Basic recurrent neural network state updates",
+    "Training examples and hidden units"
+  ],
+  "objectives": [
+    "Compute layer-normalization statistics for one activation vector.",
+    "Distinguish layer and batch normalization by their reduction axes.",
+    "Explain why recurrent use requires no stored statistics by time step.",
+    "Predict which rescalings layer normalization removes or preserves.",
+    "Interpret the paper's results within the reported conditions."
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "mechanism",
+      "statement": "Layer normalization computes its mean and standard deviation across the hidden units of one layer for one training case.",
+      "conditions": "For a hidden layer containing H summed inputs for a single case.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c2",
+      "kind": "equation",
+      "statement": "The paper defines the layer mean as the arithmetic mean of the H pre-activation values and the scale as their population standard deviation.",
+      "conditions": "Using all H hidden-unit summed inputs in the same layer and case.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c3",
+      "kind": "mechanism",
+      "statement": "All units normalized together share the case-specific statistics, while each unit retains its own learned gain and bias.",
+      "conditions": "For the layer-normalized hidden layer described by the paper.",
+      "sourceIds": [
+        "abstract",
+        "section-3"
+      ]
+    },
+    {
+      "id": "c4",
+      "kind": "mechanism",
+      "statement": "Layer normalization does not couple one training example's normalized activations to other examples in its mini-batch.",
+      "conditions": "When statistics are computed from the current case's units rather than across cases.",
+      "sourceIds": [
+        "section-1"
+      ]
+    },
+    {
+      "id": "c5",
+      "kind": "result",
+      "statement": "The same layer-normalization computation is used during training and testing.",
+      "conditions": "For the method as defined in the paper, whose statistics come from the current case.",
+      "sourceIds": [
+        "abstract"
+      ]
+    },
+    {
+      "id": "c6",
+      "kind": "mechanism",
+      "statement": "In an RNN, the normalization statistics can be recomputed from the current time step's pre-activation vector.",
+      "conditions": "At each recurrent time step, using that step's summed inputs.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c7",
+      "kind": "result",
+      "statement": "The paper argues that normalization of recurrent pre-activations makes hidden-to-hidden dynamics more stable under common rescalings.",
+      "conditions": "For the layer-normalized RNN formulation analyzed by the authors.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c8",
+      "kind": "caveat",
+      "statement": "Layer normalization is invariant to positive scaling of the entire weight matrix, but not generally to scaling only one neuron's incoming weight vector.",
+      "conditions": "For a strictly positive whole-matrix scale factor in the paper's invariance comparison, before considering numerical degeneracy at zero variance; Eq. (6) does not establish invariance for negative scaling.",
+      "sourceIds": [
+        "section-5"
+      ]
+    },
+    {
+      "id": "c9",
+      "kind": "result",
+      "statement": "On the reported MSCOCO order-embedding experiment, the layer-normalized model reached its best validation model in 60% of the baseline's time.",
+      "conditions": "Order embeddings with layer normalization applied to the GRU, matched initial Adam hyperparameters, and the paper's validation protocol.",
+      "sourceIds": [
+        "section-6"
+      ]
+    },
+    {
+      "id": "c10",
+      "kind": "result",
+      "statement": "The reported DRAW comparison found faster convergence and a slightly better final test negative variational bound for the layer-normalized model, using the smaller-is-better convention indicated by Figure 4 despite the prose calling the values variational log likelihoods.",
+      "conditions": "Fixed-binarized MNIST, 64 glimpses, 256 LSTM units, Adam, mini-batch 128, evaluated after 200 epochs.",
+      "sourceIds": [
+        "section-6-part-2"
+      ]
+    },
+    {
+      "id": "c11",
+      "kind": "result",
+      "statement": "The paper reports robustness to batch size in its permutation-invariant MNIST comparison.",
+      "conditions": "A 784-1000-1000-10 network trained with Adam on 55,000 examples, comparing batch sizes 128 and 4.",
+      "sourceIds": [
+        "section-6-part-2"
+      ]
+    },
+    {
+      "id": "c12",
+      "kind": "caveat",
+      "statement": "The paper's preliminary convolutional results favored batch normalization, limiting any claim that layer normalization was universally superior.",
+      "conditions": "The convolutional-network experiments characterized by the authors as preliminary.",
+      "sourceIds": [
+        "section-6-part-2"
+      ]
+    },
+    {
+      "id": "c13",
+      "kind": "mechanism",
+      "statement": "The supplement applies normalization separately to recurrent and input projections in its layer-normalized LSTM construction.",
+      "conditions": "For the specific LSTM formulation documented in the supplied supplementary excerpt.",
+      "sourceIds": [
+        "section-9"
+      ]
+    },
+    {
+      "id": "c14",
+      "kind": "result",
+      "statement": "The paper identifies recurrent networks, particularly those with long sequences and small batches, as its strongest empirical setting.",
+      "conditions": "Across the experiments reported in the paper, not as a universal guarantee for every RNN.",
+      "sourceIds": [
+        "section-7"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "s1",
+      "title": "The axis is the idea",
+      "markdown": "A hidden layer first forms a vector of **summed inputs**, also called pre-activations. For layer $l$, write $a_i^l$ for unit $i$'s pre-activation, $w_i^l$ for its incoming weight vector, $h^l$ for the vector entering the layer, and $b_i^l$ for its bias. The background computation is $a_i^l=(w_i^l)^\\top h^l$, followed in an ordinary layer by $h_i^{l+1}=f(a_i^l+b_i^l)$, where $f$ is an element-wise nonlinearity.\n\nNormalization is not defined merely by “making numbers standardized.” Its defining choice is **which collection of numbers supplies the statistics**. Batch normalization groups one unit across training cases. Layer normalization transposes that choice: it groups the hidden units of one layer within one case. Consequently, changing another example in the mini-batch cannot change the current example's layer statistics. This is the paper's particular contribution and the reason batch size can cease to be part of the forward computation.",
+      "sourceIds": [
+        "section-1",
+        "section-2",
+        "section-3"
+      ],
+      "claimIds": [
+        "c1",
+        "c4"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s2",
+      "title": "Reconstructing the transformation",
+      "markdown": "Let $H$ be the number of hidden units and $a^l=(a_1^l,\\ldots,a_H^l)$ the pre-activation vector for one case. Layer normalization computes\n\n$$\n\\mu^l=\\frac{1}{H}\\sum_{i=1}^{H}a_i^l,\n\\qquad\n\\sigma^l=\\sqrt{\\frac{1}{H}\\sum_{i=1}^{H}(a_i^l-\\mu^l)^2}.\n$$\n\nThus $\\mu^l$ is the mean across units in this particular layer and case, and $\\sigma^l$ is their population standard deviation. Each coordinate is standardized using the same two case-specific quantities:\n\n$$\n\\hat a_i^l=\\frac{a_i^l-\\mu^l}{\\sigma^l}.\n$$\n\nA learned gain $g_i^l$ and bias $b_i^l$ then give each unit its own scale and offset before the element-wise nonlinearity:\n\n$$\nh_i^{l+1}=f\\!\\left(g_i^l\\hat a_i^l+b_i^l\\right).\n$$\n\nThe shared centering removes the vector's common offset, and division by its standard deviation removes a common positive scale. It does not erase the vector's relative coordinate pattern. Nor does it make the units interchangeable: the learned gains and biases can amplify, suppress, or shift different coordinates after standardization.\n\nThe figure evaluates this calculation on the fixed illustrative vector $[-2,-1,0,2,6]$. Its offset control adds the same scalar to all five activations. The raw values and their mean therefore move by that scalar, while every centered value remains unchanged; the population standard deviation and standardized pattern remain unchanged as well. The quantities are dimensionless after division by $\\sigma^l$, assuming the input activations share the same units. This directly visualizes the shared-offset invariance implied by the layer-normalization equations.",
+      "sourceIds": [
+        "abstract",
+        "section-3",
+        "section-5"
+      ],
+      "claimIds": [
+        "c1",
+        "c2",
+        "c3"
+      ],
+      "figureId": "fig-normalization"
+    },
+    {
+      "id": "s3",
+      "title": "A worked vector, completely calculated",
+      "markdown": "Consider the illustrative pre-activation vector\n\n$$a=(-2,-1,0,2,6),\\qquad H=5.$$\n\nIts mean is\n\n$$\\mu=\\frac{-2-1+0+2+6}{5}=1.$$\n\nCentering gives $a-\\mu=(-3,-2,-1,1,5)$. The squared deviations sum to $9+4+1+1+25=40$, so the population variance and standard deviation are\n\n$$\\sigma^2=\\frac{40}{5}=8,\\qquad \\sigma=\\sqrt{8}=2\\sqrt{2}\\approx2.828.$$\n\nTherefore\n\n$$\n\\hat a=\\frac{a-\\mu}{\\sigma}\n\\approx(-1.061,-0.707,-0.354,0.354,1.768).\n$$\n\nApart from rounding, these standardized coordinates have mean zero and mean squared value one. Applying illustrative unit-specific parameters $g=(1,2,1,0.5,1)$ and $b=(0,0,1,0,-1)$ gives\n\n$$\ng\\odot\\hat a+b\\approx(-1.061,-1.414,0.646,0.177,0.768),\n$$\n\nwhich is the vector presented to the nonlinearity. The chosen $g$ and $b$ are constructed values that demonstrate how the shared normalization is followed by distinct learned transformations for individual units.\n\nNow add $4$ to every activation. The raw vector becomes $(2,3,4,6,10)$ and its mean becomes $5$, but centering again yields $(-3,-2,-1,1,5)$. Its standard deviation is still $2\\sqrt{2}$, so the standardized vector is unchanged. This calculation exhibits invariance to a shared offset while preserving the relative pattern among coordinates. It assumes nonzero variance, as required by the displayed normalization formula.",
+      "sourceIds": [
+        "section-3",
+        "section-9"
+      ],
+      "claimIds": [
+        "c2",
+        "c3"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s4",
+      "title": "Why recurrence changes the stakes",
+      "markdown": "For a simple RNN at time $t$, let $x^t$ be the current input, $h^{t-1}$ the preceding hidden state, $W_{xh}$ the input-to-hidden matrix, and $W_{hh}$ the hidden-to-hidden matrix. The pre-activation vector is\n\n$$a^t=W_{hh}h^{t-1}+W_{xh}x^t.$$\n\nLayer normalization computes $\\mu^t$ and $\\sigma^t$ across the $H$ coordinates of this current vector, then forms\n\n$$h^t=f\\!\\left(\\frac{g}{\\sigma^t}\\odot(a^t-\\mu^t)+b\\right),$$\n\nwhere $g$ and $b$ are length-$H$ learned vectors and $\\odot$ means element-wise multiplication. Because the statistics come from the current step, the method needs neither a separate stored statistic for every sequence position nor a batch of parallel cases. The same gains and biases can be shared across time.\n\nThe scalar recurrence in the figure isolates why repeated dynamics can be sensitive: an impulse is multiplied by the retention $a$ on every step. Comparing retention values reveals decay or persistence over 12 steps. That toy contains no vector normalization, learned gates, or gradients; it teaches accumulation through time, while the paper's stabilization claim concerns normalized vector pre-activations in trained RNNs.",
+      "sourceIds": [
+        "abstract",
+        "section-3"
+      ],
+      "claimIds": [
+        "c5",
+        "c6",
+        "c7"
+      ],
+      "figureId": "fig-state"
+    },
+    {
+      "id": "s5",
+      "title": "What invariance does—and does not—mean",
+      "markdown": "A common misconception is that layer normalization makes a layer invariant to every rescaling. It does not. If every coordinate of one case's pre-activation vector is multiplied by the same positive factor $\\delta$, then both its centered values and $\\sigma$ scale by $\\delta$, so their ratio is unchanged. Likewise, layer normalization is invariant to positive scaling of the entire weight matrix and to a shared recentering of its rows.\n\nThe positive-scaling condition matters throughout this argument. From Eq. (3), multiplying the vector or entire weight matrix by a negative $\\delta$ makes the standard deviation scale by $|\\delta|$, while the centered vector scales by $\\delta$; the standardized vector therefore changes sign rather than remaining unchanged. The paper's derivation in Eq. (6) implicitly substitutes $\\sigma'=\\delta\\sigma$, so it does not establish invariance for $\\delta<0$.\n\nScaling only one neuron's incoming weight vector also changes that coordinate relative to the other coordinates supplying the shared statistics. Layer normalization is therefore not invariant to arbitrary independent rescaling of units. This contrasts with the paper's stated invariances for batch and weight normalization.\n\nInvariance also does not mean optimization is unchanged. The authors' geometric analysis argues that normalization scale affects curvature and can implicitly control effective learning along weight directions. That analysis uses generalized linear models and discusses extension to deep networks through a block-diagonal Fisher approximation. It supplies intuition, not a theorem that every deep architecture will converge faster.",
+      "sourceIds": [
+        "section-5",
+        "section-5-part-2"
+      ],
+      "claimIds": [
+        "c8"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s6",
+      "title": "Reading the recurrent implementations carefully",
+      "markdown": "Inside a gated recurrent cell, the phrase “apply layer normalization” must be made precise because several pre-activation vectors contribute to the update. For the supplement's layer-normalized LSTM, the concatenated gate pre-activation is formed as\n\n$$\n\\begin{pmatrix}{\\bf f}_t\\\\{\\bf i}_t\\\\{\\bf o}_t\\\\{\\bf g}_t\\end{pmatrix}\n=\nLN({\\bf W}_h{\\bf h}_{t-1};\\bm{\\alpha}_1,\\bm{\\beta}_1)\n+LN({\\bf W}_x{\\bf x}_t;\\bm{\\alpha}_2,\\bm{\\beta}_2)+b.\n$$\n\nThe recurrent projection and current-input projection are therefore normalized separately, each using statistics across the coordinates of its own vector. Their normalized results are added before the forget, input, output, and candidate components drive the usual cell-state update. The resulting cell state is normalized again before the output nonlinearity:\n\n$$\n{\\bf h}_t=\\sigma({\\bf o}_t)\\odot\n\\tanh\\!\\left(LN({\\bf c}_t;\\bm{\\alpha}_3,\\bm{\\beta}_3)\\right).\n$$\n\nThe documented GRU follows the same general principle but assigns separate normalization operations to the input and recurrent projections used for its gates and candidate state. Because each operation receives the current case's vector at the current time step, it can recompute its statistics locally while sharing learned normalization parameters through time.\n\nThe supplement also reports an experiment using a narrower LSTM placement: the gate pre-activations remain unnormalized, while normalization is applied to the cell state before the final $\\tanh$. These are scientifically distinct constructions. They share the defining layer-normalization axis, but they differ in which recurrent signals are standardized before interacting. Consequently, a result attributed to a layer-normalized recurrent model should be interpreted with the placement specified for that experiment rather than as evidence that every placement is equivalent.",
+      "sourceIds": [
+        "section-9"
+      ],
+      "claimIds": [
+        "c13"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s7",
+      "title": "What the experiments actually establish",
+      "markdown": "The evidence spans six tasks, with emphasis on recurrent models, but each result belongs to its setup. In the MSCOCO order-embedding study, layer normalization was applied to the GRU; both compared models used Adam with the same initial hyperparameters and architectural choices. Under validation checks every 300 iterations, the normalized model reached its best validation model in 60% of the baseline's time. The reported test means covered five splits, each with 1,000 images and 5,000 captions.\n\nFor DRAW on fixed-binarized MNIST, the model used 64 glimpses, 256 LSTM hidden units, Adam, and batches of 128. The authors reported almost twice-as-fast convergence and, after 200 epochs, values of 82.36 nats for the baseline and 82.09 nats for layer normalization. The paper's labels are ambiguous: its prose calls these values “variational log likelihood,” but Figure 4 labels the plotted metric test negative log likelihood and the comparison treats the smaller value as better. They should therefore be read in the paper's negative-variational-bound or cost convention, where lower is better, making 82.09 slightly better than 82.36—not as ordinary log likelihoods, for which larger would be better. These numbers should not be detached from that architecture and protocol.\n\nA permutation-invariant MNIST comparison used a 784-1000-1000-10 network and examined batches of 128 and 4. The authors reported faster convergence and batch-size robustness relative to batch normalization. Together these studies support usefulness across several tested conditions; they do not prove a fixed speedup for arbitrary networks.",
+      "sourceIds": [
+        "section-6",
+        "section-6-part-2"
+      ],
+      "claimIds": [
+        "c9",
+        "c10",
+        "c11",
+        "c14"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s8",
+      "title": "The boundary of the contribution",
+      "markdown": "Layer normalization’s central contribution is a change in the normalization axis. For each training case—and, in a recurrent network, at each time step—it computes statistics across the units of the current layer. The forward computation therefore does not depend on other cases in the mini-batch, and the same computation applies during training and testing. This structure is especially well matched to online learning, small mini-batches, and variable-length or long recurrent sequences.\n\nIts effect should be stated precisely. Before the learned affine transformation, the coordinates normalized together share a mean and population standard deviation. Unit-specific gains and biases then restore learnable scale and offset, so the layer’s final activations are not constrained to retain zero mean and unit variance. The displayed equations also require nonzero variance; the paper’s formulation does not specify a stabilizing constant for the degenerate case.\n\nThe empirical boundary is architecture-dependent. Across the reported experiments, the authors found the strongest benefits in recurrent networks, particularly with long sequences and small mini-batches. In their preliminary convolutional experiments, layer normalization improved training relative to an unnormalized baseline, but batch normalization performed better. They attributed this limitation to convolutional units near image boundaries having activation statistics that differ from those of other units in the same layer, weakening the assumption that all units grouped by the layer statistic make similar contributions.\n\nThe supported conclusion is therefore conditional: layer normalization provides a batch-independent, time-local normalization rule with favorable reported results in the recurrent settings studied. Those results do not establish that it is the best normalization method for every architecture or training regime.",
+      "sourceIds": [
+        "abstract",
+        "section-6-part-2",
+        "section-7"
+      ],
+      "claimIds": [
+        "c5",
+        "c12",
+        "c14"
+      ],
+      "figureId": null
+    }
+  ],
+  "figures": [
+    {
+      "id": "fig-normalization",
+      "kind": "normalization",
+      "title": "Offset before and after within-vector standardization",
+      "question": "When the offset adds the same value to all five activations, which displayed quantities change: the raw values, their mean, or their standardized pattern?",
+      "caption": "Five fixed illustrative activations $[-2,-1,0,2,6]$ receive a shared offset and are standardized using their population mean and standard deviation, exposing the shared-offset invariance used in the worked example.",
+      "limitation": "This is one illustrative vector, not a full BatchNorm or LayerNorm training implementation; it has no learned gain, bias, gradients, batch axis, or reported paper measurement.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c1",
+        "c2"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "fig-state",
+      "kind": "state",
+      "title": "Repeated state retention after one impulse",
+      "question": "Across 12 steps, how does increasing the scalar retention $a$ change the rate at which the initial impulse disappears?",
+      "caption": "A scalar illustrative recurrence $h_t=a h_{t-1}+u_t$ receives only $u_0=1$; changing $a$ displays the resulting 12-step decay and makes repeated temporal multiplication visible.",
+      "limitation": "This is a scalar impulse response, not an RNN layer-normalization simulation, learned world-model rollout, gated cell, or measurement of gradient stability.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c7"
+      ],
+      "illustrative": true
+    }
+  ],
+  "quiz": [
+    {
+      "question": "For one case with pre-activations $(3,5,7)$, another case is added to the mini-batch. Under the paper's layer-normalization definition, what happens to the first case's normalized values?",
+      "options": [
+        {
+          "text": "They remain unchanged.",
+          "explanation": "Correct. Its mean and standard deviation are computed across its own three hidden units, so another case supplies no statistic."
+        },
+        {
+          "text": "They change because the batch mean changes.",
+          "explanation": "That describes dependence on batch statistics, not the layer-normalization axis defined in the paper."
+        },
+        {
+          "text": "They become identical to the new case's values.",
+          "explanation": "Each case has separate normalization terms; normalization does not equate different within-case patterns."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-1",
+        "section-3"
+      ],
+      "claimIds": [
+        "c1",
+        "c4"
+      ]
+    },
+    {
+      "question": "Which modification is not generally removed by layer normalization?",
+      "options": [
+        {
+          "text": "Adding the same offset to every coordinate before standardization.",
+          "explanation": "A shared offset also shifts the within-vector mean, so centering removes it."
+        },
+        {
+          "text": "Multiplying every coordinate by the same positive scalar.",
+          "explanation": "The centered values and population standard deviation scale together, leaving their ratio unchanged."
+        },
+        {
+          "text": "Multiplying only one unit's incoming weight vector by a scalar.",
+          "explanation": "Correct. That changes one coordinate relative to the others that share the layer statistics."
+        }
+      ],
+      "answer": 2,
+      "sourceIds": [
+        "section-5"
+      ],
+      "claimIds": [
+        "c8"
+      ]
+    },
+    {
+      "question": "What is the strongest defensible interpretation of the paper's convolutional-network discussion?",
+      "options": [
+        {
+          "text": "Layer normalization was proven to fail on every convolutional network.",
+          "explanation": "The experiments were preliminary and do not justify a universal impossibility claim."
+        },
+        {
+          "text": "Batch normalization outperformed it in the preliminary convolutional experiments reported.",
+          "explanation": "Correct. This states the observed boundary without extending it beyond the reported experiments."
+        },
+        {
+          "text": "Layer normalization was uniformly best because it ignores batch size.",
+          "explanation": "Batch independence is a mechanism property, but it does not imply superior results for every architecture."
+        }
+      ],
+      "answer": 1,
+      "sourceIds": [
+        "section-6-part-2"
+      ],
+      "claimIds": [
+        "c12"
+      ]
+    }
+  ],
+  "id": "layer-normalization",
+  "createdAt": "2026-10-01T23:34:44.236Z",
+  "pipelineVersion": "subjects-lessons-v1",
+  "sources": [
+    {
+      "id": "abstract",
+      "label": "Original paper · abstract",
+      "url": "https://arxiv.org/abs/1607.06450",
+      "digest": "25070a2fa3c409b59f3ecd7bbfacfec4145b15d28b8fa9269bfaf8d4c034bb6b"
+    },
+    {
+      "id": "section-1",
+      "label": "1 Introduction",
+      "url": "https://arxiv.org/html/1607.06450#S1",
+      "digest": "6724825661a415d46daeecd54ccdb9976da9f8fa237db32fd0ba50cca381e7db"
+    },
+    {
+      "id": "section-2",
+      "label": "2 Background",
+      "url": "https://arxiv.org/html/1607.06450#S2",
+      "digest": "9f615f1b47626d294e492f11ec7bfdfb465894d54e1e26cc8d0ceb5b40931b53"
+    },
+    {
+      "id": "section-3",
+      "label": "3 Layer normalization",
+      "url": "https://arxiv.org/html/1607.06450#S3",
+      "digest": "428cfe4309e23ef77d72d9eebbdf964e4a2e06ed152bdf875feb5ec67a180da2"
+    },
+    {
+      "id": "section-4",
+      "label": "4 Related work",
+      "url": "https://arxiv.org/html/1607.06450#S4",
+      "digest": "7f8f3cd61b4e9f1e67633e4c4850f3d08ba3f15f11298a77d517a2c0a46dcfb4"
+    },
+    {
+      "id": "section-5",
+      "label": "5 Analysis",
+      "url": "https://arxiv.org/html/1607.06450#S5",
+      "digest": "f6370639eaf7496c73447027bf7d4a4bfaacecd2d61e61d14251631d12aa80a0"
+    },
+    {
+      "id": "section-5-part-2",
+      "label": "5 Analysis · part 2",
+      "url": "https://arxiv.org/html/1607.06450#S5",
+      "digest": "b699232874a702288244defd27138bbbaaaab274453e3fc53d65ee7fa7881fee"
+    },
+    {
+      "id": "section-6",
+      "label": "6 Experimental results",
+      "url": "https://arxiv.org/html/1607.06450#S6",
+      "digest": "74762386280f7711bce787209f2350f1274009a6a906eea56c77e4c6217b4569"
+    },
+    {
+      "id": "section-6-part-2",
+      "label": "6 Experimental results · part 2",
+      "url": "https://arxiv.org/html/1607.06450#S6",
+      "digest": "eb41de168414d05e4c2d0698dd04123fafe1308fa4b47f514e6aa50243ac8590"
+    },
+    {
+      "id": "section-7",
+      "label": "7 Conclusion",
+      "url": "https://arxiv.org/html/1607.06450#S7",
+      "digest": "a6dd53aea5eed98bc194f50eae6543e36f16b48eb6f82fb87ef1442edb964874"
+    },
+    {
+      "id": "section-8",
+      "label": "Acknowledgments",
+      "url": "https://arxiv.org/html/1607.06450#Sx1",
+      "digest": "1accc0df23e799f8cc4d7290f6a0eedf3c186ed22856d8485860150454af5d16"
+    },
+    {
+      "id": "section-9",
+      "label": "Supplementary Material",
+      "url": "https://arxiv.org/html/1607.06450#Sx2",
+      "digest": "ea6fa21f7d688f155f06b1a1865efd4014dc0c1ec599d5b6ee39d9515a24e650"
+    }
+  ],
+  "review": {
+    "status": "passed",
+    "reviewedAt": "2026-10-02T02:18:27.290Z",
+    "contentDigest": "e2f3a59e4aa104e1e582496d891d283f87892a77b0b898892526b66c8370be55"
+  }
+}

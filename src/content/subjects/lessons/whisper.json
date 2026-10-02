@@ -1,0 +1,448 @@
+{
+  "title": "The Transcript Is the Interface: How Whisper Turns Web-Scale Supervision into Zero-Shot Speech Processing",
+  "summary": "Whisper pairs diverse weak supervision with one token-controlled encoder–decoder, shifting speech recognition from benchmark-specific tuning toward robust zero-shot transfer.",
+  "prerequisites": [
+    "Time–frequency audio representations",
+    "Encoder–decoder Transformers",
+    "Weak supervision from noisy labels"
+  ],
+  "objectives": [
+    "Explain why Whisper scales diverse audio–transcript pairs for zero-shot transfer.",
+    "Trace a 30-second audio segment through the encoder and token-controlled decoder.",
+    "Interpret WER, relative error reduction, zero-shot tests, and robustness comparisons.",
+    "Separate demonstrated results from hypotheses, simulations, and unresolved limitations."
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "mechanism",
+      "statement": "Whisper was trained on 680,000 hours of weakly supervised audio, including multilingual recognition and speech-to-English translation data.",
+      "conditions": "Dataset composition reported for pre-training; hours describe collected supervision, not a uniformly balanced sample across languages.",
+      "sourceIds": [
+        "section-1"
+      ]
+    },
+    {
+      "id": "c2",
+      "kind": "mechanism",
+      "statement": "Training uses minimally standardized transcript text so the sequence model learns naturalistic written forms without a separate inverse-normalization stage.",
+      "conditions": "Applies to the transcript targets used in the paper's training pipeline; automated data-quality filtering was still performed.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c3",
+      "kind": "mechanism",
+      "statement": "Audio is divided into 30-second segments, including subsampled no-speech segments used to train voice-activity behavior.",
+      "conditions": "Pre-training segmentation and no-speech sampling procedure.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c4",
+      "kind": "mechanism",
+      "statement": "The acoustic input is a normalized 80-channel log-magnitude Mel spectrogram computed from 16 kHz audio.",
+      "conditions": "Input representation described for all model sizes in the paper.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c5",
+      "kind": "mechanism",
+      "statement": "A shared decoder predicts language and no-speech classification tokens, while task and timestamp-mode tokens specify requested behavior; it also predicts timestamps and transcript boundaries.",
+      "conditions": "Decoder token format for the jointly trained recognition, translation, language-identification, timestamp, and no-speech objectives.",
+      "sourceIds": [
+        "section-2-part-2"
+      ]
+    },
+    {
+      "id": "c6",
+      "kind": "equation",
+      "statement": "For a reference containing $N$ words, word error rate is $\\mathrm{WER}=(S+D+I)/N$, where $S$, $D$, and $I$ are substitutions, deletions, and insertions; this edit-distance metric also counts stylistic mismatches.",
+      "conditions": "WER is computed after the chosen text-standardization procedure; changing normalization can change the reported value.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c7",
+      "kind": "result",
+      "statement": "Evaluation was intentionally zero-shot: benchmark training splits were not used, so the tests probe transfer rather than adaptation to each benchmark.",
+      "conditions": "The wide existing-dataset evaluation described in Section 3, not every possible downstream deployment.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c8",
+      "kind": "result",
+      "statement": "Against a LibriSpeech-trained wav2vec 2.0 model with essentially matched LibriSpeech Clean WER, Whisper Large V2 achieved a 55.2% average relative error reduction over the other listed datasets.",
+      "conditions": "Table 2 comparison after the paper's text normalizer; models were matched on LibriSpeech performance, and the average covers the listed out-of-distribution datasets.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c9",
+      "kind": "result",
+      "statement": "Across languages in Fleurs, recognition error was strongly associated with supervision quantity; the fitted log–log relation estimated a halving of WER per 16-fold data increase.",
+      "conditions": "Cross-language observational regression on Fleurs; this is not a randomized causal intervention and outliers were associated with script, linguistic distance, tokenizer fit, or data quality.",
+      "sourceIds": [
+        "section-3-part-2"
+      ]
+    },
+    {
+      "id": "c10",
+      "kind": "result",
+      "statement": "Under additive pub noise below 10 dB SNR, Whisper outperformed every compared model in the reported noise experiment.",
+      "conditions": "LibriSpeech audio corrupted using pub noise from the Audio Degradation Toolbox; comparison involved 14 specified LibriSpeech or mixture-trained models.",
+      "sourceIds": [
+        "section-3-part-2"
+      ]
+    },
+    {
+      "id": "c11",
+      "kind": "caveat",
+      "statement": "Joint multilingual and multitask training caused negative transfer at small scale but became beneficial in the largest experiments.",
+      "conditions": "English-recognition comparison adjusted for compute allocated to English in the joint setup; the conclusion depends on model and compute scale.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c12",
+      "kind": "caveat",
+      "statement": "The paper does not isolate whether robustness comes primarily from the acoustic encoder, the audio-conditional decoder, or their joint training.",
+      "conditions": "Architectural attribution remains unresolved because the relevant decoder-less and encoder-plus-language-model ablations were not reported.",
+      "sourceIds": [
+        "section-6"
+      ]
+    },
+    {
+      "id": "c13",
+      "kind": "caveat",
+      "statement": "Long-form decoding can repeat, omit boundary words, or hallucinate text unrelated to the audio, despite mitigation heuristics.",
+      "conditions": "Especially relevant when chaining 30-second windows for long recordings; heuristics reduce but do not eliminate these failures.",
+      "sourceIds": [
+        "section-6"
+      ]
+    },
+    {
+      "id": "c14",
+      "kind": "caveat",
+      "statement": "Recognition quality remains poor for many languages because the collected dataset is English-heavy and most languages have under 1,000 training hours.",
+      "conditions": "Language coverage and performance reflect the paper's English-centric data-collection pipeline, rather than equal supervision across languages.",
+      "sourceIds": [
+        "section-6"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "s1",
+      "title": "The problem is not merely hearing words",
+      "markdown": "A conventional benchmark can reward specialization: train or fine-tune on examples from one distribution, then test on held-out examples that resemble it. Whisper instead asks whether one system can arrive at an unfamiliar benchmark and work without consuming its training split. That is **zero-shot transfer** here—not learning without supervision, but transferring without benchmark-specific fine-tuning.\n\nThis distinction matters when discussing “human-level” recognition. A person usually receives little distribution-specific training, whereas a benchmark model may have studied thousands of hours drawn from the test domain. Equal test questions therefore need not imply equal preparation. Whisper's particular contribution is to combine a very large, varied supervised pre-training distribution with a zero-shot evaluation protocol, making robustness across distributions central rather than incidental.\n\nThe supervision is *weak* because internet audio–transcript pairs can be noisy, incomplete, misaligned, or machine-generated. It is nevertheless supervised: audio is paired with target text. Whisper scales this resource to 680,000 hours and broadens it beyond English-only transcription. The wager is that diversity and quantity, plus filtering, can outweigh imperfect labels and prepare both the encoder and decoder before deployment.",
+      "sourceIds": [
+        "section-1",
+        "section-3"
+      ],
+      "claimIds": [
+        "c1",
+        "c7"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s2",
+      "title": "From waveform to an acoustic sequence",
+      "markdown": "Begin with sampled sound. Whisper resamples audio to 16,000 samples per second, so a full 30-second segment contains $16{,}000\\times30=480{,}000$ waveform samples. The encoder receives an 80-channel log-magnitude Mel spectrogram computed on 25 ms windows with a 10 ms stride. Its two axes preserve a useful structure: frequency bands describe the sound within a window, and successive frames describe how that sound changes over time. Global scaling puts these features approximately between $-1$ and $1$ with zero mean over the pre-training distribution.\n\nTwo width-3 convolutional layers with GELU activation transform the spectrogram into the encoder's representation. The second layer has stride two, reducing the time resolution before the Transformer blocks. Sinusoidal positions preserve the ordering of the resulting sequence. The encoder's pre-activation residual blocks then combine information across that sequence, and a final layer normalization produces the states read by the decoder.\n\nThe acoustic sequence and the output token sequence serve different purposes. Encoder states represent evidence from the recording; decoder tokens represent the task, text, and timing information to be produced from that evidence. The encoder states remain available as the decoder builds its output prefix, so predicting another token can use both the audio and what has already been generated. The mechanism walkthrough follows these separate collections rather than treating a text token as a piece of raw audio.\n\nText tokenization completes this interface. English-only models use GPT-2's byte-level BPE tokenizer. Multilingual models refit its vocabulary while retaining the vocabulary size, reducing the excessive fragmentation that an English-only vocabulary can create for other languages. The output is therefore a sequence of text and special tokens learned jointly with the acoustic mapping.",
+      "sourceIds": [
+        "section-2",
+        "section-3-part-2"
+      ],
+      "claimIds": [
+        "c3",
+        "c4",
+        "c10"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s3",
+      "title": "One decoder, many jobs, one token grammar",
+      "markdown": "Whisper expresses several speech tasks in one decoder sequence. Prediction begins with `<|startoftranscript|>`. The training format first predicts a language token as a classification target, or `<|nospeech|>` when the segment contains no speech. The task is then specified by `<|transcribe|>` or `<|translate|>`, and `<|notimestamps|>` requests text without timestamp tokens. These token identities give the shared decoder a concrete description of the requested output.\n\nFor non-English speech, transcription requests text in the spoken language while translation requests an English rendering. The acoustic evidence can stay the same while the task prefix changes what the decoder is asked to produce. Language classification and task specification have distinct roles: identifying the spoken language is an inference about the input; choosing transcription or translation sets the job to perform with it.\n\nWhen timestamps are requested, predicted start and end time tokens bracket each caption's text. Times are relative to the current audio segment and quantized to 20 ms. Decoding ends with `<|endoftranscript|>`. Previous transcript text is sometimes included as context during training, with its loss masked so that it conditions the current prediction. The model is trained to predict the other tokens in the format, learning the sequence grammar as well as the transcription or translation.\n\nLet $x$ denote the encoder sequence, $c$ the chosen task and format prefix, and $y_t$ the next generated token. Autoregressive prediction factors as\n\n$$\np(y_{1:T}\\mid x,c)=\\prod_{t=1}^{T}p(y_t\\mid y_{<t},x,c).\n$$\n\nEach prediction depends on the existing prefix $y_{<t}$, the acoustic states, and the request. After a token is emitted, it joins the prefix used to predict the next token. This is the persistent-prefix change shown in the walkthrough.\n\nTo see how attention normalizes competing scores, take four illustrative scores $[2,1,0,-1]$ and a positive temperature $\\tau$. The retained control computes\n\n$$\na_i=\\frac{\\exp(s_i/\\tau)}{\\sum_j\\exp(s_j/\\tau)}.\n$$\n\nFor the two largest scores, $a_1/a_2=\\exp(1/\\tau)$. At $\\tau=1$ the ratio is $e$; at $\\tau=0.5$ it is $e^2$. Lowering temperature therefore concentrates weight without changing which four positions are available. This normalized mixture helps explain how attention can emphasize evidence while retaining access to the full sequence.",
+      "sourceIds": [
+        "section-2",
+        "section-2-part-2"
+      ],
+      "claimIds": [
+        "c2",
+        "c5"
+      ],
+      "figureId": "f-attention"
+    },
+    {
+      "id": "s4",
+      "title": "Training diversity is engineered, not simply scraped",
+      "markdown": "Minimal transcript standardization does not mean accepting every pair. The authors filtered likely machine-generated transcripts to avoid learning restricted “transcript-ese,” checked whether detected audio language matched transcript language, fuzzy-deduplicated transcript text, and inspected large high-error sources after training an initial model. English transcripts paired with audio detected as another language could become speech-to-English translation examples instead of recognition examples. No-speech segments, sampled at reduced probability, taught voice-activity behavior.\n\nThis is an important separation: **target style** remained comparatively naturalistic, while **pair quality** was filtered. Predicting punctuation and capitalization directly can remove a separate inverse-text-normalization stage, but it also makes evaluation delicate because a semantically correct transcript may differ stylistically from a reference.\n\nA common misconception is that Whisper is an unsupervised audio model because it transfers zero-shot. It is neither claim. Its pre-training targets are collected transcripts, so it is weakly supervised; zero-shot describes the absence of benchmark-specific training during evaluation. Scale also does not make all supervision equivalent. Language-identification errors could route examples into the wrong task, and the paper documents a Welsh translation-data outlier caused largely by English audio misclassified as Welsh.",
+      "sourceIds": [
+        "section-2",
+        "section-2-part-2",
+        "section-3-part-2"
+      ],
+      "claimIds": [
+        "c1",
+        "c2",
+        "c3",
+        "c7"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s5",
+      "title": "Reading WER without being fooled by formatting",
+      "markdown": "Word error rate uses the minimum edit operations needed to turn a hypothesis into a reference:\n\n$$\\mathrm{WER}=\\frac{S+D+I}{N},$$\n\nwhere $S$ is substitutions, $D$ deletions, $I$ insertions, and $N$ reference words. Suppose the reference has $N=10$ words and the hypothesis requires one substitution, one deletion, and one insertion. Then\n\n$$\\mathrm{WER}=\\frac{1+1+1}{10}=0.30=30\\%.$$\n\nThis arithmetic is **illustrative**, not a reported Whisper example. WER can exceed 100% when insertions are numerous.\n\nFor a second illustrative calculation, relative error reduction from an old WER $e_0=20\\%$ to a new WER $e_1=12\\%$ is\n\n$$\\mathrm{RER}=\\frac{e_0-e_1}{e_0}=\\frac{0.20-0.12}{0.20}=0.40=40\\%.$$\n\nThat is an eight-percentage-point absolute reduction but a 40% relative reduction.\n\nWhisper emits comparatively natural text, while benchmark references encode dataset-specific conventions. The authors therefore standardized text before WER. They acknowledge that a normalizer developed through inspection might favor Whisper; comparison with an independent FairSpeech normalizer was broadly similar on most datasets but differed more on WSJ, CallHome, and Switchboard. Consequently, every WER comparison should name its normalization conditions.",
+      "sourceIds": [
+        "section-3",
+        "section-4"
+      ],
+      "claimIds": [
+        "c6"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s6",
+      "title": "What the evidence establishes—and under what controls",
+      "markdown": "A useful robustness comparison starts by matching performance on the reference distribution. In Table 2, wav2vec 2.0 Large and Whisper Large V2 both have 2.7 WER on LibriSpeech Clean after the paper's text normalizer. The other listed datasets probe recordings and speakers beyond that reference domain. Their reported average WERs are 29.3 and 12.8, while the mean of their dataset-level relative error reductions is 55.2%.\n\nThose two averages answer different questions. Computing relative reduction directly from the aggregate WERs gives $(29.3-12.8)/29.3\\approx56.3\\%$. Computing a relative reduction separately for each dataset and then averaging gives the paper's 55.2%. Each dataset has its own baseline denominator, so averaging and taking a ratio do not commute. With reference-domain accuracy matched, the remaining gap provides evidence for stronger cross-domain transfer under this zero-shot, normalized evaluation.\n\nThat conclusion is conditional on the comparison. On the multilingual VoxPopuli benchmark, the displayed WERs are 13.6 for Whisper and 8.1 for Maestro. Fleurs language identification also trails prior supervised results, with no Whisper training data for 20 of its 102 languages. A successful transfer result across one set of speech distributions does not imply equally strong coverage of every language and task.\n\nThe noise study tests a specific distribution shift by adding white noise or pub noise to LibriSpeech audio and measuring recognition WER. Signal-to-noise ratio is\n\n$$\n\\mathrm{SNR}_{\\mathrm{dB}}=10\\log_{10}(P_s/P_n),\n$$\n\nwhere $P_s$ and $P_n$ are signal and noise power. Lower SNR means more noise relative to speech. Several compared recognizers are better under low noise, while Whisper outperforms all 14 compared models under additive pub noise below 10 dB. The corruption type, source audio, and WER measurement define that result: it concerns recognizing speech amid the ambient chatter used in this experiment.\n\nTwo data analyses further explain the coverage pattern. Across Fleurs languages, the fitted log–log relation estimates that WER halves per 16-fold increase in language-specific supervision. This is an observational relation across languages; scripts, linguistic distance, tokenizer fit, and label quality can differ alongside data quantity. Separately, medium-model training on 0.5%, 1%, 2%, 4%, 8%, and 100% of the dataset improves all reported tasks as data grows, with slower gains from roughly 54,000 to 680,000 hours. That experiment holds the model size fixed and selects subsampled-data checkpoints with validation-based early stopping. Its diminishing returns describe the tested training regime rather than an assumed universal loss curve.",
+      "sourceIds": [
+        "section-3",
+        "section-3-part-2",
+        "section-4"
+      ],
+      "claimIds": [
+        "c8",
+        "c9",
+        "c10"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s7",
+      "title": "Scale changes transfer, but does not identify its cause",
+      "markdown": "Joint training shares a model across languages and tasks, so it also divides training effort among them. The paper compares English-only models with the joint setup after accounting for the compute allocated to English speech recognition. Small models trained with moderate compute show negative transfer: their English recognition is worse in the joint setup. At larger scale the joint models improve more and eventually surpass their English-only counterparts. The benefit therefore depends on the capacity and training scale of the compared systems.\n\nModel-family results generally improve as models grow, with diminishing returns for English recognition. Large V2 also receives longer training together with SpecAugment, stochastic depth, and BPE dropout. Its improved score reflects that combined change in training, so a comparison against a smaller model cannot attribute the entire gap to parameter count alone.\n\nThe encoder and decoder likewise contribute as a coupled system. The encoder supplies acoustic evidence; the audio-conditional decoder combines it with language and transcript context to predict a plausible sequence. The paper leaves their separate contributions to robustness unresolved. Its reported zero-shot results establish the performance of the trained encoder–decoder and data regime together. A controlled architectural comparison would be needed to apportion that improvement between components.",
+      "sourceIds": [
+        "section-2-part-2",
+        "section-4",
+        "section-6"
+      ],
+      "claimIds": [
+        "c11",
+        "c12"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s8",
+      "title": "Thirty seconds at a time: the deployment boundary",
+      "markdown": "Long recordings are processed through successive 30-second windows. Predicted timestamps determine how far the audio window shifts, and previous transcript text can condition the next decoding pass. This creates two paths for an error to carry forward: an inaccurate timestamp can misplace the next audio window, while an inaccurate transcript can become misleading text context.\n\nThe paper's decoding procedure addresses these failure modes with concrete checks. Beam search keeps five hypotheses scored by log probability to reduce repetition loops. Decoding starts at temperature zero; low average token log probability or unusually compressible generated text triggers a retry at a higher temperature, in steps of 0.2 up to 1.0. The compressibility check helps identify repetitive text, while the log-probability check identifies a weakly supported output.\n\nNo-speech detection combines the no-speech token probability with average text log probability, since the no-speech probability alone was insufficient. Previous-text conditioning is used when the decoding temperature is below 0.5. An initial timestamp constrained between zero and one second helps avoid skipping the recording's first words. These choices connect the model's output signals to the next decoding decision instead of accepting every generated sequence immediately.\n\nOn the long-form datasets in Table 7, average WER falls from 11.0 with greedy decoding to 10.0 after the listed interventions. Individual rows respond differently to each intervention, so the average improvement does not imply that every rule improves every dataset. The remaining failures include repetition, missed boundary words, and transcripts unrelated to the audio. They explain why long-form alignment and decoding behavior matter even when short-utterance recognition is strong.\n\nLanguage coverage adds another practical condition. The collected dataset is English-heavy, and most languages have fewer than 1,000 training hours. Whisper's unified interface can request many tasks and languages, but reliable recognition still depends on the supervision available for them. Its strong zero-shot transfer comes with these concrete coverage and sequential-decoding constraints.",
+      "sourceIds": [
+        "section-3-part-3",
+        "section-4-part-2",
+        "section-6"
+      ],
+      "claimIds": [
+        "c13",
+        "c14",
+        "c12"
+      ],
+      "figureId": null
+    }
+  ],
+  "figures": [
+    {
+      "id": "f-attention",
+      "kind": "attention",
+      "title": "Temperature and normalized attention",
+      "question": "As positive temperature decreases, do the four fixed scores $[2,1,0,-1]$ yield a flatter or more concentrated softmax distribution?",
+      "caption": "Four fixed illustrative scores are divided by a positive temperature and normalized with softmax to expose how temperature changes attention weights.",
+      "limitation": "The scores are invented and fixed; this is not a measured Whisper attention head, learned token similarity, causal account of task control, or model-output simulation.",
+      "sourceIds": [
+        "section-2",
+        "section-2-part-2"
+      ],
+      "claimIds": [
+        "c5"
+      ],
+      "illustrative": true
+    }
+  ],
+  "quiz": [
+    {
+      "question": "Two recognizers have the same normalized WER on the reference domain. Model A has much lower average WER on separately held-out domains, with no target-domain fine-tuning. Under those assumptions, what is the best interpretation?",
+      "options": [
+        {
+          "text": "Model A demonstrates stronger cross-domain robustness under this evaluation.",
+          "explanation": "Correct: matching reference-domain performance controls one important baseline difference, while the held-out-domain gap measures transfer."
+        },
+        {
+          "text": "Model A must have a universally better acoustic encoder.",
+          "explanation": "Incorrect: system-level results do not isolate encoder quality from decoder, data, filtering, normalization, or decoding."
+        },
+        {
+          "text": "Both models are equally robust because their reference WER is equal.",
+          "explanation": "Incorrect: equal in-distribution performance does not imply equal performance under distribution shift."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-3",
+        "section-6"
+      ],
+      "claimIds": [
+        "c8",
+        "c12"
+      ]
+    },
+    {
+      "question": "Which statement correctly distinguishes Whisper's supervision from its evaluation protocol?",
+      "options": [
+        {
+          "text": "It is weakly supervised during pre-training and evaluated zero-shot on the benchmark datasets.",
+          "explanation": "Correct: internet audio–transcript pairs provide supervision, while benchmark training splits are withheld during zero-shot evaluation."
+        },
+        {
+          "text": "It is unsupervised during pre-training because benchmark labels are not used.",
+          "explanation": "Incorrect: collected transcripts are training targets, even though they are noisy and do not come from the evaluation benchmark."
+        },
+        {
+          "text": "It is few-shot because task tokens provide labeled examples in the prompt.",
+          "explanation": "Incorrect: task-specifier tokens request behavior; they are not benchmark demonstration examples."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-1",
+        "section-2-part-2",
+        "section-3"
+      ],
+      "claimIds": [
+        "c1",
+        "c5",
+        "c7"
+      ]
+    },
+    {
+      "question": "What conclusion is warranted by the reported long-form decoding evidence?",
+      "options": [
+        {
+          "text": "Heuristics reduced average WER, but window chaining and hallucination-related failures remained.",
+          "explanation": "Correct: the interventions improved the reported average while the paper still identifies repeat loops, omissions, and hallucinations."
+        },
+        {
+          "text": "Beam search guarantees that every dataset improves relative to greedy decoding.",
+          "explanation": "Incorrect: Table 7 shows uneven effects, including datasets whose displayed WER worsens after some interventions."
+        },
+        {
+          "text": "The model natively attends over an entire hours-long recording in one encoder pass.",
+          "explanation": "Incorrect: inputs are limited to 30-second chunks and long recordings are handled with shifted windows."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-3-part-3",
+        "section-4-part-2",
+        "section-6"
+      ],
+      "claimIds": [
+        "c3",
+        "c13"
+      ]
+    }
+  ],
+  "id": "whisper",
+  "createdAt": "2026-10-01T23:19:56.784Z",
+  "pipelineVersion": "subjects-lessons-v1",
+  "sources": [
+    {
+      "id": "abstract",
+      "label": "Original paper · abstract",
+      "url": "https://arxiv.org/abs/2212.04356",
+      "digest": "b4fac9dac151e2ef038b45e96836138d0989e1bebf8c0cf647cc03f59be8a4b6"
+    },
+    {
+      "id": "section-1",
+      "label": "1 Introduction",
+      "url": "https://arxiv.org/html/2212.04356#S1",
+      "digest": "fa38cab0b070e91b74ce5cadc23d54b8c7a40e189bf749c4a29776e22c53d12e"
+    },
+    {
+      "id": "section-2",
+      "label": "2 Approach",
+      "url": "https://arxiv.org/html/2212.04356#S2",
+      "digest": "c667d46f9b2083fc72df4c791ed7fa45765c332a915147dc32d6fca9e601b57a"
+    },
+    {
+      "id": "section-2-part-2",
+      "label": "2 Approach · part 2",
+      "url": "https://arxiv.org/html/2212.04356#S2",
+      "digest": "e22b81a42b38fde42403df7decc506845eeff55b37e2c1e35dddc313ec069fb2"
+    },
+    {
+      "id": "section-3",
+      "label": "3 Experiments",
+      "url": "https://arxiv.org/html/2212.04356#S3",
+      "digest": "968886ff3cf60dbfab463b3f1f20b656e0d1fa783ec1963c52d16af3ba9560a7"
+    },
+    {
+      "id": "section-3-part-2",
+      "label": "3 Experiments · part 2",
+      "url": "https://arxiv.org/html/2212.04356#S3",
+      "digest": "b16b6a4333bbe7ea847b517279ab14110733bbad250e7ea1d7477c20322ba690"
+    },
+    {
+      "id": "section-3-part-3",
+      "label": "3 Experiments · part 3",
+      "url": "https://arxiv.org/html/2212.04356#S3",
+      "digest": "7571f763a26317f9937db65d5962a1d88b0c994173346c75181c88bd98af1229"
+    },
+    {
+      "id": "section-4",
+      "label": "4 Analysis and Ablations",
+      "url": "https://arxiv.org/html/2212.04356#S4",
+      "digest": "72dd2e604d4625f3e80d959a30c02e437d708b8ca5939fa323489e2a60c2f49f"
+    },
+    {
+      "id": "section-4-part-2",
+      "label": "4 Analysis and Ablations · part 2",
+      "url": "https://arxiv.org/html/2212.04356#S4",
+      "digest": "92521f3330776b48fba7a026f04604a69dcaa4aca9b971f749e1a953e6a47f4a"
+    },
+    {
+      "id": "section-5",
+      "label": "5 Related Work",
+      "url": "https://arxiv.org/html/2212.04356#S5",
+      "digest": "4b79811535f9e7162076c178cad7c4c1d96fa5d9d81fde9213ba961df1e788a4"
+    },
+    {
+      "id": "section-6",
+      "label": "6 Limitations and Future Work",
+      "url": "https://arxiv.org/html/2212.04356#S6",
+      "digest": "73ebf16caf4e35b0963358e93400f724b8d45c4b9f9f220b41a4bfcd2e057bf1"
+    },
+    {
+      "id": "section-7",
+      "label": "7 Conclusion",
+      "url": "https://arxiv.org/html/2212.04356#S7",
+      "digest": "13f32eb8c2c2718daf638d8ab5a7bed53e60645094f9e50084fdfed03b98b7bd"
+    }
+  ],
+  "review": {
+    "status": "passed",
+    "reviewedAt": "2026-10-02T01:52:23.964Z",
+    "contentDigest": "63276c094de07f8af81a33c2ddc06a5d397f4d6417b9c030903da9e3ea22ce83"
+  }
+}

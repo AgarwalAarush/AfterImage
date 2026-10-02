@@ -1,0 +1,435 @@
+{
+  "title": "Ask a Moving World Where a Point Went",
+  "summary": "D4RT turns dynamic reconstruction into independent point queries over one encoded video, unifying depth, tracks, point clouds, and camera recovery.",
+  "prerequisites": [
+    "Normalized image coordinates and video frame indices",
+    "Camera-frame 3D points and pinhole projection",
+    "Transformer self-attention and cross-attention",
+    "Rigid alignment of corresponding 3D point sets"
+  ],
+  "objectives": [
+    "Explain the roles of source, target, and camera-reference times.",
+    "Derive depth, tracks, and point clouds by varying query indices.",
+    "Describe how queried 3D points support camera recovery.",
+    "Interpret reported efficiency and accuracy under their test conditions.",
+    "Distinguish what independent decoding enables from what it guarantees."
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "mechanism",
+      "statement": "D4RT encodes an entire input video once into a global scene representation and uses a lightweight decoder to answer point-level spatio-temporal queries.",
+      "conditions": "For a video processed by the paper's encoder-decoder architecture.",
+      "sourceIds": [
+        "section-1",
+        "section-2"
+      ]
+    },
+    {
+      "id": "c2",
+      "kind": "equation",
+      "statement": "For each query, the decoder produces a 3D point position according to P=D(q,F).",
+      "conditions": "For a query q processed independently with fixed video features F, with decoder output P in R^3.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c3",
+      "kind": "mechanism",
+      "statement": "Source time identifies the observed pixel, target time selects the physical state to predict, and camera-reference time selects the coordinate frame in which that state is expressed.",
+      "conditions": "Under D4RT's query semantics; the three time indices need not coincide.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c4",
+      "kind": "mechanism",
+      "statement": "Varying query coordinates and time indices through specific Cartesian products yields point tracks, shared-frame point clouds, and depth maps through the same decoder interface.",
+      "conditions": "Using the task-specific index patterns stated in the method and retaining only the Z coordinate for depth.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c5",
+      "kind": "mechanism",
+      "statement": "D4RT recovers relative camera pose by querying corresponding 3D points in two camera reference frames and rigidly aligning the resulting point sets with Umeyama's algorithm.",
+      "conditions": "For a coarse grid of source points whose decoded outputs represent the same 3D points in the two reference frames.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c6",
+      "kind": "equation",
+      "statement": "With principal point (0.5,0.5), individual focal estimates obey f_x=p_z(u-0.5)/p_x and f_y=p_z(v-0.5)/p_y, followed by a median over sampled points.",
+      "conditions": "Under the stated pinhole-camera assumption and for nonzero relevant point coordinates.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c7",
+      "kind": "mechanism",
+      "statement": "Each query is augmented with an embedding of a local 9 by 9 RGB patch around its source coordinate, and the reported Sintel ablation improved all five listed depth and pose metrics when that patch was included.",
+      "conditions": "In the ViT-L ablation trained with and without the local appearance patch and evaluated on Sintel.",
+      "sourceIds": [
+        "section-2",
+        "section-4-part-2"
+      ]
+    },
+    {
+      "id": "c8",
+      "kind": "mechanism",
+      "statement": "Decoder queries cross-attend to the fixed global representation but do not self-attend to one another, permitting arbitrary sparse or dense query sets and straightforward parallel decoding.",
+      "conditions": "For the pointwise decoder design described in the paper.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c9",
+      "kind": "mechanism",
+      "statement": "The dense-tracking algorithm starts tracks only at unvisited pixels and marks visible spatio-temporal pixels traversed by each recovered track as visited.",
+      "conditions": "For the occupancy-grid procedure used to avoid naively initiating a full track from every video pixel.",
+      "sourceIds": [
+        "section-2-part-2"
+      ]
+    },
+    {
+      "id": "c10",
+      "kind": "result",
+      "statement": "The occupancy-grid dense-tracking procedure produced an adaptive 5 to 15 times speedup depending on video motion complexity.",
+      "conditions": "Empirical result for the paper's all-pixels tracking procedure; the excerpt does not specify a single fixed benchmark for this range.",
+      "sourceIds": [
+        "section-2-part-2"
+      ]
+    },
+    {
+      "id": "c11",
+      "kind": "result",
+      "statement": "At 24 FPS on one A100 GPU, D4RT produced 1,570 full-video 3D tracks, compared with 84 for SpatialTrackerV2 and 5 for DELTA.",
+      "conditions": "Under the maximum-track-count throughput protocol reported in Table 3.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c12",
+      "kind": "result",
+      "statement": "D4RT obtained the lowest reported point-cloud mean L1 error in the supplied table on both Sintel and ScanNet, with values 0.768 and 0.028 respectively.",
+      "conditions": "After the evaluation's mean-shift alignment of predicted and ground-truth point clouds.",
+      "sourceIds": [
+        "section-4",
+        "section-4-part-2"
+      ]
+    },
+    {
+      "id": "c13",
+      "kind": "result",
+      "statement": "Adding the local appearance patch reduced Sintel scale-only depth AbsRel from 0.366 to 0.302 and camera-pose ATE from 0.173 to 0.091.",
+      "conditions": "For the paper's ViT-L local-patch ablation; lower is better for both metrics.",
+      "sourceIds": [
+        "section-4-part-2"
+      ]
+    },
+    {
+      "id": "c14",
+      "kind": "caveat",
+      "statement": "Reported depth metrics are computed after sequence-level scale-only or scale-and-shift alignment.",
+      "conditions": "For the depth evaluation protocol described in the experiments; both settings use one global scale factor across the sequence, and scale-and-shift additionally introduces a 3D translation term.",
+      "sourceIds": [
+        "section-4-part-2"
+      ]
+    },
+    {
+      "id": "c15",
+      "kind": "caveat",
+      "statement": "The reported principal model configuration uses a one-billion-parameter encoder and a 144-million-parameter decoder.",
+      "conditions": "For the principal ViT-g training configuration with a 40-layer encoder and an 8-layer cross-attention decoder, distinct from the smaller ablation defaults.",
+      "sourceIds": [
+        "section-4"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "s1",
+      "title": "The reconstruction question is too large",
+      "markdown": "A dynamic video entangles three questions: which visible pixel names a point, where that physical point is at another time, and which camera coordinate system should describe it. Conventional dense reconstruction tends to answer many such questions at once, even when an application needs only a few tracks or depths. D4RT's contribution is to make one point-level question the reusable interface.\n\nBefore following the mechanism, distinguish a **3D point** from its **coordinates**. A physical point can remain the same while its coordinates change because either the point moves or the reference camera changes. D4RT exposes both choices instead of hiding them inside a task-specific output head. This is why the method can treat a depth pixel, a trajectory sample, and a camera-alignment correspondence as variations of one operation rather than unrelated predictions.",
+      "sourceIds": [
+        "section-1",
+        "section-2"
+      ],
+      "claimIds": [
+        "c1",
+        "c3"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s2",
+      "title": "Encode once, then ask precise questions",
+      "markdown": "Let the RGB video be $V\\in\\mathbb{R}^{T\\times H\\times W\\times 3}$, where $T$ is the number of frames, $H$ and $W$ are image height and width, and $3$ indexes color channels. The encoder $\\mathcal{E}$ produces\n\n$$F=\\mathcal{E}(V)\\in\\mathbb{R}^{N\\times C},$$\n\nwhere $N$ is the number of latent tokens and $C$ is each token's channel dimension. This global representation is computed once and then held fixed during decoding.\n\nA query is\n\n$$\\mathbf{q}=(u,v,t_{\\mathrm{src}},t_{\\mathrm{tgt}},t_{\\mathrm{cam}}),$$\n\nwith normalized source-image coordinates $(u,v)\\in[0,1]^2$. The index $t_{\\mathrm{src}}$ says where the point was identified; $t_{\\mathrm{tgt}}$ asks for that point's state at another time; and $t_{\\mathrm{cam}}$ chooses the camera frame used to express the answer. The decoder returns\n\n$$\\mathbf{P}=\\mathcal{D}(\\mathbf{q},F)=(p_x,p_y,p_z)\\in\\mathbb{R}^3.$$\n\nIts cross-attention lets one query retrieve relevant information from the global video representation. The accompanying illustrative attention control makes that prerequisite concrete: it applies softmax to four fixed scores $[2,1,0,-1]$ after division by a positive temperature. Lower temperature concentrates normalized weight on the largest score; higher temperature spreads it. That toy shows only weighting, not D4RT's learned keys, values, multiple layers, or measured attention behavior.",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c1",
+        "c2",
+        "c3"
+      ],
+      "figureId": "fig-attention"
+    },
+    {
+      "id": "s3",
+      "title": "One interface, several geometric products",
+      "markdown": "The three time fields are independent knobs. For a **point track**, fix $(u,v,t_{\\mathrm{src}})$ and evaluate $t_{\\mathrm{tgt}}=t_{\\mathrm{cam}}=1,\\ldots,T$. Each result describes the corresponding point at a new time in that time's camera coordinates. For a **shared-frame point cloud**, query pixels across frames and hold $t_{\\mathrm{cam}}$ fixed, so outputs already share one reference frame. For a **depth map**, use $t_{\\mathrm{src}}=t_{\\mathrm{tgt}}=t_{\\mathrm{cam}}$ at each pixel and retain $p_z$.\n\nHere is a small illustrative indexing example, not a paper measurement. Suppose $T=3$ and we track the pixel $(0.25,0.75)$ selected in frame 2. The three queries are $(0.25,0.75,2,1,1)$, $(0.25,0.75,2,2,2)$, and $(0.25,0.75,2,3,3)$. If the decoder hypothetically returned Z coordinates $4.0$, $3.5$, and $3.0$, the illustrative change from first to last would be $3.0-4.0=-1.0$ coordinate units. The arithmetic is valid, but those outputs are invented solely to clarify how indices form a trajectory.",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c3",
+        "c4"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s4",
+      "title": "Local appearance anchors a coordinate",
+      "markdown": "## Local appearance anchors a coordinate\n\nThe decoder must turn a normalized source coordinate $(u,v)$ into a token that can retrieve the corresponding physical point from the global scene representation. Fourier features encode the coordinate, while learned embeddings identify $t_{\\mathrm{src}}$, $t_{\\mathrm{tgt}}$, and $t_{\\mathrm{cam}}$. D4RT also embeds the local $9\\times9$ RGB patch centered at $(u,v)$ and adds that appearance information to the query token before cross-attention. The coordinate specifies where the observation was made; the patch describes what the small neighborhood around that location looks like.\n\nThis local evidence is useful near fine structures and object boundaries. Two nearby coordinates may have similar positional encodings even when they lie on different surfaces, whereas their surrounding color patterns can help the query associate the source observation with the appropriate spatiotemporal features in $F$. The paper attributes the improvement to more reliable correspondence with the encoded video features and to low-level cues that separate objects from their surroundings, producing sharper depth boundaries. The patch does not replace global context: motion across frames and the target point's 3D state still have to be recovered through cross-attention into the representation of the full video.\n\nThe Sintel ablation tests this design directly using the paper's ViT-L setup. Without the local appearance patch, scale-only depth AbsRel was $0.366$, scale-and-shift depth AbsRel was $0.306$, camera-pose ATE was $0.173$, RPE-T was $0.031$, and RPE-R was $0.262$. With the patch, the corresponding values were $0.302$, $0.257$, $0.091$, $0.028$, and $0.245$. Lower is better for all five metrics, so every reported metric improved in that comparison. These results isolate the effect within that trained ablation configuration; they do not determine how much of the gain would persist under a different backbone, dataset, patch size, or evaluation protocol.",
+      "sourceIds": [
+        "section-2",
+        "section-4-part-2"
+      ],
+      "claimIds": [
+        "c7",
+        "c13"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s5",
+      "title": "Camera parameters emerge from point queries",
+      "markdown": "The same interface supports camera recovery through geometry outside the learned decoder. For relative pose between frames $i$ and $j$, sample a coarse grid of source pixels $(u_k,v_k)$ and issue\n\n$$\\mathbf{q}_{i,k}=(u_k,v_k,i,i,i),\\qquad \\mathbf{q}_{j,k}=(u_k,v_k,i,i,j).$$\n\nBoth decoded sets refer to the same physical points at time $i$, but express them in camera frames $i$ and $j$. Umeyama's rigid-alignment procedure, involving a $3\\times3$ singular-value decomposition, recovers the transformation between the sets.\n\nFor intrinsics, assume a pinhole camera whose normalized principal point is $(0.5,0.5)$. From a decoded point $(p_x,p_y,p_z)$ observed at $(u,v)$,\n\n$$f_x=\\frac{p_z(u-0.5)}{p_x},\\qquad f_y=\\frac{p_z(v-0.5)}{p_y}.$$\n\nHere $f_x$ and $f_y$ are focal lengths in normalized image coordinates. Illustratively, if $(u,v)=(0.75,0.25)$ and $(p_x,p_y,p_z)=(1,-1,4)$, then $f_x=4(0.25)/1=1$ and $f_y=4(-0.25)/(-1)=1$. D4RT takes medians across sampled estimates for robustness. This derivation depends on the principal-point and pinhole assumptions; distortion requires an added nonlinear refinement.",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c5",
+        "c6"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s6",
+      "title": "Independence is an architectural constraint",
+      "markdown": "D4RT imposes independence at the decoder-query level: each query cross-attends to the fixed global scene representation $F$, but queries do not self-attend to one another. Thus a prediction remains conditioned on information encoded from the whole video while avoiding dependence on which other queries happen to be decoded alongside it. This supports training with sampled queries, arbitrary sparse or dense requests at inference, and parallel evaluation of a chosen query set. The paper also reports major performance drops in early experiments that enabled query self-attention, although it does not provide a numerical ablation for that observation.\n\nThis architectural independence is not a guarantee that separately predicted points form perfectly consistent geometry. Their agreement must be learned through the shared encoder representation, supervision, and decoder parameters. What the constraint guarantees structurally is that adding, removing, or regrouping companion queries does not create direct query-to-query interactions in the decoder.\n\nDense tracking illustrates why pointwise decoding matters computationally. Starting a full trajectory from every pixel in every frame would require $O(T^2HW)$ point queries: there are $THW$ possible source observations, and each trajectory contains $T$ target-time predictions. D4RT instead maintains an occupancy grid\n\n$$G\\in\\{0,1\\}^{T\\times H\\times W}.$$\n\nIt starts a trajectory only from an unvisited spatio-temporal pixel. Once decoded, every visible location traversed by that trajectory is marked visited, so later source observations corresponding to the same recovered path do not trigger redundant full-video tracks. The grid therefore exploits overlap among observations of a point rather than changing the point-query calculation itself. Under the paper's all-pixels tracking procedure, this adaptive pruning produced a reported $5$–$15\\times$ speedup, with the achieved factor depending on the video's motion complexity.",
+      "sourceIds": [
+        "section-2",
+        "section-2-part-2"
+      ],
+      "claimIds": [
+        "c8",
+        "c9",
+        "c10"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s7",
+      "title": "Read the evidence with its conditions attached",
+      "markdown": "Efficiency results depend on hardware and protocol. On one A100 at a 24 FPS target, Table 3 reports maximum full-video track counts of 1,570 for D4RT, 84 for SpatialTrackerV2, and 5 for DELTA. Each D4RT track contains $T$ independent decoder queries. These values establish a large throughput advantage in that test, not a hardware-independent latency law.\n\nFor point-cloud reconstruction, predictions were mean-shift aligned to ground truth before mean L1 distance was computed. D4RT's reported errors, $0.768$ on dynamic Sintel and $0.028$ on static ScanNet, were the lowest entries in the supplied table. Depth results likewise use a global sequence alignment: either scale-only or scale-and-shift. Pose errors use Sim(3) alignment. Alignment makes methods comparable under the chosen invariances, but it means the resulting numbers are not raw, unaligned metric reconstruction errors.\n\nScale also matters when interpreting “lightweight.” The decoder is lightweight relative to the encoder and dense alternatives, yet the main configuration contains a 1B-parameter ViT-g encoder and a 144M-parameter decoder. It was trained on 48-frame $256\\times256$ clips with 2,048 sampled queries and a mixture that included internal datasets. Thus the paper demonstrates efficient querying after a substantial global encoding and training investment; it does not establish identical behavior for longer clips, unseen camera models, every deployment device, or fully public-data reproduction.",
+      "sourceIds": [
+        "section-4",
+        "section-4-part-2"
+      ],
+      "claimIds": [
+        "c11",
+        "c12",
+        "c14",
+        "c15"
+      ],
+      "figureId": null
+    }
+  ],
+  "figures": [
+    {
+      "id": "fig-attention",
+      "kind": "attention",
+      "title": "Temperature changes a toy attention distribution",
+      "question": "As temperature decreases, how does the weight assigned to the fixed maximum score change?",
+      "caption": "Four fixed scores are divided by a positive temperature and normalized with softmax, revealing how concentration changes while the scores stay fixed.",
+      "limitation": "This is an illustrative single softmax over fixed scores, not a measured D4RT head, learned similarity, cross-attention stack, or reconstruction experiment.",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c1",
+        "c2"
+      ],
+      "illustrative": true
+    }
+  ],
+  "quiz": [
+    {
+      "question": "For one pixel selected in frame 2, which query pattern produces its trajectory expressed in each target frame's own camera coordinates?",
+      "options": [
+        {
+          "text": "Fix u, v, and source time at 2; vary target and camera time together from 1 through T.",
+          "explanation": "Correct. The point identity remains anchored to the source observation while physical state and camera reference advance together."
+        },
+        {
+          "text": "Vary source time, but keep target time and camera time fixed at 2.",
+          "explanation": "This selects different source observations while asking for one fixed state and reference, so it is not the stated point-track pattern."
+        },
+        {
+          "text": "Fix all three time indices at 2 and vary only u and v.",
+          "explanation": "This samples a depth or point map in one frame rather than following one point through time."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c3",
+        "c4"
+      ]
+    },
+    {
+      "question": "Why can independently decoded D4RT queries still use whole-video context?",
+      "options": [
+        {
+          "text": "Each query cross-attends to the shared global scene representation.",
+          "explanation": "Correct. Query independence removes query-to-query interaction, not access to globally encoded video features."
+        },
+        {
+          "text": "Each query reconstructs the entire video before returning one point.",
+          "explanation": "The paper describes one global encoding followed by lightweight point queries, not full-video reconstruction inside every query."
+        },
+        {
+          "text": "The local RGB patch alone contains every frame.",
+          "explanation": "The patch adds local source appearance; global temporal context comes from the encoded representation."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c1",
+        "c7",
+        "c8"
+      ]
+    },
+    {
+      "question": "What is the defensible interpretation of D4RT's reported depth errors?",
+      "options": [
+        {
+          "text": "They evaluate depth after a sequence-level scale-only or scale-and-shift alignment.",
+          "explanation": "Correct. The stated protocol aligns predictions to ground truth before computing AbsRel."
+        },
+        {
+          "text": "They prove raw metric scale is recovered without any alignment.",
+          "explanation": "That conclusion is incompatible with the reported alignment procedure."
+        },
+        {
+          "text": "They measure camera pose because depth and pose use the same metric.",
+          "explanation": "Depth uses AbsRel after depth alignment, whereas pose uses separate errors after Sim(3) alignment."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-4-part-2"
+      ],
+      "claimIds": [
+        "c14"
+      ]
+    }
+  ],
+  "id": "d4rt",
+  "createdAt": "2026-10-02T00:25:27.392Z",
+  "pipelineVersion": "subjects-lessons-v1",
+  "sources": [
+    {
+      "id": "abstract",
+      "label": "Original paper · abstract",
+      "url": "https://arxiv.org/abs/2512.08924",
+      "digest": "03e42f765cc4bf7321a6c6ddfaafd2facd743a3cd716371279d3117d61486a47",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:23:25.205Z"
+    },
+    {
+      "id": "main-text",
+      "label": "Original paper · unsectioned main text",
+      "url": "https://arxiv.org/html/2512.08924",
+      "digest": "2d4b3e2813c6058b5f056f91316db8c83f4d685cc5596bc61e4bb14d4b4b1680",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:23:25.205Z"
+    },
+    {
+      "id": "section-1",
+      "label": "1 Introduction",
+      "url": "https://arxiv.org/html/2512.08924#S1",
+      "digest": "e227360a47e884c98b99319828b5db5434c5e24cc3fc65205d16cb141f109751",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:23:25.205Z"
+    },
+    {
+      "id": "section-2",
+      "label": "2 Method",
+      "url": "https://arxiv.org/html/2512.08924#S2",
+      "digest": "ca5e26576154eaf427beeae6a9dccb8c55f1dd31662f6173332e66bb8275f080",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:23:25.205Z"
+    },
+    {
+      "id": "section-2-part-2",
+      "label": "2 Method · part 2",
+      "url": "https://arxiv.org/html/2512.08924#S2",
+      "digest": "188e156596f6d91f53739aadbce9dc4642e62fe942d156a37a34939c5a607b99",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:23:25.205Z"
+    },
+    {
+      "id": "section-3",
+      "label": "3 Related Work",
+      "url": "https://arxiv.org/html/2512.08924#S3",
+      "digest": "de46478a4e6615153632ddf4b9ec415858fe6749c00b919280b836ede8b4d891",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:23:25.205Z"
+    },
+    {
+      "id": "section-4",
+      "label": "4 Experiments",
+      "url": "https://arxiv.org/html/2512.08924#S4",
+      "digest": "b19f3dc78f3ee0e334e4e0a5ad000c9b47d620579be1aa25b18f0436f123e549",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:23:25.205Z"
+    },
+    {
+      "id": "section-4-part-2",
+      "label": "4 Experiments · part 2",
+      "url": "https://arxiv.org/html/2512.08924#S4",
+      "digest": "08db179c06ad386d8a9a08c4a0fe2cfa8549404ded824993db7752dcf1635c25",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:23:25.205Z"
+    },
+    {
+      "id": "section-5",
+      "label": "5 Conclusion",
+      "url": "https://arxiv.org/html/2512.08924#S5",
+      "digest": "3a62a52fb87b71224a3c9e2d401431a0b4ec87cb334e7ecdef55615af3d7d2a8",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:23:25.205Z"
+    }
+  ],
+  "review": {
+    "status": "passed",
+    "reviewedAt": "2026-10-02T02:22:54.857Z",
+    "contentDigest": "b67fffaf44dd0e4d21e931442521b6187ddf7460bb8c1234c2b3b7706ce57330"
+  }
+}

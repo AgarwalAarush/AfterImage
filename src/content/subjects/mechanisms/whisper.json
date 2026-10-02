@@ -1,0 +1,663 @@
+{
+  "version": 1,
+  "sectionId": "s3",
+  "title": "The transcript prefix is Whisper’s task interface",
+  "introduction": "Let $x$ denote one audio segment, $h=\\mathrm{Enc}(x)$ its contextual acoustic representation, and $p_t$ the ordered decoder prefix available before output step $t$. The example requests English transcription without timestamps. Whisper retains $h$ while the autoregressive prefix grows through a start marker, a predicted language identity, task and format controls, and transcript tokens.",
+  "entities": [
+    {
+      "id": "x",
+      "label": "x",
+      "meaning": "The current audio segment represented as a normalized log-magnitude Mel spectrogram."
+    },
+    {
+      "id": "h",
+      "label": "h",
+      "meaning": "The contextual acoustic representation produced by the encoder from x."
+    },
+    {
+      "id": "sot",
+      "label": "SOT",
+      "meaning": "The <|startoftranscript|> token that marks the beginning of prediction."
+    },
+    {
+      "id": "lang-en",
+      "label": "EN",
+      "meaning": "An illustrative English language token predicted as the spoken-language identity."
+    },
+    {
+      "id": "task-transcribe",
+      "label": "TRANS",
+      "meaning": "The <|transcribe|> task token requesting transcription rather than translation."
+    },
+    {
+      "id": "no-timestamps",
+      "label": "NO-TS",
+      "meaning": "The <|notimestamps|> format token requesting output without timestamp tokens."
+    },
+    {
+      "id": "word-hello",
+      "label": "hello",
+      "meaning": "An illustrative first transcript token used only to show autoregressive prefix growth."
+    }
+  ],
+  "objects": [
+    {
+      "id": "audio",
+      "form": "vector",
+      "label": "Acoustic input x",
+      "detail": "Normalized log-mel acoustic input",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c3",
+        "c4"
+      ]
+    },
+    {
+      "id": "encoder",
+      "form": "module",
+      "label": "Acoustic encoder",
+      "detail": "Acoustic encoder layers",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c4"
+      ]
+    },
+    {
+      "id": "acoustic-states",
+      "form": "vector",
+      "label": "Encoder representation h",
+      "detail": "Contextual acoustic states",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c4",
+        "c5"
+      ]
+    },
+    {
+      "id": "control-sequence",
+      "form": "tokens",
+      "label": "Requested controls",
+      "detail": "Task and timestamp controls",
+      "sourceIds": [
+        "section-2-part-2"
+      ],
+      "claimIds": [
+        "c5"
+      ]
+    },
+    {
+      "id": "decoder",
+      "form": "module",
+      "label": "Audio-conditional decoder",
+      "detail": "Audio-conditioned next-token model",
+      "sourceIds": [
+        "section-2",
+        "section-2-part-2"
+      ],
+      "claimIds": [
+        "c5"
+      ]
+    },
+    {
+      "id": "prefix",
+      "form": "tokens",
+      "label": "Autoregressive prefix p",
+      "detail": "Ordered transcript prefix",
+      "sourceIds": [
+        "section-2-part-2"
+      ],
+      "claimIds": [
+        "c5"
+      ]
+    },
+    {
+      "id": "next-token",
+      "form": "tokens",
+      "label": "Current token output",
+      "detail": "Predicted next token",
+      "sourceIds": [
+        "section-2-part-2"
+      ],
+      "claimIds": [
+        "c5"
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "id": "r-encode-input",
+      "from": "audio",
+      "to": "encoder",
+      "label": "feeds acoustic input",
+      "dashed": false,
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c4"
+      ]
+    },
+    {
+      "id": "r-emit-states",
+      "from": "encoder",
+      "to": "acoustic-states",
+      "label": "produces contextual states",
+      "dashed": false,
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c4"
+      ]
+    },
+    {
+      "id": "r-audio-condition",
+      "from": "acoustic-states",
+      "to": "decoder",
+      "label": "conditions every prediction",
+      "dashed": false,
+      "sourceIds": [
+        "section-2",
+        "section-2-part-2"
+      ],
+      "claimIds": [
+        "c5"
+      ]
+    },
+    {
+      "id": "r-control-prefix",
+      "from": "control-sequence",
+      "to": "prefix",
+      "label": "extends prefix in order",
+      "dashed": false,
+      "sourceIds": [
+        "section-2-part-2"
+      ],
+      "claimIds": [
+        "c5"
+      ]
+    },
+    {
+      "id": "r-prefix-condition",
+      "from": "prefix",
+      "to": "decoder",
+      "label": "supplies prior tokens",
+      "dashed": false,
+      "sourceIds": [
+        "section-2-part-2"
+      ],
+      "claimIds": [
+        "c5"
+      ]
+    },
+    {
+      "id": "r-predict-next",
+      "from": "decoder",
+      "to": "next-token",
+      "label": "predicts next token",
+      "dashed": false,
+      "sourceIds": [
+        "section-2-part-2"
+      ],
+      "claimIds": [
+        "c5"
+      ]
+    },
+    {
+      "id": "r-append-next",
+      "from": "next-token",
+      "to": "prefix",
+      "label": "appends selected token",
+      "dashed": false,
+      "sourceIds": [
+        "section-2-part-2"
+      ],
+      "claimIds": [
+        "c5"
+      ]
+    }
+  ],
+  "beats": [
+    {
+      "title": "Encode the acoustic segment",
+      "explanation": "The spectrogram $x$ is available to the acoustic encoder, which transforms it into contextual states $h$. The decoder prefix and requested controls are not yet available. This establishes the acoustic representation that will remain accessible throughout token generation.",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c3",
+        "c4"
+      ],
+      "objects": [
+        {
+          "objectId": "audio",
+          "status": "active",
+          "entityIds": [
+            "x"
+          ]
+        },
+        {
+          "objectId": "encoder",
+          "status": "active",
+          "entityIds": [
+            "x"
+          ]
+        },
+        {
+          "objectId": "acoustic-states",
+          "status": "active",
+          "entityIds": [
+            "h"
+          ]
+        },
+        {
+          "objectId": "control-sequence",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "decoder",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "prefix",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "next-token",
+          "status": "pending",
+          "entityIds": []
+        }
+      ],
+      "relationships": [
+        {
+          "relationshipId": "r-encode-input",
+          "entityIds": [
+            "x"
+          ]
+        },
+        {
+          "relationshipId": "r-emit-states",
+          "entityIds": []
+        }
+      ]
+    },
+    {
+      "title": "Begin the prefix and identify the language",
+      "explanation": "The acoustic representation $h$ is retained. Prediction begins with SOT, the full <|startoftranscript|> marker. Conditioned on $h$ and that prefix, the decoder predicts EN as the illustrative spoken-language token and appends the same EN identity to the ordered prefix.",
+      "sourceIds": [
+        "section-2",
+        "section-2-part-2"
+      ],
+      "claimIds": [
+        "c5"
+      ],
+      "objects": [
+        {
+          "objectId": "audio",
+          "status": "retained",
+          "entityIds": [
+            "x"
+          ]
+        },
+        {
+          "objectId": "encoder",
+          "status": "retained",
+          "entityIds": []
+        },
+        {
+          "objectId": "acoustic-states",
+          "status": "retained",
+          "entityIds": [
+            "h"
+          ]
+        },
+        {
+          "objectId": "control-sequence",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "decoder",
+          "status": "active",
+          "entityIds": [
+            "h",
+            "sot"
+          ]
+        },
+        {
+          "objectId": "prefix",
+          "status": "active",
+          "entityIds": [
+            "sot",
+            "lang-en"
+          ]
+        },
+        {
+          "objectId": "next-token",
+          "status": "active",
+          "entityIds": [
+            "lang-en"
+          ]
+        }
+      ],
+      "relationships": [
+        {
+          "relationshipId": "r-audio-condition",
+          "entityIds": [
+            "h"
+          ]
+        },
+        {
+          "relationshipId": "r-prefix-condition",
+          "entityIds": [
+            "sot"
+          ]
+        },
+        {
+          "relationshipId": "r-predict-next",
+          "entityIds": []
+        },
+        {
+          "relationshipId": "r-append-next",
+          "entityIds": [
+            "lang-en"
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Specify the transcription task",
+      "explanation": "The retained prefix is now ordered as SOT then EN. TRANS, the full <|transcribe|> control, becomes active and is appended next. It requests transcription rather than translation while the same acoustic representation $h$ remains available in parallel.",
+      "sourceIds": [
+        "section-2-part-2"
+      ],
+      "claimIds": [
+        "c5"
+      ],
+      "objects": [
+        {
+          "objectId": "audio",
+          "status": "retained",
+          "entityIds": [
+            "x"
+          ]
+        },
+        {
+          "objectId": "encoder",
+          "status": "retained",
+          "entityIds": []
+        },
+        {
+          "objectId": "acoustic-states",
+          "status": "retained",
+          "entityIds": [
+            "h"
+          ]
+        },
+        {
+          "objectId": "control-sequence",
+          "status": "active",
+          "entityIds": [
+            "task-transcribe"
+          ]
+        },
+        {
+          "objectId": "decoder",
+          "status": "active",
+          "entityIds": [
+            "h",
+            "sot",
+            "lang-en"
+          ]
+        },
+        {
+          "objectId": "prefix",
+          "status": "active",
+          "entityIds": [
+            "sot",
+            "lang-en",
+            "task-transcribe"
+          ]
+        },
+        {
+          "objectId": "next-token",
+          "status": "pending",
+          "entityIds": []
+        }
+      ],
+      "relationships": [
+        {
+          "relationshipId": "r-audio-condition",
+          "entityIds": [
+            "h"
+          ]
+        },
+        {
+          "relationshipId": "r-control-prefix",
+          "entityIds": [
+            "task-transcribe"
+          ]
+        },
+        {
+          "relationshipId": "r-prefix-condition",
+          "entityIds": [
+            "sot",
+            "lang-en"
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Specify output without timestamps",
+      "explanation": "NO-TS, the full <|notimestamps|> control, is appended after the already retained TRANS token. The prefix now specifies the start, language, requested task, and output format. The acoustic states do not change, so task and format conditioning coexist with the retained evidence from the audio.",
+      "sourceIds": [
+        "section-2-part-2"
+      ],
+      "claimIds": [
+        "c5"
+      ],
+      "objects": [
+        {
+          "objectId": "audio",
+          "status": "retained",
+          "entityIds": [
+            "x"
+          ]
+        },
+        {
+          "objectId": "encoder",
+          "status": "retained",
+          "entityIds": []
+        },
+        {
+          "objectId": "acoustic-states",
+          "status": "retained",
+          "entityIds": [
+            "h"
+          ]
+        },
+        {
+          "objectId": "control-sequence",
+          "status": "active",
+          "entityIds": [
+            "task-transcribe",
+            "no-timestamps"
+          ]
+        },
+        {
+          "objectId": "decoder",
+          "status": "active",
+          "entityIds": [
+            "h",
+            "sot",
+            "lang-en",
+            "task-transcribe"
+          ]
+        },
+        {
+          "objectId": "prefix",
+          "status": "active",
+          "entityIds": [
+            "sot",
+            "lang-en",
+            "task-transcribe",
+            "no-timestamps"
+          ]
+        },
+        {
+          "objectId": "next-token",
+          "status": "pending",
+          "entityIds": []
+        }
+      ],
+      "relationships": [
+        {
+          "relationshipId": "r-audio-condition",
+          "entityIds": [
+            "h"
+          ]
+        },
+        {
+          "relationshipId": "r-control-prefix",
+          "entityIds": [
+            "no-timestamps"
+          ]
+        },
+        {
+          "relationshipId": "r-prefix-condition",
+          "entityIds": [
+            "sot",
+            "lang-en",
+            "task-transcribe"
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Predict and append transcript text",
+      "explanation": "With $h$ and the complete control prefix available, the decoder predicts the illustrative transcript token hello. Appending that same token identity changes the prefix from four tokens to five. Any later prediction can therefore depend on the unchanged acoustic representation and the entire ordered history SOT, EN, TRANS, NO-TS, hello.",
+      "sourceIds": [
+        "section-2",
+        "section-2-part-2"
+      ],
+      "claimIds": [
+        "c2",
+        "c5"
+      ],
+      "objects": [
+        {
+          "objectId": "audio",
+          "status": "retained",
+          "entityIds": [
+            "x"
+          ]
+        },
+        {
+          "objectId": "encoder",
+          "status": "retained",
+          "entityIds": []
+        },
+        {
+          "objectId": "acoustic-states",
+          "status": "retained",
+          "entityIds": [
+            "h"
+          ]
+        },
+        {
+          "objectId": "control-sequence",
+          "status": "retained",
+          "entityIds": [
+            "task-transcribe",
+            "no-timestamps"
+          ]
+        },
+        {
+          "objectId": "decoder",
+          "status": "active",
+          "entityIds": [
+            "h",
+            "sot",
+            "lang-en",
+            "task-transcribe",
+            "no-timestamps"
+          ]
+        },
+        {
+          "objectId": "prefix",
+          "status": "active",
+          "entityIds": [
+            "sot",
+            "lang-en",
+            "task-transcribe",
+            "no-timestamps",
+            "word-hello"
+          ]
+        },
+        {
+          "objectId": "next-token",
+          "status": "active",
+          "entityIds": [
+            "word-hello"
+          ]
+        }
+      ],
+      "relationships": [
+        {
+          "relationshipId": "r-audio-condition",
+          "entityIds": [
+            "h"
+          ]
+        },
+        {
+          "relationshipId": "r-prefix-condition",
+          "entityIds": [
+            "sot",
+            "lang-en",
+            "task-transcribe",
+            "no-timestamps"
+          ]
+        },
+        {
+          "relationshipId": "r-predict-next",
+          "entityIds": []
+        },
+        {
+          "relationshipId": "r-append-next",
+          "entityIds": [
+            "word-hello"
+          ]
+        }
+      ]
+    }
+  ],
+  "takeaway": "The invariant is $p_{t+1}=p_t\\mathbin{\\|}y_t$: each selected token is appended without reordering the existing prefix. The acoustic representation $h$ remains available throughout, while the growing language, task, format, and transcript history determines the information available for each subsequent autoregressive prediction.",
+  "sourceIds": [
+    "section-2",
+    "section-2-part-2"
+  ],
+  "claimIds": [
+    "c2",
+    "c3",
+    "c4",
+    "c5"
+  ],
+  "lessonId": "whisper",
+  "parentContentDigest": "63276c094de07f8af81a33c2ddc06a5d397f4d6417b9c030903da9e3ea22ce83",
+  "review": {
+    "status": "source-passed",
+    "reviewedAt": "2026-10-01T23:43:08.417Z",
+    "contentDigest": "d9e8d7f3f7ee43bd173e5e5ec1474a8d5328aa0439456542f66d634040e40184",
+    "rendererDigest": "2cc690a7105c5faca75e22053e83674a2cf2e227ae22afe88cc4662d09c98bb4",
+    "visualReviewedAt": null
+  }
+}

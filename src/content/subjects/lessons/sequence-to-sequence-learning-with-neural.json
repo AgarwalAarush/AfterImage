@@ -1,0 +1,442 @@
+{
+  "title": "The Bottleneck, the Reversal, and the Beam",
+  "summary": "This lesson reconstructs how two deep LSTMs turn a variable-length source into a fixed vector, decode a variable-length target, and ease optimization by reversing only the source.",
+  "prerequisites": [
+    "Conditional probability and the chain rule",
+    "Recurrent states and sequence processing",
+    "Softmax distributions over a vocabulary",
+    "Maximum-likelihood training and approximate search"
+  ],
+  "objectives": [
+    "Explain how encoder and decoder LSTMs form a sequence-to-sequence model.",
+    "Factor target-sequence probability into token-level conditional probabilities.",
+    "Explain how an end-of-sentence token enables variable-length generation.",
+    "Analyze how source reversal shortens dependencies without reversing the target.",
+    "Distinguish model scoring, beam search, and SMT hypothesis rescoring."
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "mechanism",
+      "statement": "The model uses one LSTM to compress the input sequence into a fixed-dimensional representation and another LSTM to generate the output sequence from it.",
+      "conditions": "For the paper's general sequence-learning architecture, where input and output lengths may differ.",
+      "sourceIds": [
+        "abstract"
+      ]
+    },
+    {
+      "id": "c2",
+      "kind": "equation",
+      "statement": "The conditional probability of a target sequence factors autoregressively into probabilities of each next token given the encoded source vector and preceding target tokens.",
+      "conditions": "The decoder is conditioned on the encoder representation and the already generated target prefix.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c3",
+      "kind": "mechanism",
+      "statement": "Each decoder step produces a probability distribution over the target vocabulary using a softmax.",
+      "conditions": "At every target timestep in the paper's LSTM language-model decoder.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c4",
+      "kind": "mechanism",
+      "statement": "A special end-of-sentence token lets the decoder assign probability to outputs of different lengths and signals when generation is complete.",
+      "conditions": "Every target sequence is terminated by the designated end-of-sentence symbol.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c5",
+      "kind": "mechanism",
+      "statement": "The implemented system used distinct encoder and decoder LSTMs, four layers, and reversed source-word order.",
+      "conditions": "The paper's reported translation models, rather than the minimal conceptual architecture.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c6",
+      "kind": "mechanism",
+      "statement": "Reversing only the source brings some corresponding early source and target words closer in the unrolled computation, which the authors argue eases optimization.",
+      "conditions": "Source sequences are reversed during both training and testing, while target sequences retain their normal order.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c7",
+      "kind": "equation",
+      "statement": "Training maximizes the average log conditional probability of the correct target over source-target pairs.",
+      "conditions": "Supervised training on the selected WMT'14 English-to-French sentence pairs.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c8",
+      "kind": "mechanism",
+      "statement": "Left-to-right beam search retains only a bounded number of high-probability partial translations after each expansion.",
+      "conditions": "Approximate decoding with beam size B under the trained LSTM's log-probability scores.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c9",
+      "kind": "result",
+      "statement": "In the reported reversal comparison, test perplexity decreased from 5.8 to 4.7 and decoded test BLEU increased from 25.9 to 30.6.",
+      "conditions": "The paper's WMT'14 English-to-French setup, comparing raw versus reversed source sentences while leaving targets unreversed.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c10",
+      "kind": "result",
+      "statement": "The strongest reported direct system reached 34.81 BLEU using an ensemble of five reversed LSTMs and beam size 12.",
+      "conditions": "Cased BLEU on the tokenized WMT'14 English-to-French ntst14 test set, with the paper's fixed vocabularies and UNK handling.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c11",
+      "kind": "result",
+      "statement": "Rescoring the SMT system's 1000-best lists with five reversed LSTMs produced 36.5 BLEU.",
+      "conditions": "The baseline SMT hypotheses were rescored using an even average of baseline and LSTM scores on ntst14.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c12",
+      "kind": "caveat",
+      "statement": "The fixed target vocabulary creates an explicit inability to directly represent out-of-vocabulary reference words.",
+      "conditions": "The reported direct translation system used an 80,000-word target vocabulary and mapped other words to UNK.",
+      "sourceIds": [
+        "section-1"
+      ]
+    },
+    {
+      "id": "c13",
+      "kind": "caveat",
+      "statement": "The authors did not claim a complete causal explanation for why reversing the source improved learning.",
+      "conditions": "Interpretation of the reversal intervention beyond its measured comparison.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c14",
+      "kind": "result",
+      "statement": "The learned sentence vectors showed qualitative sensitivity to word order and relative insensitivity to active-versus-passive reformulation in a two-dimensional PCA view.",
+      "conditions": "Qualitative inspection of selected examples after projecting hidden states to two dimensions with PCA.",
+      "sourceIds": [
+        "section-3-part-2"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "s1",
+      "title": "The shape mismatch",
+      "markdown": "A conventional feedforward network expects fixed-size vectors, but translation presents two variable-length objects: a source sequence and a target sequence whose lengths need not match. Let the source be $x_1,\\ldots,x_T$, where $x_t$ is the source token at position $t$ and $T$ is the source length. Let the target be $y_1,\\ldots,y_{T'}$, where $y_t$ is the target token at position $t$ and $T'$ may differ from $T$.\n\nThe paper's central move is an encoder-decoder decomposition. An encoder LSTM reads the entire source one token at a time. Its final state supplies a fixed-dimensional vector $v$. A separate decoder LSTM begins from that representation and emits a target sequence. Thus fixed dimensionality appears only at the interface between two recurrent computations; it does not require either sentence to have a fixed number of tokens.\n\nThe state experiment below isolates the prerequisite idea that recurrent state carries earlier input forward. It displays the illustrative scalar recurrence $h_t=a h_{t-1}+u_t$ for a single impulse $u_0=1$, where $h_t$ is state, $a$ is a retention coefficient, and later inputs are zero. Increasing $a$ makes the impulse decay more slowly. This helps explain why state persistence matters across an unrolled sequence, but it is not an LSTM: it has no gates, vectors, learned parameters, encoder-decoder boundary, or translation objective.",
+      "sourceIds": [
+        "section-1",
+        "abstract"
+      ],
+      "claimIds": [
+        "c1"
+      ],
+      "figureId": "f-state"
+    },
+    {
+      "id": "s2",
+      "title": "Encoding first, decoding second",
+      "markdown": "The computation separates into two phases. First, the encoder consumes the source and updates its recurrent state after every token. Only its final representation $v$ crosses into the decoder. Second, the decoder treats $v$ as conditioning context and predicts target tokens from left to right.\n\nThis architecture does not require a known alignment such as “source position 3 always corresponds to target position 3.” The decoder can produce more or fewer steps than the encoder consumed. In the actual reported model, the input and output LSTMs were distinct and deep: the paper describes four layers rather than a single shared recurrent network. Separate parameter sets let encoding and target-language generation specialize.\n\nA common misconception is that fixed-dimensional $v$ forces a fixed-length output. It does not. The vector fixes the conditioning interface's width, while recurrence permits an arbitrary number of decoder steps. Output length is instead determined by generation of a special end-of-sentence token, written $\\langle\\mathrm{EOS}\\rangle$. Once it is emitted, the hypothesis is complete. The real bottleneck is informational: every source detail needed by this non-attentional decoder must influence $v$. The paper presents strong results for this design, but that should not be confused with removing the bottleneck.",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c4",
+        "c5"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s3",
+      "title": "A probability over complete translations",
+      "markdown": "The decoder defines the sequence probability through the chain rule:\n\n$$p(y_1,\\ldots,y_{T'}\\mid x_1,\\ldots,x_T)=\\prod_{t=1}^{T'}p(y_t\\mid v,y_1,\\ldots,y_{t-1}).$$\n\nHere $p(\\cdot)$ denotes probability, $v$ is the encoder's final representation, $t$ indexes target positions, and $T'$ includes the terminal step when appropriate. Each factor is a softmax distribution over target-vocabulary words. The prefix $y_1,\\ldots,y_{t-1}$ matters because two translations sharing an initial word can require very different next words.\n\nConsider an illustrative three-step target consisting of two words and EOS. Suppose the model assigns the correct choices conditional probabilities $0.5$, $0.4$, and $0.8$. Then\n\n$$p(y_1,y_2,\\langle\\mathrm{EOS}\\rangle\\mid x)=0.5\\times0.4\\times0.8=0.16.$$\n\nIts log probability is $\\log 0.16\\approx-1.833$. This arithmetic is illustrative, not a probability reported by the paper. It exposes an important property: a translation's score combines every selected token probability, including stopping. A locally attractive first token does not guarantee the most probable complete sequence.",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c2",
+        "c3",
+        "c4"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s4",
+      "title": "Learning and the reversal intervention",
+      "markdown": "For a training set $\\mathcal{S}$ of paired targets $T$ and sources $S$, the objective is\n\n$$\\frac{1}{|\\mathcal{S}|}\\sum_{(T,S)\\in\\mathcal{S}}\\log p(T\\mid S),$$\n\nwhere $|\\mathcal{S}|$ is the number of pairs. Maximizing it rewards parameters that assign greater probability to each observed translation. The paper trained on a selected subset of 12 million WMT'14 English-French sentence pairs.\n\nIts unusually consequential intervention was to reverse source words but not target words. If a source is $a,b,c$ and its target is $\\alpha,\\beta,\\gamma$, training instead presents $c,b,a$ to the encoder while retaining $\\alpha,\\beta,\\gamma$ at the decoder. Reversal does not supply alignments, change the probability factorization, or make the task monotonic. It rearranges computational distances: $a$, processed last, lies close in the unrolled graph to the early prediction $\\alpha$. The authors frame this as reducing the minimal time lag for some corresponding early words, making optimization easier.\n\nThe optimizer control visualizes plain gradient descent on the illustrative quadratic $f(x)=x^2/2$, starting from $x=3$. Changing the learning rate changes twelve iterates. Its lesson is limited but useful: an unchanged objective can become easier or harder to optimize when the update path changes. Source reversal instead changes the data encoding and dependency paths; the control is not the paper's SGD run, an LSTM loss surface, momentum, or a reproduction of its BLEU gains.",
+      "sourceIds": [
+        "section-2",
+        "section-3"
+      ],
+      "claimIds": [
+        "c6",
+        "c7",
+        "c9",
+        "c13"
+      ],
+      "figureId": "f-optimizer"
+    },
+    {
+      "id": "s5",
+      "title": "From probabilities to one output",
+      "markdown": "The trained model assigns a conditional probability to every complete target sequence, so direct translation seeks\n\n$$\\hat{T}=\\arg\\max_T p(T\\mid S).$$\n\nHere $S$ is the source sentence, $T$ ranges over target sequences ending in $\\langle\\mathrm{EOS}\\rangle$, and $p(T\\mid S)$ is the product of the decoder’s next-token probabilities. Enumerating every possible sequence is infeasible because each prefix can branch to every word in the target vocabulary and can continue for many steps. The paper therefore approximates this maximization with left-to-right beam search.\n\nLet $B$ denote the beam size. Initially the beam contains an empty target prefix with log probability zero. At each timestep, the decoder evaluates every one-token extension of every surviving prefix. The score of an extension is cumulative:\n\n$$\\log p(y_1,\\ldots,y_t\\mid S)=\\sum_{j=1}^{t}\\log p(y_j\\mid v,y_1,\\ldots,y_{j-1}),$$\n\nwhere $v$ is the source representation. Among extensions that have not emitted $\\langle\\mathrm{EOS}\\rangle$, only the $B$ highest-scoring prefixes remain in the beam. An extension that emits $\\langle\\mathrm{EOS}\\rangle$ is removed from the active beam and added to the completed hypotheses. Search continues by expanding the retained incomplete prefixes.\n\nThe bound $B$ controls how many competing prefixes survive, not how many complete translations the model can represent. With $B=1$, decoding greedily retains only the best next extension of the current prefix. A larger beam can preserve alternatives whose early token probabilities are lower but whose later continuations produce a better complete-sequence score. It still does not make the search exact: once a prefix is pruned, none of its possible continuations can be recovered, even if one would have become the globally most probable translation. In the reported WMT’14 experiment, however, a beam of size 2 provided most of the observed benefit: the five-model reversed ensemble scored 34.50 BLEU with beam size 2 and 34.81 with beam size 12 under the paper’s evaluation conditions.\n\nTraining, direct decoding, and rescoring use the same kind of conditional model score in different computations. Training changes the model parameters by increasing the log probability of observed targets. Direct beam search holds those parameters fixed and constructs new target sequences token by token. For SMT rescoring, the neural model does not construct an unrestricted translation: it computes the log probability of each candidate in the baseline system’s existing 1000-best list, and the experiment takes an even average of the LSTM and baseline scores. An ensemble of five reversed LSTMs used this restricted hybrid procedure to reach 36.5 BLEU, so that number measures rescoring within an SMT-provided candidate set rather than direct neural beam decoding.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c8",
+        "c11"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s6",
+      "title": "Reading the reported evidence carefully",
+      "markdown": "On the tokenized WMT'14 English-to-French ntst14 test set, an ensemble of five reversed LSTMs with beam size 12 achieved 34.81 cased BLEU. The phrase-based baseline listed in the same table scored 33.30. With beam size 2, the five-model ensemble scored 34.50, so most of the reported beam-search benefit was already present at a small beam in this setup. Rescoring the SMT baseline's 1000-best lists with five reversed LSTMs reached 36.5 BLEU, but that result belongs to a hybrid candidate pipeline and is not direct neural decoding.\n\nThe reversal comparison is especially informative because it targets a concrete mechanism: test perplexity changed from 5.8 to 4.7 and decoded BLEU from 25.9 to 30.6. Still, the authors explicitly lacked a complete explanation. The short-dependency account is a plausible interpretation linked to the unrolled computation, not a proved universal law.\n\nThe paper also reports qualitative structure in the fixed vectors: a two-dimensional PCA projection of selected phrases appeared sensitive to word order and comparatively insensitive to active-versus-passive wording. PCA is a lossy projection and the examples are qualitative; this does not establish a general semantic metric. Likewise, reported behavior on long sentences is tied to this dataset and reversed-source training, not a guarantee for arbitrary lengths or domains.",
+      "sourceIds": [
+        "section-1",
+        "section-3",
+        "section-3-part-2"
+      ],
+      "claimIds": [
+        "c9",
+        "c10",
+        "c11",
+        "c13",
+        "c14"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s7",
+      "title": "What the result does and does not establish",
+      "markdown": "The paper establishes that a deep encoder-decoder LSTM can learn a large-scale, end-to-end mapping between variable-length sequences while making few assumptions about their alignment. One LSTM reads the source into a fixed-dimensional representation; a distinct LSTM, initialized from that representation, assigns probabilities to target tokens until it emits $\\langle\\mathrm{EOS}\\rangle$. In the reported implementation, both sides were four-layer LSTMs, and reversing the source while preserving the target order substantially improved the trained system. This combination produced direct translations that outperformed the paper’s phrase-based baseline on the stated WMT’14 English-to-French evaluation.\n\nThe fixed vector is also the architecture’s central constraint. The decoder is conditioned on the encoder’s final representation rather than revisiting individual source states, so every source distinction needed during generation must survive in that representation. The reported success on long sentences shows that this bottleneck did not cause severe degradation in the tested data, especially after source reversal; it does not show that fixed-vector encoding preserves arbitrary amounts of information or transfers unchanged to other domains and sequence lengths. The paper’s qualitative two-dimensional PCA examples likewise suggest that learned representations respond to word order and can group selected active and passive formulations, but a lossy projection of selected phrases does not establish a general semantic distance measure.\n\nVocabulary coverage imposes a separate, concrete limit. The experiments used the 160,000 most frequent source words and 80,000 most frequent target words, replacing other words with UNK. Consequently, the direct system could not produce a specific target word outside its vocabulary, and its 34.81 cased BLEU score was penalized when such a word appeared in the reference. That result also came from an ensemble of five reversed LSTMs with beam size 12, not from a single network. The 36.5 BLEU result used the same number of reversed models to rescore an SMT system’s 1000-best candidates, so it demonstrates the value of neural sequence scores inside that candidate set rather than a stronger direct decoder.\n\nSource reversal is best understood as an optimization intervention. For a normally ordered source $a,b,c$ and target $\\alpha,\\beta,\\gamma$, the encoder instead reads $c,b,a$ while the decoder still predicts $\\alpha,\\beta,\\gamma$. This places $a$, which is processed near the encoder-decoder boundary, close in the unrolled computation to the early target token $\\alpha$; other early correspondences also gain shorter paths. The average source-target distance need not decrease, but the minimal lag does, creating short dependencies through which backpropagation can more readily connect source evidence to early predictions. Under the reported comparison, reversal reduced test perplexity from 5.8 to 4.7 and increased decoded test BLEU from 25.9 to 30.6.\n\nThose measurements support the practical effect, while the causal account remains a hypothesis: the authors explicitly said they lacked a complete explanation. In particular, their suggestion that reversal might make a standard RNN trainable was not experimentally verified. The lasting result is therefore precise rather than universal: for this deep LSTM translation system, re-encoding the input to introduce short dependency paths made likelihood optimization markedly more effective without reversing or otherwise changing the desired target sequence.",
+      "sourceIds": [
+        "section-1",
+        "section-3",
+        "section-5"
+      ],
+      "claimIds": [
+        "c1",
+        "c6",
+        "c10",
+        "c12",
+        "c13"
+      ],
+      "figureId": null
+    }
+  ],
+  "figures": [
+    {
+      "id": "f-state",
+      "kind": "state",
+      "title": "How long does an impulse remain in recurrent state?",
+      "question": "As retention a increases, how does the same initial impulse change across the twelve displayed steps?",
+      "caption": "Illustrative scalar recurrence $h_t=a h_{t-1}+u_t$ with $u_0=1$: the retention control changes the decay of one initial impulse over twelve steps.",
+      "limitation": "This is a scalar impulse response, not an LSTM, learned encoder state, gated memory, or simulation of the paper's translation system.",
+      "sourceIds": [
+        "section-1",
+        "section-2"
+      ],
+      "claimIds": [
+        "c1"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "f-optimizer",
+      "kind": "optimizer",
+      "title": "Update size on a simple objective",
+      "question": "For the same starting point and quadratic objective, how does the learning rate alter the twelve gradient-descent iterates?",
+      "caption": "Illustrative ordinary gradient descent on $f(x)=x^2/2$ from $x=3$; the learning-rate control changes twelve update iterates.",
+      "limitation": "The control is not the paper's LSTM objective or SGD experiment and does not simulate source reversal, sequence dependencies, momentum, or reported translation results.",
+      "sourceIds": [
+        "section-2",
+        "section-3"
+      ],
+      "claimIds": [
+        "c6",
+        "c7",
+        "c9",
+        "c13"
+      ],
+      "illustrative": true
+    }
+  ],
+  "quiz": [
+    {
+      "question": "Assume two source encodings preserve the same words, but one places words needed for the first target predictions nearer the encoder-decoder boundary. What does the paper's reversal hypothesis predict?",
+      "options": [
+        {
+          "text": "The nearer encoding may be easier to optimize.",
+          "explanation": "Correct. The paper argues that creating short-term dependencies helps backpropagation establish communication between source and target."
+        },
+        {
+          "text": "Both encodings must have identical training dynamics.",
+          "explanation": "Incorrect. Equal information content does not imply equal dependency paths or optimization behavior."
+        },
+        {
+          "text": "The target sequence must also be reversed.",
+          "explanation": "Incorrect. The reported intervention reverses source words while preserving normal target order."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-2",
+        "section-3"
+      ],
+      "claimIds": [
+        "c6",
+        "c9",
+        "c13"
+      ]
+    },
+    {
+      "question": "Under the paper's autoregressive factorization, what determines a complete target sequence's conditional probability?",
+      "options": [
+        {
+          "text": "Only the probability of its first token.",
+          "explanation": "Incorrect. Every target step contributes a factor."
+        },
+        {
+          "text": "The product of next-token probabilities through EOS.",
+          "explanation": "Correct. Each factor conditions on the source representation and preceding target prefix, including the stopping decision."
+        },
+        {
+          "text": "Only the encoder vector's Euclidean norm.",
+          "explanation": "Incorrect. The decoder uses the representation as context, but the sequence probability is formed from token-level conditional distributions."
+        }
+      ],
+      "answer": 1,
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c2",
+        "c3",
+        "c4"
+      ]
+    },
+    {
+      "question": "Which conclusion is justified by the reported 36.5 BLEU result?",
+      "options": [
+        {
+          "text": "A single LSTM directly decoded translations at 36.5 BLEU.",
+          "explanation": "Incorrect. The 36.5 result used an ensemble to rescore candidates from an SMT system."
+        },
+        {
+          "text": "Exact search over every possible translation achieved 36.5 BLEU.",
+          "explanation": "Incorrect. The candidates were restricted to the SMT system's 1000-best lists."
+        },
+        {
+          "text": "Combining ensemble LSTM and SMT scores for 1000-best rescoring reached 36.5 BLEU.",
+          "explanation": "Correct. This states the relevant candidate set and hybrid scoring condition."
+        }
+      ],
+      "answer": 2,
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c11"
+      ]
+    }
+  ],
+  "id": "sequence-to-sequence-learning-with-neural",
+  "createdAt": "2026-10-01T23:40:18.627Z",
+  "pipelineVersion": "subjects-lessons-v1",
+  "sources": [
+    {
+      "id": "abstract",
+      "label": "Original paper · abstract",
+      "url": "https://arxiv.org/abs/1409.3215",
+      "digest": "6d35c74881df4510f34d2dfd956e88b106fd551d21d2d240ed063edc4dc141a1",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:38:24.223Z"
+    },
+    {
+      "id": "main-text",
+      "label": "Original paper · unsectioned main text",
+      "url": "https://arxiv.org/html/1409.3215",
+      "digest": "1826acef46c3017ffd187bf8d570fd479106840256c56ef4d48667b9ca0c8d27",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:38:24.223Z"
+    },
+    {
+      "id": "section-1",
+      "label": "1 Introduction",
+      "url": "https://arxiv.org/html/1409.3215#S1",
+      "digest": "808a380c23e92d679f72eeea749b3092a1e79b16f7fa90014bc7224e5154c5b2",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:38:24.223Z"
+    },
+    {
+      "id": "section-2",
+      "label": "2 The model",
+      "url": "https://arxiv.org/html/1409.3215#S2",
+      "digest": "7e244a777f8733a5882ba7e364fceed18b36a9c5fc8fb0d4f277ad88f234d844",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:38:24.223Z"
+    },
+    {
+      "id": "section-3",
+      "label": "3 Experiments",
+      "url": "https://arxiv.org/html/1409.3215#S3",
+      "digest": "2a909f26f35414a5189567a9b559c385fd78f84c5e02f81e192bfba2f9349d3e",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:38:24.223Z"
+    },
+    {
+      "id": "section-3-part-2",
+      "label": "3 Experiments · part 2",
+      "url": "https://arxiv.org/html/1409.3215#S3",
+      "digest": "d4a928a85e00e273524d33baa6459d605544f7ca9a6215885ab783056562db6c",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:38:24.223Z"
+    },
+    {
+      "id": "section-4",
+      "label": "4 Related work",
+      "url": "https://arxiv.org/html/1409.3215#S4",
+      "digest": "dfbf97f3220f2a25fa6b0cbd3e407602b01d607e6e368715194906b93fede5d6",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:38:24.223Z"
+    },
+    {
+      "id": "section-5",
+      "label": "5 Conclusion",
+      "url": "https://arxiv.org/html/1409.3215#S5",
+      "digest": "27656d29e6fde66bd2643ea1faf08882d3461b2b145d2784d77cbc36e390b758",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:38:24.223Z"
+    }
+  ],
+  "review": {
+    "status": "passed",
+    "reviewedAt": "2026-10-02T02:15:56.114Z",
+    "contentDigest": "ab848516d7b7eab16207d19cee3924812b6a5fe2ec296935b369eac3c1d8112f"
+  }
+}

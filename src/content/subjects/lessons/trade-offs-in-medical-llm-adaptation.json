@@ -1,0 +1,511 @@
+{
+  "title": "The Adaptation Budget: Choosing What to Teach a Medical LLM",
+  "summary": "This lesson shows why French medical QA favors efficient supervised tuning by default, while continual pretraining, initialization, task format, and evaluation can change the decision.",
+  "prerequisites": [
+    "Basic language-model pretraining and fine-tuning concepts",
+    "Classification accuracy, probabilities, and significance",
+    "Multiple-choice and free-form evaluation differences"
+  ],
+  "objectives": [
+    "Distinguish CPT, SFT, and sequential CPT plus SFT.",
+    "Explain why adaptation comparisons must control initialization.",
+    "Interpret MCQA and OEQA results within their evaluation conditions.",
+    "Choose adaptation strategies under compute and labeled-data limits.",
+    "Identify metric, translation, and generalization limits."
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "mechanism",
+      "statement": "The study compares continual pretraining, supervised fine-tuning, and sequential continual pretraining followed by supervised fine-tuning while varying model family, size, initialization, task format, and evaluation language.",
+      "conditions": "Controlled French medical QA study restricted to model families offering aligned general, instruction-tuned, and medically adapted starting points.",
+      "sourceIds": [
+        "abstract",
+        "section-1",
+        "section-3"
+      ]
+    },
+    {
+      "id": "c2",
+      "kind": "mechanism",
+      "statement": "Continual pretraining uses full-parameter tuning on the 4 GB French medical NACHOS corpus, whereas supervised fine-tuning uses parameter-efficient DoRA on MedInjection-FR instruction-response pairs.",
+      "conditions": "The paper's contrasting CPT and SFT training regimes; CPT and SFT also differ in data objective and training duration.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c3",
+      "kind": "result",
+      "statement": "For constrained-decoding MCQA, CPT plus SFT ranks first most often, but its gains over SFT are generally small and frequently lack statistical significance.",
+      "conditions": "MedInjection-FR test evaluation across the reported Gemma, Mistral, and Llama configurations; comparisons use the paper's bootstrap analysis.",
+      "sourceIds": [
+        "abstract",
+        "section-4",
+        "section-8"
+      ]
+    },
+    {
+      "id": "c4",
+      "kind": "result",
+      "statement": "Parameter-efficient SFT is the paper's practical default for MCQA because it offers the strongest performance-efficiency trade-off across the evaluated families.",
+      "conditions": "Labeled medical QA data are available, and the decision prioritizes the study's MCQA evidence under limited compute.",
+      "sourceIds": [
+        "section-4",
+        "section-8"
+      ]
+    },
+    {
+      "id": "c5",
+      "kind": "result",
+      "statement": "CPT alone has modest and unstable MCQA effects and is the adaptation strategy that most often fails to improve significantly over its corresponding base model.",
+      "conditions": "Reported paired comparisons across model families and initialization types in the French medical QA experiments.",
+      "sourceIds": [
+        "section-4",
+        "section-8"
+      ]
+    },
+    {
+      "id": "c6",
+      "kind": "result",
+      "statement": "On 7B models, the paper reports a cost above $1,500 for CPT plus SFT versus $360 for SFT, together with a fourfold increase in carbon emissions.",
+      "conditions": "The paper's reported 7B computational-cost comparison; these figures are not a universal price model.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c7",
+      "kind": "result",
+      "statement": "CPT improves OEQA overlap-based metrics across most evaluated configurations, while SFT often lowers ROUGE-L and BERTScore-F1 relative to base or CPT variants.",
+      "conditions": "Open-ended evaluation on the reported model configurations, with only about 11% of training examples being OEQA.",
+      "sourceIds": [
+        "abstract",
+        "section-4-part-2"
+      ]
+    },
+    {
+      "id": "c8",
+      "kind": "caveat",
+      "statement": "OEQA conclusions depend on the evaluator: overlap metrics can reward longer answers, whereas the LLM judge often favors shorter, controlled outputs and favors CPT plus SFT in 6 of 12 configurations.",
+      "conditions": "The paper's OEQA metrics, judge, and output-length analysis; improvements do not establish clinical correctness.",
+      "sourceIds": [
+        "section-4-part-2",
+        "section-7",
+        "section-9"
+      ]
+    },
+    {
+      "id": "c9",
+      "kind": "result",
+      "statement": "Initialization effects are task-dependent: instruction-tuned variants lead family-level MCQ exact match, but no initialization consistently dominates aggregated MCQA or all OEQA metrics.",
+      "conditions": "Constrained-decoding results separated by MCQ, MCQU, aggregation, and OEQA metric.",
+      "sourceIds": [
+        "section-4",
+        "section-4-part-2"
+      ]
+    },
+    {
+      "id": "c10",
+      "kind": "equation",
+      "statement": "Cross-lingual comparison is defined as $\\Delta EM=EM_{FR}-EM_{EN}$, where positive values mean higher exact match on French translations than on the corresponding native English benchmarks.",
+      "conditions": "Averaged MCQU comparisons between corresponding translated French and native English benchmarks under constrained decoding.",
+      "sourceIds": [
+        "section-5"
+      ]
+    },
+    {
+      "id": "c11",
+      "kind": "result",
+      "statement": "French medical adaptation improves English benchmark performance in multiple configurations, showing cross-lingual transfer, although the direction of the French-English gap depends on model family.",
+      "conditions": "MCQU benchmarks evaluated in native English and French translation after French-only adaptation.",
+      "sourceIds": [
+        "section-5",
+        "section-8"
+      ]
+    },
+    {
+      "id": "c12",
+      "kind": "result",
+      "statement": "Compared with the native French benchmark, the translated benchmark produces higher exact match, lower predictive entropy, and often greater confidence on incorrect predictions.",
+      "conditions": "Comparison of MediQAl with translated MedMCQA; the instances are not shared, though benchmark sizes are comparable.",
+      "sourceIds": [
+        "section-6",
+        "section-8"
+      ]
+    },
+    {
+      "id": "c13",
+      "kind": "mechanism",
+      "statement": "Constrained MCQA decoding restricts outputs to valid answer options, while three random answer-choice shuffles are aggregated to mitigate position bias.",
+      "conditions": "Zero-shot deterministic evaluation of MCQ and MCQU tasks in the study.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c14",
+      "kind": "caveat",
+      "statement": "The findings do not establish clinical readiness and may not generalize beyond French medical QA, CPT and SFT, zero-shot evaluation, or the studied model families.",
+      "conditions": "Research-only study without few-shot prompting, reinforcement-learning adaptation, or complete measures of clinical correctness and reasoning validity.",
+      "sourceIds": [
+        "section-8",
+        "section-9",
+        "section-10"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "s1",
+      "title": "The decision is an allocation problem",
+      "markdown": "Medical adaptation is not one operation. The paper separates three choices: continue language-model training on medical text, train on labeled question-answer pairs, or perform both in sequence. Call them CPT, SFT, and CPT+SFT. The practical question is which use of limited data and compute produces the behavior actually needed.\n\nThat framing matters because the two objectives teach different things. CPT exposes the model to domain text without requiring task labels. SFT directly demonstrates the desired input-output behavior. CPT+SFT first changes domain representations and then teaches the task. More training is therefore not automatically better: its value depends on whether the evaluation rewards domain language modeling, exact option selection, or free-form answers.\n\nThe paper studies this problem in French medical QA across three model families, multiple sizes, and aligned general, instruction-tuned, and medical initializations. Its conclusions are strongest for multiple-choice QA, not clinical deployment or medical language modeling in general.",
+      "sourceIds": [
+        "abstract",
+        "section-1",
+        "section-3",
+        "section-8"
+      ],
+      "claimIds": [
+        "c1",
+        "c14"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s2",
+      "title": "Hold the starting point still",
+      "markdown": "Suppose one adapted system begins from an instruction-tuned model and another begins from a plain base model. A score difference cannot then be assigned cleanly to the adaptation step: instruction-following ability, prior language exposure, and medical pretraining are already different. The study addresses this confound by comparing three initialization types within aligned families: general-purpose base, instruction-tuned, and medically adapted.\n\nThe price of that control is narrower model selection. The authors use Mistral-7B, Gemma-3-4B, and Llama-2 variants at 7B and 13B scales because aligned versions are available, not because they are necessarily the newest releases. Mistral and Gemma are described as explicitly multilingual, whereas Llama is primarily English-centric. This creates a useful experimental axis: an adaptation method can interact with the linguistic and behavioral abilities already present.\n\nA real misconception is that medical initialization must dominate on medical questions. It does not here. Instruction-tuned variants lead family-level exact match on multi-answer MCQ, while general models often perform best on single-answer MCQU; no initialization wins every task and metric.",
+      "sourceIds": [
+        "section-3",
+        "section-4",
+        "section-4-part-2"
+      ],
+      "claimIds": [
+        "c1",
+        "c9"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s3",
+      "title": "What each training route changes",
+      "markdown": "CPT uses the 4 GB NACHOS collection of French medical website text and updates all model parameters for three epochs. SFT uses MedInjection-FR instruction-response pairs, runs for ten epochs, and applies DoRA, a parameter-efficient method that separates magnitude and directional updates. The training mixture contains about 83% single-answer MCQU, 6% multi-answer MCQ, and 11% OEQA. Thus the SFT signal is dominated by short, structured answer tasks.\n\nA low-rank update is easier to understand after seeing truncated singular decomposition. In the illustrative figure, a fixed diagonal $6\\times6$ matrix has singular values $[6,4,3,2,1,0.5]$. Choosing rank $r$ retains the first $r$ components. For example, at $r=2$, retained squared energy is\n\n$$\n\\frac{6^2+4^2}{6^2+4^2+3^2+2^2+1^2+0.5^2}\n=\\frac{52}{66.25}\\approx 0.785.\n$$\n\nSo this constructed example retains about $78.5\\%$ of squared singular-value energy. The control teaches how rank restricts a matrix representation; it does not simulate a learned DoRA update, reproduce the paper's optimizer, or measure adaptation quality. In the actual experiment, CPT is full-parameter training and SFT is parameter-efficient, so method and compute regime are deliberately coupled.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c2"
+      ],
+      "figureId": "f1"
+    },
+    {
+      "id": "s4",
+      "title": "Evaluation defines the target",
+      "markdown": "The test set contains 14,533 native French medical examples and 13,293 translated examples derived from English benchmarks. Evaluation is zero-shot and deterministic. For MCQ and MCQU, constrained decoding permits only valid answer options; answer choices are shuffled three times and results aggregated to reduce position bias.\n\nFor single-answer MCQU, exact match is one only when the predicted option equals the reference and zero otherwise. Over $n$ questions,\n\n$$\nEM=\\frac{1}{n}\\sum_{i=1}^{n}\\mathbf{1}[\\hat{y}_i=y_i],\n$$\n\nwhere $\\hat{y}_i$ is the prediction, $y_i$ the gold answer, and $\\mathbf{1}[\\cdot]$ an indicator. Illustratively, predictions correct on 3 of 4 questions give $EM=3/4=0.75$, or $75\\%$. Multi-answer MCQ also uses Hamming score so partial set overlap is visible.\n\nOEQA is evaluated with overlap metrics, BERTScore, and an LLM judge. These are not interchangeable views of clinical quality. The paper explicitly treats OEQA conclusions cautiously because free-form assessment is difficult and OEQA forms only about 11% of the training mixture.",
+      "sourceIds": [
+        "section-3",
+        "section-4-part-2",
+        "section-8"
+      ],
+      "claimIds": [
+        "c7",
+        "c8",
+        "c13"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s5",
+      "title": "Why confidence is not set accuracy",
+      "markdown": "The paper's probability analysis finds that multi-answer MCQ predictions can have lower entropy and higher maximum probability than MCQU predictions yet still miss the exact answer set. A model may rank every correct option highly but omit one, or include an extra option. CPT+SFT often increases gold-versus-non-gold separation without reducing these near misses. Confidence in local rankings is therefore not the same as correct structured generation.\n\nThe illustrative attention control makes the probability idea concrete. It divides fixed scores $s=[2,1,0,-1]$ by a positive temperature $\\tau$ and computes\n\n$$\np_i=\\frac{\\exp(s_i/\\tau)}{\\sum_j\\exp(s_j/\\tau)}.\n$$\n\nAt lower $\\tau$, the largest score receives more mass; at higher $\\tau$, the distribution becomes flatter. Predict how the top option's weight changes before moving the control. This is only a normalized four-score example—not a measured attention head, learned token similarity, answer-set decoder, or result from the paper. Its lesson is narrower: sharper probabilities can increase apparent confidence without solving the separate rule for producing an exact multi-label set.",
+      "sourceIds": [
+        "section-6",
+        "section-7"
+      ],
+      "claimIds": [
+        "c12"
+      ],
+      "figureId": "f2"
+    },
+    {
+      "id": "s6",
+      "title": "The central trade-off appears in MCQA",
+      "markdown": "Under constrained decoding, CPT+SFT achieves the highest MCQA scores most often. But ranking first is not the same as delivering a material advantage. When CPT+SFT wins, its margin over SFT rarely exceeds 1.3 points; some configurations instead favor SFT by more. Bootstrap comparisons with 10,000 resamples and Bonferroni correction also show that adaptation gains are not universally significant.\n\nCPT alone is less dependable for MCQA and most frequently fails to improve significantly over the matching base. SFT is consequently the paper's strong default when labeled QA data exist. The resource contrast sharpens the decision: for 7B models, the reported cost is above $1,500 for CPT+SFT versus $360 for SFT, with four times the carbon emissions.\n\nThose numbers belong to the reported setup, not a universal cloud price. The defensible rule is conditional: choose SFT for the evaluated MCQA setting when efficiency matters; consider CPT+SFT when both data types exist and a small possible gain is worth substantially greater compute.",
+      "sourceIds": [
+        "section-3",
+        "section-4",
+        "section-8"
+      ],
+      "claimIds": [
+        "c3",
+        "c4",
+        "c5",
+        "c6"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s7",
+      "title": "Open answers reverse part of the story",
+      "markdown": "OEQA produces a different ordering. CPT improves ROUGE-L and BERTScore-F1 across most configurations, whereas SFT often degrades them, especially from instruction-tuned or medical initializations. One plausible mechanism identified by the authors is answer length: CPT variants systematically generate longer responses, which can increase lexical recall and content coverage.\n\nThe LLM judge tells a different story. It favors CPT+SFT in 6 of 12 configurations, versus three each for base and CPT, yet CPT+SFT never significantly improves over base under that OEQA judge analysis. Shorter controlled answers can fare better with the judge while receiving worse overlap scores.\n\nTherefore, neither statement—\"CPT solves open medical QA\" nor \"SFT harms answer quality\"—follows. Overlap can reward verbosity; the judge is another imperfect evaluator; and these measures do not fully establish semantic equivalence, clinical correctness, or valid reasoning. The small OEQA share in training further limits the conclusion.",
+      "sourceIds": [
+        "section-4-part-2",
+        "section-7",
+        "section-8",
+        "section-9"
+      ],
+      "claimIds": [
+        "c7",
+        "c8"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s8",
+      "title": "Transfer, translation, and the boundary of the evidence",
+      "markdown": "For corresponding MCQU benchmarks, the paper defines\n\n$$\n\\Delta EM=EM_{FR}-EM_{EN},\n$$\n\nwhere $EM_{FR}$ is exact match on French translations and $EM_{EN}$ is exact match on native English data. Mistral remains stronger on the French translations, while Gemma and Llama generally retain an English advantage. Nevertheless, French adaptation can improve English results, sometimes more than French results, demonstrating cross-lingual transfer within these experiments.\n\nTranslation also changes evaluation conditions. In a separate comparison of similarly sized but non-identical native and translated benchmarks, every model scores higher and has lower predictive entropy on the translated benchmark; many also become more confident when wrong. Because the items are not shared, this is consistent evidence of a different evaluation regime, not an item-level causal estimate of translation.\n\nFinally, the work is research-only. It excludes few-shot prompting and reinforcement-learning methods, cannot conclusively rule out pretraining contamination, omits the human cost of producing high-quality SFT data, and studies only French medical QA with selected families. Its best-supported prescription is therefore specific: SFT is the efficient MCQA default in this setting; CPT may help overlap-oriented generation; CPT+SFT is a costly bid for marginal MCQA gains; and none of these results licenses direct clinical use.",
+      "sourceIds": [
+        "section-5",
+        "section-6",
+        "section-8",
+        "section-9",
+        "section-10"
+      ],
+      "claimIds": [
+        "c10",
+        "c11",
+        "c12",
+        "c14"
+      ],
+      "figureId": null
+    }
+  ],
+  "figures": [
+    {
+      "id": "f1",
+      "kind": "low-rank",
+      "title": "Rank as a capacity constraint",
+      "question": "As retained rank increases, how do retained squared singular-value energy and discarded components change?",
+      "caption": "An illustrative diagonal decomposition retains the first $r$ components of fixed singular values $[6,4,3,2,1,0.5]$, making the rank-capacity trade-off visible before considering parameter-efficient adaptation.",
+      "limitation": "This is a fixed diagonal singular decomposition, not a trained LoRA or DoRA update and not a reported compression or accuracy result.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c2"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "f2",
+      "kind": "attention",
+      "title": "Sharper scores, stronger confidence",
+      "question": "When positive temperature decreases, what happens to the normalized weight on the largest fixed score?",
+      "caption": "Four fixed scores $[2,1,0,-1]$ are divided by temperature and normalized with softmax, illustrating how sharpness changes a probability distribution.",
+      "limitation": "The weights are not a measured attention head, learned similarity, medical prediction, entropy result, or multi-answer decoding simulation.",
+      "sourceIds": [
+        "section-6",
+        "section-7"
+      ],
+      "claimIds": [
+        "c12"
+      ],
+      "illustrative": true
+    }
+  ],
+  "quiz": [
+    {
+      "question": "Under the paper's MCQA conditions, labeled QA data are available and compute is limited. Which strategy is the strongest default?",
+      "options": [
+        {
+          "text": "Parameter-efficient SFT",
+          "explanation": "Correct. It delivers the paper's best performance-efficiency trade-off, often matching or exceeding the much costlier combined route."
+        },
+        {
+          "text": "Full-parameter CPT alone",
+          "explanation": "Incorrect. CPT alone has modest, unstable MCQA gains and most often lacks significant improvement over base."
+        },
+        {
+          "text": "CPT followed by SFT in every case",
+          "explanation": "Incorrect. It ranks first most often, but its gains over SFT are usually small and not consistently significant."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-4",
+        "section-8"
+      ],
+      "claimIds": [
+        "c3",
+        "c4",
+        "c5",
+        "c6"
+      ]
+    },
+    {
+      "question": "Why can a model show confident option rankings yet still have poor exact match on a multi-answer MCQ?",
+      "options": [
+        {
+          "text": "Exact match ignores every option probability",
+          "explanation": "Incorrect. The final exact-match score uses the predicted set, but probabilities still influence which options enter that set."
+        },
+        {
+          "text": "A highly ranked set can omit a gold option or include an extra one",
+          "explanation": "Correct. Exact multi-label generation requires the entire predicted set to match, so a confident near miss still fails."
+        },
+        {
+          "text": "Lower entropy guarantees that all gold options are emitted",
+          "explanation": "Incorrect. The paper observes lower entropy and positive confidence gaps without eliminating omissions or over-generation."
+        }
+      ],
+      "answer": 1,
+      "sourceIds": [
+        "section-7"
+      ],
+      "claimIds": [
+        "c9"
+      ]
+    },
+    {
+      "question": "What is the safest interpretation of higher scores and lower entropy on the translated benchmark?",
+      "options": [
+        {
+          "text": "Translation necessarily improves medical reasoning",
+          "explanation": "Incorrect. The compared benchmarks do not share instances, so the observation does not isolate a causal translation effect."
+        },
+        {
+          "text": "Translated benchmarks are neutral substitutes for native benchmarks",
+          "explanation": "Incorrect. Their accuracy, entropy, and wrong-answer confidence patterns differ systematically in the study."
+        },
+        {
+          "text": "The translated benchmark creates a different, potentially easier evaluation regime",
+          "explanation": "Correct. This matches the observed higher accuracy and confidence while respecting the non-identical-item limitation."
+        }
+      ],
+      "answer": 2,
+      "sourceIds": [
+        "section-6",
+        "section-8"
+      ],
+      "claimIds": [
+        "c12",
+        "c14"
+      ]
+    }
+  ],
+  "id": "trade-offs-in-medical-llm-adaptation",
+  "createdAt": "2026-10-02T00:33:16.211Z",
+  "pipelineVersion": "subjects-lessons-v1",
+  "sources": [
+    {
+      "id": "abstract",
+      "label": "Original paper · abstract",
+      "url": "https://arxiv.org/abs/2606.19266",
+      "digest": "4dc75c09f10e53474249051d97a8631d55bec538579c5da20f98fadfa35eb4af",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:31:04.521Z"
+    },
+    {
+      "id": "main-text",
+      "label": "Original paper · unsectioned main text",
+      "url": "https://arxiv.org/html/2606.19266",
+      "digest": "5637f5a93d45351a5775b03001a9120c0b5271c63bcaed12054254b35a9affb3",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:31:04.521Z"
+    },
+    {
+      "id": "section-1",
+      "label": "1 Introduction",
+      "url": "https://arxiv.org/html/2606.19266#S1",
+      "digest": "2ce2a591c9bd2987a4003751c498f73463f742ec191cd5d58247dbab371f1473",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:31:04.521Z"
+    },
+    {
+      "id": "section-2",
+      "label": "2 Related Work",
+      "url": "https://arxiv.org/html/2606.19266#S2",
+      "digest": "1d66e8ace27bd268b01d1006a6ff61724b8c040422a295f0be42a8d0398603d5",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:31:04.521Z"
+    },
+    {
+      "id": "section-3",
+      "label": "3 Experimental Framework",
+      "url": "https://arxiv.org/html/2606.19266#S3",
+      "digest": "7407b87866468d37228eaad2face938d3f354b1b57f4912475e98e733a950c27",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:31:04.521Z"
+    },
+    {
+      "id": "section-4",
+      "label": "4 Results and Discussion",
+      "url": "https://arxiv.org/html/2606.19266#S4",
+      "digest": "1ebd12121263e116770687e220385b8a52e4e54cae7fc4c80f420efa9ba5565a",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:31:04.521Z"
+    },
+    {
+      "id": "section-4-part-2",
+      "label": "4 Results and Discussion · part 2",
+      "url": "https://arxiv.org/html/2606.19266#S4",
+      "digest": "d051ee0b9f8dde16cf0aa1b74f3d195d2c956a32f8ba60c74d0e9b0db6c6b5a2",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:31:04.521Z"
+    },
+    {
+      "id": "section-5",
+      "label": "5 Cross-Lingual Transfer After French Medical Adaptation",
+      "url": "https://arxiv.org/html/2606.19266#S5",
+      "digest": "4f749fc515da3eb32b229952f34bfc2ae3acf98110f39ec09568ceaf2095ff77",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:31:04.521Z"
+    },
+    {
+      "id": "section-6",
+      "label": "6 Effect of Translated Benchmarks on Performance and Confidence",
+      "url": "https://arxiv.org/html/2606.19266#S6",
+      "digest": "e96d4acaedfcee1ea3a9042c01903925cfbf9887c4a957c4a60363e31483cfb8",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:31:04.521Z"
+    },
+    {
+      "id": "section-7",
+      "label": "7 Error Analysis",
+      "url": "https://arxiv.org/html/2606.19266#S7",
+      "digest": "f775e52ea26c3bb44a11a7f06904a87e46f203052db3e53ebb49bf10b045c915",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:31:04.521Z"
+    },
+    {
+      "id": "section-8",
+      "label": "8 Conclusion",
+      "url": "https://arxiv.org/html/2606.19266#S8",
+      "digest": "9e84e94d07bb112491f11717b74398632a664f9d1607a2e9301af080d20b3ca0",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:31:04.521Z"
+    },
+    {
+      "id": "section-9",
+      "label": "9 Limitations",
+      "url": "https://arxiv.org/html/2606.19266#S9",
+      "digest": "6a94bf8816499143beb837dfa3db7b1824b7e22761e1eb9793ee532bbfde2b27",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:31:04.521Z"
+    },
+    {
+      "id": "section-10",
+      "label": "10 Ethical Considerations",
+      "url": "https://arxiv.org/html/2606.19266#S10",
+      "digest": "3de02acac7b5270ccf014494bf3f580c9d08cb900d30237a8576bddf01303e32",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:31:04.521Z"
+    }
+  ],
+  "review": {
+    "status": "passed",
+    "reviewedAt": "2026-10-02T00:33:16.211Z",
+    "contentDigest": "0fcafaf22f3b8e7e0273e00a3852662d6b689531381846c130176de95e0e4f80"
+  }
+}

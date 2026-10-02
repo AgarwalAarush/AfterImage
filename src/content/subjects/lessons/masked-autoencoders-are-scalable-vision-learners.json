@@ -1,0 +1,446 @@
+{
+  "title": "Seeing Less, Learning More: The Asymmetric Logic of MAE",
+  "summary": "MAE learns transferable visual representations by hiding most image patches, encoding only those left visible, and using a lightweight decoder to reconstruct masked pixels.",
+  "prerequisites": [
+    "Images as sequences of non-overlapping patches",
+    "Token embeddings with positional information",
+    "Self-supervised learning from unlabeled inputs",
+    "Mean squared prediction error"
+  ],
+  "objectives": [
+    "Explain why MAE removes masked patches before encoding.",
+    "Trace visible and masked tokens through MAE pre-training.",
+    "Calculate masked-patch reconstruction loss in a toy example.",
+    "Connect masking, decoder design, and evaluation to the evidence.",
+    "Distinguish plausible completion from faithful recovery."
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "mechanism",
+      "statement": "MAE uniformly samples visible image patches without replacement and removes the rest.",
+      "conditions": "During construction of a pre-training example from regular, non-overlapping patches.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c2",
+      "kind": "mechanism",
+      "statement": "The encoder receives only visible patch tokens, not placeholders for missing patches.",
+      "conditions": "In the asymmetric MAE pre-training architecture.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c3",
+      "kind": "mechanism",
+      "statement": "The decoder receives encoded visible tokens plus learned mask tokens, with positions supplied for the full sequence.",
+      "conditions": "After the visible subset has passed through the encoder.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c4",
+      "kind": "mechanism",
+      "statement": "Mask-token positional embeddings tell the decoder which image locations are absent.",
+      "conditions": "When shared mask-token vectors are inserted into the restored token ordering.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c5",
+      "kind": "equation",
+      "statement": "MAE minimizes pixel-space mean squared error over masked patches only.",
+      "conditions": "For the paper's pixel-reconstruction pre-training objective; visible patches are excluded from the loss.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c6",
+      "kind": "mechanism",
+      "statement": "The reconstruction decoder is discarded after pre-training; recognition uses the encoder on complete images.",
+      "conditions": "During downstream recognition after MAE pre-training.",
+      "sourceIds": [
+        "section-1"
+      ]
+    },
+    {
+      "id": "c7",
+      "kind": "result",
+      "statement": "A 75% masking ratio worked well under both fine-tuning and linear-probing evaluation in the reported ablation.",
+      "conditions": "ViT-L/16 on ImageNet-1K using the Table 1 ablation settings.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c8",
+      "kind": "result",
+      "statement": "Excluding mask tokens from the encoder produced a substantial measured wall-clock speedup.",
+      "conditions": "The Table 1 and Table 2 comparisons at 75% masking, including the stated hardware and implementation for wall-clock timing.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c9",
+      "kind": "result",
+      "statement": "Per-patch target normalization improved the reported representation results relative to raw-pixel targets.",
+      "conditions": "The reconstruction-target ablations reported for the paper's MAE configurations.",
+      "sourceIds": [
+        "section-3",
+        "section-4"
+      ]
+    },
+    {
+      "id": "c10",
+      "kind": "result",
+      "statement": "Masking geometry affected task difficulty and representation quality; random masking performed best among the tested strategies.",
+      "conditions": "The random, block-wise, and grid-wise sampling comparison in the MAE ablation.",
+      "sourceIds": [
+        "section-4-part-2"
+      ]
+    },
+    {
+      "id": "c11",
+      "kind": "result",
+      "statement": "The reported 87.8% result used a larger fine-tuning resolution and only ImageNet-1K data.",
+      "conditions": "ViT-H fine-tuned at image size 448 after MAE pre-training for 1600 epochs using normalized-pixel reconstruction targets, with only ImageNet-1K data.",
+      "sourceIds": [
+        "section-4-part-2"
+      ]
+    },
+    {
+      "id": "c12",
+      "kind": "result",
+      "statement": "On the reported COCO comparison, MAE improved box AP over supervised pre-training by 2.4 points for ViT-B.",
+      "conditions": "End-to-end Mask R-CNN fine-tuning using the common ViT/FPN implementation reported in Table 4; ViT-B achieved 50.3 box AP with MAE pre-training versus 47.9 with supervised pre-training.",
+      "sourceIds": [
+        "section-5"
+      ]
+    },
+    {
+      "id": "c13",
+      "kind": "caveat",
+      "statement": "A plausible reconstruction is not proof that the original hidden content was recovered.",
+      "conditions": "When interpreting reconstructions from ambiguous, heavily masked images.",
+      "sourceIds": [
+        "section-1"
+      ]
+    },
+    {
+      "id": "c14",
+      "kind": "caveat",
+      "statement": "Because predictions reflect training-set statistics, generated content can reproduce harmful biases.",
+      "conditions": "When MAE-like reconstruction is used or extended as an image-generation capability.",
+      "sourceIds": [
+        "section-6"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "s1",
+      "title": "The problem hidden inside an image",
+      "markdown": "An autoencoder has two conceptual parts: an encoder maps an input to a latent representation, and a decoder maps that representation toward a reconstruction. A denoising autoencoder first corrupts the input, so the network cannot merely copy every value. MAE chooses an especially simple corruption: split an image into regular, non-overlapping patches, retain a random subset, and remove the remainder.\n\nLet $N$ be the number of image patches, $m\\in[0,1]$ the masking ratio, and $V$ the set of visible patch indices. Ignoring rounding, $|V|=(1-m)N$. If $N=196$ and $m=0.75$, only $49$ patches remain visible. This arithmetic is illustrative, but it exposes the paper's central tension: hiding more information makes reconstruction harder while reducing how many tokens the expensive encoder must process.\n\nWhy hide so much? Nearby image pixels are often redundant. With a low masking ratio, local textures and edges may allow easy interpolation. The paper argues that high random masking suppresses this shortcut and encourages use of broader object and scene structure. That is a motivation, not a theorem that every learned feature is semantic.\n\nThe patch control below pictures only the corruption step on an illustrative $8\\times8$ grid. Predict how visible-token count changes as masking increases. It does not run a ViT or judge reconstruction quality.",
+      "sourceIds": [
+        "section-1",
+        "section-3"
+      ],
+      "claimIds": [
+        "c1",
+        "c7"
+      ],
+      "figureId": "f1"
+    },
+    {
+      "id": "s2",
+      "title": "Asymmetry is the computational idea",
+      "markdown": "A conventional masked sequence design might preserve all $N$ positions through the encoder, filling hidden locations with mask tokens. MAE instead sends only visible patch tokens into its large ViT encoder. Each visible patch is linearly embedded, receives positional information, and is processed by Transformer blocks. Missing positions consume no encoder computation.\n\nWrite the encoder abstractly as\n\n$$\n\\{z_i:i\\in V\\}=E_\\theta(\\{x_i+p_i:i\\in V\\}),\n$$\n\nwhere $x_i$ is the embedded content of patch $i$, $p_i$ its positional embedding, $E_\\theta$ the encoder with parameters $\\theta$, and $z_i$ the resulting latent token. This notation explains the mechanism; it is not a newly reported paper equation.\n\nThe decoder must reconstruct the complete spatial arrangement. After encoding, the system inserts a shared learned mask vector at every missing index, restores the original ordering, adds positional embeddings, and processes the full sequence with a smaller decoder. Positions matter because identical mask vectors otherwise provide no clue about which missing location each prediction belongs to.\n\nThe asymmetry concentrates expensive processing on real observations and assigns full-sequence reconstruction to a narrower, shallower network. The paper reports that moving mask tokens out of the encoder improved both efficiency and representation results in its ablations. The exact speedup is conditional on architecture, mask ratio, hardware, and implementation—not an invariant consequence of masking.",
+      "sourceIds": [
+        "abstract",
+        "section-3",
+        "section-4"
+      ],
+      "claimIds": [
+        "c2",
+        "c3",
+        "c4",
+        "c8"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s3",
+      "title": "What the decoder is trained to predict",
+      "markdown": "For every masked patch, the decoder emits a vector with one coordinate per target pixel value. Let $M$ be the set of masked indices, $d$ the number of scalar pixel values in a patch, $y_{ij}$ the target value for coordinate $j$ of patch $i$, and $\\hat y_{ij}$ the prediction. A natural statement of the paper's masked-only objective is\n\n$$\n\\mathcal{L}_{\\text{mask}}=\\frac{1}{|M|d}\\sum_{i\\in M}\\sum_{j=1}^{d}(\\hat y_{ij}-y_{ij})^2.\n$$\n\nThe loss excludes visible patches. Consequently, an unattractive decoder output at a visible location is not itself evidence that the masked-patch training objective failed.\n\nConsider an illustrative two-patch example with two scalar values per patch. Targets are $(1,3)$ and $(2,4)$; predictions are $(2,1)$ and $(2,5)$. The squared errors are $1,4,0,1$, so\n\n$$\n\\mathcal{L}_{\\text{mask}}=\\frac{1+4+0+1}{2\\cdot2}=1.5.\n$$\n\nThe paper also tests per-patch normalized targets. If a patch vector $y$ has mean $\\mu$ and population standard deviation $s>0$, its normalized coordinate is $\\tilde y_j=(y_j-\\mu)/s$. The normalization control below applies exactly this operation to one fixed illustrative vector while changing a common offset. Predict whether adding the same offset changes standardized values. This isolates shift removal; it is not MAE training, patch imagery, or BatchNorm/LayerNorm.",
+      "sourceIds": [
+        "section-3",
+        "section-4"
+      ],
+      "claimIds": [
+        "c5",
+        "c9"
+      ],
+      "figureId": "f2"
+    },
+    {
+      "id": "s4",
+      "title": "A training pass, reconstructed step by step",
+      "markdown": "One pre-training pass can be understood as a sequence-preserving bookkeeping procedure:\n\n1. Divide the image into patches and create one embedded token per patch.\n2. Randomly shuffle the token list.\n3. Keep the leading visible fraction and discard the rest before the encoder. The shuffle makes this equivalent to sampling without replacement.\n4. Encode only the retained tokens.\n5. Append enough learned mask tokens to restore the original token count.\n6. Apply the inverse shuffle so visible representations and mask tokens return to their proper spatial indices.\n7. Add decoder positional embeddings, run the lightweight decoder, and predict patch pixels.\n8. Compute MSE only at masked positions.\n\nThis requires neither an irregular sparse tensor operator nor a distinct learned mask vector for every location. The decoder sees position through positional embeddings.\n\nAfter pre-training, the reconstruction apparatus has served its purpose. The decoder is discarded, and the encoder processes uncorrupted images for recognition. This separation also clarifies a common misconception: MAE is not principally proposed as an image-completion product. Pixel prediction supplies a self-supervised learning signal; the retained artifact is the encoder and its representation.",
+      "sourceIds": [
+        "section-1",
+        "section-3"
+      ],
+      "claimIds": [
+        "c1",
+        "c2",
+        "c3",
+        "c4",
+        "c5",
+        "c6"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s5",
+      "title": "Why a lightweight decoder can still matter",
+      "markdown": "Calling the decoder lightweight does not mean it is conceptually irrelevant. Pixel reconstruction and recognition operate at different semantic levels. The decoder can absorb reconstruction-specific processing, allowing the encoder representation to remain useful after the decoder is discarded.\n\nThe paper's ViT-L/16 ablation varied decoder depth under its ImageNet-1K settings. Linear-probing accuracy rose from 65.5% with one decoder block to 73.5% with eight blocks, while fine-tuning accuracy remained near 84.8–84.9% across those cases. These results do not establish a universally optimal decoder depth. The authors interpret the stronger linear-probe dependence as evidence that a sufficiently capable decoder can handle later-stage pixel-reconstruction specialization, leaving the encoder representation at a more abstract level. End-to-end fine-tuning is less sensitive because it can adapt the encoder's later layers to the recognition task.\n\nA decoder block also supplies the token interaction needed to move information from encoded visible patches to mask-token positions. The attention control illustrates this mixing with four constructed scores, $s=(2,1,0,-1)$, and defines\n\n$$\na_i=\\frac{\\exp(s_i/T)}{\\sum_j\\exp(s_j/T)},\\qquad T>0.\n$$\n\nThe weights $a_i$ are dimensionless and sum to one. Temperature does not change the ordering of these fixed scores: lowering $T$ increases their separation after division and concentrates more weight on the largest score, while raising $T$ makes the distribution flatter. Thus the control isolates how normalized weighting changes the relative contribution of four token positions. Its scores and temperature are declared teaching quantities rather than measurements from an MAE attention head, so the calculation explains softmax concentration but does not account for the reported decoder-depth accuracy differences.",
+      "sourceIds": [
+        "section-3",
+        "section-4"
+      ],
+      "claimIds": [
+        "c3",
+        "c6"
+      ],
+      "figureId": "f3"
+    },
+    {
+      "id": "s6",
+      "title": "Reading the experiments without flattening their conditions",
+      "markdown": "The reported evidence supports a coupled design, not the slogan that more masking is always better. In the ViT-L/16 ImageNet-1K ablation, 75% masking worked well for both linear probing and fine-tuning. Random masking at 75% produced 84.9% fine-tuning and 73.5% linear-probing accuracy, whereas block masking at the same ratio produced 82.8% and 63.9%. Grid masking made reconstruction easier and sharper but yielded lower representation quality. Difficulty, sampling geometry, efficiency, and downstream usefulness therefore interacted.\n\nEvaluation protocol also changes the conclusion. MAE features were comparatively less linearly separable, yet tuning even part of the encoder greatly improved performance. Thus a linear probe measures accessibility through a linear classifier, not all information usable after nonlinear adaptation.\n\nScaling claims must retain their settings. The headline 87.8% ImageNet-1K accuracy used ViT-H, MAE pre-training, and fine-tuning at resolution 448. In COCO transfer with the shared Mask R-CNN setup, Table 4 reports box AP of 50.3 versus 47.9 for MAE and supervised pre-training with ViT-B, and 53.3 versus 49.3 with ViT-L. These are conditional comparisons within the paper's implementations, datasets, and fine-tuning recipes—not guarantees for arbitrary data or compute budgets.",
+      "sourceIds": [
+        "section-4",
+        "section-4-part-2",
+        "section-5"
+      ],
+      "claimIds": [
+        "c7",
+        "c8",
+        "c10",
+        "c11",
+        "c12"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s7",
+      "title": "What reconstruction does—and does not—demonstrate",
+      "markdown": "A convincing reconstruction should not be confused with recovery of the exact hidden content. When most patches are absent, multiple completions can be compatible with the visible evidence. The paper shows examples whose reconstructions differ from the ground truth while remaining semantically plausible. Such an output demonstrates that the model can produce a coherent completion from partial observations; it does not prove that the model recovered the original scene or that its interpretation was uniquely determined.\n\nThis ambiguity matters because MAE predicts from statistical patterns learned during training. A generated object, texture, or scene element may therefore be plausible without having existed in the original image. Reconstruction quality alone cannot establish the truth of hidden details, so the output should not be treated as evidence about what was actually present.\n\nThe same dependence on learned statistics creates a broader risk. If the training data contain harmful biases, generated content can reproduce them. These limitations are especially important when extending reconstruction models toward image generation: plausible appearance is not faithful recovery, invented content is possible, and outputs inherit assumptions and biases from the data on which the model learned.",
+      "sourceIds": [
+        "section-1",
+        "section-6"
+      ],
+      "claimIds": [
+        "c13",
+        "c14"
+      ],
+      "figureId": null
+    }
+  ],
+  "figures": [
+    {
+      "id": "f1",
+      "kind": "patches",
+      "title": "Masking changes the encoder's visible workload",
+      "question": "As the controlled mask fraction rises, how do the visible and masked patch counts change?",
+      "caption": "A deterministic mask partitions an illustrative 8×8 grid into visible and hidden cells, making the token-count consequence of masking directly inspectable.",
+      "limitation": "This control shows counts and locations only; it does not reconstruct pixels, run an encoder, or measure representation quality.",
+      "sourceIds": [
+        "section-1",
+        "section-3",
+        "section-4"
+      ],
+      "claimIds": [
+        "c1",
+        "c2",
+        "c7"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "f2",
+      "kind": "normalization",
+      "title": "What per-vector standardization removes",
+      "question": "When a common offset is added to all five activations, do their standardized values change?",
+      "caption": "Five fixed illustrative activations are shifted and then standardized by subtracting their mean and dividing by their population standard deviation.",
+      "limitation": "This is one fixed vector, not image-patch training or a complete BatchNorm or LayerNorm implementation.",
+      "sourceIds": [
+        "section-3",
+        "section-4"
+      ],
+      "claimIds": [
+        "c5",
+        "c9"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "f3",
+      "kind": "attention",
+      "title": "Temperature and normalized token weighting",
+      "question": "For the fixed scores, does a lower positive temperature make the softmax distribution flatter or more concentrated?",
+      "caption": "Softmax is applied to four fixed illustrative scores divided by a positive temperature, showing how normalized weights redistribute.",
+      "limitation": "The scores are fixed teaching values, not a measured MAE head, learned token similarity, or decoder-depth experiment.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c2",
+        "c3"
+      ],
+      "illustrative": true
+    }
+  ],
+  "quiz": [
+    {
+      "question": "An image has 196 patches and exactly 75% are masked. Under the MAE design, how many patch tokens enter the encoder?",
+      "options": [
+        {
+          "text": "49 tokens",
+          "explanation": "Correct. The visible fraction is 25%, and $0.25\\times196=49$."
+        },
+        {
+          "text": "147 tokens",
+          "explanation": "Incorrect. That is the masked count, and masked patches are removed before the encoder."
+        },
+        {
+          "text": "196 tokens",
+          "explanation": "Incorrect. The decoder later handles a full sequence, but the asymmetric encoder does not."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c2"
+      ]
+    },
+    {
+      "question": "Why are positional embeddings added when mask tokens enter the decoder?",
+      "options": [
+        {
+          "text": "To identify missing locations",
+          "explanation": "Correct. Shared mask vectors otherwise do not indicate which spatial positions they occupy."
+        },
+        {
+          "text": "To reveal hidden pixel values",
+          "explanation": "Incorrect. Position identifies where content is missing; it does not provide the target pixels."
+        },
+        {
+          "text": "To eliminate the reconstruction loss",
+          "explanation": "Incorrect. The model still uses masked-patch pixel MSE during pre-training."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c4",
+        "c5"
+      ]
+    },
+    {
+      "question": "A reconstruction looks plausible but differs from the hidden ground truth. What is the defensible interpretation?",
+      "options": [
+        {
+          "text": "The output may reflect a plausible completion learned from data statistics",
+          "explanation": "Correct. Heavy masking permits multiple compatible completions, and the paper shows plausible outputs that differ from ground truth."
+        },
+        {
+          "text": "The encoder must have recovered the exact original scene semantics",
+          "explanation": "Incorrect. Plausibility neither establishes exact recovery nor proves a unique semantic interpretation."
+        },
+        {
+          "text": "The masked-only MSE necessarily equals zero",
+          "explanation": "Incorrect. A different reconstruction generally has nonzero pixel error even if it looks plausible."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-1",
+        "section-6"
+      ],
+      "claimIds": [
+        "c13",
+        "c14"
+      ]
+    }
+  ],
+  "id": "masked-autoencoders-are-scalable-vision-learners",
+  "createdAt": "2026-10-01T23:23:45.979Z",
+  "pipelineVersion": "subjects-lessons-v1",
+  "sources": [
+    {
+      "id": "abstract",
+      "label": "Original paper · abstract",
+      "url": "https://arxiv.org/abs/2111.06377",
+      "digest": "c465c9c043178422233b1d8aa70ccfe2d873fb271063b32ff71c0336e7826de5"
+    },
+    {
+      "id": "section-1",
+      "label": "1 Introduction",
+      "url": "https://arxiv.org/html/2111.06377#S1",
+      "digest": "ede014df26e66f6080158fd35ca07ee1f5848d72cb9f56be5f23974c37322f68"
+    },
+    {
+      "id": "section-2",
+      "label": "2 Related Work",
+      "url": "https://arxiv.org/html/2111.06377#S2",
+      "digest": "dc36595574053add7b84d4540cb75d5df0048278c1df6db9bd39fdf5dacd4fea"
+    },
+    {
+      "id": "section-3",
+      "label": "3 Approach",
+      "url": "https://arxiv.org/html/2111.06377#S3",
+      "digest": "95c9556fd2a7d8707aeb12e23db4f0e58a612cb69f0d944e1bc1934541342d07"
+    },
+    {
+      "id": "section-4",
+      "label": "4 ImageNet Experiments",
+      "url": "https://arxiv.org/html/2111.06377#S4",
+      "digest": "9fbe93afa4f61b5f83e61d71bff4dfe11a04ad57987e6f8e67df8fb3c67e68e1"
+    },
+    {
+      "id": "section-4-part-2",
+      "label": "4 ImageNet Experiments · part 2",
+      "url": "https://arxiv.org/html/2111.06377#S4",
+      "digest": "4adef6f604743d8d2f479a8013d2bb085bea7e70bb137a7df397f7b8e236850e"
+    },
+    {
+      "id": "section-5",
+      "label": "5 Transfer Learning Experiments",
+      "url": "https://arxiv.org/html/2111.06377#S5",
+      "digest": "1651131d279203dc94a681173940895b0e6623f57e4939ae62ba5335b7374a16"
+    },
+    {
+      "id": "section-6",
+      "label": "6 Discussion and Conclusion",
+      "url": "https://arxiv.org/html/2111.06377#S6",
+      "digest": "30086040a4436f7c4831ca36fbcbcdb98e9436534832f655424602aec8abee9f"
+    }
+  ],
+  "review": {
+    "status": "passed",
+    "reviewedAt": "2026-10-02T01:59:59.589Z",
+    "contentDigest": "3418f9d8e98ec17a297097941a79fc8a19bf4b4a32ddca7a858ae139343d5a32"
+  }
+}

@@ -1,0 +1,459 @@
+{
+  "title": "Teaching a Flow Without Simulating Its Journey",
+  "summary": "Flow Matching trains a continuous normalizing flow by regressing tractable conditional velocities whose expected gradient matches an inaccessible marginal objective.",
+  "prerequisites": [
+    "Vectors, expectations, and squared Euclidean distance",
+    "Gaussian distributions and affine transformations",
+    "Ordinary differential equations and probability densities",
+    "Supervised regression with neural networks"
+  ],
+  "objectives": [
+    "Explain how a time-dependent vector field transports noise into data.",
+    "Derive the tractable Conditional Flow Matching training target.",
+    "Compute a simple conditional optimal-transport path example.",
+    "Distinguish straight conditional paths from the learned marginal flow.",
+    "Interpret the empirical comparisons within the tested conditions."
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "mechanism",
+      "statement": "A continuous normalizing flow transports samples by integrating a time-dependent vector field through an ordinary differential equation.",
+      "conditions": "For a sufficiently regular vector field whose ODE defines the flow map.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c2",
+      "kind": "equation",
+      "statement": "The Flow Matching objective is the expected squared error between the learned vector field and a target marginal vector field, with time sampled uniformly on the unit interval.",
+      "conditions": "For a prescribed probability path and a vector field that generates it.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c3",
+      "kind": "mechanism",
+      "statement": "A marginal probability path can be formed by averaging sample-conditioned paths over the data distribution.",
+      "conditions": "Each conditional path is indexed by a data sample and shares the intended initial distribution.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c4",
+      "kind": "mechanism",
+      "statement": "The density-weighted aggregation of conditional vector fields generates the corresponding marginal probability path.",
+      "conditions": "The conditional fields generate their conditional paths and the marginal density is positive.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c5",
+      "kind": "result",
+      "statement": "Conditional Flow Matching and marginal Flow Matching have identical parameter gradients because their losses differ only by a parameter-independent constant.",
+      "conditions": "The marginal density is positive for every point and time considered.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c6",
+      "kind": "equation",
+      "statement": "For an isotropic Gaussian conditional path, the canonical affine-flow velocity combines a centered scaling term with the derivative of the mean.",
+      "conditions": "The mean and positive scalar standard deviation are differentiable in time.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c7",
+      "kind": "mechanism",
+      "statement": "Linearly interpolating the conditional mean and standard deviation produces the paper's conditional optimal-transport displacement path between its endpoint Gaussians.",
+      "conditions": "The initial conditional distribution is standard Gaussian and the terminal one is an isotropic Gaussian centered at the selected data sample.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c8",
+      "kind": "mechanism",
+      "statement": "Particles following the conditional optimal-transport displacement map travel along straight trajectories at constant speed.",
+      "conditions": "For the linear conditional flow map defined in the paper, with the noise point and data endpoint held fixed.",
+      "sourceIds": [
+        "section-4",
+        "section-4-part-2"
+      ]
+    },
+    {
+      "id": "c9",
+      "kind": "caveat",
+      "statement": "Optimality of each conditional Gaussian transport does not imply that the aggregated marginal vector field is itself an optimal-transport solution.",
+      "conditions": "After mixing conditional paths over the data distribution.",
+      "sourceIds": [
+        "section-4-part-2"
+      ]
+    },
+    {
+      "id": "c10",
+      "kind": "result",
+      "statement": "In the matched-architecture ablations, Flow Matching with the optimal-transport path had the best reported NLL, FID, and NFE values across CIFAR-10 and ImageNet 32 and 64 resolutions.",
+      "conditions": "For the unconditional models, datasets, architecture, training protocol, adaptive solver, and evaluation settings reported in Table 1.",
+      "sourceIds": [
+        "section-6"
+      ]
+    },
+    {
+      "id": "c11",
+      "kind": "result",
+      "statement": "In the ImageNet-32 fixed-step study, the optimal-transport Flow Matching model required roughly 60 percent as many function evaluations as diffusion models to reach the same numerical-error threshold.",
+      "conditions": "For the tested models, 256 noise seeds, midpoint solver, low-cost range, and 1000-evaluation reference solutions.",
+      "sourceIds": [
+        "section-6"
+      ]
+    },
+    {
+      "id": "c12",
+      "kind": "caveat",
+      "statement": "The paper's terminal conditional distribution retains a small positive Gaussian spread around each data sample, so the resulting endpoint mixture approximates rather than exactly equals the unknown data distribution.",
+      "conditions": "When the terminal standard deviation is positive.",
+      "sourceIds": [
+        "section-3",
+        "section-4"
+      ]
+    },
+    {
+      "id": "c13",
+      "kind": "result",
+      "statement": "The framework supports conditional generation, and the paper evaluated optimal-transport Flow Matching for ImageNet super-resolution from 64 by 64 to 256 by 256.",
+      "conditions": "Under the paper's stated validation-set evaluation procedure and reported baselines.",
+      "sourceIds": [
+        "section-6-part-2"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "s1",
+      "title": "The object being learned: a velocity field",
+      "markdown": "A generative model must turn an easy random draw into a sample resembling the data. Flow Matching places that transformation inside a continuous normalizing flow (CNF). Let $x\\in\\mathbb{R}^d$ be a point in $d$-dimensional data space, $t\\in[0,1]$ be time, and $v_t(x;\\theta)\\in\\mathbb{R}^d$ be a neural velocity field with parameters $\\theta$. Its flow $\\phi_t$ is defined by\n\n$$\n\\frac{d}{dt}\\phi_t(x)=v_t(\\phi_t(x);\\theta),\\qquad \\phi_0(x)=x.\n$$\n\nStarting with $x_0\\sim p_0$, integrating this ODE produces $\\phi_t(x_0)$ and therefore a time-indexed density $p_t=[\\phi_t]_*p_0$. The push-forward notation means that probability mass is transported by the map; it is not created or discarded.\n\nThe illustrative ODE control below isolates the numerical idea. It integrates $dx/dt=-x$ from $x(0)=1$ with forward Euler while the step size changes. Predict which step size will track $e^{-t}$ more closely. This is useful because a trained CNF is also sampled by numerical integration, but the pictured field is fixed, scalar, and known—not learned, adaptive, or evidence about the paper's model.",
+      "sourceIds": [
+        "section-2",
+        "section-6"
+      ],
+      "claimIds": [
+        "c1"
+      ],
+      "figureId": "f1"
+    },
+    {
+      "id": "s2",
+      "title": "Why direct Flow Matching is conceptually easy but computationally awkward",
+      "markdown": "Suppose $q(x_1)$ is the unknown data distribution: its density is unavailable, but samples $x_1$ are available. Choose a path whose initial density $p_0=p$ is simple, such as $\\mathcal{N}(0,I)$, and whose endpoint $p_1$ approximates $q$. If $u_t(x)$ is a target velocity generating that path, the ideal objective is\n\n$$\n\\mathcal{L}_{\\mathrm{FM}}(\\theta)=\\mathbb{E}_{t\\sim\\mathcal{U}[0,1],\\,x\\sim p_t}\n\\left\\|v_t(x;\\theta)-u_t(x)\\right\\|^2.\n$$\n\nHere $\\mathcal{U}[0,1]$ is the uniform time distribution, $\\|\\cdot\\|$ is Euclidean norm, and the expectation averages times and path states. At zero loss, the learned field equals the target wherever the expectation places mass, so its flow generates the selected path.\n\nThe obstacle is not differentiating this squared loss. It is obtaining the marginal target $u_t(x)$ and sampling the desired marginal $p_t$ without already solving the difficult density-transport problem. Flow Matching's central move is to replace that inaccessible global supervision with conditional supervision available from one data example at a time.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c2"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s3",
+      "title": "Build the global path from example-centered paths",
+      "markdown": "For each sampled data endpoint $x_1\\sim q$, define an example-conditioned probability path $p_t(x\\mid x_1)$. Every conditional path begins at the same simple noise law,\n\n$$\np_0(x\\mid x_1)=p(x),\n$$\n\nand ends concentrated near its selected example, such as a narrow Gaussian centered at $x_1$. Averaging these paths over the data distribution gives the marginal path\n\n$$\np_t(x)=\\int p_t(x\\mid x_1)q(x_1)\\,dx_1.\n$$\n\nThis integral is also a sampling recipe: draw $x_1\\sim q$, then draw $x\\sim p_t(\\cdot\\mid x_1)$. If the identity of $x_1$ is discarded, the resulting state is distributed according to $p_t$. At $t=0$, mixing identical conditional noise laws recovers the common noise distribution. At $t=1$, mixing components concentrated near their examples produces an endpoint distribution that approximates the data distribution.\n\nConditional and marginal motion are different objects. A conditional field $u_t(x\\mid x_1)$ describes how a state moves when the selected endpoint $x_1$ is known. The marginal field $u_t(x)$ must describe the motion visible after that endpoint identity has been averaged out. Thus the global probability path can be assembled from example-centered paths even though a model used at generation time receives only the current state and time, not a known destination.\n\nThe noise figure offers prerequisite intuition for the shared starting law. It repeatedly draws a seeded Gaussian vector in $D$ dimensions and compares its sample-norm histogram with the RMS scale $\\sigma\\sqrt{D}$. Multiplying $\\sigma$ scales vector lengths, while changing $D$ changes the norm distribution and its relative concentration. These finite draws are illustrative Gaussian starting points, not probability-path trajectories or measurements from a trained model.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c3"
+      ],
+      "figureId": "f2"
+    },
+    {
+      "id": "s4",
+      "title": "The conditional loss is the practical bridge",
+      "markdown": "For every sampled endpoint $x_1$, let $u_t(x\\mid x_1)$ generate its tractable conditional density $p_t(x\\mid x_1)$. The marginal path formed by mixing the conditional paths is\n\n$$\np_t(x)=\\int p_t(x\\mid x_1)q(x_1)\\,dx_1.\n$$\n\nIts corresponding marginal velocity is not a plain average. It is the posterior-weighted aggregation\n\n$$\nu_t(x)=\\int u_t(x\\mid x_1)\n\\frac{p_t(x\\mid x_1)q(x_1)}{p_t(x)}\\,dx_1.\n$$\n\nThe weight is the relative responsibility of endpoint $x_1$ for observing state $x$ at time $t$. For fixed $t$ and $x$, these responsibilities normalize over possible endpoints. A conditional path that assigns little density to the observed state contributes little to its marginal velocity, whereas endpoints whose paths make the state likely contribute more strongly. Under the paper's positivity assumption, this aggregated field generates the mixture path.\n\nThis distinction matters geometrically. A conditional field answers, “How should this state move if the selected endpoint were $x_1$?” The marginal field answers, “Given only the present state and time, what motion results after averaging over the endpoints that could plausibly have produced it?” Individually simple conditional motions can therefore combine into a nonlinear population-level field. The construction establishes that the aggregate is coherent with the mixture density; it does not imply that marginal trajectories inherit every geometric property of the conditional trajectories.\n\nAt the endpoint, each conditional component remains concentrated near rather than exactly at its selected example when its terminal spread is positive. Consequently, the marginal endpoint is a smoothed mixture that approximates the unknown data distribution rather than equaling it exactly.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c3",
+        "c4",
+        "c12"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s5",
+      "title": "Gaussian paths turn targets into closed-form arithmetic",
+      "markdown": "Although the integrals defining $p_t$ and $u_t$ are generally inaccessible, training can sample their ingredients. Draw\n\n$$\nt\\sim\\mathcal{U}[0,1],\\qquad x_1\\sim q,\n\\qquad x\\sim p_t(\\cdot\\mid x_1),\n$$\n\nand minimize\n\n$$\n\\mathcal{L}_{\\mathrm{CFM}}(\\theta)=\n\\mathbb{E}\\left\\|v_t(x;\\theta)-u_t(x\\mid x_1)\\right\\|^2.\n$$\n\nEach sampled triple supplies an ordinary supervised-regression example. The model sees the time and state, while the sampled endpoint is used to construct the label. The method is practical when the conditional density can be sampled and its conditional velocity can be evaluated without integrating an ODE. Neither the marginal mixture density nor the marginal velocity integral has to be evaluated during this procedure.\n\nConditional Flow Matching (CFM) can look as though it assigns contradictory labels: the same location might receive different velocities when paired with different endpoints. Squared regression resolves this by learning the conditional mean of those target velocities given the variables visible to the model, namely the current state and time. The distribution over possible labels is not uniform over data examples. Conditioning on the observed state introduces the same density-based responsibilities that appear in the marginal-field formula, so the regression mean is precisely the marginal velocity.\n\nFormally, the paper shows that $\\mathcal{L}_{\\mathrm{CFM}}$ and $\\mathcal{L}_{\\mathrm{FM}}$ differ by a term independent of $\\theta$, provided $p_t(x)>0$. Therefore\n\n$$\n\\nabla_\\theta\\mathcal{L}_{\\mathrm{CFM}}(\\theta)=\n\\nabla_\\theta\\mathcal{L}_{\\mathrm{FM}}(\\theta).\n$$\n\nThe equality concerns parameter gradients in expectation. It explains why samples of conditional targets can train the same marginal predictor sought by the inaccessible FM objective. A finite minibatch remains a random estimate of that expectation, just as in other stochastic regression problems, but it can be formed from directly sampled quantities.\n\nThis is the simulation-free training claim: no ODE trajectory must be integrated to form each training target. The phrase describes how supervision is constructed, not every stage of using the model. Sampling after training still starts from noise and solves the learned ODE over $t\\in[0,1]$. Likelihood evaluation for a CNF also relies on the continuous-time flow machinery. Thus CFM removes trajectory simulation from the training-target construction while retaining ODE integration where the trained continuous flow itself must be followed.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c5"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s6",
+      "title": "A straight conditional transport, calculated by hand",
+      "markdown": "The paper chooses conditional Gaussian paths\n\n$$\np_t(x\\mid x_1)=\\mathcal{N}\\!\\left(x\\mid\\mu_t(x_1),\\sigma_t(x_1)^2I\\right),\n$$\n\nwhere $\\mu_t(x_1)\\in\\mathbb{R}^d$ is the mean, $\\sigma_t(x_1)>0$ is a scalar standard deviation, and $I$ is the identity matrix. Boundary choices $\\mu_0=0$, $\\sigma_0=1$, $\\mu_1=x_1$, and $\\sigma_1=\\sigma_{\\min}>0$ connect standard noise to a narrow Gaussian around the example. Because the final spread remains positive, the terminal conditional distribution is not a point mass at $x_1$; averaging these terminal Gaussians gives a smoothed mixture that approximates the data distribution.\n\nWrite the affine flow as $\\psi_t(x_0)=\\sigma_t x_0+\\mu_t$, where $x_0\\sim\\mathcal{N}(0,I)$. Holding the base draw $x_0$ fixed and differentiating with respect to time gives\n\n$$\n\\frac{d}{dt}\\psi_t(x_0)=\\sigma'_t x_0+\\mu'_t.\n$$\n\nTo express the answer as a field evaluated at the current state $x$, invert the affine relation: $x_0=(x-\\mu_t)/\\sigma_t$. Substitution yields\n\n$$\nu_t(x\\mid x_1)=\n\\frac{\\sigma'_t}{\\sigma_t}(x-\\mu_t)+\\mu'_t.\n$$\n\nThis is the computable regression label. The first term describes contraction or expansion relative to the moving conditional mean, and the second translates the mean itself. Drawing $x_0$, $x_1$, and $t$ therefore supplies both the intermediate state $x=\\sigma_t x_0+\\mu_t$ and its target velocity without solving an ODE.\n\nFor the paper's conditional OT choice,\n\n$$\n\\mu_t=tx_1,\\qquad \\sigma_t=1-(1-\\sigma_{\\min})t,\n$$\n\nso the affine trajectory becomes\n\n$$\n\\psi_t(x_0)=\\bigl[1-(1-\\sigma_{\\min})t\\bigr]x_0+tx_1\n$$\n\nand its velocity is constant along a trajectory:\n\n$$\n\\frac{d}{dt}\\psi_t(x_0)=x_1-(1-\\sigma_{\\min})x_0.\n$$\n\nFor the one-dimensional example used in the quiz, take $x_0=-1$, $x_1=3$, and $\\sigma_{\\min}=0.2$. The conditional target is\n\n$$\n3-(1-0.2)(-1)=3-0.8(-1)=3.8.\n$$\n\nThus this fixed particle follows a straight conditional trajectory at constant speed $3.8$. This straightness and conditional optimal-transport interpretation apply to the specified Gaussian endpoints and affine displacement map; they do not imply that the density-weighted marginal field is itself a globally optimal transport solution.\n\nThe construction selects the canonical affine motion associated with the Gaussian path. A density path alone need not identify a unique vector field: distribution-preserving components can be added without changing the evolving density. For an isotropic Gaussian, rotational motion is an intuitive example. The paper's uniqueness statement concerns the field defining the specified affine flow map, not every possible field capable of generating the same density path.",
+      "sourceIds": [
+        "section-3",
+        "section-4",
+        "section-4-part-2"
+      ],
+      "claimIds": [
+        "c6",
+        "c7",
+        "c8",
+        "c9",
+        "c12"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s7",
+      "title": "What the experiments establish—and what they do not",
+      "markdown": "The paper compares DDPM, score matching, ScoreFlow, Flow Matching with a diffusion path, and Flow Matching with the conditional OT path. In the same-architecture unconditional ablations on CIFAR-10 and ImageNet at $32\\times32$ and $64\\times64$, FM with OT reported the best values across negative log-likelihood, FID, and adaptive-solver function evaluations in Table 1. Those conclusions belong to the specified U-Net-based setup, training protocol, datasets, and solver tolerances; they are not a theorem that every OT-conditioned model beats every diffusion model.\n\nA separate ImageNet-$32$ fixed-step analysis used 256 shared noise seeds and compared low-evaluation solutions with 1000-evaluation references. Under the midpoint scheme, FM with OT reportedly needed roughly $60\\%$ of the function evaluations required by diffusion models to reach the same numerical-error threshold. This supports a sampling-efficiency claim for those trained fields and solvers, not a universal constant-factor guarantee.\n\nThe paper also tested conditional generation by upsampling ImageNet images from $64\\times64$ to $256\\times256$. More broadly, endpoint smoothing matters: because $\\sigma_{\\min}>0$, the endpoint is a mixture of narrow Gaussians rather than the exact empirical distribution. Other limitations include numerical integration error at generation time, dependence on the chosen conditional path, and no implication that simpler conditional motion makes the learned neural field exact. Finally, the authors note risks from harmful image generation and the energy demands of large-model training.",
+      "sourceIds": [
+        "section-6",
+        "section-6-part-2",
+        "section-8"
+      ],
+      "claimIds": [
+        "c10",
+        "c11",
+        "c12",
+        "c13"
+      ],
+      "figureId": null
+    }
+  ],
+  "figures": [
+    {
+      "id": "f1",
+      "kind": "ode",
+      "title": "Step size and numerical flow accuracy",
+      "question": "As the Euler step size decreases, which displayed trajectory should approach the exact exponential decay more closely?",
+      "caption": "An illustrative forward-Euler solution of $dx/dt=-x$ from $x(0)=1$ over $t\\in[0,3]$, compared with $e^{-t}$; the control changes the step size.",
+      "limitation": "This is a fixed scalar field, not an adaptive solver, adjoint method, learned vector field, or reproduction of the paper's sampling measurements.",
+      "sourceIds": [
+        "section-2",
+        "section-6"
+      ],
+      "claimIds": [
+        "c1"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "f2",
+      "kind": "noise",
+      "title": "Norms of Gaussian starting points",
+      "question": "How do the norm scale and relative spread change when the Gaussian standard deviation or dimension is increased?",
+      "caption": "Seeded Gaussian vectors show a sample-norm histogram, measured mean radius, and the RMS radius $\\sigma\\sqrt{D}$ as $\\sigma$ and $D$ change.",
+      "limitation": "The display concerns finite Gaussian samples only; it is not a learned CNF, a probability-path trajectory, or a paper-reported measurement.",
+      "sourceIds": [
+        "section-3",
+        "section-4"
+      ],
+      "claimIds": [
+        "c3",
+        "c7"
+      ],
+      "illustrative": true
+    }
+  ],
+  "quiz": [
+    {
+      "question": "At one time and state, several conditional endpoints imply different target velocities. Under squared-error CFM and the paper's positivity assumption, what does the optimal visible-state prediction represent?",
+      "options": [
+        {
+          "text": "The density-weighted conditional mean velocity.",
+          "explanation": "Correct. Squared regression averages conditional targets, and the relevant posterior weights produce the marginal vector field."
+        },
+        {
+          "text": "The velocity toward the nearest data example.",
+          "explanation": "Incorrect. CFM does not define a nearest-neighbor selection rule."
+        },
+        {
+          "text": "The unweighted mean over the dataset.",
+          "explanation": "Incorrect. Responsibilities depend on how likely each conditional path is to produce the current state."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c4",
+        "c5"
+      ]
+    },
+    {
+      "question": "For the illustrative OT-path example with $x_0=-1$, $x_1=3$, and $\\sigma_{\\min}=0.2$, what is the conditional target velocity?",
+      "options": [
+        {
+          "text": "$3.8$",
+          "explanation": "Correct. $x_1-(1-\\sigma_{\\min})x_0=3-0.8(-1)=3.8$."
+        },
+        {
+          "text": "$2.2$",
+          "explanation": "Incorrect. This results from losing the minus sign applied to the negative starting point."
+        },
+        {
+          "text": "$4.0$",
+          "explanation": "Incorrect. That would be the endpoint difference if the nonzero terminal spread were ignored."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-4"
+      ],
+      "claimIds": [
+        "c7",
+        "c8"
+      ]
+    },
+    {
+      "question": "Which conclusion is justified by the paper's straight conditional OT trajectories?",
+      "options": [
+        {
+          "text": "Each fixed noise-to-conditioned-endpoint particle follows a straight, constant-speed conditional path.",
+          "explanation": "Correct. This follows from the linear conditional flow map with endpoints fixed."
+        },
+        {
+          "text": "The aggregated marginal flow is necessarily the globally optimal transport.",
+          "explanation": "Incorrect. The paper explicitly says conditional optimality does not imply marginal optimality."
+        },
+        {
+          "text": "Every learned sampler needs the same number of ODE evaluations.",
+          "explanation": "Incorrect. Evaluation count depends on the learned field, solver, tolerance, and experimental setting."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-4",
+        "section-4-part-2",
+        "section-6"
+      ],
+      "claimIds": [
+        "c8",
+        "c9",
+        "c11"
+      ]
+    }
+  ],
+  "id": "flow-matching",
+  "createdAt": "2026-10-02T00:43:30.736Z",
+  "pipelineVersion": "subjects-lessons-v1",
+  "sources": [
+    {
+      "id": "abstract",
+      "label": "Original paper · abstract",
+      "url": "https://arxiv.org/abs/2210.02747",
+      "digest": "3c80f115b79b5683d5c068ae537eeac5516dc7c561a882cc1f498eee4e0c4897",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:39:31.043Z"
+    },
+    {
+      "id": "main-text",
+      "label": "Original paper · unsectioned main text",
+      "url": "https://arxiv.org/html/2210.02747",
+      "digest": "1826acef46c3017ffd187bf8d570fd479106840256c56ef4d48667b9ca0c8d27",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:39:31.043Z"
+    },
+    {
+      "id": "section-1",
+      "label": "1 Introduction",
+      "url": "https://arxiv.org/html/2210.02747#S1",
+      "digest": "a45e3cf0da0e94715699f4678fad1cdbf4b11eaf5890dcf98aae6a9f26a8ce48",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:39:31.043Z"
+    },
+    {
+      "id": "section-2",
+      "label": "2 Preliminaries: Continuous Normalizing Flows",
+      "url": "https://arxiv.org/html/2210.02747#S2",
+      "digest": "f3be037d6b3f785805b127bd1149ccf728f1fd14f87a28ae2aa577efe87317d2",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:39:31.043Z"
+    },
+    {
+      "id": "section-3",
+      "label": "3 Flow Matching",
+      "url": "https://arxiv.org/html/2210.02747#S3",
+      "digest": "3e700e8e40367ebd9977ecea64ec02fc01b87fa0ceb8280d49002e2c3c5f6048",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:39:31.043Z"
+    },
+    {
+      "id": "section-4",
+      "label": "4 Conditional Probability Paths and Vector Fields",
+      "url": "https://arxiv.org/html/2210.02747#S4",
+      "digest": "e3cb3d7d592a87ff9dd2595f29d178599c295a01bb6a6c29595523baebbd87fa",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:39:31.043Z"
+    },
+    {
+      "id": "section-4-part-2",
+      "label": "4 Conditional Probability Paths and Vector Fields · part 2",
+      "url": "https://arxiv.org/html/2210.02747#S4",
+      "digest": "35c46faa83bb4d9d10c252c082c49b5ce357ad6e29a176376b49b919fc20399e",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:39:31.043Z"
+    },
+    {
+      "id": "section-5",
+      "label": "5 Related Work",
+      "url": "https://arxiv.org/html/2210.02747#S5",
+      "digest": "0ef4e570a404fce818e851e02ee7ed5e8b98bd1613392cb76e8ed2ae7723ebbb",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:39:31.043Z"
+    },
+    {
+      "id": "section-6",
+      "label": "6 Experiments",
+      "url": "https://arxiv.org/html/2210.02747#S6",
+      "digest": "63d61200f091a204069bc9033fd5db4157d0d140395566f01032110d1b75607e",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:39:31.043Z"
+    },
+    {
+      "id": "section-6-part-2",
+      "label": "6 Experiments · part 2",
+      "url": "https://arxiv.org/html/2210.02747#S6",
+      "digest": "0b29e7b9097189cda626a226dd9db426ae56c37af142c13c002c3f0cf5b5a12f",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:39:31.043Z"
+    },
+    {
+      "id": "section-7",
+      "label": "7 Conclusion",
+      "url": "https://arxiv.org/html/2210.02747#S7",
+      "digest": "474f06d0f6a81f0ca48912768fa74e6b050d3624312f0cf27bc4a510a4e4c4ec",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:39:31.043Z"
+    },
+    {
+      "id": "section-8",
+      "label": "8 Social responsibility",
+      "url": "https://arxiv.org/html/2210.02747#S8",
+      "digest": "2097cbe1287810cd00a0aee8009cc8bb3f273a8e88a2086bcdf036b61056a993",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:39:31.043Z"
+    }
+  ],
+  "review": {
+    "status": "passed",
+    "reviewedAt": "2026-10-02T00:43:30.737Z",
+    "contentDigest": "beac2f0f48883c361e8e615e16d773e8f24ab25233e2af767aa9e858137818ed"
+  }
+}

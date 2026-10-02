@@ -1,0 +1,397 @@
+{
+  "title": "The Useful Zero: Why Residual Networks Can Grow Deep",
+  "summary": "ResNet makes added layers learn corrections to an identity path, easing optimization enough for substantially deeper image networks to improve rather than degrade.",
+  "prerequisites": [
+    "Vector and feature-map transformations in neural networks",
+    "Gradient-based optimization of neural-network objectives",
+    "Convolutions, ReLU activations, and element-wise addition"
+  ],
+  "objectives": [
+    "Explain why greater representational capacity may not simplify optimization.",
+    "Derive a residual block from a target mapping and define its symbols.",
+    "Distinguish identity shortcuts from learned projection shortcuts.",
+    "Interpret the ImageNet comparisons under the reported test conditions.",
+    "Explain why successful optimization does not prevent overfitting."
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "caveat",
+      "statement": "The motivating degradation problem is an optimization failure, not merely worse validation generalization: adding layers increased training error.",
+      "conditions": "Plain networks that were already deep enough to converge, in the paper's CIFAR-10 and ImageNet comparisons.",
+      "sourceIds": [
+        "section-1"
+      ]
+    },
+    {
+      "id": "c2",
+      "kind": "mechanism",
+      "statement": "A deeper architecture contains a constructive solution matching a shallower one when its added layers implement identity mappings.",
+      "conditions": "The deeper architecture extends the shallower one and permits the added layers to realize identity mappings.",
+      "sourceIds": [
+        "section-1"
+      ]
+    },
+    {
+      "id": "c3",
+      "kind": "equation",
+      "statement": "Residual learning rewrites a target mapping as an identity term plus a learned correction: $\\mathcal{F}(\\mathbf{x})=\\mathcal{H}(\\mathbf{x})-\\mathbf{x}$.",
+      "conditions": "Input and output have the same dimensions so that subtraction and element-wise addition are defined.",
+      "sourceIds": [
+        "section-1"
+      ]
+    },
+    {
+      "id": "c4",
+      "kind": "equation",
+      "statement": "The paper's basic residual block outputs the learned residual mapping plus its input.",
+      "conditions": "A block with matching input and residual dimensions; $\\{W_i\\}$ denotes its learned weights.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c5",
+      "kind": "mechanism",
+      "statement": "An identity shortcut adds no learned parameters and essentially no computational burden beyond element-wise addition.",
+      "conditions": "Identity shortcuts, rather than learned projection shortcuts, are used.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c6",
+      "kind": "equation",
+      "statement": "When dimensions differ, the shortcut can apply a learned linear projection before addition.",
+      "conditions": "Transitions where input and output channel counts or feature-map dimensions do not match.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c7",
+      "kind": "mechanism",
+      "statement": "For the two-layer example, the residual branch composes two learned linear maps with a ReLU between them.",
+      "conditions": "The paper's simplified two-layer notation, with biases omitted.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c8",
+      "kind": "result",
+      "statement": "On ImageNet validation, increasing plain-network depth from 18 to 34 layers worsened top-1 error, whereas the matched residual comparison improved it.",
+      "conditions": "Top-1 error with 10-crop testing; the reported residual models had no extra parameters over their plain counterparts.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c9",
+      "kind": "caveat",
+      "statement": "The paper argues that vanishing signals did not explain its plain-network degradation observation because BatchNorm was used and gradient norms were checked.",
+      "conditions": "The paper's 18-layer and 34-layer plain ImageNet networks trained with BatchNorm.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c10",
+      "kind": "result",
+      "statement": "Projection shortcuts were not necessary to address degradation; all three shortcut variants beat the plain counterpart, with only small differences among them.",
+      "conditions": "ImageNet ResNet-34 options A, B, and C compared with plain-34 under the paper's evaluation setup.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c11",
+      "kind": "result",
+      "statement": "Measured residual-branch responses were generally smaller than responses in matched plain networks, supporting the identity-plus-perturbation motivation.",
+      "conditions": "CIFAR-10 layer outputs after BatchNorm and before ReLU or addition, as analyzed in Figure 7.",
+      "sourceIds": [
+        "section-4-part-2"
+      ]
+    },
+    {
+      "id": "c12",
+      "kind": "caveat",
+      "statement": "Residual learning solved the observed optimization difficulty at 1202 layers but did not guarantee the best test error.",
+      "conditions": "The paper's CIFAR-10 1202-layer model, trained without maxout or dropout under the stated schedule.",
+      "sourceIds": [
+        "section-4-part-2"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "s1",
+      "title": "Depth created a solver problem",
+      "markdown": "A deeper network can represent more functions, but representation and optimization are different questions. Suppose a trained shallow network already computes something useful. A deeper counterpart could, in principle, copy those learned layers and make every newly inserted layer an identity map. Therefore the deeper model has at least one solution that matches the shallow model. Yet the paper observed that sufficiently deep *plain* networks had higher training error. That is the degradation problem: the optimizer failed to reach an available solution within the training procedure, rather than the model merely overfitting validation data.\n\nThis distinction matters. Vanishing and exploding gradients can prevent convergence from the start, but the authors used normalized initialization and intermediate normalization to make deep models converge. In their ImageNet investigation, BatchNorm maintained nonzero forward variance, and checked backward gradients had healthy norms. The plain 34-layer network still trained less successfully than the plain 18-layer network. Residual learning targets this more specific difficulty: how the layers are parameterized relative to a useful identity solution.",
+      "sourceIds": [
+        "section-1",
+        "section-4"
+      ],
+      "claimIds": [
+        "c1",
+        "c2",
+        "c9"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s2",
+      "title": "Prerequisite: what an optimizer can and cannot promise",
+      "markdown": "Training uses an optimizer to change weights, but the existence of good weights does not imply that a finite optimization run will find them. The illustrative control below performs ordinary gradient descent on\n\n$$\nf(x)=\\frac{x^2}{2}, \\qquad \\frac{df}{dx}=x,\n$$\n\nstarting from $x_0=3$. If the learning rate is $\\eta>0$, one update is\n\n$$\nx_{t+1}=x_t-\\eta x_t=(1-\\eta)x_t.\n$$\n\nFor an illustrative choice $\\eta=0.5$, the first three iterates are $x_1=1.5$, $x_2=0.75$, and $x_3=0.375$. The calculation is exact for this toy quadratic. Because $x_t=(1-\\eta)^t x_0$, the iterates approach zero when $0<\\eta<2$: they alternate in sign when $1<\\eta<2$, remain constant in magnitude at $\\eta=2$, and diverge when $\\eta>2$. Change $\\eta$ and predict how the twelve displayed steps behave.\n\nThe useful analogy is limited: ResNet was trained with mini-batch SGD, momentum, many parameters, nonlinearities, and a changing loss landscape. This control does not simulate those networks or reproduce a reported curve. It teaches only the logical gap at issue: a known optimum can exist while the route taken by an optimizer depends strongly on parameterization and update dynamics. Residual blocks change the parameterization so that identity-like behavior corresponds to a small learned correction.",
+      "sourceIds": [
+        "section-1",
+        "section-3",
+        "section-3-part-2"
+      ],
+      "claimIds": [
+        "c2",
+        "c3"
+      ],
+      "figureId": "fig-optimizer"
+    },
+    {
+      "id": "s3",
+      "title": "Recenter the task around identity",
+      "markdown": "Let $\\mathbf{x}$ be the input vector or feature map to a group of layers, and let $\\mathcal{H}(\\mathbf{x})$ be the mapping that group should ultimately realize. A plain block tries to learn $\\mathcal{H}$ directly. Residual learning defines\n\n$$\n\\mathcal{F}(\\mathbf{x}) := \\mathcal{H}(\\mathbf{x})-\\mathbf{x},\n$$\n\nso the desired mapping becomes\n\n$$\n\\mathcal{H}(\\mathbf{x})=\\mathcal{F}(\\mathbf{x})+\\mathbf{x}.\n$$\n\nHere $\\mathcal{F}$ is the residual, meaning the correction relative to the input—not a prediction error or a loss residual. With learned weights $\\{W_i\\}$, the block computes\n\n$$\n\\mathbf{y}=\\mathcal{F}(\\mathbf{x},\\{W_i\\})+\\mathbf{x},\n$$\n\nwhere $\\mathbf{y}$ is its output. In the paper's two-layer example, $\\mathcal{F}=W_2\\sigma(W_1\\mathbf{x})$: $W_1$ and $W_2$ are learned linear operators and $\\sigma$ is ReLU.\n\nA small illustrative vector makes the addition concrete. If $\\mathbf{x}=(2,-1)$ and the residual branch produces $\\mathcal{F}(\\mathbf{x})=(0.3,0.2)$, then $\\mathbf{y}=(2.3,-0.8)$. If identity is ideal, the branch need only approach $(0,0)$. The paper does not prove that every optimization landscape becomes easy; it hypothesizes that learning a perturbation around identity can be easier when the desired mapping is closer to identity than to zero.",
+      "sourceIds": [
+        "section-1",
+        "section-3"
+      ],
+      "claimIds": [
+        "c3",
+        "c4",
+        "c7"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s4",
+      "title": "The shortcut is addition, not concatenation or a gate",
+      "markdown": "The shortcut carries $\\mathbf{x}$ around the nonlinear branch, and the two paths meet by element-wise addition. When their shapes match, the shortcut is the identity and has no weights. It is neither feature concatenation nor a learned gate. Unlike a gate that can close, the identity route always passes its input; the residual branch learns what to add.\n\nAddition requires compatible shapes. If a stage changes dimensions, the paper allows\n\n$$\n\\mathbf{y}=\\mathcal{F}(\\mathbf{x},\\{W_i\\})+W_s\\mathbf{x},\n$$\n\nwhere $W_s$ is a linear projection that maps the shortcut to the required shape. In convolutional networks it can be a $1\\times1$ convolution, and stride can handle a spatial-size transition. The paper also tested zero-padding for increased channels. Identity shortcuts were used whenever dimensions already matched because they were sufficient for the degradation problem and economical.\n\nA common misconception is that ResNet's contribution was simply giving gradients a path around layers. The shortcut does create an additional computational path, but the paper's central formulation is more precise: each branch is explicitly trained as a residual correction referenced to its input. The authors also did not claim that a one-layer residual branch was universally beneficial; their reported ImageNet residual functions used two- or three-layer branches.",
+      "sourceIds": [
+        "section-2",
+        "section-3",
+        "section-4"
+      ],
+      "claimIds": [
+        "c4",
+        "c5",
+        "c6",
+        "c7",
+        "c10"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s5",
+      "title": "Normalization supported the comparison but was not the residual",
+      "markdown": "Batch normalization and residual addition play different roles. The ImageNet implementation placed BN after each convolution and before activation. The authors used BN in the plain networks too, allowing them to argue that the observed degradation was unlikely to be ordinary signal disappearance. A shortcut is therefore not a substitute definition for normalization, and normalization alone did not remove the reported plain-network difficulty.",
+      "sourceIds": [
+        "section-3-part-2",
+        "section-4"
+      ],
+      "claimIds": [
+        "c9"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s6",
+      "title": "Read the evidence under matched conditions",
+      "markdown": "The cleanest ImageNet comparison paired 18- and 34-layer plain networks with residual counterparts. Under 10-crop validation testing, plain top-1 error went from $27.94\\%$ at 18 layers to $28.54\\%$ at 34 layers. Residual top-1 error went from $27.88\\%$ to $25.03\\%$. Because the residual models in this comparison used parameter-free shortcuts and had no extra parameters over their plain counterparts, the reversal isolates the residual parameterization more effectively than an unmatched leaderboard comparison.\n\nThe result should be stated carefully. It shows that, in this architecture and training setup, the 34-layer residual model optimized better and generalized better than the 34-layer plain model; it does not establish that every added residual block always improves accuracy. Projection variants A, B, and C all beat plain-34, while their small differences suggested that learned projections were not essential to resolving degradation.\n\nThe response analysis offers supporting rather than causal evidence. On CIFAR-10, outputs of residual layers after BN and before nonlinearity generally had smaller standard deviations than plain-layer responses. That is consistent with branches learning smaller corrections around identity. It does not prove that response magnitude alone explains optimization. Likewise, the ensemble's $3.57\\%$ ImageNet test top-5 error belongs to a six-model ensemble and must not be confused with a single-model result.",
+      "sourceIds": [
+        "section-4",
+        "section-4-part-2"
+      ],
+      "claimIds": [
+        "c8",
+        "c10",
+        "c11"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s7",
+      "title": "Depth still has a bill to pay",
+      "markdown": "Residual learning did not make every increase in depth statistically beneficial. On CIFAR-10, the 1202-layer ResNet reached training error below $0.1\\%$, so under the reported optimization procedure the network could fit the training set despite its extreme depth. Its test error, however, was $7.93\\%$, compared with $6.43\\%$ for the 110-layer ResNet, even though the two models had similar training error. The deeper model therefore demonstrates successful optimization and worse generalization at the same time.\n\nThe comparison was made on CIFAR-10's 50,000 training images and 10,000 test images, using augmented training crops and a single original $32\\times32$ image per test example. The 1202-layer network had $19.4$ million parameters, whereas the 110-layer network had $1.7$ million. Both belonged to the paper's deliberately deep, thin residual family and were trained with BatchNorm, weight decay of $0.0001$, momentum of $0.9$, and no dropout. The authors attributed the 1202-layer model's larger test error to overfitting: its much greater capacity reduced training error without producing a correspondingly better predictor for unseen images. Because this is an empirical comparison rather than a controlled decomposition of every possible cause, it supports that explanation under the reported setup rather than establishing a universal parameter threshold for CIFAR-10.\n\nThis result separates the two bills that depth must pay. The optimization bill asks whether the training procedure can find low-error parameters. Identity shortcuts help here by preserving a reference path while each nonlinear branch learns a correction. The generalization bill asks whether the fitted function transfers to unseen data. That outcome still depends on the amount and distribution of data, model capacity, regularization, and the evaluation protocol. Residual parameterization paid enough of the first bill for a 1202-layer model to fit its training set, but it did not pay the second automatically.\n\nThe scientific conclusion is therefore specific: residual learning addressed the observed degradation problem well enough to make extremely deep networks trainable in these experiments, yet low training error did not guarantee the best test error. The 1202-layer result marks the consequence directly—once optimization ceased to be the limiting factor, excess capacity on the smaller dataset could still worsen generalization. Identity shortcuts made productive increases in depth possible; they did not turn depth itself into a guarantee of improved accuracy.",
+      "sourceIds": [
+        "section-3",
+        "section-4-part-2"
+      ],
+      "claimIds": [
+        "c5",
+        "c11",
+        "c12"
+      ],
+      "figureId": null
+    }
+  ],
+  "figures": [
+    {
+      "id": "fig-optimizer",
+      "kind": "optimizer",
+      "title": "A good solution can still be slow to reach",
+      "question": "Starting from the same point, how does changing the learning rate alter the twelve gradient-descent iterates?",
+      "caption": "Illustrative ordinary gradient descent on $f(x)=x^2/2$ from $x=3$; the learning-rate control changes twelve update iterates.",
+      "limitation": "This scalar quadratic is not mini-batch SGD, momentum, or a simulation of ResNet training and reports no paper measurement.",
+      "sourceIds": [
+        "section-1",
+        "section-3-part-2"
+      ],
+      "claimIds": [
+        "c2",
+        "c3"
+      ],
+      "illustrative": true
+    }
+  ],
+  "quiz": [
+    {
+      "question": "Assume a residual block has matching input and output dimensions and the desired mapping is exactly identity. What residual function should it learn?",
+      "options": [
+        {
+          "text": "The zero function.",
+          "explanation": "Correct: if $\\mathcal{H}(\\mathbf{x})=\\mathbf{x}$, then $\\mathcal{F}(\\mathbf{x})=\\mathcal{H}(\\mathbf{x})-\\mathbf{x}=0$."
+        },
+        {
+          "text": "A second copy of the identity.",
+          "explanation": "That would produce $\\mathbf{x}+\\mathbf{x}=2\\mathbf{x}$ after shortcut addition, not identity."
+        },
+        {
+          "text": "A learned projection $W_s\\mathbf{x}$.",
+          "explanation": "A projection is unnecessary when dimensions match, and it does not describe the residual branch required for identity."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-1",
+        "section-3"
+      ],
+      "claimIds": [
+        "c3",
+        "c4"
+      ]
+    },
+    {
+      "question": "Under the paper's matched ImageNet comparison, which observation most directly demonstrates degradation in the plain networks?",
+      "options": [
+        {
+          "text": "The 34-layer plain network had higher training error than the 18-layer plain network.",
+          "explanation": "Correct: higher training error despite the constructive identity solution identifies an optimization difficulty."
+        },
+        {
+          "text": "The residual ensemble reached 3.57% test top-5 error.",
+          "explanation": "That is a separate ensemble result and does not directly compare plain-network training behavior across depth."
+        },
+        {
+          "text": "The 152-layer model used fewer FLOPs than VGG-19.",
+          "explanation": "That concerns architectural efficiency, not the defining training-error evidence for degradation."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-1",
+        "section-4"
+      ],
+      "claimIds": [
+        "c1",
+        "c2"
+      ]
+    },
+    {
+      "question": "What does the 1202-layer CIFAR-10 result justify under the reported setup?",
+      "options": [
+        {
+          "text": "Optimization can succeed while test performance remains worse than a shallower residual model.",
+          "explanation": "Correct: training error was very low, yet test error was worse than for the 110-layer model."
+        },
+        {
+          "text": "Once shortcuts solve degradation, additional depth always improves generalization.",
+          "explanation": "The 1202-layer result directly contradicts this universal claim."
+        },
+        {
+          "text": "Residual learning eliminates the need for regularization on small datasets.",
+          "explanation": "The authors instead discussed overfitting and stronger regularization as an open direction."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-4-part-2"
+      ],
+      "claimIds": [
+        "c12"
+      ]
+    }
+  ],
+  "id": "resnet",
+  "createdAt": "2026-10-01T23:38:17.329Z",
+  "pipelineVersion": "subjects-lessons-v1",
+  "sources": [
+    {
+      "id": "abstract",
+      "label": "Original paper · abstract",
+      "url": "https://arxiv.org/abs/1512.03385",
+      "digest": "e8efd536a09bee85fe0385a4c10c598e151409c8b0426730a3dea372fa3ebc86",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:37:31.314Z"
+    },
+    {
+      "id": "section-1",
+      "label": "1 Introduction",
+      "url": "https://arxiv.org/html/1512.03385#S1",
+      "digest": "a33e7f6d85b19e612d55f667dc7b0e9c506d3f413e2ac78b13a5bffb93d324d5",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:37:31.314Z"
+    },
+    {
+      "id": "section-2",
+      "label": "2 Related Work",
+      "url": "https://arxiv.org/html/1512.03385#S2",
+      "digest": "b48d3c41d88676e3afead46d63f4c30bb08320791b56a604d70fc7ce56667db4",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:37:31.314Z"
+    },
+    {
+      "id": "section-3",
+      "label": "3 Deep Residual Learning",
+      "url": "https://arxiv.org/html/1512.03385#S3",
+      "digest": "4dbbfbc9dafd93052235012a80d87559224bc5fc795364ebed7b1eadbd197830",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:37:31.314Z"
+    },
+    {
+      "id": "section-3-part-2",
+      "label": "3 Deep Residual Learning · part 2",
+      "url": "https://arxiv.org/html/1512.03385#S3",
+      "digest": "4f369ff3afc8382f8e93a64db652413caa949706a859f46e9abae18665384386",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:37:31.314Z"
+    },
+    {
+      "id": "section-4",
+      "label": "4 Experiments",
+      "url": "https://arxiv.org/html/1512.03385#S4",
+      "digest": "a019ba63cb0e4c938dd2947839338de550d533ece812e4aca1435b5e9c0ef054",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:37:31.314Z"
+    },
+    {
+      "id": "section-4-part-2",
+      "label": "4 Experiments · part 2",
+      "url": "https://arxiv.org/html/1512.03385#S4",
+      "digest": "1825231364c6bb8aade3ff09171bc6f105f32c44b1cec7211948c5fb6df590bb",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:37:31.314Z"
+    }
+  ],
+  "review": {
+    "status": "passed",
+    "reviewedAt": "2026-10-02T02:05:42.318Z",
+    "contentDigest": "1615afd99d47bd190d19abb397184248fc754b8a27b16e1f35ba5f9fe0efce43"
+  }
+}

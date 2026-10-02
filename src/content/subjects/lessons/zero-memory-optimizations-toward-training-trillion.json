@@ -1,0 +1,466 @@
+{
+  "title": "Making Replication Optional: The Memory Logic Behind ZeRO",
+  "summary": "ZeRO reorganizes data-parallel training by partitioning optimizer states, gradients, and parameters, trading redundant storage for scheduled collective communication.",
+  "prerequisites": [
+    "Forward passes, backpropagation, and gradient optimization",
+    "Data parallelism and collective communication",
+    "Byte counting and basic scaling analysis"
+  ],
+  "objectives": [
+    "Account for mixed-precision Adam model-state memory.",
+    "Derive per-device memory formulas for all three ZeRO stages.",
+    "Trace how partition ownership changes communication during training.",
+    "Distinguish model-state partitioning from residual-memory methods.",
+    "Interpret the paper's results within their reported conditions."
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "mechanism",
+      "statement": "Ordinary data parallelism duplicates parameters on every worker and averages locally computed gradients before each worker applies the same update.",
+      "conditions": "Synchronous data-parallel training in which every process begins the step with the same parameters.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c2",
+      "kind": "equation",
+      "statement": "For mixed-precision Adam, the paper counts 16 bytes of model state per parameter: 2 for fp16 parameters, 2 for fp16 gradients, and 12 for the fp32 parameter copy, momentum, and variance.",
+      "conditions": "The paper's mixed-precision Adam representation; activation, buffer, and fragmentation costs are excluded.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c3",
+      "kind": "mechanism",
+      "statement": "ZeRO's three cumulative data-parallel stages partition optimizer states, then gradients, then parameters across the data-parallel processes.",
+      "conditions": "A data-parallel group with partitions that can distribute each state category among its processes.",
+      "sourceIds": [
+        "section-6"
+      ]
+    },
+    {
+      "id": "c4",
+      "kind": "equation",
+      "statement": "After partitioning optimizer states and gradients, the paper's per-device model-state expression is $2\\Psi+14\\Psi/N_d$ bytes.",
+      "conditions": "Mixed-precision Adam with $\\Psi$ parameters and data-parallel degree $N_d$; parameters remain replicated.",
+      "sourceIds": [
+        "section-6"
+      ]
+    },
+    {
+      "id": "c5",
+      "kind": "equation",
+      "statement": "With parameters partitioned as well, the per-device model-state expression becomes $16\\Psi/N_d$ bytes.",
+      "conditions": "All three ZeRO-DP partitioning stages under the paper's balanced-partition memory model.",
+      "sourceIds": [
+        "section-6"
+      ]
+    },
+    {
+      "id": "c6",
+      "kind": "result",
+      "statement": "Optimizer-state and gradient partitioning preserve the baseline communication volume of $2\\Psi$ elements per step in the paper's bandwidth-volume analysis.",
+      "conditions": "Large-model synchronous data parallelism; volume counts data sent and received per process and abstracts away latency and topology.",
+      "sourceIds": [
+        "section-8"
+      ]
+    },
+    {
+      "id": "c7",
+      "kind": "result",
+      "statement": "Adding parameter partitioning raises the analyzed communication volume to $3\\Psi$, or 1.5 times the baseline.",
+      "conditions": "Forward and backward parameter materialization plus gradient reduce-scatter, using the paper's per-process volume model.",
+      "sourceIds": [
+        "section-8"
+      ]
+    },
+    {
+      "id": "c8",
+      "kind": "mechanism",
+      "statement": "ZeRO-R separately targets residual memory using partitioned activation checkpoints, bounded buffers, and proactive defragmentation.",
+      "conditions": "Residual memory means activations, temporary buffers, and unusable fragmented space rather than persistent model states.",
+      "sourceIds": [
+        "section-5",
+        "section-7"
+      ]
+    },
+    {
+      "id": "c9",
+      "kind": "result",
+      "statement": "The evaluated ZeRO-100B implementation combined optimizer-state and gradient partitioning with ZeRO-R rather than implementing the full parameter-partitioning stage.",
+      "conditions": "The implementation and experiments reported in this paper, not the complete theoretical ZeRO design.",
+      "sourceIds": [
+        "section-2-part-2"
+      ]
+    },
+    {
+      "id": "c10",
+      "kind": "result",
+      "statement": "On the reported 400-V100 cluster, ZeRO-100B trained models as large as 170 billion parameters.",
+      "conditions": "GPT-2-like transformer experiments using ZeRO-100B, sometimes combined with model parallelism, on the stated cluster.",
+      "sourceIds": [
+        "section-11"
+      ]
+    },
+    {
+      "id": "c11",
+      "kind": "result",
+      "statement": "The paper reports more than 38 TFlops per GPU and more than 15 aggregate Petaflops for a 100-billion-parameter run on 400 V100 GPUs.",
+      "conditions": "The paper's 100B experimental configuration and throughput measurement on its 400-GPU V100 cluster.",
+      "sourceIds": [
+        "section-2-part-2"
+      ]
+    },
+    {
+      "id": "c12",
+      "kind": "caveat",
+      "statement": "Fitting a trillion-parameter model does not establish that end-to-end training is practical; the paper estimates that available compute leaves a major training-time gap.",
+      "conditions": "The paper's trillion-parameter projection, assuming comparable sequence length, sample count, hardware, and computational efficiency to its BERT-Large comparison.",
+      "sourceIds": [
+        "section-10"
+      ]
+    },
+    {
+      "id": "c13",
+      "kind": "caveat",
+      "statement": "The paper's largest-model baseline comparisons sometimes used fewer GPUs than ZeRO because model-parallel divisibility and the 400-GPU limit constrained valid configurations.",
+      "conditions": "Figure 2 configurations, especially the 170B baseline with 256 GPUs versus ZeRO with 400 GPUs.",
+      "sourceIds": [
+        "main-text"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "s1",
+      "title": "The real unit of memory is not the weight",
+      "markdown": "A parameter count alone badly understates training memory. Let $\\Psi$ denote the number of parameters. In the paper's mixed-precision Adam accounting, each parameter has an fp16 training weight (2 bytes), an fp16 gradient (2 bytes), and three fp32 arrays: a master parameter, momentum, and variance (12 bytes total). Thus\n\n$$M_{\\mathrm{DP}}=2\\Psi+2\\Psi+12\\Psi=16\\Psi\\ \\text{bytes per device}.$$\n\nFor a small illustrative model with $\\Psi=10^9$ parameters, this is $16\\times10^9$ bytes, or 16 GB in decimal units, before activations, temporary buffers, and fragmentation. Ordinary data parallelism does not divide this quantity: each worker holds the same model state, processes different examples, averages gradients, and performs the same update.\n\nThe optimizer control below supplies a deliberately smaller prerequisite. It performs ordinary gradient descent on $f(x)=x^2/2$, so $x_{t+1}=x_t-\\eta x_t=(1-\\eta)x_t$. Moving the learning-rate control changes twelve scalar iterates. Watch that one current parameter is enough for this toy optimizer. Adam is different because its update also preserves per-parameter first- and second-moment state; the figure neither implements Adam nor measures ZeRO.",
+      "sourceIds": [
+        "section-3",
+        "section-4"
+      ],
+      "claimIds": [
+        "c1",
+        "c2"
+      ],
+      "figureId": "fig-optimizer"
+    },
+    {
+      "id": "s2",
+      "title": "Three cumulative cuts through replicated state",
+      "markdown": "ZeRO-DP asks which arrays truly need to be replicated. Let $N_d$ be the data-parallel degree and let balanced ownership assign roughly $1/N_d$ of a partitioned array to each process.\n\nStage 1, $P_{os}$, partitions optimizer states. Every process still carries all fp16 parameters and gradients, costing $4\\Psi$ bytes, but owns only $12\\Psi/N_d$ optimizer bytes:\n\n$$M_{os}=4\\Psi+\\frac{12\\Psi}{N_d}.$$\n\nStage 2, $P_{os+g}$, also partitions gradients:\n\n$$M_{os+g}=2\\Psi+\\frac{14\\Psi}{N_d}.$$\n\nThe replicated $2\\Psi$ term is now only the fp16 parameters; the partitioned term contains 12 bytes of optimizer state plus 2 bytes of gradients per parameter.\n\nStage 3, $P_{os+g+p}$, partitions parameters too:\n\n$$M_{os+g+p}=\\frac{16\\Psi}{N_d}.$$\n\nThese are cumulative stages, not three competing names for the same operation. The central design move is ownership: each process permanently stores only its assigned shard of a state category, while communication temporarily supplies what computation needs.",
+      "sourceIds": [
+        "section-6"
+      ],
+      "claimIds": [
+        "c3",
+        "c4",
+        "c5"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s3",
+      "title": "A worked ledger for four workers",
+      "markdown": "Take an illustrative $\\Psi=8$-parameter mixed-precision Adam model and $N_d=4$. The example is intentionally tiny; it demonstrates the formulas, not a measured implementation.\n\nStandard data parallelism costs $16\\Psi=128$ bytes per worker. With optimizer-state partitioning,\n\n$$M_{os}=4(8)+\\frac{12(8)}{4}=32+24=56\\ \\text{bytes}.$$\n\nAdding gradient partitioning gives\n\n$$M_{os+g}=2(8)+\\frac{14(8)}{4}=16+28=44\\ \\text{bytes}.$$\n\nAdding parameter partitioning gives\n\n$$M_{os+g+p}=\\frac{16(8)}{4}=32\\ \\text{bytes}.$$\n\nAcross all four workers, the final stage stores $4\\times32=128$ bytes: exactly one aggregate copy of all model-state bytes, instead of four replicated copies totaling 512 bytes. This ideal arithmetic assumes equal partitions and excludes alignment, communication workspaces, activations, and allocator effects.\n\nThe reductions come from changing which state each worker owns. Optimizer partitioning divides the twelve optimizer-state bytes per parameter while retaining the parameter and gradient copies. Gradient partitioning also divides the gradient portion, and parameter partitioning removes the remaining replicated parameter copy. The aggregate memory calculation tracks that ownership: each state item has one owner across the group, while computation communicates the state needed at the appropriate time. Activations and temporary communication buffers still require their own accounting.",
+      "sourceIds": [
+        "section-6",
+        "section-7"
+      ],
+      "claimIds": [
+        "c4",
+        "c5",
+        "c8"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s4",
+      "title": "Ownership requires a timed communication schedule",
+      "markdown": "Partitioning would be useless if every shard had to remain fully materialized. ZeRO instead exploits time.\n\nWith optimizer and gradient partitioning, gradients are reduced directly toward their owners—a reduce-scatter—so each process retains only the gradient shard it will use. After owners update their parameter shards, an all-gather makes the updated parameters available. The paper counts $\\Psi$ elements for reduce-scatter plus $\\Psi$ for all-gather, totaling $2\\Psi$, the same volume as baseline all-reduce under its bandwidth-oriented accounting.\n\nParameter partitioning changes the schedule again. Before a layer computes, its owner's parameters are broadcast or gathered; after use they can be discarded. This happens through the forward pass and again in reverse during backpropagation. Together with gradient reduce-scatter, the analyzed total is $3\\Psi$, or 1.5 times baseline.\n\nThe misconception to reject is: “partitioning by $N_d$ must reduce every cost by $N_d$.” It reduces persistent per-device model-state storage under balanced sharding. It does not divide computation, eliminate temporary materialization, or make communication free. The benefit comes from keeping full tensors transient rather than resident.",
+      "sourceIds": [
+        "section-6",
+        "section-8"
+      ],
+      "claimIds": [
+        "c3",
+        "c6",
+        "c7"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s5",
+      "title": "Residual memory is a second problem",
+      "markdown": "Even perfect model-state sharding does not control everything occupying a GPU. ZeRO-R addresses activation checkpoints, temporary buffers, and fragmentation. It partitions activation checkpoints across model-parallel processes and reconstructs them with all-gather when needed. In constrained cases, those partitions may be offloaded to CPU, adding transfers. It also caps fused temporary buffers at a performance-efficient constant size and moves long-lived checkpoints and gradients into preallocated contiguous regions.\n\nFragmentation is not the same as using too many bytes. A request can fail when total free space is sufficient but no contiguous region is large enough. The paper connects this to interleaving long-lived checkpoints or parameter gradients with short-lived activations and buffers.\n\nThis separation matters operationally: the formulas $16\\Psi/N_d$ and $2\\Psi+14\\Psi/N_d$ cover model states only. They do not promise that a run fits after activations, workspaces, uneven shards, framework bookkeeping, and fragmentation are included. Nor does CPU offload automatically improve speed; it exchanges device memory pressure for data movement.",
+      "sourceIds": [
+        "section-5",
+        "section-7"
+      ],
+      "claimIds": [
+        "c8"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s6",
+      "title": "What the experiments actually established",
+      "markdown": "The evaluated system was ZeRO-100B: optimizer-state plus gradient partitioning, combined with ZeRO-R. Parameter partitioning—the stage producing $16\\Psi/N_d$—belonged to the broader design and theoretical analysis, not this reported implementation.\n\nExperiments used a cluster of 400 V100 GPUs across 25 DGX-2 nodes with 800 Gbps internode bandwidth. On GPT-2-like transformer configurations, ZeRO-100B ran models up to 170B parameters, using model parallelism where required. For the reported 100B run on 400 V100s, the paper states over 38 TFlops per GPU and over 15 aggregate Petaflops.\n\nComparison conditions deserve attention. Some baselines used 384 or 256 rather than 400 GPUs because their model-parallel degree and architecture dimensions imposed divisibility constraints. At 170B, the baseline used 256 GPUs. The authors report throughput per GPU, but this is still not a perfectly controlled single-variable comparison: parallelization degrees, feasible batches, and GPU counts could differ. The results support the implemented system under these configurations; they should not be silently generalized to arbitrary networks, clusters, or modern hardware.",
+      "sourceIds": [
+        "main-text",
+        "section-2-part-2",
+        "section-11"
+      ],
+      "claimIds": [
+        "c9",
+        "c10",
+        "c11",
+        "c13"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s7",
+      "title": "Fit is necessary; feasible training is more than fit",
+      "markdown": "The trillion-parameter argument begins with a capacity calculation. Let $\\Psi=10^{12}$ and retain the paper’s mixed-precision Adam accounting of 16 bytes of model state per parameter. The aggregate state is\n\n$$M_{\\mathrm{total}}=16\\Psi=16\\times10^{12}\\ \\text{bytes}=16\\ \\text{TB}.$$\n\nUnder the balanced full-partitioning model, $N_d=1024$ data-parallel processes divide parameters, gradients, and optimizer states evenly, so\n\n$$M_{\\mathrm{device}}=\\frac{16\\Psi}{N_d}=\\frac{16\\times10^{12}}{1024}\\ \\text{bytes}=15.625\\ \\text{GB},$$\n\nwhich the paper rounds to about 16 GB per device. The control variable in this calculation is the data-parallel degree: increasing $N_d$ reduces persistent model-state memory per device in inverse proportion because each additional process owns another share of the same aggregate state. This result assumes balanced shards and covers model state only. On a 32 GB device, the arithmetic leaves nominal capacity beyond the model-state shard, but activations, communication buffers, framework bookkeeping, fragmentation, and temporary parameter materialization must also fit; consequently, $15.625$ GB is not a complete device-memory budget.\n\nCapacity also does not determine training time. The paper compares its projection with BERT-Large, reported as training in 67 minutes on 1024 DGX-2H GPUs, and estimates that a one-trillion-parameter model could require about 3000 times as much computation per sample. Holding sequence length, number of training samples, hardware, and computational efficiency fixed gives\n\n$$67\\ \\text{minutes}\\times3000=201{,}000\\ \\text{minutes}\\approx139.6\\ \\text{days}.$$\n\nThis is already roughly 140 days under assumptions deliberately favorable to the projection. If the larger model also requires longer sequences or more samples, the paper argues that training could exceed a year. Partitioning changes where state resides and when it is communicated; it does not remove the arithmetic required for forward and backward computation.\n\nThe experimental boundary is therefore important to the conclusion. The evaluated ZeRO-100B system combined optimizer-state and gradient partitioning with ZeRO-R and ran models as large as 170B parameters on 400 V100 GPUs. Full parameter partitioning, which produces the $16\\Psi/N_d$ capacity formula, was analyzed as the third ZeRO-DP stage but was not part of that reported implementation. The supported result is that eliminating replication makes trillion-parameter model-state capacity analytically plausible on 1024 devices under the stated memory model. Whether such a run is practical still depends on residual-memory headroom, communication behavior, workload shape, and—most decisively in the paper’s estimate—enough aggregate compute to finish training in an acceptable time.",
+      "sourceIds": [
+        "section-2",
+        "section-6",
+        "section-10",
+        "section-11"
+      ],
+      "claimIds": [
+        "c2",
+        "c5",
+        "c9",
+        "c10",
+        "c12"
+      ],
+      "figureId": null
+    }
+  ],
+  "figures": [
+    {
+      "id": "fig-optimizer",
+      "kind": "optimizer",
+      "title": "A parameter update without Adam state",
+      "question": "As the learning rate changes, how quickly does the scalar parameter approach zero over twelve updates?",
+      "caption": "Illustrative gradient descent on $f(x)=x^2/2$ from $x=3$; the control changes the learning rate and therefore the twelve displayed iterates.",
+      "limitation": "This is ordinary scalar gradient descent, not Adam, ZeRO, a distributed optimizer, or a performance measurement.",
+      "sourceIds": [
+        "section-4"
+      ],
+      "claimIds": [
+        "c2"
+      ],
+      "illustrative": true
+    }
+  ],
+  "quiz": [
+    {
+      "question": "Under the paper's mixed-precision Adam accounting, what is the per-device model-state memory after optimizer states and gradients are partitioned across $N_d$ workers but fp16 parameters remain replicated?",
+      "options": [
+        {
+          "text": "$2\\Psi+14\\Psi/N_d$ bytes",
+          "explanation": "Correct: the replicated fp16 parameters cost $2\\Psi$, while gradients and the three fp32 optimizer arrays contribute $14\\Psi/N_d$."
+        },
+        {
+          "text": "$16\\Psi/N_d$ bytes",
+          "explanation": "This requires parameter partitioning too, which the question explicitly excludes."
+        },
+        {
+          "text": "$16\\Psi$ bytes",
+          "explanation": "This is the unpartitioned mixed-precision Adam model-state total per data-parallel worker."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-4",
+        "section-6"
+      ],
+      "claimIds": [
+        "c2",
+        "c4",
+        "c5"
+      ]
+    },
+    {
+      "question": "Why can ZeRO's optimizer-and-gradient partitioning retain the baseline $2\\Psi$ communication volume in the paper's analysis?",
+      "options": [
+        {
+          "text": "It performs no cross-worker communication.",
+          "explanation": "Incorrect: workers still communicate gradients and updated parameters."
+        },
+        {
+          "text": "It replaces all-reduce with a $\\Psi$ reduce-scatter and a $\\Psi$ parameter all-gather.",
+          "explanation": "Correct: the two collectives sum to the same analyzed per-step volume as baseline all-reduce."
+        },
+        {
+          "text": "It sends every gradient to every worker twice.",
+          "explanation": "Incorrect: gradient ownership is partitioned, so reduce-scatter directs each reduced shard to its owner."
+        }
+      ],
+      "answer": 1,
+      "sourceIds": [
+        "section-8"
+      ],
+      "claimIds": [
+        "c6"
+      ]
+    },
+    {
+      "question": "Which conclusion about one-trillion-parameter training is justified by the supplied paper evidence?",
+      "options": [
+        {
+          "text": "The paper experimentally trained a one-trillion-parameter model end to end.",
+          "explanation": "Incorrect: the reported implementation reached 170B, while the trillion-parameter discussion was an analytical capacity projection."
+        },
+        {
+          "text": "Ideal full state partitioning can make model-state storage fit, but compute time and residual memory remain separate constraints.",
+          "explanation": "Correct: memory capacity is necessary, while the paper explicitly identifies a remaining compute-power gap."
+        },
+        {
+          "text": "Parameter partitioning guarantees identical runtime on every cluster.",
+          "explanation": "Incorrect: the analysis reports added communication and does not guarantee topology-independent runtime."
+        }
+      ],
+      "answer": 1,
+      "sourceIds": [
+        "section-6",
+        "section-10",
+        "section-11"
+      ],
+      "claimIds": [
+        "c5",
+        "c7",
+        "c10",
+        "c12"
+      ]
+    }
+  ],
+  "id": "zero-memory-optimizations-toward-training-trillion",
+  "createdAt": "2026-10-01T23:50:31.113Z",
+  "pipelineVersion": "subjects-lessons-v1",
+  "sources": [
+    {
+      "id": "abstract",
+      "label": "Original paper · abstract",
+      "url": "https://arxiv.org/abs/1910.02054",
+      "digest": "348e2d623707be57e469558fb6fc521518675a80e6f6c44dd1982d28cc67919b",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:48:43.220Z"
+    },
+    {
+      "id": "main-text",
+      "label": "Original paper · unsectioned main text",
+      "url": "https://arxiv.org/html/1910.02054",
+      "digest": "723f7011b11d96c73165cdd2dff5d60e637b124a4bd9dce381a7b9c2df57385f",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:48:43.220Z"
+    },
+    {
+      "id": "section-1",
+      "label": "Abstract",
+      "url": "https://arxiv.org/html/1910.02054#Sx1",
+      "digest": "83b600ce5b473082e9f6cd3b9a5fdec39bd6a0062a5036941a79b187b285b2ec",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:48:43.220Z"
+    },
+    {
+      "id": "section-2",
+      "label": "1 Extended Introduction",
+      "url": "https://arxiv.org/html/1910.02054#S1",
+      "digest": "f477e522911c79e8920a8228c94b232c5739b99212cfd1f3746299f9692e49de",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:48:43.220Z"
+    },
+    {
+      "id": "section-2-part-2",
+      "label": "1 Extended Introduction · part 2",
+      "url": "https://arxiv.org/html/1910.02054#S1",
+      "digest": "84dd422163b67d525194431be2692432cb23b51cce80ceab0c0032e0c26bfd86",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:48:43.220Z"
+    },
+    {
+      "id": "section-3",
+      "label": "2 Related Work",
+      "url": "https://arxiv.org/html/1910.02054#S2",
+      "digest": "d41e9bd9b53208c3773ab210419ab5d33dc22aae19d159a66207dc4430385889",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:48:43.220Z"
+    },
+    {
+      "id": "section-4",
+      "label": "3 Where Did All the Memory Go?",
+      "url": "https://arxiv.org/html/1910.02054#S3",
+      "digest": "e9dfe4b497c77cbdd1522fbe01280b8d7ed29b3e0b169b71fecb29ae56566a37",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:48:43.220Z"
+    },
+    {
+      "id": "section-5",
+      "label": "4 ZeRO: Insights and Overview",
+      "url": "https://arxiv.org/html/1910.02054#S4",
+      "digest": "1d40692432acf44b6358f9b5f6150f3159107dce0ec2da2f666da6e5f340b147",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:48:43.220Z"
+    },
+    {
+      "id": "section-6",
+      "label": "5 Deep Dive into ZeRO-DP",
+      "url": "https://arxiv.org/html/1910.02054#S5",
+      "digest": "01b38dc409bb1790f7b3488a264a9b4e1411eee70301e3a496ec0e273ff699b3",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:48:43.220Z"
+    },
+    {
+      "id": "section-7",
+      "label": "6 Deep Dive into ZeRO-R",
+      "url": "https://arxiv.org/html/1910.02054#S6",
+      "digest": "75fbeb88b33d2bdbf34bec5b9283a604613a423261b7df841d30dc31222fce04",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:48:43.220Z"
+    },
+    {
+      "id": "section-8",
+      "label": "7 Communication Analysis of ZeRO-DP",
+      "url": "https://arxiv.org/html/1910.02054#S7",
+      "digest": "b7c2c666dbd80492214849b857b22f0729de73131651a8a8252e7ed0c5db6d2f",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:48:43.220Z"
+    },
+    {
+      "id": "section-9",
+      "label": "8 Communication Analysis of ZeRO-R",
+      "url": "https://arxiv.org/html/1910.02054#S8",
+      "digest": "a934ffbe5b68b4a98f51b3ba43de0a7db321b6f798812e63665041fd0a82885a",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:48:43.220Z"
+    },
+    {
+      "id": "section-10",
+      "label": "9 Step Towards 1 Trillion Parameters",
+      "url": "https://arxiv.org/html/1910.02054#S9",
+      "digest": "bba0a455795c3fcf849887e62d624f7cd61a6f4498016a3aeac1ba9f10d221da",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:48:43.220Z"
+    },
+    {
+      "id": "section-11",
+      "label": "10 Implementation and Evaluation",
+      "url": "https://arxiv.org/html/1910.02054#S10",
+      "digest": "44dc559cea89b52d7a60040a8cc44faf4de9eb58970b4bb4db50faaa286dad01",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:48:43.220Z"
+    }
+  ],
+  "review": {
+    "status": "passed",
+    "reviewedAt": "2026-10-02T02:06:41.666Z",
+    "contentDigest": "7e29e7f53b95476555ff42034ed6c1af687b9dbf158331228ebe0dd0e1e6f944"
+  }
+}

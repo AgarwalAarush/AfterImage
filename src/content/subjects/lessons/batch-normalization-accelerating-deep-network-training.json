@@ -1,0 +1,445 @@
+{
+  "title": "The Moving Target Inside the Network",
+  "summary": "Batch Normalization makes mini-batch standardization differentiable, restores scale and shift with learned parameters, and uses fixed population statistics at inference.",
+  "prerequisites": [
+    "Mini-batch stochastic gradient descent and the role of a learning rate",
+    "Mean, population variance, and standard deviation",
+    "Affine transformations and element-wise nonlinearities",
+    "The chain rule for backpropagation",
+    "The distinction between training behavior and inference behavior"
+  ],
+  "objectives": [
+    "Compute the Batch Normalizing Transform for one scalar feature over a mini-batch",
+    "Explain why batch statistics must remain inside the differentiable computation graph",
+    "Distinguish per-feature normalization from full whitening",
+    "Explain the roles of epsilon, gamma, and beta",
+    "Describe why training uses current mini-batch statistics while inference uses fixed population statistics estimated from training mini-batches"
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "mechanism",
+      "statement": "The paper defines internal covariate shift as parameter-induced change in the distribution of internal activations during training.",
+      "conditions": "The paper's motivating definition for a network whose parameters, and consequently intermediate activations, change during optimization.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c2",
+      "kind": "mechanism",
+      "statement": "Batch Normalization standardizes each scalar feature independently rather than decorrelating all features through full whitening.",
+      "conditions": "A d-dimensional layer input whose dimensions are normalized separately over the relevant training examples or mini-batch.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c3",
+      "kind": "equation",
+      "statement": "For mini-batch values $x_1$ through $x_m$, BN computes a batch mean, population-form batch variance, standardized values, and learned affine outputs.",
+      "conditions": "One scalar activation over a mini-batch of size m; epsilon is added for numerical stability, while gamma and beta are learned.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c4",
+      "kind": "mechanism",
+      "statement": "Learned gamma and beta can recover the original feature scale and location when epsilon is neglected, preserving the possibility of an identity mapping.",
+      "conditions": "For a feature with mean mu and variance v, neglect epsilon and use gamma equal to sqrt(v) and beta equal to mu. With positive epsilon, exact algebraic recovery instead requires gamma equal to sqrt(v+epsilon), assuming the same statistics.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c5",
+      "kind": "mechanism",
+      "statement": "Mini-batch statistics participate in the forward computation, allowing gradients to account for their dependence on the batch activations.",
+      "conditions": "Stochastic training in which normalization statistics are computed inside the differentiable BN transform.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c6",
+      "kind": "caveat",
+      "statement": "BN does not process each training example independently: changing its batch companions can change its normalized output.",
+      "conditions": "Training mode, when mean and variance come from the current mini-batch rather than frozen population estimates.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c7",
+      "kind": "mechanism",
+      "statement": "Inference replaces current-batch statistics with fixed population statistics so that a prediction depends deterministically on its input.",
+      "conditions": "After training, with population quantities estimated from training mini-batches and then frozen.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c8",
+      "kind": "mechanism",
+      "statement": "In the paper's affine-plus-nonlinearity formulation, BN is inserted after the affine map and immediately before the nonlinearity.",
+      "conditions": "Fully connected or convolutional layers originally written as $z=g(Wu+b)$.",
+      "sourceIds": [
+        "section-3-part-2"
+      ]
+    },
+    {
+      "id": "c9",
+      "kind": "mechanism",
+      "statement": "For convolutional layers, one feature map shares its statistics and gamma-beta pair across batch elements and spatial locations.",
+      "conditions": "A mini-batch of m feature maps with spatial size p by q; each feature map is normalized over m·p·q values.",
+      "sourceIds": [
+        "section-3-part-2"
+      ]
+    },
+    {
+      "id": "c10",
+      "kind": "result",
+      "statement": "In the reported ImageNet comparison, BN-x5 needed 14 times fewer training steps than Inception to reach 72.2% validation accuracy.",
+      "conditions": "The paper's Inception variants on LSVRC2012 using single-crop top-1 validation accuracy; BN-x5 included BN and the additional training modifications listed in Section 4.2.1.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c11",
+      "kind": "result",
+      "statement": "The MNIST comparison associated BN with faster learning, higher test accuracy, and more stable inputs to a representative sigmoid.",
+      "conditions": "Three hidden sigmoid layers with 100 activations each, 50,000 training steps, and mini-batches of 60; the architecture was not intended to achieve state-of-the-art MNIST performance.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c12",
+      "kind": "caveat",
+      "statement": "The paper's Jacobian singular-value discussion is a conjectural argument under idealized assumptions, not a general theorem about BN.",
+      "conditions": "The argument assumes Gaussian, uncorrelated normalized vectors and a locally linear transformation, assumptions the paper says need not hold in reality.",
+      "sourceIds": [
+        "section-3-part-2"
+      ]
+    },
+    {
+      "id": "c13",
+      "kind": "result",
+      "statement": "The reported 4.9% top-5 validation error came from an ensemble rather than a single-crop, single-model evaluation.",
+      "conditions": "Six-network BN-Inception ensemble evaluated using 144 crops on the ImageNet validation set.",
+      "sourceIds": [
+        "section-4-part-2"
+      ]
+    },
+    {
+      "id": "c14",
+      "kind": "caveat",
+      "statement": "The study did not establish BN for recurrent networks or traditional domain adaptation; it identified these as future work.",
+      "conditions": "Scope of the 2015 paper and supplied appendix; findings from later research are outside this lesson's evidence.",
+      "sourceIds": [
+        "section-5"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "s1",
+      "title": "1. Why a hidden layer faces a moving target",
+      "markdown": "Training a deep network does more than move its final predictions. Every update to an early layer also changes the values presented to later layers. The paper calls the resulting change in internal activation distributions **internal covariate shift**.\n\nIts motivating picture is a composition\n\n$$\n\\ell=F_2(F_1(u;\\Theta_1);\\Theta_2).\n$$\n\nHere $u$ is the original input; $F_1$ is an earlier subnetwork with parameters $\\Theta_1$; $x=F_1(u;\\Theta_1)$ is its output; $F_2$ is a later subnetwork with parameters $\\Theta_2$; and $\\ell$ is the loss. Updating $\\Theta_1$ moves the distribution of $x$, leaving $F_2$ to learn from a changing input distribution.\n\nThis concern is especially vivid for a sigmoid $g(a)=1/(1+e^{-a})$. Its derivative becomes small when the pre-activation $a$ has large magnitude, so parameter changes that move activations into saturated regions can weaken gradients. The paper's proposal is architectural: insert normalization into the model and differentiate through it.\n\nA prerequisite is the difference between **standardization** and **whitening**. Standardization treats each feature separately, subtracting its mean and dividing by its standard deviation. Full whitening also removes correlations between distinct features. BN adopts the cheaper per-feature operation. It therefore stabilizes selected first and second moments without promising that the full joint distribution remains fixed.",
+      "sourceIds": [
+        "section-1",
+        "section-2",
+        "section-3"
+      ],
+      "claimIds": [
+        "c1",
+        "c2"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s2",
+      "title": "2. From full whitening to a practical batch transform",
+      "markdown": "Whitening every layer against the entire training set after every update would require a covariance matrix, its inverse square root, and derivatives through that operation. The paper argues that this is expensive. Joint mini-batch covariance matrices can also be singular when the batch contains fewer examples than the number of activations being whitened.\n\nBN makes two simplifying choices. First, it normalizes each scalar feature independently. Second, it estimates that feature's statistics from the current mini-batch. For a batch $\\mathcal B=\\{x_1,\\ldots,x_m\\}$ containing $m$ values of one feature, it defines\n\n$$\n\\mu_{\\mathcal B}=\\frac1m\\sum_{i=1}^m x_i,\n\\qquad\n\\sigma_{\\mathcal B}^2=\\frac1m\\sum_{i=1}^m(x_i-\\mu_{\\mathcal B})^2,\n$$\n\nfollowed by\n\n$$\n\\widehat{x}_i=\\frac{x_i-\\mu_{\\mathcal B}}\n{\\sqrt{\\sigma_{\\mathcal B}^2+\\epsilon}},\n\\qquad\ny_i=\\gamma\\widehat{x}_i+\\beta.\n$$\n\nHere $x_i$ is the raw activation for example $i$; $\\mu_{\\mathcal B}$ and $\\sigma_{\\mathcal B}^2$ are the mini-batch mean and variance; $\\epsilon>0$ is a numerical-stability constant; $\\widehat{x}_i$ is the standardized activation; $\\gamma$ is a learned scale; $\\beta$ is a learned shift; and $y_i$ is passed onward. The variance uses denominator $m$, matching the paper's transform.\n\nThe illustrative normalization control uses the fixed vector $[-2,-1,0,2,6]$. Predict what happens when a constant offset is added: the raw values and their mean move, but subtracting that new mean preserves the centered relative positions. This isolates the invariance that motivates standardization, not the complete BN algorithm.",
+      "sourceIds": [
+        "section-2",
+        "section-3"
+      ],
+      "claimIds": [
+        "c2",
+        "c3"
+      ],
+      "figureId": "fig-normalization"
+    },
+    {
+      "id": "s3",
+      "title": "3. A complete worked mini-batch",
+      "markdown": "Consider the **illustrative** one-feature mini-batch $\\mathcal B=\\{1,3,5,7\\}$. This is arithmetic for teaching, not a reported experiment. Its size is $m=4$, and\n\n$$\n\\mu_{\\mathcal B}=\\frac{1+3+5+7}{4}=4.\n$$\n\nThe centered values are $(-3,-1,1,3)$, so\n\n$$\n\\sigma_{\\mathcal B}^2\n=\\frac{(-3)^2+(-1)^2+1^2+3^2}{4}\n=\\frac{20}{4}=5.\n$$\n\nFor transparent arithmetic, first take the illustrative limit $\\epsilon=0$. Then\n\n$$\n\\widehat{x}=\\left(-\\frac3{\\sqrt5},-\\frac1{\\sqrt5},\n\\frac1{\\sqrt5},\\frac3{\\sqrt5}\\right)\n\\approx(-1.342,-0.447,0.447,1.342).\n$$\n\nThese four values sum to zero. Their mean squared value is\n\n$$\n\\frac{9/5+1/5+1/5+9/5}{4}=1,\n$$\n\nso their population variance is one. With positive $\\epsilon$, that variance would be slightly below one because the denominator becomes $\\sqrt{5+\\epsilon}$.\n\nNow choose the illustrative learned values $\\gamma=2$ and $\\beta=-1$. The outputs are\n\n$$\ny=2\\widehat{x}-1\\approx(-3.683,-1.894,-0.106,1.683).\n$$\n\nNormalization has not forced the next layer to consume zero-mean, unit-variance values. That property belongs to the intermediate $\\widehat{x}$ when $\\epsilon$ is neglected. The learned affine step gives $y$ mean $-1$ and variance $4$ in this toy batch. BN can therefore standardize internally without permanently restricting the representation delivered to the next operation.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c3",
+        "c4"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s4",
+      "title": "4. Why gamma and beta are not cosmetic",
+      "markdown": "A common misconception says that BN forces every feature to remain standard normal. It does neither part of that claim. Zero mean and unit variance do not imply a Gaussian distribution, and those moment conditions concern the intermediate $\\widehat{x}$ under the paper's assumptions—not necessarily the emitted $y$.\n\nThe learned pair $(\\gamma,\\beta)$ lets the model select a useful scale and offset after standardization. For a feature with mean $\\mu$ and variance $v$, neglecting $\\epsilon$ and setting $\\gamma=\\sqrt v$ and $\\beta=\\mu$ gives\n\n$$\n\\gamma\\frac{x-\\mu}{\\sqrt v}+\\beta=x.\n$$\n\nThus, under the paper's epsilon-neglecting derivation, the transform can recover the identity if optimization favors it. With the actual denominator $\\sqrt{v+\\epsilon}$, exact algebraic identity instead requires $\\gamma=\\sqrt{v+\\epsilon}$, provided the same $\\mu$ and $v$ are used. That qualification prevents numerical stabilization from being silently dropped in an exact claim.\n\nFor an affine layer, the paper places BN before the nonlinearity: $z=g(\\operatorname{BN}(Wu))$. The original bias $b$ can be omitted because batch centering cancels a constant bias, while learned $\\beta$ supplies a post-normalization shift. The method restores representational freedom without undoing the fact that the standardized intermediate values participate in the computation.",
+      "sourceIds": [
+        "section-3",
+        "section-3-part-2"
+      ],
+      "claimIds": [
+        "c3",
+        "c4",
+        "c8"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s5",
+      "title": "5. The batch is part of the computation graph",
+      "markdown": "BN must sit inside the computation graph. Both $\\mu_{\\mathcal B}$ and $\\sigma_{\\mathcal B}^2$ depend on every $x_i$, so the derivative for one example contains direct and batch-mediated paths. If the upstream derivative is $\\partial\\ell/\\partial y_i$, then\n\n$$\n\\frac{\\partial\\ell}{\\partial\\widehat{x}_i}\n=\\frac{\\partial\\ell}{\\partial y_i}\\gamma,\n\\qquad\n\\frac{\\partial\\ell}{\\partial\\gamma}\n=\\sum_i\\frac{\\partial\\ell}{\\partial y_i}\\widehat{x}_i,\n\\qquad\n\\frac{\\partial\\ell}{\\partial\\beta}\n=\\sum_i\\frac{\\partial\\ell}{\\partial y_i}.\n$$\n\nHere $\\ell$ is the loss. Gradients to the raw $x_i$ must additionally pass through the batch mean and variance. Treating externally recomputed normalization as unrelated to an update can cancel an intended parameter change. The paper demonstrates the issue with a learned bias whose shift is immediately removed by subsequent recentering.\n\nBatch dependence also makes training stochastic in a distinctive way. The same raw activation can receive a different $\\widehat{x}$ when paired with different companions. The paper reports that this effect aided generalization in its experiments, but it does not prove that BN universally replaces Dropout.\n\nNor is BN an optimizer. The illustrative optimizer control performs ordinary gradient descent on $f(x)=x^2/2$ from $x=3$. Since $f'(x)=x$, its update is $x_{t+1}=(1-\\alpha)x_t$, where $\\alpha$ is the learning rate. Changing $\\alpha$ shows faster contraction, oscillation, or divergence over twelve steps. This clarifies what a learning-rate claim means, but it does not simulate BN, momentum, or the paper's networks.",
+      "sourceIds": [
+        "section-2",
+        "section-3",
+        "section-3-part-2",
+        "section-4"
+      ],
+      "claimIds": [
+        "c5",
+        "c6",
+        "c10"
+      ],
+      "figureId": "fig-optimizer"
+    },
+    {
+      "id": "s6",
+      "title": "6. Convolutions and the training–inference boundary",
+      "markdown": "For a fully connected feature, statistics are computed across the examples in a mini-batch. For a convolutional feature map, the paper pools values across both examples and spatial positions. If a batch contains $m$ examples and a feature map has shape $p\\times q$, the effective set has\n\n$$\nm'=mpq\n$$\n\nscalar values. One $\\gamma^{(k)}$ and one $\\beta^{(k)}$ are learned for feature map $k$, and the same transformation is applied at every location. This preserves the convolutional sharing principle.\n\nTraining and inference must then be separated. During training, the current mini-batch supplies statistics. During inference, doing the same would make one prediction depend on unrelated co-predictions. The paper instead specifies fixed population statistics:\n\n$$\n\\widehat{x}=\\frac{x-\\operatorname E[x]}\n{\\sqrt{\\operatorname{Var}[x]+\\epsilon}}.\n$$\n\nHere $\\operatorname E[x]$ and $\\operatorname{Var}[x]$ are population quantities estimated from training mini-batches and frozen for inference. For batches of size $m$, the paper gives\n\n$$\n\\operatorname{Var}[x]\n=\\frac{m}{m-1}\\operatorname E_{\\mathcal B}\n[\\sigma_{\\mathcal B}^2].\n$$\n\nThe expectation on the right is over training mini-batches. Once the mean, variance, $\\gamma$, and $\\beta$ are fixed, normalization and the learned scale and shift compose into one affine transform. Deterministic inference is therefore a structural part of the method, not merely implementation bookkeeping.",
+      "sourceIds": [
+        "section-3",
+        "section-3-part-2"
+      ],
+      "claimIds": [
+        "c7",
+        "c9"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s7",
+      "title": "7. Reading the experimental evidence precisely",
+      "markdown": "The paper presents evidence at two scales. On MNIST, it compared a baseline with a batch-normalized version of a deliberately simple network: three fully connected hidden layers, 100 sigmoid activations per layer, mini-batches of 60, and 50,000 training steps. The authors reported higher test accuracy and more stable percentiles for a typical last-hidden-layer sigmoid input with BN. This supports the proposed mechanism under that setup. Inspecting one typical activation does not establish that every internal distribution was fixed.\n\nOn ImageNet, the comparison used an Inception variant trained with momentum SGD and mini-batches of 32. Inception needed 31.0 million steps to reach 72.2% single-crop top-1 validation accuracy. BN-Baseline needed 13.3 million, while BN-x5 needed 2.1 million—the reported fourteen-fold reduction relative to Inception.\n\nBN-x5 was not a one-variable BN ablation. Besides BN and a five-times higher initial learning rate, its recipe included removal of Dropout, reduced $L_2$ regularization, faster learning-rate decay, removal of local response normalization, stronger shuffling, and reduced photometric distortion. The outcome therefore establishes what the complete specified recipe achieved; it does not assign the entire fourteen-fold difference to normalization alone.\n\nMetric and evaluation conditions matter too. The reported 4.9% top-5 validation error belonged to a six-network ensemble using 144 crops. It must not be described as the single-crop result of one BN network, nor confused with the 72.2% top-1 threshold used in the training-step comparison.",
+      "sourceIds": [
+        "section-4",
+        "section-4-part-2"
+      ],
+      "claimIds": [
+        "c10",
+        "c11",
+        "c13"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s8",
+      "title": "8. What BN does not establish",
+      "markdown": "Several boundaries keep the contribution precise. First, per-feature standardization is not whitening: correlations and higher moments can continue to change. BN reduces the paper's chosen manifestation of internal covariate shift without fixing the entire joint distribution.\n\nSecond, BN does not guarantee safety at every learning rate. The optimizer figure shows only how step size changes ordinary scalar gradient descent. The paper's experiments support tolerance of substantially higher rates in particular reported networks, not unrestricted stability for arbitrary objectives or architectures.\n\nThird, the Jacobian discussion is conditional. Suppose normalized vectors $\\widehat{x}$ and $\\widehat{z}$ are Gaussian and uncorrelated, and a transformation is locally approximated by $\\widehat{z}\\approx J\\widehat{x}$. If both have identity covariance, then\n\n$$\nI=\\operatorname{Cov}[\\widehat z]\n=J\\operatorname{Cov}[\\widehat x]J^T=JJ^T,\n$$\n\nso the singular values of $J$ are one. But the paper labels this reasoning conjectural: real transformations are nonlinear, and normalized features need not be Gaussian or independent.\n\nFinally, the supplied appendix documents the particular Inception architecture, including replacing $5\\times5$ convolutions with pairs of $3\\times3$ convolutions, but it is not a modern implementation manual. It provides no basis here for claims about current framework defaults, distributed synchronization, small-batch remedies, or later normalization variants. Recurrent networks, traditional domain adaptation, and fuller theoretical analysis were left as future work.\n\nThe contribution is narrower and stronger when stated accurately: mini-batch moment normalization becomes a differentiable architectural operation; learned affine parameters preserve representational flexibility; and fixed estimated statistics replace batch dependence during inference.",
+      "sourceIds": [
+        "section-3",
+        "section-3-part-2",
+        "section-4",
+        "section-5",
+        "section-6"
+      ],
+      "claimIds": [
+        "c2",
+        "c7",
+        "c10",
+        "c12",
+        "c14"
+      ],
+      "figureId": null
+    }
+  ],
+  "figures": [
+    {
+      "id": "fig-normalization",
+      "kind": "normalization",
+      "title": "What survives standardization?",
+      "question": "As the offset changes, which raw quantities move, and which standardized relative positions remain unchanged?",
+      "caption": "Illustrative standardization of the fixed vector $[-2,-1,0,2,6]$: the control adds an offset, then subtracts the resulting mean and divides by the population standard deviation.",
+      "limitation": "This is one fixed illustrative vector, not a BatchNorm or LayerNorm training implementation; it has no mini-batch sampling, learned $\\gamma$ or $\\beta$, backpropagation, or inference statistics.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c2",
+        "c3"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "fig-optimizer",
+      "kind": "optimizer",
+      "title": "Step size on a simple loss",
+      "question": "Starting from $x=3$, how does the learning rate change the speed, oscillation, or divergence of twelve gradient-descent updates?",
+      "caption": "Illustrative ordinary gradient descent on $f(x)=x^2/2$ from $x=3$; the learning-rate control changes the twelve displayed iterates.",
+      "limitation": "This is plain scalar gradient descent, not a BN network, momentum SGD, Adam, RMSProp, or evidence for the paper's reported speedups.",
+      "sourceIds": [
+        "section-1",
+        "section-4"
+      ],
+      "claimIds": [
+        "c10"
+      ],
+      "illustrative": true
+    }
+  ],
+  "quiz": [
+    {
+      "question": "During training, one example's raw activation stays fixed but its batch companions change. Under the paper's BN transform, what may happen to that example's output?",
+      "options": [
+        {
+          "text": "It may change because the batch mean and variance may change.",
+          "explanation": "Correct. Training-mode BN couples an example to the other values used to compute its mini-batch statistics."
+        },
+        {
+          "text": "It must remain unchanged because BN processes every example independently.",
+          "explanation": "Incorrect. The transform depends on both the example and its mini-batch companions."
+        },
+        {
+          "text": "It becomes deterministic whenever gamma equals one.",
+          "explanation": "Incorrect. Gamma rescales the normalized value but does not remove its dependence on batch statistics."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c6"
+      ]
+    },
+    {
+      "question": "Neglect epsilon and assume a scalar feature has population mean $\\mu$ and variance $v>0$. Which learned settings let the BN affine stage recover the original activation?",
+      "options": [
+        {
+          "text": "$\\gamma=\\sqrt v$ and $\\beta=\\mu$",
+          "explanation": "Correct under the stated epsilon-neglecting assumption: substitution gives $\\sqrt v(x-\\mu)/\\sqrt v+\\mu=x$."
+        },
+        {
+          "text": "$\\gamma=v$ and $\\beta=0$",
+          "explanation": "Incorrect. These settings generally yield $\\sqrt v(x-\\mu)$ rather than $x$."
+        },
+        {
+          "text": "$\\gamma=1$ and $\\beta=0$",
+          "explanation": "Incorrect. These settings retain the standardized activation rather than restoring its original scale and location."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c4"
+      ]
+    },
+    {
+      "question": "Which interpretation of the reported fourteen-fold step reduction is best supported by the supplied evidence?",
+      "options": [
+        {
+          "text": "The complete BN-x5 recipe reached 72.2% in 2.1 million steps versus 31.0 million for Inception.",
+          "explanation": "Correct. This preserves the metric and acknowledges that BN-x5 combined BN with learning-rate and other training changes."
+        },
+        {
+          "text": "BN alone universally makes every network train exactly fourteen times faster.",
+          "explanation": "Incorrect. The factor came from a particular ImageNet comparison, and BN-x5 was not a BN-only ablation."
+        },
+        {
+          "text": "One BN-Inception model achieved 4.9% top-5 validation error after 2.1 million steps.",
+          "explanation": "Incorrect. The 4.9% result used a six-network, 144-crop ensemble, while 2.1 million steps concerned BN-x5 reaching 72.2% top-1 accuracy."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-4",
+        "section-4-part-2"
+      ],
+      "claimIds": [
+        "c10",
+        "c13"
+      ]
+    }
+  ],
+  "id": "batch-normalization-accelerating-deep-network-training",
+  "createdAt": "2026-10-01T23:10:35.599Z",
+  "pipelineVersion": "subjects-lessons-v1",
+  "sources": [
+    {
+      "id": "abstract",
+      "label": "Original paper · abstract",
+      "url": "https://arxiv.org/abs/1502.03167",
+      "digest": "3e5ee3e0f4cc32605187d97208b19e570ee779d268b993c2bb6ce85584b3acfe"
+    },
+    {
+      "id": "section-1",
+      "label": "1 Introduction",
+      "url": "https://arxiv.org/html/1502.03167#S1",
+      "digest": "60fe95dfe0e16a6183cc43b583bcb714ef519f70dff9f17c094e1a6d69a83fbd"
+    },
+    {
+      "id": "section-2",
+      "label": "2 Towards Reducing Internal Covariate Shift",
+      "url": "https://arxiv.org/html/1502.03167#S2",
+      "digest": "acecdb437621ec4f9577ce878c45491cd657269fb815263b560c5575d7c56fc2"
+    },
+    {
+      "id": "section-3",
+      "label": "3 Normalization via Mini-Batch Statistics",
+      "url": "https://arxiv.org/html/1502.03167#S3",
+      "digest": "4d74f680e6068e4b6b5249cd3624cea8e3ff168319267865aac48021a331ee24"
+    },
+    {
+      "id": "section-3-part-2",
+      "label": "3 Normalization via Mini-Batch Statistics · part 2",
+      "url": "https://arxiv.org/html/1502.03167#S3",
+      "digest": "99bf7d58c9dff2c2b793320eb63fe7e5da6be120ffd77c1d62120b0c9981a862"
+    },
+    {
+      "id": "section-4",
+      "label": "4 Experiments",
+      "url": "https://arxiv.org/html/1502.03167#S4",
+      "digest": "bafe95bd01fcf8e9336660d2409f6a6dd8992f4afcd995f823208d887216b7c0"
+    },
+    {
+      "id": "section-4-part-2",
+      "label": "4 Experiments · part 2",
+      "url": "https://arxiv.org/html/1502.03167#S4",
+      "digest": "f3a7575251246685729c48619d118df69b7b8a81575cca7f72ae7b3e3c6420c2"
+    },
+    {
+      "id": "section-5",
+      "label": "5 Conclusion",
+      "url": "https://arxiv.org/html/1502.03167#S5",
+      "digest": "071989f6cccefab8b6e8f2531589bf31b8d36f3744da98da17676be9e7730989"
+    },
+    {
+      "id": "section-6",
+      "label": "Appendix",
+      "url": "https://arxiv.org/html/1502.03167#Sx1",
+      "digest": "fd059bcc996cd75cb344e11bdc0260ea42e6ddbded46aa7c9cec1fcbafe5b158"
+    }
+  ],
+  "review": {
+    "status": "passed",
+    "reviewedAt": "2026-10-01T23:13:12.926Z",
+    "contentDigest": "08587e43fb46a0fc7248836a969c85db991e911e57567f2ba87a8cefd37ec928"
+  }
+}

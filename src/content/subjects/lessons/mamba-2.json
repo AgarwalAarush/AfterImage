@@ -1,0 +1,521 @@
+{
+  "title": "One Sequence, Two Faces: The Duality Behind Mamba-2",
+  "summary": "Mamba-2 turns a selective state-space recurrence into structured masked attention, then computes the same transformation with a hardware-friendly block algorithm.",
+  "prerequisites": [
+    "Basic matrix multiplication and vector dot products",
+    "Causal sequence processing without future inputs",
+    "Big-O notation for sequence-length costs",
+    "Mathematical functions and their evaluation algorithms"
+  ],
+  "objectives": [
+    "Derive the matrix represented by a time-varying state-space recurrence.",
+    "Explain why the recurrence matrix is semiseparable rather than generally dense.",
+    "Map a scalar-identity state-space model to structured masked attention.",
+    "Trace how the SSD block algorithm combines recurrence with matrix multiplication.",
+    "Distinguish Mamba-2 from ordinary softmax attention."
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "equation",
+      "statement": "A time-varying SSM updates its state by h_t=A_t h_{t-1}+B_t x_t and reads out y_t=C_t^T h_t.",
+      "conditions": "For the discrete causal SSM formulation, with state dimension N and the initial state convention used in the paper.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c2",
+      "kind": "equation",
+      "statement": "Unrolling the recurrence gives M_{ji}=C_j^T A_j⋯A_{i+1}B_i for i≤j, so the SSM is the matrix transformation y=Mx.",
+      "conditions": "For a causal time-varying SSM; entries above the diagonal are zero.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c3",
+      "kind": "mechanism",
+      "statement": "An SSM of state size N is equivalent, as a sequence transformation, to multiplication by an N-semiseparable matrix in sequentially semiseparable form.",
+      "conditions": "Using the paper's lower-triangular definition of semiseparability and its SSS representation.",
+      "sourceIds": [
+        "section-3",
+        "section-3-part-2"
+      ]
+    },
+    {
+      "id": "c4",
+      "kind": "result",
+      "statement": "An N-semiseparable T-by-T matrix admits O(NT) representation and matrix-vector multiplication costs.",
+      "conditions": "For the structured representation and algorithms discussed in the paper.",
+      "sourceIds": [
+        "section-3-part-2"
+      ]
+    },
+    {
+      "id": "c5",
+      "kind": "equation",
+      "statement": "The scalar recurrence y_t=a_t y_{t-1}+x_t equals multiplication by a 1-semiseparable lower-triangular matrix whose entry M_{ji} is the product of intervening a values.",
+      "conditions": "For scalar state, unit input and output projections, and causal indices j≥i.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c6",
+      "kind": "mechanism",
+      "statement": "Structured masked attention computes Y=(L∘QK^T)V, and its linear and quadratic modes are different contraction orders for the same function.",
+      "conditions": "When L is a structured mask supporting subquadratic matrix multiplication.",
+      "sourceIds": [
+        "section-4",
+        "section-4-part-2"
+      ]
+    },
+    {
+      "id": "c7",
+      "kind": "mechanism",
+      "statement": "When every transition is a scalar times the identity, the SSM matrix factors as M=L∘(CB^T), making its quadratic form exactly masked kernel attention.",
+      "conditions": "For scalar-identity A_t and the paper's identification Q=C, K=B, and V=X.",
+      "sourceIds": [
+        "section-5"
+      ]
+    },
+    {
+      "id": "c8",
+      "kind": "caveat",
+      "statement": "SSD's attention-side expression omits softmax and applies a data-dependent 1-semiseparable mask, so it is not ordinary softmax self-attention.",
+      "conditions": "For the SSD layer defined as the scalar-identity selective SSM dual.",
+      "sourceIds": [
+        "section-2-part-2",
+        "section-5"
+      ]
+    },
+    {
+      "id": "c9",
+      "kind": "mechanism",
+      "statement": "The SSD algorithm evaluates diagonal sequence blocks in the quadratic dual form and carries cross-block effects through low-rank factors and a shorter recurrence.",
+      "conditions": "For the block decomposition of the semiseparable sequence matrix.",
+      "sourceIds": [
+        "section-6",
+        "section-6-part-2"
+      ]
+    },
+    {
+      "id": "c10",
+      "kind": "result",
+      "statement": "With state dimension, head dimension, and chunk length set equal to N, the SSD algorithm uses O(TN^2) training FLOPs and O(TN) training memory, with work dominated by matrix multiplications.",
+      "conditions": "Under the balanced dimensions N=P=Q analyzed in Section 6; constants and realized speed remain hardware-dependent.",
+      "sourceIds": [
+        "section-6",
+        "section-6-part-2"
+      ]
+    },
+    {
+      "id": "c11",
+      "kind": "mechanism",
+      "statement": "Mamba-2 produces A, X, B, and C in parallel near the beginning of the block and adds normalization before the output projection.",
+      "conditions": "For the Mamba-2 block architecture described by the authors.",
+      "sourceIds": [
+        "section-7"
+      ]
+    },
+    {
+      "id": "c12",
+      "kind": "result",
+      "statement": "The dedicated SSD implementation was reported as 2–8 times faster than Mamba's optimized selective scan and competitive with FlashAttention-2 under the paper's implementation comparisons.",
+      "conditions": "For the benchmark configurations reported by the paper; these are implementation- and hardware-specific comparisons, not universal complexity guarantees.",
+      "sourceIds": [
+        "abstract",
+        "section-1"
+      ]
+    },
+    {
+      "id": "c13",
+      "kind": "result",
+      "statement": "In the paper's Pile experiments, a 2.7B-parameter Mamba-2 trained on 300B tokens outperformed the cited Mamba 2.8B (the original Mamba model), Pythia-2.8B, and Pythia-6.9B models trained on the same dataset.",
+      "conditions": "For the paper's stated training dataset, token budget, model sizes, and standard downstream evaluations.",
+      "sourceIds": [
+        "section-1"
+      ]
+    },
+    {
+      "id": "c14",
+      "kind": "caveat",
+      "statement": "General selective SSMs and ordinary attention are not universally identical; the exact dual intersection uses scalar-identity transitions and 1-semiseparable structured masks.",
+      "conditions": "Within the formal SSD correspondence established in Section 5.",
+      "sourceIds": [
+        "section-5"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "s1",
+      "title": "The computational tension",
+      "markdown": "A causal sequence layer must combine information from the present with information retained from the past. Attention does this explicitly: it forms scores between positions and applies a weighted mixture to values. That viewpoint is easy to inspect and maps well to matrix multiplication, but a dense attention matrix has quadratic size in sequence length $\\mathtt{T}$. During autoregressive generation, standard attention also retains a history-dependent cache.\n\nA state-space model (SSM) instead compresses the past into a state of fixed dimension $\\mathtt{N}$. Its recurrent form scales linearly with $\\mathtt{T}$ and keeps a constant-size state during generation. Yet an elementwise scan does not necessarily use accelerator matrix-multiplication units as effectively as attention does.\n\nThe paper's central move is to stop treating “attention” and “recurrence” as indivisible algorithms. A sequence transformation is a function; recurrence and pairwise matrix multiplication can be alternative algorithms for evaluating it. Structured state-space duality (SSD) identifies a substantial intersection where an SSM and a form of masked attention are exactly the same transformation. Mamba-2 then exploits that identity to combine compressed recurrent state with matrix-heavy training computation.",
+      "sourceIds": [
+        "abstract",
+        "section-1",
+        "section-2",
+        "section-5"
+      ],
+      "claimIds": [
+        "c1",
+        "c6",
+        "c14"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s2",
+      "title": "A recurrence is already a matrix",
+      "markdown": "Begin with the discrete, time-varying SSM\n\n$$\nh_t=A_t h_{t-1}+B_t x_t,\\qquad y_t=C_t^{\\top}h_t.\n$$\n\nHere $t$ is the position; $x_t$ is the input; $h_t\\in\\mathbb{R}^{\\mathtt{N}}$ is the hidden state; $A_t\\in\\mathbb{R}^{\\mathtt{N}\\times\\mathtt{N}}$ transports old state; $B_t\\in\\mathbb{R}^{\\mathtt{N}}$ writes the current input; $C_t\\in\\mathbb{R}^{\\mathtt{N}}$ reads the state; and $y_t$ is the output. The subscript $t$ permits selection: the transformation may change with the input position.\n\nUnrolling shows what reaches output $j$ from input $i$:\n\n$$\nM_{ji}=C_j^{\\top}A_jA_{j-1}\\cdots A_{i+1}B_i,\\qquad i\\le j,\n$$\n\nand $M_{ji}=0$ for $i>j$. Thus $y=Mx$. The lower-triangular shape expresses causality, while each entry records write, transport, and read operations.\n\nA small illustrative scalar example makes this concrete. Set $h_{-1}=0$, $B_t=C_t=1$, $a_0$ unused, $(a_1,a_2)=(0.5,0.2)$, and $x=(2,4,1)$. Then\n\n$$\nh_0=2,\n$$\n$$\nh_1=0.5(2)+4=5,\n$$\n$$\nh_2=0.2(5)+1=2.\n$$\n\nThe equivalent matrix is\n\n$$\nM=\\begin{bmatrix}1&0&0\\\\0.5&1&0\\\\0.1&0.2&1\\end{bmatrix},\n$$\n\nso $Mx=(2,5,2)^{\\top}$. The coefficient $0.1=0.2\\times0.5$ is the survival of the first input through two transitions.\n\nThe interactive scalar-state figure isolates this transport idea. It applies one initial impulse and varies a constant retention $a$ across 12 steps. Predict how slowly the trace decays as $a$ rises. This is useful intuition for products of transitions, but it is not selective Mamba: it has one scalar state, no learned projections, and no input-dependent dynamics.",
+      "sourceIds": [
+        "section-2",
+        "section-3"
+      ],
+      "claimIds": [
+        "c1",
+        "c2",
+        "c5"
+      ],
+      "figureId": "fig-state"
+    },
+    {
+      "id": "s3",
+      "title": "The hidden rank pattern",
+      "markdown": "Writing $M$ explicitly appears to replace a cheap recurrence with a dense $\\mathtt{T}\\times\\mathtt{T}$ object. The escape hatch is structure. A lower-triangular matrix is $\\mathtt{N}$-semiseparable when every submatrix lying on or below the diagonal has rank at most $\\mathtt{N}$. The SSM matrix has precisely this property: any block carrying earlier inputs to later outputs factors through the $\\mathtt{N}$-dimensional state at the boundary.\n\nThis is stronger and more specific than saying that the entire matrix is low rank. The diagonal and nearby causal interactions may make the full matrix high rank; the restriction applies to separated lower-triangular blocks. In sequentially semiseparable form,\n\n$$\nM_{ji}=C_j^{\\top}A_j\\cdots A_{i+1}B_i,\n$$\n\nwhich is exactly the SSM coefficient derived above. The paper therefore identifies SSM evaluation with structured matrix multiplication. An $\\mathtt{N}$-semiseparable matrix of sequence length $\\mathtt{T}$ can be represented and multiplied by a vector in $O(\\mathtt{N}\\mathtt{T})$ resources under the stated structured algorithms.\n\nThe low-rank figure provides a deliberately narrower prerequisite. A rank-$r$ factorization represents a matrix using at most $r$ independent singular components. For the figure's fixed diagonal matrix, truncated singular value decomposition (SVD) keeps the $r$ largest singular values and sets the rest to zero. Its displayed retained energy is the fraction $\\sum_{i=1}^{r}\\sigma_i^2/\\sum_{i=1}^{6}\\sigma_i^2$, where the singular values are $[6,4,3,2,1,0.5]$. Increasing $r$ therefore retains more components and energy. This global truncated SVD is not semiseparability, does not display causal blocks, and is not a trained LoRA update. SSD exploits exact rank bounds of particular off-diagonal blocks rather than approximating the whole sequence matrix by one low-rank matrix.",
+      "sourceIds": [
+        "section-3",
+        "section-3-part-2"
+      ],
+      "claimIds": [
+        "c2",
+        "c3",
+        "c4"
+      ],
+      "figureId": "fig-low-rank"
+    },
+    {
+      "id": "s4",
+      "title": "Where masked attention meets the state",
+      "markdown": "Masked kernel attention can be written\n\n$$\nY=\\bigl(L\\circ(QK^{\\top})\\bigr)V,\n$$\n\nwhere $Q\\in\\mathbb{R}^{\\mathtt{T}\\times\\mathtt{N}}$ contains queries, $K\\in\\mathbb{R}^{\\mathtt{T}\\times\\mathtt{N}}$ contains keys, $V\\in\\mathbb{R}^{\\mathtt{T}\\times\\mathtt{P}}$ contains values, $L\\in\\mathbb{R}^{\\mathtt{T}\\times\\mathtt{T}}$ is a mask, and $\\circ$ denotes elementwise multiplication. A quadratic algorithm forms $QK^{\\top}$ first. A different contraction order first expands $V$ with $K$, applies $L$ to those features, and contracts with $Q$. If multiplication by $L$ is fast, this second route can be subquadratic.\n\nNow restrict the SSM transitions to $A_t=a_t I$, a scalar $a_t$ times the identity. Its sequence matrix becomes\n\n$$\nM_{ji}=\\underbrace{\\left(\\prod_{k=i+1}^{j}a_k\\right)}_{L_{ji}}\\underbrace{(C_j^{\\top}B_i)}_{(CB^{\\top})_{ji}},\n$$\n\nor $M=L\\circ(CB^{\\top})$. Identifying $Q=C$, $K=B$, and $V=X$ gives the same masked-attention expression. The recurrent SSM and quadratic attention-style calculation are therefore two algorithms for one function.\n\nThe attention figure varies temperature over four fixed scores $[2,1,0,-1]$ and displays their softmax weights. Predict whether lower temperature sharpens or flattens the distribution. It clarifies normalized score mixing, but SSD itself drops softmax and adds a data-dependent semiseparable mask. The toy is therefore a contrast case, not a simulation of Mamba-2.",
+      "sourceIds": [
+        "section-2-part-2",
+        "section-4",
+        "section-4-part-2",
+        "section-5"
+      ],
+      "claimIds": [
+        "c6",
+        "c7",
+        "c8"
+      ],
+      "figureId": "fig-attention"
+    },
+    {
+      "id": "s5",
+      "title": "The block algorithm: local attention, transported state",
+      "markdown": "Exact duality alone does not decide which evaluation order runs best. Pure recurrence has linear sequence scaling but exposes relatively small scalar operations. Pure quadratic evaluation exposes large matrix multiplications but materializes work across all position pairs. SSD chooses a blockwise middle path.\n\nPartition the causal matrix $M$ into chunks of length $\\mathtt{Q}$. Each diagonal block describes interactions among positions within one chunk. SSD evaluates these small blocks with the quadratic attention-like form, and all chunks can be processed in parallel. Every block strictly below the diagonal describes how an earlier chunk affects a later one. Semiseparability factors such a block through the state dimension.\n\nOperationally, each chunk first computes two local quantities assuming a zero incoming state: its within-chunk outputs and its final state. A short recurrence across chunks then transports and combines those final states. Finally, a left block factor maps each incoming boundary state into its contribution to positions inside the receiving chunk. Adding this contribution to the local output recovers the full causal result.\n\nWhen $\\mathtt{N}=\\mathtt{P}=\\mathtt{Q}$, where $\\mathtt{P}$ is head width, the paper derives $O(\\mathtt{T}\\mathtt{N}^2)$ training FLOPs and $O(\\mathtt{T}\\mathtt{N})$ memory, with most work expressed as $\\mathtt{N}\\times\\mathtt{N}$ matrix multiplications. These are asymptotic and structural statements. Actual speed depends on kernels, hardware, shapes, and baselines; the reported 2–8× implementation comparison is evidence under the authors' tested conditions, not a universal multiplier.",
+      "sourceIds": [
+        "section-1",
+        "section-6",
+        "section-6-part-2"
+      ],
+      "claimIds": [
+        "c9",
+        "c10",
+        "c12"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s6",
+      "title": "From SSD to the Mamba-2 block",
+      "markdown": "Mamba-2 is more than substituting one kernel. The block is reorganized around SSD's attention-like vocabulary. Instead of first constructing the main SSM input and then deriving $A$, $B$, and $C$ sequentially from it, Mamba-2 produces $A$, $X$, $B$, and $C$ in parallel near the beginning. The authors also add normalization before the final output projection to address instabilities encountered in larger models.\n\nThe head structure separates two dimensions. The state size $\\mathtt{N}$ controls expansion into recurrent features, while the head dimension $\\mathtt{P}$ counts input channels transformed together. As the overall model width grows, the architecture can add heads while keeping these dimensions roughly fixed. The paper characterizes Mamba's sharing pattern as a multi-input SSM, analogous under the duality to multi-value attention, and extends it toward grouped forms useful for tensor parallelism.\n\nParallel parameter production has a systems consequence: projections can be sharded without reconstructing the entire intermediate SSM input before producing $B$ and $C$. The paper's tensor-parallel design consequently targets one all-reduce per block, matching the communication pattern described for Transformer attention or MLP blocks. For sequence partitioning, workers can pass recurrent boundary states from one sequence segment to the next.",
+      "sourceIds": [
+        "section-7",
+        "section-7-part-2",
+        "section-8"
+      ],
+      "claimIds": [
+        "c11"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s7",
+      "title": "Evidence, misconception, and limits",
+      "markdown": "The empirical claims must stay attached to their settings. The paper reports that its dedicated SSD implementation is 2–8× faster than the optimized Mamba selective scan, crosses the cited optimized softmax-attention comparison at sequence length 2K, and reaches a reported 6× advantage at length 16K. These measurements support the proposed implementation on the evaluated systems; they do not imply the same ratios for every accelerator, precision, batch shape, or software stack.\n\nFor model quality, the authors report that a 2.7B-parameter Mamba-2 trained for 300B tokens on the Pile outperformed the named Mamba 2.8B (the original Mamba model), Pythia-2.8B, and Pythia-6.9B comparison models trained on that dataset. This is evidence for those training and evaluation conditions, not proof that Mamba-2 dominates every Transformer recipe or task.\n\nA common misconception is that the title means every Transformer is literally an SSM. The formal result is narrower. General SSMs and structured masked attention each admit linear and quadratic views, but their exact SSD intersection uses scalar-identity state transitions and a 1-semiseparable mask. SSD also lacks ordinary softmax normalization. Conversely, simplifying $A_t$ from a diagonal matrix to a scalar times the identity trades some expressivity for efficient matrix-oriented computation.\n\nFurther limitations follow. A fixed recurrent state compresses history, whereas standard attention can retain position-specific cached information; the two impose different representational constraints. Semiseparable structure guarantees useful factorizations, but asymptotic efficiency alone does not guarantee wall-clock speed. Finally, the reported downstream results establish competitiveness at the studied scales and data conditions, not a universal replacement theorem. The lasting contribution is a design language: expose the structured matrix, select an equivalent contraction order, and align that order with the hardware.",
+      "sourceIds": [
+        "abstract",
+        "section-1",
+        "section-2-part-2",
+        "section-5",
+        "section-6-part-2"
+      ],
+      "claimIds": [
+        "c8",
+        "c12",
+        "c13",
+        "c14"
+      ],
+      "figureId": null
+    }
+  ],
+  "figures": [
+    {
+      "id": "fig-state",
+      "kind": "state",
+      "title": "How a scalar state retains an impulse",
+      "question": "As retention a increases, how does the influence of the initial impulse change over the next 12 steps?",
+      "caption": "An illustrative scalar recurrence $h_t=a h_{t-1}+u_t$ with $u_0=1$ shows how repeated transition factors determine temporal decay.",
+      "limitation": "This is a scalar, fixed-coefficient impulse response—not a selective or multidimensional Mamba recurrence and not a learned rollout.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c5"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "fig-low-rank",
+      "kind": "low-rank",
+      "title": "Rank as a compression prerequisite",
+      "question": "How does retaining more singular components change the represented energy of the fixed diagonal matrix?",
+      "caption": "A fixed diagonal $6\\times6$ example retains its first $r$ singular components, illustrating exact rank counting and retained energy.",
+      "limitation": "This is global singular-value truncation, not semiseparable block structure, a trained LoRA update, or a reported compression result.",
+      "sourceIds": [
+        "section-3",
+        "section-6"
+      ],
+      "claimIds": [
+        "c3",
+        "c9"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "fig-attention",
+      "kind": "attention",
+      "title": "What softmax temperature changes",
+      "question": "Does decreasing positive temperature concentrate or spread the normalized weights over the four fixed scores?",
+      "caption": "Four illustrative scores are divided by temperature and normalized with softmax to expose how ordinary attention weights respond.",
+      "limitation": "These are fixed invented scores, not a measured head; SSD drops softmax and uses a data-dependent 1-semiseparable mask.",
+      "sourceIds": [
+        "section-2",
+        "section-2-part-2",
+        "section-5"
+      ],
+      "claimIds": [
+        "c7",
+        "c8"
+      ],
+      "illustrative": true
+    }
+  ],
+  "quiz": [
+    {
+      "question": "For scalar recurrence $y_t=a_t y_{t-1}+x_t$, what is the coefficient carrying $x_i$ into $y_j$ when $j>i$?",
+      "options": [
+        {
+          "text": "The product $\\prod_{k=i+1}^{j}a_k$.",
+          "explanation": "Correct. The contribution is multiplied by every transition encountered after position $i$ through position $j$."
+        },
+        {
+          "text": "The sum $\\sum_{k=i+1}^{j}a_k$.",
+          "explanation": "Incorrect. Sequential state transport composes multiplicatively, not additively."
+        },
+        {
+          "text": "Only the final coefficient $a_j$.",
+          "explanation": "Incorrect. That ignores all intermediate transitions between the source and destination."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c5"
+      ]
+    },
+    {
+      "question": "What establishes the exact SSD correspondence between the SSM and masked-attention forms?",
+      "options": [
+        {
+          "text": "Scalar-identity transitions yield $M=L\\circ(CB^{\\top})$.",
+          "explanation": "Correct. This factorization maps $C$, $B$, and $X$ to queries, keys, and values under a 1-semiseparable mask."
+        },
+        {
+          "text": "Applying softmax makes every causal attention layer recurrent.",
+          "explanation": "Incorrect. SSD drops softmax, and efficient bounded-order autoregression requires semiseparable mask structure."
+        },
+        {
+          "text": "The entire causal sequence matrix must have rank one.",
+          "explanation": "Incorrect. The relevant condition is rank structure in lower-triangular submatrices, not global rank one."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-3",
+        "section-5"
+      ],
+      "claimIds": [
+        "c3",
+        "c7",
+        "c8"
+      ]
+    },
+    {
+      "question": "Which conclusion is justified by the paper's reported 2–8× SSD speed comparison?",
+      "options": [
+        {
+          "text": "The implementation was 2–8× faster under the evaluated benchmark conditions.",
+          "explanation": "Correct. A measured speed ratio is tied to the authors' implementation, hardware, shapes, and comparison setup."
+        },
+        {
+          "text": "Every SSD model is at least 2× faster than every attention model.",
+          "explanation": "Incorrect. The report does not establish a universal lower bound across models or systems."
+        },
+        {
+          "text": "Asymptotic linear scaling alone guarantees the reported speed ratio.",
+          "explanation": "Incorrect. Constants, matrix shapes, kernels, memory behavior, and hardware affect wall-clock performance."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "abstract",
+        "section-1",
+        "section-6",
+        "section-6-part-2"
+      ],
+      "claimIds": [
+        "c10",
+        "c12"
+      ]
+    }
+  ],
+  "id": "mamba-2",
+  "createdAt": "2026-10-02T00:28:50.381Z",
+  "pipelineVersion": "subjects-lessons-v1",
+  "sources": [
+    {
+      "id": "abstract",
+      "label": "Original paper · abstract",
+      "url": "https://arxiv.org/abs/2405.21060",
+      "digest": "c474421a3baad432a3bf611ec8b9bda74491acb9cccf9f20fbe50c08b68962bf",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:25:20.233Z"
+    },
+    {
+      "id": "section-1",
+      "label": "1 Introduction",
+      "url": "https://arxiv.org/html/2405.21060#S1",
+      "digest": "0af91a8bfda9debff7a282f8969e420fd4a17600625ce5fc78620638d62157d6",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:25:20.233Z"
+    },
+    {
+      "id": "section-2",
+      "label": "2 Background and Overview",
+      "url": "https://arxiv.org/html/2405.21060#S2",
+      "digest": "9f6fbc6d490fafdae9afccc8b9703669e72c8fb676733f464c1ceacd39cb3af6",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:25:20.233Z"
+    },
+    {
+      "id": "section-2-part-2",
+      "label": "2 Background and Overview · part 2",
+      "url": "https://arxiv.org/html/2405.21060#S2",
+      "digest": "3a3fc040130dfa2ffc2d2b35ce628c75b6a6a718cc081b0ad687596b1dc08adc",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:25:20.233Z"
+    },
+    {
+      "id": "section-3",
+      "label": "3 State Space Models are Structured Matrices",
+      "url": "https://arxiv.org/html/2405.21060#S3",
+      "digest": "0c59fc289ac9af4f49ac1202f9f832539c89170f34f332451a07b478dedf84e3",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:25:20.233Z"
+    },
+    {
+      "id": "section-3-part-2",
+      "label": "3 State Space Models are Structured Matrices · part 2",
+      "url": "https://arxiv.org/html/2405.21060#S3",
+      "digest": "587275833617a4f08c3cd73bae811fe364f5c2f49881c733fde5919009e8ef73",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:25:20.233Z"
+    },
+    {
+      "id": "section-4",
+      "label": "4 Structured Masked Attention: Generalizing Linear Attention \nwith Structured Matrices",
+      "url": "https://arxiv.org/html/2405.21060#S4",
+      "digest": "c126c9ec6a014413ab7399b7aae28287de2a724a1ada8863317485cb60a3eea7",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:25:20.233Z"
+    },
+    {
+      "id": "section-4-part-2",
+      "label": "4 Structured Masked Attention: Generalizing Linear Attention \nwith Structured Matrices · part 2",
+      "url": "https://arxiv.org/html/2405.21060#S4",
+      "digest": "b443ce3968fe90e817636053bb8592f4102629da6918de7b16c65fb7d68fd386",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:25:20.233Z"
+    },
+    {
+      "id": "section-5",
+      "label": "5 State Space Duality",
+      "url": "https://arxiv.org/html/2405.21060#S5",
+      "digest": "201268544f7812256cf3fde53344fe60046a0e6f2942e93b118dd940fc585295",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:25:20.233Z"
+    },
+    {
+      "id": "section-6",
+      "label": "6 A Hardware-Efficient Algorithm for SSD Models",
+      "url": "https://arxiv.org/html/2405.21060#S6",
+      "digest": "98364c84f4b4fc277f02f037ff8f1dbbe7cb1647b9b901baad6b76bf8ea29cc7",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:25:20.233Z"
+    },
+    {
+      "id": "section-6-part-2",
+      "label": "6 A Hardware-Efficient Algorithm for SSD Models · part 2",
+      "url": "https://arxiv.org/html/2405.21060#S6",
+      "digest": "d7c67b953ff79d170b549d2c8f8c2cb1230355dfe419743d220dafd6fc9c889a",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:25:20.233Z"
+    },
+    {
+      "id": "section-7",
+      "label": "7 The Mamba-2 Architecture",
+      "url": "https://arxiv.org/html/2405.21060#S7",
+      "digest": "14abe75f57d0a1afbaea7173c8c2cb6dfbcf03dd05ea32ff586d7f557af80b4f",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:25:20.233Z"
+    },
+    {
+      "id": "section-7-part-2",
+      "label": "7 The Mamba-2 Architecture · part 2",
+      "url": "https://arxiv.org/html/2405.21060#S7",
+      "digest": "7aacf628febecc062c85bba981cab1f4d33cb1a30eb461d0f18ed0bf46d76e1d",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:25:20.233Z"
+    },
+    {
+      "id": "section-8",
+      "label": "8 Systems Optimization for SSMs",
+      "url": "https://arxiv.org/html/2405.21060#S8",
+      "digest": "ba0d9ece6922192cd5fb5f3b69be5581e7c679ef7a275200cb0a7900c832923e",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:25:20.233Z"
+    }
+  ],
+  "review": {
+    "status": "passed",
+    "reviewedAt": "2026-10-02T00:28:50.382Z",
+    "contentDigest": "a8ff138889f7e1958d3ea90ce376ef91263aaf52b388dcfde853ddb6f2219271"
+  }
+}

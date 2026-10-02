@@ -1,0 +1,690 @@
+{
+  "version": 1,
+  "sectionId": "s2",
+  "title": "MuZero’s recurrent planning state",
+  "introduction": "Let the observation history $o_1,\\ldots,o_t$ be the real evidence available at time $t$. The representation function creates root state $s^0$. Hypothetical action $a^1$ drives learned dynamics to produce reward $r^1$ and state $s^1$; prediction reads that state to produce policy $\\mathbf p^1$ and value $v^1$. Repeating these operations with $a^2$ extends the hypothetical trajectory without reconstructing future observations.",
+  "entities": [
+    {
+      "id": "o1",
+      "label": "o1",
+      "meaning": "The earliest displayed observation in the real observation history."
+    },
+    {
+      "id": "ot",
+      "label": "ot",
+      "meaning": "The current real observation at time t."
+    },
+    {
+      "id": "s0",
+      "label": "s0",
+      "meaning": "The root hidden state encoded from observations through time t."
+    },
+    {
+      "id": "a1",
+      "label": "a1",
+      "meaning": "The first hypothetical action considered after the root state."
+    },
+    {
+      "id": "r1",
+      "label": "r1",
+      "meaning": "The immediate reward predicted for applying a1 to s0."
+    },
+    {
+      "id": "s1",
+      "label": "s1",
+      "meaning": "The successor hidden state produced from s0 and a1."
+    },
+    {
+      "id": "p1",
+      "label": "p1",
+      "meaning": "The action-policy vector predicted from s1."
+    },
+    {
+      "id": "v1",
+      "label": "v1",
+      "meaning": "The scalar value predicted from s1."
+    },
+    {
+      "id": "a2",
+      "label": "a2",
+      "meaning": "The second hypothetical action considered after s1."
+    },
+    {
+      "id": "r2",
+      "label": "r2",
+      "meaning": "The immediate reward predicted for applying a2 to s1."
+    },
+    {
+      "id": "s2",
+      "label": "s2",
+      "meaning": "The successor hidden state produced from s1 and a2."
+    },
+    {
+      "id": "p2",
+      "label": "p2",
+      "meaning": "The action-policy vector predicted from s2."
+    },
+    {
+      "id": "v2",
+      "label": "v2",
+      "meaning": "The scalar value predicted from s2."
+    }
+  ],
+  "objects": [
+    {
+      "id": "observations",
+      "form": "tokens",
+      "label": "Observation history",
+      "detail": "Real observations through time t",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c2"
+      ]
+    },
+    {
+      "id": "representation",
+      "form": "module",
+      "label": "Representation h",
+      "detail": "Observation-history encoder",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c2"
+      ]
+    },
+    {
+      "id": "hidden-sequence",
+      "form": "bank",
+      "label": "Hidden states",
+      "detail": "Recurrently extended hidden states",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c2",
+        "c4"
+      ]
+    },
+    {
+      "id": "action-sequence",
+      "form": "tokens",
+      "label": "Hypothetical actions",
+      "detail": "Ordered candidate actions",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c2",
+        "c4"
+      ]
+    },
+    {
+      "id": "dynamics",
+      "form": "module",
+      "label": "Dynamics g",
+      "detail": "Action-conditioned state update",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c4"
+      ]
+    },
+    {
+      "id": "reward-sequence",
+      "form": "vector",
+      "label": "Predicted rewards",
+      "detail": "Immediate reward predictions",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c4"
+      ]
+    },
+    {
+      "id": "prediction",
+      "form": "module",
+      "label": "Prediction f",
+      "detail": "Policy-and-value readout",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c5"
+      ]
+    },
+    {
+      "id": "planning-outputs",
+      "form": "bank",
+      "label": "Policy and value",
+      "detail": "Node-level planning predictions",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c5"
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "id": "rel-observations-h",
+      "from": "observations",
+      "to": "representation",
+      "label": "encode history",
+      "dashed": false,
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c2"
+      ]
+    },
+    {
+      "id": "rel-h-state",
+      "from": "representation",
+      "to": "hidden-sequence",
+      "label": "initialize root",
+      "dashed": false,
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c2"
+      ]
+    },
+    {
+      "id": "rel-state-g",
+      "from": "hidden-sequence",
+      "to": "dynamics",
+      "label": "supply prior state",
+      "dashed": false,
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c4"
+      ]
+    },
+    {
+      "id": "rel-action-g",
+      "from": "action-sequence",
+      "to": "dynamics",
+      "label": "condition on action",
+      "dashed": false,
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c4"
+      ]
+    },
+    {
+      "id": "rel-g-state",
+      "from": "dynamics",
+      "to": "hidden-sequence",
+      "label": "append successor state",
+      "dashed": false,
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c4"
+      ]
+    },
+    {
+      "id": "rel-g-reward",
+      "from": "dynamics",
+      "to": "reward-sequence",
+      "label": "append predicted reward",
+      "dashed": false,
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c4"
+      ]
+    },
+    {
+      "id": "rel-state-f",
+      "from": "hidden-sequence",
+      "to": "prediction",
+      "label": "read current state",
+      "dashed": false,
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c5"
+      ]
+    },
+    {
+      "id": "rel-f-outputs",
+      "from": "prediction",
+      "to": "planning-outputs",
+      "label": "append policy and value",
+      "dashed": false,
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c5"
+      ]
+    }
+  ],
+  "beats": [
+    {
+      "title": "Encode the real observation history",
+      "explanation": "Only the real history $o_1,\\ldots,o_t$ is initially available. The representation function applies $s^0=h_\\theta(o_1,\\ldots,o_t)$, creating the root hidden state used for planning. The state is not required to reproduce the observations or equal the environment’s true state.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c2",
+        "c3"
+      ],
+      "objects": [
+        {
+          "objectId": "observations",
+          "status": "active",
+          "entityIds": [
+            "o1",
+            "ot"
+          ]
+        },
+        {
+          "objectId": "representation",
+          "status": "active",
+          "entityIds": []
+        },
+        {
+          "objectId": "hidden-sequence",
+          "status": "active",
+          "entityIds": [
+            "s0"
+          ]
+        },
+        {
+          "objectId": "action-sequence",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "dynamics",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "reward-sequence",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "prediction",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "planning-outputs",
+          "status": "pending",
+          "entityIds": []
+        }
+      ],
+      "relationships": [
+        {
+          "relationshipId": "rel-observations-h",
+          "entityIds": []
+        },
+        {
+          "relationshipId": "rel-h-state",
+          "entityIds": []
+        }
+      ]
+    },
+    {
+      "title": "Advance one hypothetical step",
+      "explanation": "Root state $s^0$ remains available while hypothetical action $a^1$ becomes an input. Dynamics computes $(r^1,s^1)=g_\\theta(s^0,a^1)$. This appends a successor state and immediate reward prediction without asking the environment for a future observation.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c4"
+      ],
+      "objects": [
+        {
+          "objectId": "observations",
+          "status": "retained",
+          "entityIds": [
+            "o1",
+            "ot"
+          ]
+        },
+        {
+          "objectId": "representation",
+          "status": "retained",
+          "entityIds": []
+        },
+        {
+          "objectId": "hidden-sequence",
+          "status": "active",
+          "entityIds": [
+            "s0",
+            "s1"
+          ]
+        },
+        {
+          "objectId": "action-sequence",
+          "status": "active",
+          "entityIds": [
+            "a1"
+          ]
+        },
+        {
+          "objectId": "dynamics",
+          "status": "active",
+          "entityIds": []
+        },
+        {
+          "objectId": "reward-sequence",
+          "status": "active",
+          "entityIds": [
+            "r1"
+          ]
+        },
+        {
+          "objectId": "prediction",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "planning-outputs",
+          "status": "pending",
+          "entityIds": []
+        }
+      ],
+      "relationships": [
+        {
+          "relationshipId": "rel-state-g",
+          "entityIds": []
+        },
+        {
+          "relationshipId": "rel-action-g",
+          "entityIds": []
+        },
+        {
+          "relationshipId": "rel-g-state",
+          "entityIds": []
+        },
+        {
+          "relationshipId": "rel-g-reward",
+          "entityIds": []
+        }
+      ]
+    },
+    {
+      "title": "Read planning quantities from the successor",
+      "explanation": "State $s^1$ is available to the prediction function, which computes $(\\mathbf p^1,v^1)=f_\\theta(s^1)$. The policy vector and scalar value are planning-facing outputs, not a reconstructed screen or board.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c5"
+      ],
+      "objects": [
+        {
+          "objectId": "observations",
+          "status": "retained",
+          "entityIds": [
+            "o1",
+            "ot"
+          ]
+        },
+        {
+          "objectId": "representation",
+          "status": "retained",
+          "entityIds": []
+        },
+        {
+          "objectId": "hidden-sequence",
+          "status": "retained",
+          "entityIds": [
+            "s0",
+            "s1"
+          ]
+        },
+        {
+          "objectId": "action-sequence",
+          "status": "retained",
+          "entityIds": [
+            "a1"
+          ]
+        },
+        {
+          "objectId": "dynamics",
+          "status": "retained",
+          "entityIds": []
+        },
+        {
+          "objectId": "reward-sequence",
+          "status": "retained",
+          "entityIds": [
+            "r1"
+          ]
+        },
+        {
+          "objectId": "prediction",
+          "status": "active",
+          "entityIds": []
+        },
+        {
+          "objectId": "planning-outputs",
+          "status": "active",
+          "entityIds": [
+            "p1",
+            "v1"
+          ]
+        }
+      ],
+      "relationships": [
+        {
+          "relationshipId": "rel-state-f",
+          "entityIds": []
+        },
+        {
+          "relationshipId": "rel-f-outputs",
+          "entityIds": []
+        }
+      ]
+    },
+    {
+      "title": "Advance the same trajectory again",
+      "explanation": "The next hypothetical action $a^2$ extends the ordered trajectory. Reuse dynamics to compute $(r^2,s^2)=g_\\theta(s^1,a^2)$. The existing $s^0,s^1$, $a^1$, $r^1$, and first policy/value predictions retain their identities while the new state and reward are appended.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c4",
+        "c5"
+      ],
+      "objects": [
+        {
+          "objectId": "observations",
+          "status": "retained",
+          "entityIds": [
+            "o1",
+            "ot"
+          ]
+        },
+        {
+          "objectId": "representation",
+          "status": "retained",
+          "entityIds": []
+        },
+        {
+          "objectId": "hidden-sequence",
+          "status": "active",
+          "entityIds": [
+            "s0",
+            "s1",
+            "s2"
+          ]
+        },
+        {
+          "objectId": "action-sequence",
+          "status": "active",
+          "entityIds": [
+            "a1",
+            "a2"
+          ]
+        },
+        {
+          "objectId": "dynamics",
+          "status": "active",
+          "entityIds": []
+        },
+        {
+          "objectId": "reward-sequence",
+          "status": "active",
+          "entityIds": [
+            "r1",
+            "r2"
+          ]
+        },
+        {
+          "objectId": "prediction",
+          "status": "retained",
+          "entityIds": []
+        },
+        {
+          "objectId": "planning-outputs",
+          "status": "retained",
+          "entityIds": [
+            "p1",
+            "v1"
+          ]
+        }
+      ],
+      "relationships": [
+        {
+          "relationshipId": "rel-state-g",
+          "entityIds": []
+        },
+        {
+          "relationshipId": "rel-action-g",
+          "entityIds": []
+        },
+        {
+          "relationshipId": "rel-g-state",
+          "entityIds": []
+        },
+        {
+          "relationshipId": "rel-g-reward",
+          "entityIds": []
+        }
+      ]
+    },
+    {
+      "title": "Predict at the new successor state",
+      "explanation": "Reuse the same prediction function on the successor: $(\\mathbf p^2,v^2)=f_\\theta(s^2)$. The appended policy and value supply action preferences and a continuation estimate for planning. Earlier quantities remain available along the same trajectory; $s^2$ is a learned hidden state reached by dynamics.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c4",
+        "c5"
+      ],
+      "objects": [
+        {
+          "objectId": "observations",
+          "status": "retained",
+          "entityIds": [
+            "o1",
+            "ot"
+          ]
+        },
+        {
+          "objectId": "representation",
+          "status": "retained",
+          "entityIds": []
+        },
+        {
+          "objectId": "hidden-sequence",
+          "status": "active",
+          "entityIds": [
+            "s0",
+            "s1",
+            "s2"
+          ]
+        },
+        {
+          "objectId": "action-sequence",
+          "status": "retained",
+          "entityIds": [
+            "a1",
+            "a2"
+          ]
+        },
+        {
+          "objectId": "dynamics",
+          "status": "retained",
+          "entityIds": []
+        },
+        {
+          "objectId": "reward-sequence",
+          "status": "retained",
+          "entityIds": [
+            "r1",
+            "r2"
+          ]
+        },
+        {
+          "objectId": "prediction",
+          "status": "active",
+          "entityIds": []
+        },
+        {
+          "objectId": "planning-outputs",
+          "status": "active",
+          "entityIds": [
+            "p1",
+            "v1",
+            "p2",
+            "v2"
+          ]
+        }
+      ],
+      "relationships": [
+        {
+          "relationshipId": "rel-state-f",
+          "entityIds": []
+        },
+        {
+          "relationshipId": "rel-f-outputs",
+          "entityIds": []
+        }
+      ]
+    }
+  ],
+  "takeaway": "Each hypothetical action extends an ordered chain of hidden states and rewards, while every resulting state yields the policy and value needed for planning.",
+  "sourceIds": [
+    "section-3"
+  ],
+  "claimIds": [
+    "c2",
+    "c4",
+    "c5"
+  ],
+  "lessonId": "mastering-atari-go-chess-and-shogi",
+  "parentContentDigest": "8ae4425963d8481985f24709d64c909dd90a9219b8b9d0308c829654b442adb3",
+  "review": {
+    "status": "source-passed",
+    "reviewedAt": "2026-10-02T01:47:42.649Z",
+    "contentDigest": "49b88d957fc405201e420df0d76dfb14f48a49fea2af78f5c1be7ca9954c3b90",
+    "rendererDigest": "2cc690a7105c5faca75e22053e83674a2cf2e227ae22afe88cc4662d09c98bb4",
+    "visualReviewedAt": null
+  }
+}

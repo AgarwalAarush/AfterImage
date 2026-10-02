@@ -1,0 +1,512 @@
+{
+  "title": "PagedAttention: Giving a Growing KV Cache an Address Space",
+  "summary": "PagedAttention separates a sequence’s logical KV layout from fixed-size physical blocks, letting vLLM allocate, share, and reclaim cache memory as generation evolves.",
+  "prerequisites": [
+    "Autoregressive generation and causal self-attention",
+    "Transformer key-value caches",
+    "Internal and external memory fragmentation",
+    "Address translation and copy-on-write"
+  ],
+  "objectives": [
+    "Explain why unpredictable output lengths waste contiguous KV allocations.",
+    "Derive block-wise attention and define each symbol.",
+    "Trace logical blocks through allocation, sharing, and copy-on-write.",
+    "Calculate padding waste in a small block allocation.",
+    "Interpret throughput results within the stated workloads and baselines."
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "equation",
+      "statement": "Autoregressive language modeling factorizes a sequence probability into next-token conditional probabilities.",
+      "conditions": "For an ordered token sequence under the paper’s autoregressive formulation.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c2",
+      "kind": "mechanism",
+      "statement": "Generation reuses cached keys and values from earlier positions while computing only the new position’s key and value.",
+      "conditions": "During the autoregressive generation phase after prompt processing.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c3",
+      "kind": "result",
+      "statement": "The paper’s profiling found that contiguous allocation left most KV-cache capacity unavailable for actual token states in the evaluated existing systems.",
+      "conditions": "In the experiment referenced by Figure 2, for the existing systems profiled by the authors.",
+      "sourceIds": [
+        "section-1"
+      ]
+    },
+    {
+      "id": "c4",
+      "kind": "mechanism",
+      "statement": "PagedAttention divides each sequence’s KV cache into fixed-token-capacity blocks.",
+      "conditions": "For the PagedAttention representation with KV block size B.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c5",
+      "kind": "equation",
+      "statement": "PagedAttention computes ordinary softmax attention block by block, summing normalization and value contributions over all logical blocks that cover the causal prefix.",
+      "conditions": "For query position i, block size B, and the paper’s block-wise reformulation of causal attention.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c6",
+      "kind": "mechanism",
+      "statement": "A per-request block table translates logical KV blocks into physical blocks and records occupancy.",
+      "conditions": "Within vLLM’s KV block manager.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c7",
+      "kind": "result",
+      "statement": "Left-to-right filling and on-demand allocation bound each request’s unused allocated capacity to its final partial block.",
+      "conditions": "When blocks are filled in order and a new physical block is allocated only after earlier blocks fill.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c8",
+      "kind": "mechanism",
+      "statement": "Shared physical blocks use reference counts, and a sequence that must modify a multiply referenced block receives a private copied block.",
+      "conditions": "For parallel samples or other sequences sharing a physical KV block that one sequence must modify.",
+      "sourceIds": [
+        "section-4-part-2"
+      ]
+    },
+    {
+      "id": "c9",
+      "kind": "mechanism",
+      "statement": "When GPU blocks are exhausted, vLLM can preempt whole sequence groups because their member sequences may share storage.",
+      "conditions": "Under memory pressure with multiple sequences belonging to one request.",
+      "sourceIds": [
+        "section-4-part-2"
+      ]
+    },
+    {
+      "id": "c10",
+      "kind": "result",
+      "statement": "Under the paper’s ShareGPT-derived basic-sampling workloads, vLLM sustained higher request rates than the stated Orca variants at similar latency.",
+      "conditions": "ShareGPT-derived traces, basic sampling, evaluated OPT configurations, and the paper’s implemented Orca baselines.",
+      "sourceIds": [
+        "section-6"
+      ]
+    },
+    {
+      "id": "c11",
+      "kind": "caveat",
+      "statement": "Paged block lookup imposed attention-kernel overhead relative to the optimized FasterTransformer kernel in the reported ablation.",
+      "conditions": "The Figure 18(a) kernel comparison performed by the authors.",
+      "sourceIds": [
+        "section-7"
+      ]
+    },
+    {
+      "id": "c12",
+      "kind": "caveat",
+      "statement": "Block size creates a tradeoff between GPU parallelism, fragmentation, and sharing opportunity.",
+      "conditions": "For vLLM’s block-based KV-cache organization; the best point depends on workload sequence lengths.",
+      "sourceIds": [
+        "section-7"
+      ]
+    },
+    {
+      "id": "c13",
+      "kind": "caveat",
+      "statement": "Paging is not automatically beneficial for static-shape or compute-bound GPU workloads because indirection and non-contiguous access have costs.",
+      "conditions": "For workloads unlike dynamic, memory-capacity-bound online LLM serving.",
+      "sourceIds": [
+        "section-8"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "s1",
+      "title": "The cache, not just the model, sets the batch ceiling",
+      "markdown": "An autoregressive model assigns a token sequence $z=(z_1,\\ldots,z_n)$ the probability\n\n$$P(z)=P(z_1)\\prod_{i=2}^{n}P(z_i\\mid z_1,\\ldots,z_{i-1}).$$\n\nHere $z_i$ is the discrete token ID at position $i$. Because the next token depends on the existing prefix, decoding advances one position at a time. Before a self-attention layer applies its learned projections, the embedding layer and preceding model computations turn each token and its context into a hidden-state vector $h_i$. The attention layer then forms a query $q_i=W_qh_i$, key $k_i=W_kh_i$, and value $v_i=W_vh_i$. Thus the projection matrices operate on hidden representations, not directly on discrete token IDs. The matrices $W_q,W_k,W_v$ are learned projections, and $d$ is the key dimension. Causal attention uses\n\n$$a_{ij}=\\frac{\\exp(q_i^\\top k_j/\\sqrt d)}{\\sum_{t=1}^{i}\\exp(q_i^\\top k_t/\\sqrt d)},\\qquad o_i=\\sum_{j=1}^{i}a_{ij}v_j.$$\n\nThe scalar $a_{ij}$ is the normalized weight from position $i$ to earlier position $j$, and $o_i$ is the attention output. Recomputing every earlier $k_j$ and $v_j$ at every step would repeat work, so serving systems retain them in the KV cache. The cache grows as tokens arrive, but the final output length is unknown.\n\nThe illustrative attention control applies softmax to fixed scores $[2,1,0,-1]$ after division by a positive temperature. Predict what happens as temperature falls: the largest score receives more weight. This teaches normalization over cached positions, but the scores are invented and do not represent a measured attention head, learned similarity, or PagedAttention’s memory behavior.",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c1",
+        "c2"
+      ],
+      "figureId": "fig-attention"
+    },
+    {
+      "id": "s2",
+      "title": "Why contiguous reservation wastes scarce capacity",
+      "markdown": "Earlier serving designs placed each request’s KV cache in one contiguous allocation sized for a possible maximum sequence. That is awkward for a value that grows token by token and may stop early.\n\nThree kinds of unavailable capacity must be distinguished. **Reserved space** is held for possible future tokens and cannot temporarily serve another request. **Internal fragmentation** is unused room inside an allocation, such as the tail left when a request ends below its reserved maximum. **External fragmentation** is free memory split into regions that cannot satisfy a requested contiguous allocation. The paper reports that, in its Figure 2 experiment, only 20.4%–38.2% of profiled KV-cache memory in existing systems stored actual token states. That number belongs to those experimental systems and conditions; it is not a universal utilization constant.\n\nThe memory control makes the arithmetic concrete using 16 illustrative slots and 9 live tokens. With block width $B=4$, the live tokens require\n\n$$N_{\\text{blocks}}=\\left\\lceil\\frac{9}{4}\\right\\rceil=3$$\n\nblocks, so allocated capacity is $3\\times4=12$ slots and padding is $12-9=3$ slots. A fixed 16-slot reservation leaves $16-9=7$ non-live slots. Thus this toy allocation reduces unavailable slots by $7-3=4$. Changing $B$ reveals the tradeoff: smaller blocks usually reduce tail padding, but this control has no allocator, physical-byte, bandwidth, or latency model.",
+      "sourceIds": [
+        "section-1",
+        "section-3",
+        "section-4"
+      ],
+      "claimIds": [
+        "c3",
+        "c7",
+        "c12"
+      ],
+      "figureId": "fig-memory"
+    },
+    {
+      "id": "s3",
+      "title": "The decisive separation: logical order versus physical location",
+      "markdown": "PagedAttention preserves a sequence’s logical token order without demanding the same order in physical GPU addresses. Let $B$ be the number of token positions per KV block. Logical key block $j$ and value block $j$ are\n\n$$K_j=(k_{(j-1)B+1},\\ldots,k_{jB}),\\qquad V_j=(v_{(j-1)B+1},\\ldots,v_{jB}).$$\n\nHere $j$ is a one-based logical block index; $K_j$ and $V_j$ collect the keys and values for that logical interval. Physical blocks are fixed-size storage regions. A block table maps each logical block to whichever physical block holds it and records how many positions are filled. Consequently, neighboring logical blocks may occupy non-neighboring physical blocks.\n\nThis is the paging analogy: a request experiences a coherent logical address space, while the manager allocates physical capacity on demand. For a seven-token prompt with $B=4$, two logical blocks suffice: the first is full and the second holds three entries. Token eight fills the remaining position; token nine triggers allocation of a third physical block. No capacity for the request’s maximum possible length had to be reserved at admission.\n\nA common misconception is that PagedAttention makes attention local to a block. It does not. Blocks organize storage and kernel work; a query still attends across every permitted earlier position. The logical-to-physical mapping changes where keys and values are fetched, not the causal dependency set or softmax definition.",
+      "sourceIds": [
+        "section-4"
+      ],
+      "claimIds": [
+        "c4",
+        "c6",
+        "c7"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s4",
+      "title": "Block-wise attention is still exact attention",
+      "markdown": "For query position $i$, let $M=\\lceil i/B\\rceil$ be the number of logical blocks covering its causal prefix. Define $A_{ij}=(a_{i,(j-1)B+1},\\ldots,a_{i,jB})$, the row vector of attention weights for block $j$. Ignoring padded positions beyond $i$, the output can be grouped as\n\n$$o_i=\\sum_{j=1}^{M}V_jA_{ij}^{\\top}.$$\n\nThis is a regrouping of the dense weighted sum, not an approximation: every permitted key contributes to one global softmax denominator, and every corresponding value contributes to the output. The kernel consults the block table, fetches the possibly non-contiguous physical blocks, and accumulates their contributions.\n\nThe streaming-attention control demonstrates an exact numerical principle useful for understanding block traversal. It fixes scores $[2,1,0,-1]$ and scalar values $[3,5,-2,1]$. For a visited tile, it updates a running maximum $m$, normalizer $\\ell$, and weighted accumulator $u$:\n\n$$m'=\\max(m,\\max(s)),$$\n$$\\ell'=e^{m-m'}\\ell+\\sum_r e^{s_r-m'},\\qquad u'=e^{m-m'}u+\\sum_r e^{s_r-m'}v_r,$$\n$$y'=u'/\\ell'.$$\n\nHere $s_r$ and $v_r$ are the score and scalar value in visited position $r$, and the initial rescale is zero for empty state. Predict whether tile width or forward versus reverse visitation changes the final output. It changes partitions and intermediate states, but not the final dense result. This toy explains stable exact accumulation only; it does not implement PagedAttention’s block table or measure traffic and runtime.",
+      "sourceIds": [
+        "section-4"
+      ],
+      "claimIds": [
+        "c5"
+      ],
+      "figureId": "fig-streaming"
+    },
+    {
+      "id": "s5",
+      "title": "Allocation follows growth, and reclamation follows completion",
+      "markdown": "At each decoding iteration, the centralized scheduler selects the sequences to batch and allocates physical storage for any newly required logical blocks. It sends the current input token IDs and each sequence’s block table to the GPU workers. During model execution, the PagedAttention kernel uses those mappings to read earlier keys and values, while the new key and value are written either into the unfilled position of the final block or into a newly allocated block.\n\nBecause logical blocks fill from left to right and a new physical block is allocated only when the preceding blocks are full, a request’s unused allocated capacity is confined to its final partial block. When generation finishes, the request’s physical blocks are freed for reuse. This memory policy complements iteration-level scheduling: scheduling interleaves requests at token boundaries, while paging allows more of their growing KV working sets to fit in GPU memory. Neither changes the sequential dependency between successive tokens of one sequence.\n\nIf no free GPU blocks remain, vLLM preempts an entire sequence rather than isolated blocks, since processing that sequence requires all of its token states together. Sequences belonging to the same request are preempted and resumed as a group because they may share physical blocks. The paper considers two recovery paths: swapping the evicted KV blocks to CPU memory and restoring them later, or discarding them and recomputing the KV cache when the sequence resumes by processing its known tokens as a prompt.\n\nThe preferable recovery path depends on the system conditions. Swapping is governed by CPU–GPU transfer behavior and suffers when small blocks create many small transfers; recomputation depends on GPU compute and is largely independent of block size. In the reported ablation, recomputation was more efficient for small blocks, swapping was more efficient for large blocks, and block sizes from 16 to 64 produced comparable end-to-end performance. These are measured tradeoffs for the evaluated implementation and hardware, not a universal ordering.",
+      "sourceIds": [
+        "section-2",
+        "section-4",
+        "section-4-part-2",
+        "section-4-part-3",
+        "section-7"
+      ],
+      "claimIds": [
+        "c7",
+        "c9",
+        "c12"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s6",
+      "title": "Sharing prefixes safely with copy-on-write",
+      "markdown": "Parallel samples from one prompt begin with identical prefix state. Rather than duplicate that state, their logical block tables can reference the same physical prompt blocks. A reference count records how many logical owners point to each physical block.\n\nSharing remains valid only while the stored KV entries are identical. Suppose samples A and B reference the same partially filled final prompt block. When A must append into it, modifying the shared block in place would corrupt B’s logical history. Copy-on-write allocates a private physical block for A, copies the old contents, updates A’s mapping, and reduces the old block’s reference count. B may retain the original. Full immutable prefix blocks need no copy.\n\nBeam search extends the same identity rule beyond the initial prompt: candidates may share blocks for any common ancestry, release references when pruned, and diverge through new mappings. The key invariant is semantic, not merely textual: a cached token state depends on its preceding context and position, so equal token strings do not by themselves justify sharing. PagedAttention enables block-granularity sharing; it does not declare arbitrary repeated tokens equivalent.",
+      "sourceIds": [
+        "section-2",
+        "section-4-part-2"
+      ],
+      "claimIds": [
+        "c2",
+        "c8"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s7",
+      "title": "Reading the reported gains without losing the conditions",
+      "markdown": "The evaluation synthesized arrival traces from tokenized ShareGPT and Alpaca input/output lengths, using Poisson arrival times because the datasets lacked timestamps. It tested OPT models of 13B, 66B, and 175B parameters and LLaMA-13B on Google Cloud A2 instances with NVIDIA A100 GPUs. The principal metric was normalized latency—mean request latency divided by output length—across request rates.\n\nOn ShareGPT-derived basic-sampling workloads, vLLM sustained 1.7–2.7 times higher request rates than the paper’s Orca (Oracle) implementation and 2.7–8 times higher rates than Orca (Max), at similar latencies. Orca (Oracle) was explicitly an infeasible upper-bound baseline given actual output lengths; Orca (Max) reserved to 2048 tokens. These comparisons support the proposed memory-management mechanism under those models, traces, schedulers, and baseline implementations. They should not be read as a guaranteed multiplier for every model or deployment.\n\nThe boundary becomes visible in the OPT-175B Alpaca case: ample KV space and short sequences made memory-management advantages less pronounced as execution became compute-bound. Moreover, the block indirection was not free: the authors measured 20%–26% higher attention-kernel latency than their optimized FasterTransformer comparison. End-to-end throughput improved when better batching outweighed that local overhead.",
+      "sourceIds": [
+        "section-6",
+        "section-7"
+      ],
+      "claimIds": [
+        "c10",
+        "c11"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s8",
+      "title": "Where the abstraction helps—and where it may not",
+      "markdown": "PagedAttention is useful when a workload has the same combination that characterizes online autoregressive serving: state grows during execution, its final size is unknown in advance, memory capacity limits concurrency, and some sequences can share prefixes. Fixed-size physical blocks let vLLM allocate KV capacity as tokens arrive, translate a sequence’s contiguous logical history into non-contiguous storage, share blocks by reference, isolate modifications with copy-on-write, reclaim completed state, and preempt whole sequence working sets when necessary. The attention calculation remains exact over the causal prefix; paging changes storage and access, not the mathematical dependency set.\n\nThe block size controls competing costs. A block holds $B$ token positions. Smaller $B$ limits unused capacity in the final block and creates finer-grained sharing, but may provide too little work per block for efficient parallel reads and can turn swapping into many small CPU–GPU transfers. Larger $B$ offers more parallel work per block and can improve transfer efficiency, but increases tail fragmentation and makes exact block sharing less likely. In the paper’s ablation, a block size of 16 was adopted as the default, while the favorable range varied with the sequence-length distribution; this is an implementation result under the evaluated traces and hardware rather than a fixed optimum.\n\nIndirection also has a direct cost. The PagedAttention kernels consult block tables, branch over variable sequence lengths, and read non-contiguous physical blocks. The authors reduced this cost by fusing reshape with block writes, block-table reads with attention, and discontinuous copy-on-write transfers into batched block-copy kernels. Even so, their comparison measured 20%–26% higher attention-kernel latency than the optimized FasterTransformer kernel. End-to-end serving improved when the additional memory efficiency admitted larger effective batches and outweighed that local kernel overhead.\n\nThe same balance explains where paging may not help. Static-shape workloads can plan allocation ahead of time, so dynamic address translation offers less benefit. Compute-bound workloads may not gain throughput from additional free memory because concurrency is not limited by KV capacity; there, indirection and non-contiguous access can instead reduce performance. vLLM’s all-or-nothing eviction policy, prompt-style recomputation, and fused kernels are therefore adaptations to the access pattern of autoregressive LLM serving, not evidence that paging universally improves GPU workloads.",
+      "sourceIds": [
+        "section-5",
+        "section-7",
+        "section-8",
+        "section-10"
+      ],
+      "claimIds": [
+        "c11",
+        "c12",
+        "c13"
+      ],
+      "figureId": null
+    }
+  ],
+  "figures": [
+    {
+      "id": "fig-attention",
+      "kind": "attention",
+      "title": "Temperature and normalized attention",
+      "question": "As positive temperature decreases, how does the weight on the fixed largest score change?",
+      "caption": "Four illustrative scores [2,1,0,-1] are divided by temperature and normalized with softmax, exposing how score scale changes the four attention weights.",
+      "limitation": "The scores are fixed teaching values, not a measured head or learned token similarities, and the control does not model KV allocation or PagedAttention.",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c1",
+        "c2"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "fig-memory",
+      "kind": "memory",
+      "title": "Tail padding under block allocation",
+      "question": "For 9 live tokens in 16 available slots, how does changing block width alter allocated padding relative to a fixed 16-slot reservation?",
+      "caption": "A 16-slot illustrative KV layout compares on-demand fixed-width block allocation for 9 live tokens with one fixed 16-slot reservation.",
+      "limitation": "This is slot arithmetic only: it contains no physical byte sizes, allocator implementation, bandwidth behavior, or latency measurements.",
+      "sourceIds": [
+        "section-1",
+        "section-3",
+        "section-4"
+      ],
+      "claimIds": [
+        "c3",
+        "c4",
+        "c7",
+        "c12"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "fig-streaming",
+      "kind": "streaming-attention",
+      "title": "Exact softmax accumulated by tiles",
+      "question": "Do tile width and visit order change only intermediate state, or also the final output for the fixed scores and values?",
+      "caption": "Exact online softmax visits four fixed score-value pairs by configurable tiles while carrying a maximum, normalizer, weighted accumulator, and partial output.",
+      "limitation": "The control illustrates exact softmax accumulation, not PagedAttention’s allocator or block table, and it makes no measured memory-traffic or runtime claim.",
+      "sourceIds": [
+        "section-4"
+      ],
+      "claimIds": [
+        "c5"
+      ],
+      "illustrative": true
+    }
+  ],
+  "quiz": [
+    {
+      "question": "Assume a sequence has 9 live token states, block width 4, and blocks are allocated only as needed. How many allocated slots are padding?",
+      "options": [
+        {
+          "text": "3 slots",
+          "explanation": "Correct. Three blocks provide 12 slots, so 12 minus 9 leaves 3 padded slots."
+        },
+        {
+          "text": "4 slots",
+          "explanation": "Incorrect. Four is the block width, not the unused capacity of the final allocation."
+        },
+        {
+          "text": "7 slots",
+          "explanation": "Incorrect. Seven is the unused amount under the illustrative fixed 16-slot reservation."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-4"
+      ],
+      "claimIds": [
+        "c4",
+        "c7"
+      ]
+    },
+    {
+      "question": "Two samples share a partially filled physical prefix block. One sample must append while the block’s reference count exceeds one. What preserves the other sample’s history?",
+      "options": [
+        {
+          "text": "Overwrite the shared block and update both tables",
+          "explanation": "Incorrect. Both logical sequences would then observe the writer’s new state."
+        },
+        {
+          "text": "Copy the block for the writer, then update its mapping",
+          "explanation": "Correct. Block-granularity copy-on-write isolates the modifying sequence."
+        },
+        {
+          "text": "Treat equal next-token strings as identical KV states",
+          "explanation": "Incorrect. KV state depends on context and position, not token identity alone."
+        }
+      ],
+      "answer": 1,
+      "sourceIds": [
+        "section-2",
+        "section-4-part-2"
+      ],
+      "claimIds": [
+        "c2",
+        "c8"
+      ]
+    },
+    {
+      "question": "Which conclusion is justified by the paper’s evidence and stated limitations?",
+      "options": [
+        {
+          "text": "Paging must improve every GPU workload",
+          "explanation": "Incorrect. Static-shape or compute-bound workloads may gain nothing and can pay indirection overhead."
+        },
+        {
+          "text": "PagedAttention makes causal attention local to one block",
+          "explanation": "Incorrect. Blocks organize storage; exact attention still covers the permitted prefix."
+        },
+        {
+          "text": "Memory-efficiency gains can outweigh a slower attention kernel in memory-bound serving",
+          "explanation": "Correct. The paper reports local kernel overhead alongside higher end-to-end serving throughput under evaluated memory-bound conditions."
+        }
+      ],
+      "answer": 2,
+      "sourceIds": [
+        "section-6",
+        "section-7",
+        "section-8"
+      ],
+      "claimIds": [
+        "c10",
+        "c11",
+        "c13"
+      ]
+    }
+  ],
+  "id": "paged-attention",
+  "createdAt": "2026-10-01T23:48:15.595Z",
+  "pipelineVersion": "subjects-lessons-v1",
+  "sources": [
+    {
+      "id": "abstract",
+      "label": "Original paper · abstract",
+      "url": "https://arxiv.org/abs/2309.06180",
+      "digest": "f94f8bc424dd7606d87541c4762fd388c720f3ac0dffb6b9039f8e754be12b5c",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:46:13.326Z"
+    },
+    {
+      "id": "section-1",
+      "label": "1. Introduction",
+      "url": "https://arxiv.org/html/2309.06180#S1",
+      "digest": "d50a727105c846e40cc70770bbb83f69fae18c43667a3d37e08b9ea5fc9c7f83",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:46:13.326Z"
+    },
+    {
+      "id": "section-2",
+      "label": "2. Background",
+      "url": "https://arxiv.org/html/2309.06180#S2",
+      "digest": "fc351c977a9cecad025bd01d72fbb30811e6df318e959bfa2c1464e95bad9db0",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:46:13.326Z"
+    },
+    {
+      "id": "section-3",
+      "label": "3. Memory Challenges in LLM Serving",
+      "url": "https://arxiv.org/html/2309.06180#S3",
+      "digest": "4ad495fc3c4efbba0cc154a31ae1ec9928bb4917767b7f3aa92b931ffdba9177",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:46:13.326Z"
+    },
+    {
+      "id": "section-4",
+      "label": "4. Method",
+      "url": "https://arxiv.org/html/2309.06180#S4",
+      "digest": "d6f5b5a890bd57c4598cebafa530cfe22a1456d4bdd1c87fb09ecd54e5914e4b",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:46:13.326Z"
+    },
+    {
+      "id": "section-4-part-2",
+      "label": "4. Method · part 2",
+      "url": "https://arxiv.org/html/2309.06180#S4",
+      "digest": "34c78a74411476c8dc3824385c32ff1808eb9b2907778f6c0122e1747b83269c",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:46:13.326Z"
+    },
+    {
+      "id": "section-4-part-3",
+      "label": "4. Method · part 3",
+      "url": "https://arxiv.org/html/2309.06180#S4",
+      "digest": "cf649255a0ad0b38710ae215581e29f3aad42ce07eb86230ab6696e259342a5c",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:46:13.326Z"
+    },
+    {
+      "id": "section-5",
+      "label": "5. Implementation",
+      "url": "https://arxiv.org/html/2309.06180#S5",
+      "digest": "945d649b99baff476017afc577819a3d7e1c0dfc3766d021ce571f1af30db30d",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:46:13.326Z"
+    },
+    {
+      "id": "section-6",
+      "label": "6. Evaluation",
+      "url": "https://arxiv.org/html/2309.06180#S6",
+      "digest": "ffb53ae8a8408e009873ccdf3c606fc7fe0f32fe7b34dad095a1bf1b8c60d36c",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:46:13.326Z"
+    },
+    {
+      "id": "section-7",
+      "label": "7. Ablation Studies",
+      "url": "https://arxiv.org/html/2309.06180#S7",
+      "digest": "7fd279465ac147c47176ed21da3f10ca44b68f4c422b85bf43ad836951407533",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:46:13.326Z"
+    },
+    {
+      "id": "section-8",
+      "label": "8. Discussion",
+      "url": "https://arxiv.org/html/2309.06180#S8",
+      "digest": "5f0ae940694552c11e2f27e5be79c4238cb0b121725b82cb28b1317378e8bb92",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:46:13.326Z"
+    },
+    {
+      "id": "section-9",
+      "label": "9. Related Work",
+      "url": "https://arxiv.org/html/2309.06180#S9",
+      "digest": "0581728ad731e879f7d58f01ee9c01258fb9f24b03add1349017ad66dfa359f4",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:46:13.326Z"
+    },
+    {
+      "id": "section-10",
+      "label": "10. Conclusion",
+      "url": "https://arxiv.org/html/2309.06180#S10",
+      "digest": "4eefbe90104a7ed8503027a32c8599aea02a50ba8882167257b289f1e9c27015",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:46:13.326Z"
+    },
+    {
+      "id": "section-11",
+      "label": "Acknowledgement",
+      "url": "https://arxiv.org/html/2309.06180#Sx1",
+      "digest": "9ede90f8dba1889bb005448e0d9b686fbce7ac11cbc3c12ee49fad179d08a14b",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:46:13.326Z"
+    }
+  ],
+  "review": {
+    "status": "passed",
+    "reviewedAt": "2026-10-02T02:04:27.235Z",
+    "contentDigest": "2e10f0a34552959aeb5b4acc3ef51eabc9492472d65605598088dbdf2a2b2b99"
+  }
+}

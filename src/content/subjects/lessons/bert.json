@@ -1,0 +1,447 @@
+{
+  "title": "Reading in Both Directions: How BERT Learns by Hiding Words",
+  "summary": "BERT turns masked-token prediction into deep bidirectional pre-training, then adapts one shared Transformer encoder to sentence- and token-level tasks.",
+  "prerequisites": [
+    "Basic probability and softmax normalization",
+    "Token embeddings and contextual representations",
+    "Pre-training and supervised fine-tuning",
+    "Conceptual Transformer self-attention"
+  ],
+  "objectives": [
+    "Explain why naive bidirectional token prediction has a shortcut.",
+    "Reconstruct BERT's input representation and pre-training tasks.",
+    "Calculate masked-token cross-entropy from illustrative logits.",
+    "Contrast deep bidirectional and left-to-right attention.",
+    "Map BERT outputs to classification and extractive question answering."
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "mechanism",
+      "statement": "BERT pre-trains on unlabeled data and then initializes a separate, fully fine-tuned model for each labeled downstream task.",
+      "conditions": "Under the paper's two-stage transfer framework; downstream tasks do not share one jointly fine-tuned instance.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c2",
+      "kind": "mechanism",
+      "statement": "The central architectural distinction is that BERT's Transformer encoder permits bidirectional self-attention, unlike a left-context-only Transformer.",
+      "conditions": "Comparison made in the paper between BERT and OpenAI GPT-style constrained self-attention.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c3",
+      "kind": "mechanism",
+      "statement": "Each BERT input vector is the elementwise sum of token, segment, and position embeddings.",
+      "conditions": "For the input representation described in the original BERT architecture.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c4",
+      "kind": "result",
+      "statement": "The paper reports two principal model configurations: BASE with 12 layers and 110M parameters, and LARGE with 24 layers and 340M parameters.",
+      "conditions": "For the two model sizes primarily reported in the paper.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c5",
+      "kind": "mechanism",
+      "statement": "Masked language modeling predicts selected original token identities from their surrounding context rather than reconstructing every input token.",
+      "conditions": "For BERT's masked-language-model pre-training objective.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c6",
+      "kind": "mechanism",
+      "statement": "BERT selects 15% of WordPiece positions for prediction and corrupts a selected position using an 80% mask, 10% random-token, and 10% unchanged mixture.",
+      "conditions": "For the masking procedure used in the paper's reported experiments.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c7",
+      "kind": "caveat",
+      "statement": "The mixed corruption rule addresses—but does not eliminate—the mismatch caused by the absence of the [MASK] token during fine-tuning.",
+      "conditions": "For fine-tuning inputs in the original BERT setup, where [MASK] is not normally present.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c8",
+      "kind": "mechanism",
+      "statement": "Next sentence prediction is a balanced binary task distinguishing an actual following sentence from a random corpus sentence.",
+      "conditions": "For construction of BERT's NSP pre-training examples from a monolingual corpus.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c9",
+      "kind": "caveat",
+      "statement": "The pre-trained [CLS] vector should not automatically be interpreted as a general-purpose sentence embedding without task adaptation.",
+      "conditions": "Before downstream fine-tuning; the paper specifically trained this vector through NSP.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c10",
+      "kind": "equation",
+      "statement": "For extractive question answering, BERT assigns each token a start probability by softmax-normalizing dot products between a learned start vector and contextual token vectors.",
+      "conditions": "For the paper's SQuAD v1.1 fine-tuning head, with probabilities normalized over paragraph words.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c11",
+      "kind": "result",
+      "statement": "In the controlled BASE ablation, the left-to-right model without NSP underperformed the bidirectional MLM model without NSP on every listed task.",
+      "conditions": "Table 5 Dev results using the same pre-training data, fine-tuning scheme, and hyperparameters as BERT BASE.",
+      "sourceIds": [
+        "section-5"
+      ]
+    },
+    {
+      "id": "c12",
+      "kind": "result",
+      "statement": "The paper reports an official GLUE score of 80.5 for BERT LARGE versus 72.8 for OpenAI GPT at the time of writing.",
+      "conditions": "Official GLUE leaderboard as observed by the authors at the time of writing; not a timeless leaderboard comparison.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c13",
+      "kind": "result",
+      "statement": "The reported SQuAD 2.0 comparison showed a 5.1 F1 improvement over the previous best system under the paper's leaderboard comparison.",
+      "conditions": "SQuAD 2.0 results in Table 3, excluding comparison systems that used BERT as a component.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c14",
+      "kind": "caveat",
+      "statement": "BERT LARGE fine-tuning could be unstable on small datasets, so the authors used multiple random restarts and selected by Dev performance.",
+      "conditions": "For the reported BERT LARGE GLUE fine-tuning procedure on small datasets.",
+      "sourceIds": [
+        "section-4"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "s1",
+      "title": "The shortcut that prevents naive bidirectional prediction",
+      "markdown": "BERT begins with a tension. Language understanding benefits when a token representation incorporates words on both sides: in “the crane lifted the beam,” later context helps distinguish a machine from a bird. Yet a conventional language model predicts every token from visible tokens. If unrestricted bidirectional layers process the intact sequence, information about the target can travel through neighboring representations and back to the prediction site. The network can effectively discover the answer it was asked to infer.\n\nBERT prevents this intact-sequence shortcut from being universally available by stochastically corrupting selected token positions before contextualization. For a selected position, the original identity is unavailable at its own input position when the token is replaced by $[\\mathrm{MASK}]$ or by a random token, which together occur 90% of the time under the paper's procedure. The remaining 10% of selected positions are left unchanged and therefore do expose their original identity, but they still contribute to the masked-language-model loss. This mixture lets every layer combine left and right context without allowing the model to rely on an intact target at every selected position. Bidirectionality is not merely a forward model joined to a backward model at the end: both directions interact repeatedly through the deep Transformer stack.\n\nA useful prerequisite is attention normalization. Given scores $z_1,\\ldots,z_n$, softmax produces\n\n$$a_i=\\frac{\\exp(z_i)}{\\sum_{j=1}^{n}\\exp(z_j)},$$\n\nwhere $a_i$ is the nonnegative weight for item $i$, $z_i$ is its score, and $n$ is the number of available items. The illustrative attention control divides four fixed scores by a positive temperature. Predict how lowering temperature changes their normalized weights: it should concentrate probability on the largest score. This teaches normalization, not BERT's learned similarities, multiple heads, or measured attention patterns.",
+      "sourceIds": [
+        "section-1",
+        "section-3"
+      ],
+      "claimIds": [
+        "c2",
+        "c5"
+      ],
+      "figureId": "f1"
+    },
+    {
+      "id": "s2",
+      "title": "One sequence assembled from three coordinate systems",
+      "markdown": "BERT first converts text into WordPiece tokens from a 30,000-token vocabulary. It prepends $[\\mathrm{CLS}]$ to every sequence and uses $[\\mathrm{SEP}]$ as a boundary. A pair can therefore be arranged schematically as\n\n$$[\\mathrm{CLS}],\\ A_1,\\ldots,A_m,\\ [\\mathrm{SEP}],\\ B_1,\\ldots,B_n,\\ [\\mathrm{SEP}].$$\n\nHere $A_i$ and $B_i$ are WordPiece tokens from two text spans, while $m$ and $n$ are their respective token counts. “Sentence” in the paper can mean any contiguous text span, not necessarily a grammatical sentence.\n\nAt position $i$, the input vector is\n\n$$x_i=e_i^{\\mathrm{tok}}+e_i^{\\mathrm{seg}}+e_i^{\\mathrm{pos}},$$\n\nwhere $x_i\\in\\mathbb{R}^{H}$ is the encoder input, $H$ is hidden width, $e_i^{\\mathrm{tok}}$ identifies the WordPiece, $e_i^{\\mathrm{seg}}$ marks membership in segment A or B, and $e_i^{\\mathrm{pos}}$ marks position. Summation keeps the width fixed while supplying three kinds of identity.\n\nAfter $L$ Transformer blocks with $A$ attention heads, the final $[\\mathrm{CLS}]$ vector is $C\\in\\mathbb{R}^{H}$ and the final vector at ordinary token position $i$ is $T_i\\in\\mathbb{R}^{H}$. Do not confuse the symbol $A$ for the number of heads with segment A; they are unrelated uses of the same letter. The reported BASE configuration used $(L,H,A)=(12,768,12)$, while LARGE used $(24,1024,16)$.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c3",
+        "c4"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s3",
+      "title": "Masked prediction as a selective learning signal",
+      "markdown": "The training generator selects 15% of WordPiece positions as prediction targets. For each selected position, it supplies $[\\mathrm{MASK}]$ 80% of the time, a random token 10% of the time, and the original token unchanged 10% of the time. Crucially, selection determines the loss target even when the visible token remains unchanged. The model predicts the original vocabulary identity only at selected positions rather than reconstructing the whole sequence.\n\nFor one selected position $i$, let $h_i=T_i$ be its final contextual vector, let $r_v$ be the output score for vocabulary item $v$, and let $y$ be the original token. The masked-token loss is\n\n$$\\mathcal{L}_{i}=-\\log p(y\\mid\\widetilde{x}),\\qquad p(v\\mid\\widetilde{x})=\\frac{\\exp(r_v)}{\\sum_{u\\in V}\\exp(r_u)},$$\n\nwhere $\\widetilde{x}$ is the corrupted sequence and $V$ is the vocabulary.\n\nWorked example, explicitly illustrative: suppose the candidate vocabulary is only $V=\\{\\text{cat},\\text{dog},\\text{tree}\\}$ and the logits are $(\\log 4,\\log 2,\\log 1)$. Their exponentials are $(4,2,1)$, so the probabilities are $(4/7,2/7,1/7)$. If the hidden original is “dog,” then\n\n$$\\mathcal{L}_{i}=-\\log(2/7)\\approx1.253.$$\n\nThis arithmetic demonstrates cross-entropy; it is not a reported BERT example, vocabulary, or measured loss. The patch control offers a second abstraction: changing a deterministic mask fraction on an $8\\times8$ grid changes how many cells are hidden. Predict the visible count before moving the control. It clarifies target selection, but it is an image-grid mask—not WordPiece corruption, contextual prediction, or reconstruction quality.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c5",
+        "c6",
+        "c7"
+      ],
+      "figureId": "f2"
+    },
+    {
+      "id": "s4",
+      "title": "Why corruption is deliberately inconsistent",
+      "markdown": "Always replacing selected tokens with $[\\mathrm{MASK}]$ would make the prediction problem tidy, but downstream inputs normally contain no such symbol. BERT therefore uses the 80/10/10 mixture to reduce dependence on a token seen only during pre-training. Random replacement sometimes forces the model to distrust the visible identity; unchanged selection still creates a learning signal for the original word.\n\nA common misconception is that 15% of tokens are literally displayed as $[\\mathrm{MASK}]$. Under the stated sampling process, 15% are selected for prediction, but only $0.15\\times0.80=0.12$, or an expected 12% of all positions, become $[\\mathrm{MASK}]$. An expected 1.5% receive random tokens and another expected 1.5% remain unchanged while still contributing MLM loss. This calculation follows the declared probabilities; actual finite sequences can differ because selection is random.\n\nAnother misconception is that MLM makes BERT an ordinary left-to-right text generator. Its training target is a set of hidden positions conditioned on visible context from both directions, not the next token conditioned only on a prefix. The objective learns contextual representations suited to understanding tasks; it does not by itself specify an autoregressive generation procedure.",
+      "sourceIds": [
+        "section-1",
+        "section-3"
+      ],
+      "claimIds": [
+        "c2",
+        "c5",
+        "c6",
+        "c7"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s5",
+      "title": "A second pre-training signal for paired text",
+      "markdown": "BERT jointly adds next sentence prediction, or NSP. Each example contains spans A and B. Half the time B actually follows A in the corpus and receives the label IsNext; otherwise B is a random corpus sentence labeled NotNext. The final $[\\mathrm{CLS}]$ vector $C$ feeds the binary prediction.\n\nNSP is separate from MLM. MLM supervises selected token identities, whereas NSP supervises a relationship between two packed spans. Their shared encoder receives both signals during pre-training. Document-level corpora matter for this construction because genuine contiguous successors must remain available; the paper used BooksCorpus and English Wikipedia, retaining Wikipedia text passages while ignoring lists, tables, and headers.\n\nIt is tempting to call $C$ a universal sentence embedding. The paper explicitly warns against that interpretation before fine-tuning: $C$ was trained for NSP. It becomes useful as an aggregate task representation when a downstream classification objective adapts it. The original ablation reports that removing NSP hurt QNLI, MNLI, and SQuAD 1.1, but that result belongs to this paper's pre-training recipe. It does not establish that every later encoder, corpus construction, or replacement objective requires NSP.",
+      "sourceIds": [
+        "section-3",
+        "section-5"
+      ],
+      "claimIds": [
+        "c8",
+        "c9"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s6",
+      "title": "Fine-tuning changes the interface, not the encoder recipe",
+      "markdown": "Pre-training produces an initialization, not one frozen system that answers every task. For each downstream task, BERT starts from the same pre-trained parameters, adds a small task-specific output layer, and fine-tunes all parameters on labeled data. Each task therefore ends with its own adapted model.\n\nFor $K$-class classification, the paper introduces weights $W\\in\\mathbb{R}^{K\\times H}$ and scores classes from $C$. If $C$ is treated as a row vector, the logits are $CW^{\\mathsf{T}}\\in\\mathbb{R}^{K}$, followed by softmax and a classification loss. Here $K$ is the number of labels, $H$ is hidden width, and $W^{\\mathsf{T}}$ is the transpose of $W$.\n\nExtractive question answering uses token outputs instead. Let $S,E\\in\\mathbb{R}^{H}$ be learned start and end vectors. The start probability at passage position $i$ is\n\n$$P_i=\\frac{\\exp(S\\cdot T_i)}{\\sum_j\\exp(S\\cdot T_j)},$$\n\nwhere $S\\cdot T_i$ is a dot product and $j$ ranges over eligible paragraph positions. A candidate span $(i,j)$ receives score $S\\cdot T_i+E\\cdot T_j$, subject to $j\\ge i$. Thus one encoder supports sequence classification through $C$ and token-level span selection through the $T_i$ vectors. This is architectural reuse, not identical output heads.",
+      "sourceIds": [
+        "section-2",
+        "section-3",
+        "section-4"
+      ],
+      "claimIds": [
+        "c1",
+        "c10"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s7",
+      "title": "What the comparisons establish—and what they do not",
+      "markdown": "The clearest evidence for deep bidirectionality comes from the controlled BASE ablation. Both “No NSP” and “LTR & No NSP” omitted next sentence prediction, while using the same pre-training data, fine-tuning scheme, and hyperparameters as BERT BASE. The first retained bidirectional masked-language-model pre-training; the second used a standard left-to-right language-model objective and kept the left-only attention constraint during fine-tuning to avoid introducing a separate pre-training/fine-tuning mismatch. The left-to-right model scored below the bidirectional MLM model on every listed task. On SQuAD Dev, for example, F1 fell from 87.9 to 77.8. Adding a randomly initialized BiLSTM above the left-to-right model raised SQuAD F1 to 84.9, but still did not match the pre-trained bidirectional model and reduced the reported GLUE-task scores. Within this controlled setup, the comparison supports learning representations that integrate left and right context throughout pre-training; it does not show that attention direction alone determines performance across all language-model systems.\n\nThe broader benchmark results measure particular trained systems under particular evaluation conditions. At the time of writing, BERT LARGE had an official GLUE score of 80.5, compared with 72.8 for OpenAI GPT. On SQuAD 2.0, the reported single BERT LARGE system achieved 83.1 Test F1, a 5.1-point improvement over the previous best comparison entry after excluding systems that used BERT as a component. These values depend on the contemporary datasets, metrics, model configurations, eligibility rules, and leaderboard state. They establish the performance of the evaluated systems, not a timeless advantage of every BERT-derived model.\n\nThe experiments also expose important tradeoffs. Masked-language-model pre-training enables bidirectional conditioning, but only selected positions receive token-prediction loss, and the presence of $[\\mathrm{MASK}]$ during pre-training creates an input mismatch with ordinary fine-tuning; the 80/10/10 corruption mixture mitigates rather than eliminates that mismatch. NSP supplies supervision for paired spans through a balanced actual-next-versus-random classification task, but it is one specific proxy for inter-sentence relationships. Model scale matters as well: BASE contains 110 million parameters and LARGE 340 million, so a small downstream output layer does not imply inexpensive pre-training. Finally, BERT LARGE fine-tuning was sometimes unstable on small GLUE datasets. The authors therefore used several random restarts—varying data shuffling and classifier initialization from the same pre-trained checkpoint—and selected the best run by Dev performance. That procedure is part of the conditions under which the reported results should be interpreted.",
+      "sourceIds": [
+        "main-text",
+        "section-3",
+        "section-4",
+        "section-5"
+      ],
+      "claimIds": [
+        "c4",
+        "c7",
+        "c11",
+        "c12",
+        "c13",
+        "c14"
+      ],
+      "figureId": null
+    }
+  ],
+  "figures": [
+    {
+      "id": "f1",
+      "kind": "attention",
+      "title": "Temperature and normalized attention",
+      "question": "As positive temperature decreases, how does the weight assigned to the fixed top score change?",
+      "caption": "Illustrative softmax of fixed scores [2,1,0,-1] divided by a positive temperature; the display shows how temperature changes four normalized weights.",
+      "limitation": "The scores are fixed and illustrative, not a measured BERT head, learned token similarity, multi-head computation, or empirical attention analysis.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c2",
+        "c10"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "f2",
+      "kind": "patches",
+      "title": "How many positions remain visible?",
+      "question": "When the deterministic mask fraction increases on the 8 by 8 grid, how do the visible and masked cell counts change?",
+      "caption": "An illustrative 8 by 8 image grid uses a deterministic mask to make selected-versus-visible position counts concrete.",
+      "limitation": "This is image-cell masking only; it does not implement WordPiece selection, BERT's 80/10/10 corruption, contextual token prediction, or reconstruction quality.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c5",
+        "c6",
+        "c7"
+      ],
+      "illustrative": true
+    }
+  ],
+  "quiz": [
+    {
+      "question": "Assume a selected token's original identity is unavailable, but every encoder layer may attend to visible tokens on both sides. Which description best matches BERT's MLM advantage?",
+      "options": [
+        {
+          "text": "It permits deep bidirectional context without exposing the selected target directly.",
+          "explanation": "Correct: masking blocks the trivial identity shortcut while bidirectional self-attention combines left and right context."
+        },
+        {
+          "text": "It converts the encoder into a strictly left-to-right generator.",
+          "explanation": "Incorrect: the relevant distinction is precisely that visible context can be used from both directions."
+        },
+        {
+          "text": "It guarantees that every input token contributes a prediction loss.",
+          "explanation": "Incorrect: BERT predicts selected masked-language-model positions rather than reconstructing the entire input."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-1",
+        "section-3"
+      ],
+      "claimIds": [
+        "c2",
+        "c5"
+      ]
+    },
+    {
+      "question": "Under the paper's 15% selection and 80/10/10 corruption rule, what expected fraction of all positions is replaced by the literal [MASK] token?",
+      "options": [
+        {
+          "text": "12%",
+          "explanation": "Correct: $0.15\\times0.80=0.12$, so the expected fraction is 12%."
+        },
+        {
+          "text": "15%",
+          "explanation": "Incorrect: 15% are selected for prediction, but not every selected position becomes [MASK]."
+        },
+        {
+          "text": "80%",
+          "explanation": "Incorrect: 80% is conditional on a position already having been selected."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c6",
+        "c7"
+      ]
+    },
+    {
+      "question": "Which conclusion is best supported by the controlled BASE ablation described in the paper?",
+      "options": [
+        {
+          "text": "Within the tested setup, bidirectional MLM without NSP outperformed left-to-right pre-training without NSP on every listed task.",
+          "explanation": "Correct: this preserves the scope and conditions of the reported comparison."
+        },
+        {
+          "text": "NSP is necessary for every future bidirectional language encoder.",
+          "explanation": "Incorrect: the experiment concerns BERT's tested recipe and does not prove universal necessity."
+        },
+        {
+          "text": "Attention direction alone explains every reported difference between BERT and all competing systems.",
+          "explanation": "Incorrect: broader system comparisons also differ in data, objectives, model scale, and evaluation conditions."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-5"
+      ],
+      "claimIds": [
+        "c11"
+      ]
+    }
+  ],
+  "id": "bert",
+  "createdAt": "2026-10-01T23:46:13.003Z",
+  "pipelineVersion": "subjects-lessons-v1",
+  "sources": [
+    {
+      "id": "abstract",
+      "label": "Original paper · abstract",
+      "url": "https://arxiv.org/abs/1810.04805",
+      "digest": "63a5ec137e71018f6d8dd1b4d7375ac2c72cc9def63b6d10ec6bc2ecffb0d9fd",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:43:46.916Z"
+    },
+    {
+      "id": "main-text",
+      "label": "Original paper · unsectioned main text",
+      "url": "https://arxiv.org/html/1810.04805",
+      "digest": "3999d4fed4efa2e7ba77f126a52dc6dd4754ddd46719fc54f865c6487ac4fe6d",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:43:46.916Z"
+    },
+    {
+      "id": "section-1",
+      "label": "1 Introduction",
+      "url": "https://arxiv.org/html/1810.04805#S1",
+      "digest": "2a5b39b48939ce6bbcc60b744efdc9414ec795c211ef0ce8d08918f86510223e",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:43:46.916Z"
+    },
+    {
+      "id": "section-2",
+      "label": "2 Related Work",
+      "url": "https://arxiv.org/html/1810.04805#S2",
+      "digest": "aafd1ee773e6b0dbea86424a672b9d5be5c0de76f49141429d7c58e339362b8f",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:43:46.916Z"
+    },
+    {
+      "id": "section-3",
+      "label": "3 BERT",
+      "url": "https://arxiv.org/html/1810.04805#S3",
+      "digest": "5691f843dd77d31fbd000fd12213eaf0d9a55e70fc0c2735991df32efcb2df37",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:43:46.916Z"
+    },
+    {
+      "id": "section-3-part-2",
+      "label": "3 BERT · part 2",
+      "url": "https://arxiv.org/html/1810.04805#S3",
+      "digest": "02b87f6eb58fe8dd427cac02bfcf288415693dcb3ba64736f9ba657bfdf273bc",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:43:46.916Z"
+    },
+    {
+      "id": "section-4",
+      "label": "4 Experiments",
+      "url": "https://arxiv.org/html/1810.04805#S4",
+      "digest": "e42ac32c3f7b4ca60cede6e8e07e8d96c197aff3b7be3c0de9c6d1ddcf84b8ed",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:43:46.916Z"
+    },
+    {
+      "id": "section-5",
+      "label": "5 Ablation Studies",
+      "url": "https://arxiv.org/html/1810.04805#S5",
+      "digest": "6fffcac47fb8e13cabd4b931d16c694db21975f9a93b39a1ca2b98ca6b5e9bba",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:43:46.916Z"
+    },
+    {
+      "id": "section-6",
+      "label": "6 Conclusion",
+      "url": "https://arxiv.org/html/1810.04805#S6",
+      "digest": "740d697f216dc91b1ef62ea38d7ade28507091f43d79a5c0355c71b922ffdd03",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:43:46.916Z"
+    }
+  ],
+  "review": {
+    "status": "passed",
+    "reviewedAt": "2026-10-02T01:49:58.785Z",
+    "contentDigest": "daa98289495635ef7e6f1ae8e101e6728f7a67d559ba8155aeffb8f60dfb7eb2"
+  }
+}

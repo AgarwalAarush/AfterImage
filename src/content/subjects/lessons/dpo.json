@@ -1,0 +1,425 @@
+{
+  "title": "The Vanishing Partition Function: How DPO Turns Preferences into a Policy Loss",
+  "summary": "DPO reparameterizes a KL-regularized reward model through policy likelihood ratios, turning offline pairwise preferences into a direct classification loss without an RL loop.",
+  "prerequisites": [
+    "Conditional language-model probabilities and log probabilities",
+    "Binary logistic regression and maximum likelihood",
+    "KL divergence as a penalty for policy drift",
+    "Pairwise data with preferred and dispreferred responses"
+  ],
+  "objectives": [
+    "Derive the DPO loss from KL-regularized reward maximization.",
+    "Explain why the prompt-dependent partition function cancels.",
+    "Interpret how the reference policy shapes each preference margin.",
+    "Calculate the DPO loss for a small illustrative comparison.",
+    "Separate the paper's evidence from broader claims about DPO."
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "mechanism",
+      "statement": "The standard RLHF pipeline reviewed by the paper uses supervised fine-tuning, preference-based reward modeling, and reinforcement-learning optimization.",
+      "conditions": "For the RLHF formulation reviewed in the paper, with pairwise preference data and a separately parameterized reward model.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c2",
+      "kind": "equation",
+      "statement": "Under the Bradley-Terry model, the probability that one response is preferred depends on the logistic transform of the difference between the responses’ latent rewards.",
+      "conditions": "Assuming pairwise preferences follow the Bradley-Terry model.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c3",
+      "kind": "equation",
+      "statement": "The KL-regularized reward-maximizing policy is proportional to the reference policy multiplied by the exponentiated reward divided by beta.",
+      "conditions": "For the paper’s KL-constrained objective and a positive regularization coefficient beta.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c4",
+      "kind": "mechanism",
+      "statement": "Rearranging the optimal-policy expression represents reward as a scaled policy-to-reference log ratio plus a prompt-only log-partition term.",
+      "conditions": "Where the relevant policy and reference probabilities are positive and the partition function is finite.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c5",
+      "kind": "equation",
+      "statement": "Because Bradley-Terry probabilities use reward differences for responses to the same prompt, the prompt-only partition term cancels, yielding the DPO binary cross-entropy objective.",
+      "conditions": "For comparisons sharing one prompt under the Bradley-Terry preference model.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c6",
+      "kind": "mechanism",
+      "statement": "A DPO gradient raises the preferred response’s log probability and lowers the dispreferred response’s log probability, weighted more strongly when their implicit rewards are incorrectly ordered.",
+      "conditions": "For optimization of the paper’s DPO loss on an offline preferred-dispreferred pair.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c7",
+      "kind": "mechanism",
+      "statement": "Reward functions differing only by a prompt-dependent additive term induce the same Bradley-Terry preferences and the same optimum of the constrained policy problem.",
+      "conditions": "Within the Plackett-Luce family, including Bradley-Terry, and the paper’s constrained objective.",
+      "sourceIds": [
+        "section-5"
+      ]
+    },
+    {
+      "id": "c8",
+      "kind": "result",
+      "statement": "In the controlled sentiment experiment, DPO achieved the strongest reported reward-versus-KL frontier, including relative to the evaluated PPO variants.",
+      "conditions": "For GPT-2-large sentiment generation on IMDb prefixes, classifier-generated preferences, and the paper’s 22-run conservativeness sweep.",
+      "sourceIds": [
+        "section-6"
+      ]
+    },
+    {
+      "id": "c9",
+      "kind": "result",
+      "statement": "On TL;DR summarization, DPO’s reported GPT-4-evaluated win rate was about 61% at temperature zero, versus PPO’s 57% at its best reported temperature of zero.",
+      "conditions": "For the shared GPT-J SFT model, TL;DR test split, reference-summary baseline, and the paper’s GPT-4 evaluation protocol.",
+      "sourceIds": [
+        "section-6-part-2"
+      ]
+    },
+    {
+      "id": "c10",
+      "kind": "result",
+      "statement": "In the paper’s human comparison, DPO samples at temperature 0.25 were preferred to PPO samples at temperature zero 58% of the time.",
+      "conditions": "For the reported TL;DR human study and its specific DPO-versus-PPO comparison.",
+      "sourceIds": [
+        "section-6-part-2"
+      ]
+    },
+    {
+      "id": "c11",
+      "kind": "caveat",
+      "statement": "The paper treats its out-of-distribution evidence as initial and calls for broader study of DPO generalization, reward over-optimization, and scaling beyond the evaluated model sizes.",
+      "conditions": "The reported study evaluated models up to 6B parameters and only limited distribution-shift settings.",
+      "sourceIds": [
+        "section-7"
+      ]
+    },
+    {
+      "id": "c12",
+      "kind": "caveat",
+      "statement": "The paper found that GPT-4 evaluation win rates depended on the evaluation prompt, despite reporting agreement with humans comparable to inter-human agreement in studied comparisons.",
+      "conditions": "For the TL;DR evaluation prompts and human-study comparisons reported in the paper.",
+      "sourceIds": [
+        "section-6-part-2",
+        "section-7"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "s1",
+      "title": "The optimization problem hidden inside alignment",
+      "markdown": "A pretrained language model knows many possible continuations, but preference alignment asks it to favor particular behaviors. The reviewed RLHF recipe first produces a supervised fine-tuned policy, gathers comparisons between sampled answers, fits a scalar reward model, and then runs reinforcement learning against that reward while penalizing departure from a reference policy.\n\nLet $x$ be a prompt, $y$ a complete response, $\\pi_\\theta(y\\mid x)$ the trainable policy with parameters $\\theta$, $\\pi_{\\mathrm{ref}}(y\\mid x)$ a fixed reference policy, $r(x,y)$ a scalar reward, and $\\beta>0$ the strength of the KL penalty. The conventional objective is\n\n$$\\max_{\\pi_\\theta}\\;\\mathbb{E}_{x,y\\sim\\pi_\\theta}[r(x,y)]-\\beta\\,\\mathbb{D}_{\\mathrm{KL}}[\\pi_\\theta(\\cdot\\mid x)\\|\\pi_{\\mathrm{ref}}(\\cdot\\mid x)].$$\n\nThe reward encourages preferred behavior; the KL term charges for moving probability mass away from the reference. DPO’s contribution is not to discard this trade-off. It algebraically exposes a policy loss whose optimum corresponds to the same kind of KL-regularized problem under the paper’s preference assumptions.",
+      "sourceIds": [
+        "section-1",
+        "section-3",
+        "section-4"
+      ],
+      "claimIds": [
+        "c1",
+        "c3"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s2",
+      "title": "Preferences supply differences, not absolute rewards",
+      "markdown": "The dataset is $\\mathcal D=\\{(x^{(i)},y_w^{(i)},y_l^{(i)})\\}_{i=1}^N$, where $N$ is the number of comparisons, $y_w$ is the preferred response, and $y_l$ is the dispreferred response. DPO adopts the Bradley-Terry model used in the paper’s derivation:\n\n$$p(y_1\\succ y_2\\mid x)=\\sigma(r(x,y_1)-r(x,y_2)),$$\n\nwhere $y_1\\succ y_2$ means that $y_1$ is preferred, $p$ is the modeled preference probability, and $\\sigma(z)=1/(1+e^{-z})$ is the logistic function.\n\nOnly a reward difference appears. Adding the same prompt-dependent quantity $f(x)$ to every response reward changes neither the preference probability nor the optimum of the constrained policy problem. Thus pairwise labels do not identify an absolute reward origin for each prompt. This is useful rather than fatal: DPO needs a representative of each reward-equivalence class, not a uniquely calibrated standalone reward.\n\nThe attention toy in this section provides a prerequisite analogy only. It divides fixed scores $[2,1,0,-1]$ by a positive temperature and applies softmax. Predict how lowering temperature redistributes normalized weight. Like Bradley-Terry, the pictured computation converts relative scores into probabilities and is unchanged by adding one constant to every score. It is not a learned attention head, a preference model, or evidence about DPO training.",
+      "sourceIds": [
+        "section-3",
+        "section-5"
+      ],
+      "claimIds": [
+        "c2",
+        "c7"
+      ],
+      "figureId": "f1"
+    },
+    {
+      "id": "s3",
+      "title": "Solve the regularized policy before training it",
+      "markdown": "For a fixed reward, the paper writes the optimizer of the KL-regularized objective in closed form:\n\n$$\\pi_r(y\\mid x)=\\frac{1}{Z(x)}\\pi_{\\mathrm{ref}}(y\\mid x)\\exp\\!\\left(\\frac{r(x,y)}{\\beta}\\right),$$\n\nwith\n\n$$Z(x)=\\sum_y\\pi_{\\mathrm{ref}}(y\\mid x)\\exp\\!\\left(\\frac{r(x,y)}{\\beta}\\right).$$\n\nHere $\\pi_r$ denotes the reward-optimal policy and $Z(x)$ normalizes its probabilities. Taking logs and rearranging gives\n\n$$r(x,y)=\\beta\\log\\frac{\\pi_r(y\\mid x)}{\\pi_{\\mathrm{ref}}(y\\mid x)}+\\beta\\log Z(x).$$\n\nThis equation is the hinge of DPO. A response receives a larger implicit reward when the optimized policy raises its probability relative to the reference. The reference therefore matters inside every comparison: DPO does not merely maximize the preferred response’s raw likelihood.\n\nA common misconception is that DPO assumes $Z(x)=1$ for the original reward. Instead, the unknown $\\beta\\log Z(x)$ is shared by all responses to the same prompt. Preference differences erase it. The theory then selects an equivalent normalized reward representative expressible as a policy-to-reference log ratio.",
+      "sourceIds": [
+        "section-4",
+        "section-5"
+      ],
+      "claimIds": [
+        "c3",
+        "c4",
+        "c7"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s4",
+      "title": "Cancellation produces the direct loss",
+      "markdown": "Substitute the rearranged reward into the Bradley-Terry difference. Because $y_w$ and $y_l$ share $x$, their two $\\beta\\log Z(x)$ terms cancel. Define the policy-relative margin\n\n$$m_\\theta=\\beta\\left[\\log\\frac{\\pi_\\theta(y_w\\mid x)}{\\pi_{\\mathrm{ref}}(y_w\\mid x)}-\\log\\frac{\\pi_\\theta(y_l\\mid x)}{\\pi_{\\mathrm{ref}}(y_l\\mid x)}\\right].$$\n\nThe DPO loss is\n\n$$\\mathcal L_{\\mathrm{DPO}}=-\\mathbb E_{(x,y_w,y_l)\\sim\\mathcal D}\\left[\\log\\sigma(m_\\theta)\\right].$$\n\nAll symbols are now explicit: $\\mathcal L_{\\mathrm{DPO}}$ is the expected negative log-likelihood, and the expectation averages offline comparisons. Training is ordinary differentiation through sequence log probabilities; it does not require sampling new actions inside an RL loop.\n\nIllustrative calculation: let $\\beta=1$, and suppose the policy-to-reference ratios are $2$ for $y_w$ and $1/2$ for $y_l$. Then $m_\\theta=\\log 2-\\log(1/2)=\\log 4$. Hence $\\sigma(m_\\theta)=4/(1+4)=0.8$, and the pair loss is $-\\log(0.8)\\approx0.223$. If both ratios were $1$, the margin would be zero, the modeled preference probability $0.5$, and the loss $-\\log(0.5)\\approx0.693$. These numbers are constructed arithmetic, not paper measurements.",
+      "sourceIds": [
+        "section-4"
+      ],
+      "claimIds": [
+        "c4",
+        "c5"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s5",
+      "title": "Why difficult pairs push harder",
+      "markdown": "Differentiating the loss reveals more than the slogan “increase winners, decrease losers.” Define the implicit reward\n\n$$\\hat r_\\theta(x,y)=\\beta\\log\\frac{\\pi_\\theta(y\\mid x)}{\\pi_{\\mathrm{ref}}(y\\mid x)}.$$\n\nFor each pair, the gradient contains the weight\n\n$$\\sigma(\\hat r_\\theta(x,y_l)-\\hat r_\\theta(x,y_w)).$$\n\nIt multiplies the difference between the preferred and dispreferred response log-probability gradients. If the implicit model ranks the loser above the winner, the weight is large; if it already separates them confidently, the weight is small. The paper reports that removing this weighting in a naive probability-ratio variant can cause degeneration.\n\nThe optimizer toy isolates how a gradient update behaves: it runs plain gradient descent for 12 iterations on the illustrative scalar function $f(z)=z^2/2$, beginning at $z=3$. Predict how changing the learning rate alters convergence. This helps distinguish the objective’s gradient from the procedure that follows it: DPO supplies a classification loss, while an optimizer still updates parameters. The control is neither Adam nor PPO, does not represent a language model, and makes no stability claim about DPO.",
+      "sourceIds": [
+        "section-4"
+      ],
+      "claimIds": [
+        "c6"
+      ],
+      "figureId": "f2"
+    },
+    {
+      "id": "s6",
+      "title": "What the experiments establish—and what they do not",
+      "markdown": "## What the experiments establish—and what they do not\n\nThe controlled sentiment experiment directly tests how effectively each method solves the KL-regularized objective that motivates DPO. Prompts were prefixes of IMDb movie reviews, and a GPT-2-large policy generated continuations. A pretrained sentiment classifier supplied the preference ordering for training pairs and also provided the reward used at evaluation time. Because this controlled setup exposes the evaluation reward, the authors could compare achieved reward with the policy’s sequence-level KL divergence from the reference rather than collapsing both quantities into a single score.\n\nThe comparison swept policy conservativeness across 22 training runs: PPO used target KL values in $\\{3,6,9,12\\}$, DPO used $\\beta\\in\\{0.05,0.1,1,5\\}$, and the unlikelihood baseline used $\\alpha\\in\\{0.05,0.1,0.5,1\\}$, alongside preferred-fine-tuning runs with different random seeds. Policies were evaluated every 100 training steps until convergence. Under these benchmark conditions, DPO produced the strongest reported reward-versus-KL frontier: at the evaluated KL levels, it achieved higher classifier reward than the tested PPO variants, including PPO-GT variants that could optimize the ground-truth classifier reward.\n\nThat frontier is closely connected to DPO’s mechanism. For a fixed reference policy, $\\beta$ scales the margin\n\n$$m_\\theta=\\beta\\left[\\log\\frac{\\pi_\\theta(y_w\\mid x)}{\\pi_{\\mathrm{ref}}(y_w\\mid x)}-\\log\\frac{\\pi_\\theta(y_l\\mid x)}{\\pi_{\\mathrm{ref}}(y_l\\mid x)}\\right].$$\n\nMinimizing $-\\log\\sigma(m_\\theta)$ fits the observed preference while measuring each response relative to the reference. The trainable policy therefore learns from fixed preferred–dispreferred pairs without generating fresh responses during each optimization update. The sentiment frontier indicates that this direct classification procedure found favorable policies for the paper’s controlled objective; its force comes from simultaneously reporting reward and distance from the reference, since additional reward obtained only through a much larger KL shift would represent a different trade-off.\n\nReddit TL;DR summarization tests the method where the true reward is unavailable. DPO, PPO, and preferred fine-tuning all began from the same GPT-J supervised fine-tuned model and learned from the human-preference dataset. The evaluation sampled summaries from the TL;DR test split at temperatures from $0.0$ to $1.0$ and asked GPT-4 to compare them with human-written reference summaries. At temperature zero, DPO’s reported win rate was approximately $61\\%$; PPO’s best reported result was $57\\%$, also at temperature zero. The paper additionally reports that DPO’s win rate varied less across sampling temperatures than PPO’s. In a separate human head-to-head study, DPO samples generated at temperature $0.25$ were preferred to PPO samples generated at temperature zero $58\\%$ of the time.\n\nThese percentages depend on the stated models, data, decoding temperatures, baselines, and judging procedure. In particular, the authors found that GPT-4 win rates changed with the evaluation prompt: a simple prompt tended to favor longer, more repetitive summaries, while a prompt emphasizing concision produced judgments closer to the human results in the studied comparisons. Human agreement with GPT-4 was reported as comparable to inter-human agreement there, supporting its use as a proxy in those experiments but leaving evaluator wording as a consequential part of the measurement.\n\nThe paper also reports an initial distribution-shift test: TL;DR-trained policies summarized CNN/DailyMail news articles and were judged against dataset summaries. At temperature zero, the reported GPT-4 win rates were $0.36$ for DPO and $0.26$ for PPO; at temperature $0.25$, they were $0.31$ and $0.23$, respectively. This is evidence for that particular shift and judging prompt, not a general result about out-of-distribution behavior. The study covered limited distribution shifts and models up to 6B parameters, so broader generalization, reward over-optimization, and behavior at substantially larger scales remained open questions.",
+      "sourceIds": [
+        "section-6",
+        "section-6-part-2"
+      ],
+      "claimIds": [
+        "c8",
+        "c9",
+        "c10"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s7",
+      "title": "The boundary of the claim",
+      "markdown": "DPO is direct in the optimization stage, not free of preference modeling assumptions. Its derivation relies on a Bradley-Terry or compatible Plackett-Luce account of comparisons, a fixed reference policy, shared-prompt response pairs, and usable offline labels. Poor, biased, inconsistent, or distribution-mismatched preferences are not repaired by the algebra.\n\nNor do the reported results establish universal superiority to PPO. Tasks, model families, evaluator choices, sampling temperatures, and tuning budgets delimit every comparison. The paper’s automated win rates were sensitive to the GPT-4 judging prompt. Its human study supported the evaluator within studied comparisons, but that does not turn an automated judge into ground truth.\n\nFinally, the paper evaluated models only up to 6B parameters and described its distribution-shift evidence as initial. It explicitly leaves broader out-of-distribution generalization, self-labeling with unlabeled prompts, reward over-optimization, and much larger-scale behavior open. The durable contribution is therefore precise: under the stated preference model, the reward-policy change of variables converts a two-stage reward-plus-RL problem into an offline policy classification objective. Whether a particular dataset, evaluator, or deployment objective satisfies those assumptions remains an empirical question.",
+      "sourceIds": [
+        "section-4",
+        "section-6-part-2",
+        "section-7"
+      ],
+      "claimIds": [
+        "c5",
+        "c11",
+        "c12"
+      ],
+      "figureId": null
+    }
+  ],
+  "figures": [
+    {
+      "id": "f1",
+      "kind": "attention",
+      "title": "Relative scores become normalized probabilities",
+      "question": "As the positive temperature decreases, which fixed score receives more of the normalized weight?",
+      "caption": "Illustrative softmax of fixed scores [2, 1, 0, -1] divided by a positive temperature; lower temperature concentrates weight on the largest score.",
+      "limitation": "This shows normalized attention weights only, not a learned head, measured token similarity, Bradley-Terry data, or DPO training.",
+      "sourceIds": [
+        "section-3",
+        "section-5"
+      ],
+      "claimIds": [
+        "c2",
+        "c7"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "f2",
+      "kind": "optimizer",
+      "title": "A loss still needs an optimizer",
+      "question": "For the shown quadratic, how does the learning rate change the 12 gradient-descent iterates from the same starting point?",
+      "caption": "Illustrative plain gradient descent on $f(x)=x^2/2$ from $x=3$; the learning-rate control changes the update trajectory.",
+      "limitation": "This is ordinary scalar gradient descent, not Adam, RMSProp, PPO, a language model, or an empirical DPO stability result.",
+      "sourceIds": [
+        "section-4"
+      ],
+      "claimIds": [
+        "c6"
+      ],
+      "illustrative": true
+    }
+  ],
+  "quiz": [
+    {
+      "question": "For one prompt, suppose both response rewards gain the same constant. Under Bradley-Terry preferences, what changes?",
+      "options": [
+        {
+          "text": "Nothing in the pairwise preference probability.",
+          "explanation": "Correct: the shared constant cancels from the reward difference."
+        },
+        {
+          "text": "The preferred response probability necessarily increases.",
+          "explanation": "Incorrect: adding the same amount to both rewards leaves their difference unchanged."
+        },
+        {
+          "text": "The reference policy becomes uniform.",
+          "explanation": "Incorrect: a reward offset does not redefine the fixed reference policy."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-3",
+        "section-5"
+      ],
+      "claimIds": [
+        "c2",
+        "c7"
+      ]
+    },
+    {
+      "question": "Holding the trainable policy fixed, why can changing the reference policy change a DPO margin?",
+      "options": [
+        {
+          "text": "The margin uses policy-to-reference log ratios for both responses.",
+          "explanation": "Correct: reference likelihoods are part of the two relative terms."
+        },
+        {
+          "text": "The reference supplies a new human label each step.",
+          "explanation": "Incorrect: DPO trains on an offline preference dataset; the reference does not label examples."
+        },
+        {
+          "text": "The reference computes the unknown partition function numerically.",
+          "explanation": "Incorrect: the shared partition term cancels in the preference difference."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-4"
+      ],
+      "claimIds": [
+        "c4",
+        "c5"
+      ]
+    },
+    {
+      "question": "Which conclusion is justified by the reported TL;DR result?",
+      "options": [
+        {
+          "text": "DPO universally outperforms PPO for every task and evaluator.",
+          "explanation": "Incorrect: the experiment is conditional on a task, models, temperatures, and evaluation protocol."
+        },
+        {
+          "text": "Under the reported TL;DR setup, DPO’s temperature-zero GPT-4 win rate exceeded PPO’s reported best case.",
+          "explanation": "Correct: the paper reports approximately 61% for DPO versus 57% for PPO under those conditions."
+        },
+        {
+          "text": "GPT-4 judgments are invariant to evaluation-prompt wording.",
+          "explanation": "Incorrect: the paper reports that evaluator win rates were affected by the prompt."
+        }
+      ],
+      "answer": 1,
+      "sourceIds": [
+        "section-6-part-2",
+        "section-7"
+      ],
+      "claimIds": [
+        "c9",
+        "c12"
+      ]
+    }
+  ],
+  "id": "dpo",
+  "createdAt": "2026-10-02T00:31:22.499Z",
+  "pipelineVersion": "subjects-lessons-v1",
+  "sources": [
+    {
+      "id": "abstract",
+      "label": "Original paper · abstract",
+      "url": "https://arxiv.org/abs/2305.18290",
+      "digest": "ec499d517ce19a00afe8ac2e74ba7dd853cb220c7f4f9157597ee65fa3422c38",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:29:26.462Z"
+    },
+    {
+      "id": "section-1",
+      "label": "1 Introduction",
+      "url": "https://arxiv.org/html/2305.18290#S1",
+      "digest": "dcbb6d49b2bbb302ad21dc90fe409996c2e53c04964fbf9c98e59e3715bb9b1c",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:29:26.462Z"
+    },
+    {
+      "id": "section-2",
+      "label": "2 Related Work",
+      "url": "https://arxiv.org/html/2305.18290#S2",
+      "digest": "eb98b99fb919bd2bafe55a14ab19da02ef00bc990b8647c5da17adf6ab4a2fc5",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:29:26.462Z"
+    },
+    {
+      "id": "section-3",
+      "label": "3 Preliminaries",
+      "url": "https://arxiv.org/html/2305.18290#S3",
+      "digest": "0bb72aed98e197e7888e4d847b445b4d716b2fab4b8733419c80da7924f42d88",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:29:26.462Z"
+    },
+    {
+      "id": "section-4",
+      "label": "4 Direct Preference Optimization",
+      "url": "https://arxiv.org/html/2305.18290#S4",
+      "digest": "1217e045c285dce1bcc471264ad21ed5e19bc0e3e7cc400785211cc2f23a5d59",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:29:26.462Z"
+    },
+    {
+      "id": "section-5",
+      "label": "5 Theoretical Analysis of DPO",
+      "url": "https://arxiv.org/html/2305.18290#S5",
+      "digest": "14dd1400f71687f3f1a975a65a70344b33d55b1e4d318100dcbdb363caa62b8d",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:29:26.462Z"
+    },
+    {
+      "id": "section-6",
+      "label": "6 Experiments",
+      "url": "https://arxiv.org/html/2305.18290#S6",
+      "digest": "c3c1bc76c6af8f6041189efcbc927f8a3cd5df9a82b731d6dd381428311fb276",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:29:26.462Z"
+    },
+    {
+      "id": "section-6-part-2",
+      "label": "6 Experiments · part 2",
+      "url": "https://arxiv.org/html/2305.18290#S6",
+      "digest": "d91d37dabe68aa60e875999ddd9ca4368c10158ba7b0af5989f199a039f34a93",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:29:26.462Z"
+    },
+    {
+      "id": "section-7",
+      "label": "7 Discussion",
+      "url": "https://arxiv.org/html/2305.18290#S7",
+      "digest": "38bbfc97a243c8ba74217308e87621e4ea56854698ac8212547a661f6f02c0c0",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:29:26.462Z"
+    }
+  ],
+  "review": {
+    "status": "passed",
+    "reviewedAt": "2026-10-02T02:12:44.464Z",
+    "contentDigest": "7cddb7a2c37beba8ea7f0487b425201d103e345fe5a91a85d52ad3ad3f32ccee"
+  }
+}

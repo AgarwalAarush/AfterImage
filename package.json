@@ -9,7 +9,9 @@
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test tests/*.test.ts",
     "worker": "tsx worker/index.ts",
-    "storage-server": "node --import tsx scripts/storage-server.ts"
+    "storage-server": "node --import tsx scripts/storage-server.ts",
+    "subjects:generate": "node --import tsx scripts/generate-subject-lessons.ts",
+    "subjects:sync": "python3 scripts/sync-subject-catalog.py"
   },
   "dependencies": {
     "@fontsource-variable/dm-sans": "latest",

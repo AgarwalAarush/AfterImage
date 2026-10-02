@@ -1,0 +1,468 @@
+{
+  "title": "The Small Matrix Beside the Giant One",
+  "summary": "LoRA freezes a pretrained model and learns factorized, low-rank weight updates that can be merged into the original matrices for efficient task adaptation.",
+  "prerequisites": [
+    "Matrix multiplication and dimensions",
+    "Rank and low-rank matrix factorization",
+    "Autoregressive language modeling",
+    "Transformer attention and gradient-based training"
+  ],
+  "objectives": [
+    "Explain why LoRA factorizes weight updates while freezing pretrained weights.",
+    "Compute a small LoRA forward pass and count its trainable parameters.",
+    "Distinguish trainable-parameter savings from total deployment memory.",
+    "Interpret LoRA results within their reported experimental conditions.",
+    "Identify cases where low-rank or merged task weights may be unsuitable."
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "mechanism",
+      "statement": "LoRA freezes a pretrained weight matrix and represents its task-specific update as the product of two trainable low-rank matrices.",
+      "conditions": "For a dense weight matrix with a chosen LoRA rank smaller than both matrix dimensions.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c2",
+      "kind": "equation",
+      "statement": "For input x, LoRA computes the modified dense-layer output as h = W_0 x + BAx, with an additional alpha/r scaling applied to the update branch in the paper's implementation.",
+      "conditions": "W_0 is frozen; A and B are trainable; the paper initializes A randomly and B to zero.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c3",
+      "kind": "result",
+      "statement": "Because B starts at zero, the LoRA update BA is zero at initialization, so the modified layer initially implements the pretrained mapping.",
+      "conditions": "Using the paper's random-Gaussian initialization for A and zero initialization for B.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c4",
+      "kind": "mechanism",
+      "statement": "A d-by-k dense update has dk entries, whereas its LoRA factors contain r(d+k) trainable entries.",
+      "conditions": "Ignoring biases and assuming one LoRA pair B in R^{d by r} and A in R^{r by k}.",
+      "sourceIds": [
+        "section-4",
+        "section-5"
+      ]
+    },
+    {
+      "id": "c5",
+      "kind": "mechanism",
+      "statement": "A trained LoRA update can be merged into the frozen weight as W = W_0 + (alpha/r)BA, allowing the deployed layer to use an ordinary dense multiplication.",
+      "conditions": "The deployment serves a selected task with the scaled update absorbed into the base weight; equivalently, the scale may be incorporated into A, B, or the definition of Delta W before merging.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c6",
+      "kind": "caveat",
+      "statement": "Merging task-specific LoRA weights complicates batching examples from different tasks in one forward pass because those examples require different effective weights.",
+      "conditions": "When merged weights are used to eliminate an additional inference branch; unmerged dynamic selection remains possible when latency is less critical.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c7",
+      "kind": "result",
+      "statement": "In most reported experiments, the authors applied LoRA to the query and value attention projections while leaving the Transformer MLP frozen.",
+      "conditions": "The experimental design described for the paper's Transformer language-model studies.",
+      "sourceIds": [
+        "section-4",
+        "section-5"
+      ]
+    },
+    {
+      "id": "c8",
+      "kind": "result",
+      "statement": "On GPT-3 175B, a rank-4 query-and-value configuration reduced the reported task checkpoint from 350 GB to 35 MB while the 350 GB base model was still required for deployment.",
+      "conditions": "The paper's GPT-3 175B setup adapting query and value projections; checkpoint figures are specific to that system.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c9",
+      "kind": "result",
+      "statement": "On the reported GPT-3 tasks, LoRA matched or exceeded the full-fine-tuning baseline while training far fewer task-specific parameters.",
+      "conditions": "Table 4 results for WikiSQL validation accuracy, MNLI-matched validation accuracy, and SAMSum ROUGE metrics.",
+      "sourceIds": [
+        "section-5-part-2"
+      ]
+    },
+    {
+      "id": "c10",
+      "kind": "result",
+      "statement": "Under an equal 18-million-parameter budget on GPT-3, spreading LoRA across query and value projections performed better overall than placing the budget only in query or only in key projections.",
+      "conditions": "All 96 layers in the paper's WikiSQL and MultiNLI comparison; reported dataset variation was about plus or minus 0.5 and 0.1 percentage points, respectively.",
+      "sourceIds": [
+        "section-7"
+      ]
+    },
+    {
+      "id": "c11",
+      "kind": "caveat",
+      "statement": "The paper's observation that ranks as small as one were competitive does not establish that tiny ranks suffice for every task or dataset.",
+      "conditions": "The reported rank sweep used GPT-3 on WikiSQL and MultiNLI; the authors explicitly give cross-language adaptation as a possible counterexample.",
+      "sourceIds": [
+        "section-7"
+      ]
+    },
+    {
+      "id": "c12",
+      "kind": "result",
+      "statement": "For the layer-48 query and value LoRA modules, the paper found substantial overlap in the leading singular-vector subspaces of the learned A factors at ranks 8 and 64.",
+      "conditions": "The 48th GPT-3 layer, analyzed separately for the query and value LoRA modules using the paper's normalized subspace similarity between right-singular-vector subspaces of A at ranks 8 and 64; this is not a direct comparison of singular subspaces of the complete updates BA.",
+      "sourceIds": [
+        "section-7"
+      ]
+    },
+    {
+      "id": "c13",
+      "kind": "result",
+      "statement": "The paper's projection analysis suggests that the learned update emphasizes directions present but not dominant in the pretrained weight.",
+      "conditions": "The query weight from GPT-3 layer 48, using Frobenius norms of projections onto learned, pretrained-top, and random singular directions.",
+      "sourceIds": [
+        "section-7-part-2"
+      ]
+    },
+    {
+      "id": "c14",
+      "kind": "caveat",
+      "statement": "The paper studied attention weights and left systematic investigation of LoRA on MLP layers, LayerNorm parameters, and biases for future work.",
+      "conditions": "Scope of the experiments reported in the paper.",
+      "sourceIds": [
+        "section-4"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "s1",
+      "title": "The adaptation bottleneck",
+      "markdown": "A pretrained model is valuable because many tasks can share its general representations. Ordinary full fine-tuning, however, creates a task-specific change for every trained parameter. If the pretrained parameters are $\\Phi_0$, full fine-tuning learns $\\Delta\\Phi$ and deploys $\\Phi_0+\\Delta\\Phi$. For an enormous model, repeating that process across many tasks produces enormous optimizer states during training and enormous task-specific checkpoints afterward.\n\nThe paper frames conditional language modeling with a dataset $\\mathcal{Z}=\\{(x_i,y_i)\\}_{i=1}^{N}$. Here, $N$ is the number of examples, $x_i$ is an input-token sequence, $y_i$ is its target-token sequence, $y_t$ is the target at position $t$, and $y_{<t}$ denotes earlier target tokens. Full fine-tuning maximizes\n\n$$\n\\max_{\\Phi}\\sum_{(x,y)\\in\\mathcal{Z}}\\sum_{t=1}^{|y|}\\log P_{\\Phi}(y_t\\mid x,y_{<t}).\n$$\n\nLoRA retains this task objective but restricts the learned change to a much smaller parameter set $\\Theta$, writing $\\Delta\\Phi=\\Delta\\Phi(\\Theta)$ with $|\\Theta|\\ll|\\Phi_0|$. This is not prompt-only adaptation: the learned object still changes internal weight mappings. Nor does it mean the pretrained model disappears. The base parameters remain necessary; LoRA makes the task-specific increment compact.",
+      "sourceIds": [
+        "section-2",
+        "section-4"
+      ],
+      "claimIds": [
+        "c1",
+        "c4"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s2",
+      "title": "One update, two thin factors",
+      "markdown": "Consider one frozen dense weight $W_0\\in\\mathbb{R}^{d\\times k}$. It maps an input $x\\in\\mathbb{R}^{k}$ to an output in $\\mathbb{R}^{d}$. An unrestricted update $\\Delta W\\in\\mathbb{R}^{d\\times k}$ has $dk$ independently trainable entries. LoRA instead writes\n\n$$\n\\Delta W=BA,\n$$\n\nwhere $A\\in\\mathbb{R}^{r\\times k}$, $B\\in\\mathbb{R}^{d\\times r}$, and $r\\ll\\min(d,k)$. The integer $r$ is the chosen rank bound. Since the rank of a product cannot exceed its inner dimension, $\\operatorname{rank}(BA)\\le r$. Training changes $A$ and $B$ but not $W_0$.\n\nThe forward computation is\n\n$$\nh=W_0x+\\frac{\\alpha}{r}BAx,\n$$\n\nwhere $h\\in\\mathbb{R}^{d}$ is the output and $\\alpha$ is a fixed scaling constant. The paper describes the unscaled identity as $h=W_0x+BAx$ and then applies $\\alpha/r$ to the update branch. It initializes $A$ from a Gaussian distribution and $B$ to zero. Consequently, $BA=0$ initially: before learning begins, the modified layer exactly preserves the pretrained mapping.\n\nThe low-rank experiment beside this section isolates the relevant linear-algebra prerequisite. Its fixed diagonal $6\\times6$ matrix has singular values $[6,4,3,2,1,0.5]$; changing $r$ retains the first $r$ singular components and displays their energy. Predict how much more energy is retained when $r$ rises from one to two, then compare. This teaches what a rank budget can preserve, but it is not a trained LoRA update and reports no compression or model-quality result.",
+      "sourceIds": [
+        "section-4"
+      ],
+      "claimIds": [
+        "c1",
+        "c2",
+        "c3"
+      ],
+      "figureId": "fig-low-rank"
+    },
+    {
+      "id": "s3",
+      "title": "A complete miniature forward pass",
+      "markdown": "Take an illustrative layer with $d=k=2$ and rank $r=1$. Let\n\n$$\nW_0=\\begin{bmatrix}1&0\\\\0&1\\end{bmatrix},\\quad\nA=\\begin{bmatrix}2&-1\\end{bmatrix},\\quad\nB=\\begin{bmatrix}3\\\\1\\end{bmatrix},\\quad\nx=\\begin{bmatrix}1\\\\2\\end{bmatrix}.\n$$\n\nChoose the illustrative scale $\\alpha/r=1$. First compute the compressed coordinate:\n\n$$\nAx=2(1)-1(2)=0.\n$$\n\nTherefore $BAx=B\\cdot0=[0,0]^\\top$, and $h=W_0x=[1,2]^\\top$. The update is nonzero as a matrix, yet this particular input lies in a direction that it does not change.\n\nNow use $x'=[2,1]^\\top$. Then $Ax'=2(2)-1(1)=3$, so\n\n$$\nBAx'=\\begin{bmatrix}3\\\\1\\end{bmatrix}3=\n\\begin{bmatrix}9\\\\3\\end{bmatrix},\\qquad\nh'=\\begin{bmatrix}2\\\\1\\end{bmatrix}+\n\\begin{bmatrix}9\\\\3\\end{bmatrix}=\n\\begin{bmatrix}11\\\\4\\end{bmatrix}.\n$$\n\nThis arithmetic is illustrative, not a measurement from the paper. It reveals the mechanism: $A$ projects an input into an $r$-dimensional coordinate, and $B$ expands that coordinate into the output space. The learned update can act strongly on some input directions and vanish on others.\n\nParameter counting is equally direct. A full $2\\times2$ update has $dk=4$ parameters; these rank-one factors have $r(d+k)=1(2+2)=4$, so this tiny example saves nothing. For $d=k=1000$ and $r=4$, however, a full update has $1{,}000{,}000$ entries while the factors have $4(1000+1000)=8{,}000$, which is 125 times fewer trainable entries for that matrix. The example demonstrates the formula, not the paper's measured system-wide reduction.",
+      "sourceIds": [
+        "section-4",
+        "section-5"
+      ],
+      "claimIds": [
+        "c2",
+        "c4"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s4",
+      "title": "Where LoRA enters a Transformer",
+      "markdown": "A Transformer attention block contains projection matrices commonly denoted $W_q$, $W_k$, $W_v$, and $W_o$ for queries, keys, values, and outputs. The paper notes that LoRA could be attached to any subset of dense weights, but its experiments focused on attention weights and usually adapted $W_q$ and $W_v$ while freezing the MLP. Thus, “LoRA” names a parametrization strategy, not a universal rule that every implementation must target the same matrices.\n\nThe attention experiment provides a bounded reminder of the query/key score pathway. It takes four fixed scores $[2,1,0,-1]$, divides them by a positive temperature $\\tau$, and computes\n\n$$\np_i=\\frac{\\exp(s_i/\\tau)}{\\sum_j\\exp(s_j/\\tau)},\n$$\n\nwhere $s_i$ is score $i$ and $p_i$ is its normalized weight. Before moving the control, predict whether a smaller $\\tau$ will concentrate or flatten the weights. The answer is concentration: score differences become larger after division by a smaller positive number. In an attention head, those scores are determined by query–key interactions, so adapting a query projection can alter the softmax distribution when the keys are held fixed. An adapted value projection has a different role: it changes the value vectors that the resulting attention weights aggregate, not the weights themselves. The toy contains fixed scores and no value vectors, so it illustrates only the score-normalization pathway; it is not a measured attention head, contains no learned token similarities, and does not simulate LoRA training.\n\nPlacement matters as much as rank. Under the paper's fixed 18-million-parameter GPT-3 budget, adapting both $W_q$ and $W_v$ at rank four achieved 73.7 on WikiSQL and 91.3 on MultiNLI. Concentrating the budget in $W_q$ at rank eight gave 70.4 and 91.0; using $W_k$ alone gave 70.0 and 90.8. The comparison supports distributing capacity across useful projection types in that setting, not a universal theorem that query-plus-value is always optimal.",
+      "sourceIds": [
+        "section-4",
+        "section-7"
+      ],
+      "claimIds": [
+        "c7",
+        "c10"
+      ],
+      "figureId": "fig-attention"
+    },
+    {
+      "id": "s5",
+      "title": "Training small, serving dense",
+      "markdown": "During training, gradients and optimizer states are needed for $A$ and $B$, while $W_0$ remains frozen. This is the source of trainable-parameter and optimizer-memory savings. After training, linearity permits an exact merge:\n\n$$\nW=W_0+\\frac{\\alpha}{r}BA.\n$$\n\nInference can then evaluate $Wx$ exactly as an ordinary dense layer. The paper's “no additional inference latency” claim is by construction for this merged form; it is not a claim that training is free or that every serving system automatically realizes identical wall-clock behavior.\n\nA crucial misconception is that a tiny LoRA checkpoint replaces the base model. It does not. In the reported GPT-3 175B configuration with rank four on query and value projections, the task checkpoint fell from roughly 350 GB to 35 MB, but deployment still required the 350 GB base model. The operational advantage is sharing one base across tasks: the paper estimates that 100 adaptations require about $350\\text{ GB}+100(35\\text{ MB})\\approx354\\text{ GB}$ rather than roughly $35\\text{ TB}$ for 100 independent full checkpoints.\n\nMerging also creates a trade-off. Switching tasks requires replacing the absorbed update, and a batch containing examples from different tasks cannot straightforwardly use one merged weight. Keeping adapters unmerged permits per-example selection, but then the extra branch remains in the forward computation. The best choice therefore depends on batching and latency requirements.",
+      "sourceIds": [
+        "section-4"
+      ],
+      "claimIds": [
+        "c5",
+        "c6",
+        "c8"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s6",
+      "title": "What the experiments establish",
+      "markdown": "The evidence spans several model families and task types, but every conclusion should retain its conditions. On RoBERTa base, LoRA trained 0.3 million parameters and reported an average GLUE score of 87.2, compared with 86.4 for full fine-tuning of 125 million parameters. On RoBERTa large, LoRA trained 0.8 million parameters and reported 89.0 versus 88.9 for full fine-tuning of 355 million. Metrics differed by GLUE task, and some baseline numbers came from prior work, so the average is a compact comparison rather than one homogeneous measurement.\n\nFor GPT-2 on the E2E NLG Challenge, LoRA used 0.35 million trainable parameters for the medium model and 0.77 million for the large model. It reported BLEU 70.4 for each, compared with 68.2 and 68.5 for the respective full-fine-tuning baselines. This supports competitiveness under that generation setup; it does not prove dominance on all generation tasks.\n\nFor GPT-3 175B, Table 4 reports two LoRA budgets. With 4.7 million trainable parameters, LoRA scored 73.4 on WikiSQL, 91.7 on MNLI-matched, and 53.8/29.8/45.9 ROUGE-1/2/L on SAMSum. Full fine-tuning of about 175.3 billion parameters reported 73.8, 89.5, and 52.0/28.0/44.5. A 37.7-million-parameter LoRA configuration reported 74.0, 91.6, and 53.4/29.2/45.1. The paper gives typical fluctuations of about $\\pm0.5$ percentage points for WikiSQL, $\\pm0.1$ for MNLI-matched, and $\\pm0.2/\\pm0.2/\\pm0.1$ for SAMSum. Small numerical gaps should therefore be interpreted with that variability in view.",
+      "sourceIds": [
+        "section-5",
+        "section-5-part-2"
+      ],
+      "claimIds": [
+        "c9"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s7",
+      "title": "Low intrinsic rank: evidence, not a law",
+      "markdown": "Why can such narrow updates work? The paper's rank sweep offers an empirical clue. With LoRA on both $W_q$ and $W_v$, rank one already reached 73.4 on WikiSQL and 91.3 on MultiNLI; larger ranks produced nearby results under the reported variation. With all four attention projection types, rank one reached 74.1 and 91.2. These findings suggest that the useful adaptation directions were few for these model-task pairs.\n\nThe authors also compared learned subspaces. If $U_{A_8}^{i}$ contains the top $i$ right-singular vectors learned at rank eight and $U_{A_{64}}^{j}$ contains the top $j$ learned at rank 64, they define\n\n$$\n\\phi(A_8,A_{64},i,j)=\n\\frac{\\left\\|\\left(U_{A_8}^{i}\\right)^\\top U_{A_{64}}^{j}\\right\\|_F^2}{\\min(i,j)}.\n$$\n\nHere $\\|\\cdot\\|_F$ is the Frobenius norm, $i$ and $j$ are retained subspace dimensions, and $\\phi\\in[0,1]$ ranges from separation to complete overlap. In GPT-3 layer 48, the leading directions for rank eight and rank 64 overlapped substantially for both query and value updates. A separate projection analysis found the learned query update more aligned with the pretrained query weight than random directions, while not merely repeating the pretrained weight's dominant singular directions. The authors interpret this as amplification of task-relevant features that pretraining had not emphasized.\n\nThis remains evidence from selected layers, weights, datasets, and models—not proof that every adaptation is intrinsically low-rank. The paper explicitly warns that a task in a language unlike pretraining might benefit from much larger rank, potentially approaching full-rank adaptation. Matrix selection was largely heuristic, and systematic study of MLP, LayerNorm, and bias adaptation was left open. LoRA is therefore a controllable hypothesis about useful update structure, not a guarantee that small $r$ is universally sufficient.",
+      "sourceIds": [
+        "section-7",
+        "section-7-part-2",
+        "section-8"
+      ],
+      "claimIds": [
+        "c11",
+        "c12",
+        "c13",
+        "c14"
+      ],
+      "figureId": null
+    }
+  ],
+  "figures": [
+    {
+      "id": "fig-low-rank",
+      "kind": "low-rank",
+      "title": "What does a rank budget retain?",
+      "question": "As rank rises, which additional singular components and how much squared singular-value energy are retained?",
+      "caption": "An illustrative diagonal 6-by-6 matrix retains its first r singular components from fixed singular values 6, 4, 3, 2, 1, and 0.5.",
+      "limitation": "This is a fixed singular decomposition, not a trained LoRA update or a reported compression, optimization, or model-quality result.",
+      "sourceIds": [
+        "section-4",
+        "section-7"
+      ],
+      "claimIds": [
+        "c1",
+        "c11"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "fig-attention",
+      "kind": "attention",
+      "title": "Temperature and a toy attention distribution",
+      "question": "Does lowering the positive temperature concentrate or flatten the softmax weights over the four fixed scores?",
+      "caption": "Four illustrative scores 2, 1, 0, and -1 are divided by a positive temperature and normalized with softmax.",
+      "limitation": "The scores are fixed teaching values, not a measured attention head, learned token similarity, or simulation of LoRA training.",
+      "sourceIds": [
+        "section-4",
+        "section-7"
+      ],
+      "claimIds": [
+        "c7",
+        "c10"
+      ],
+      "illustrative": true
+    }
+  ],
+  "quiz": [
+    {
+      "question": "For a 1000-by-1000 weight matrix with LoRA rank 4, how many trainable factor entries are introduced, ignoring biases?",
+      "options": [
+        {
+          "text": "8,000",
+          "explanation": "Correct. The factors contain r(d+k)=4(1000+1000)=8,000 entries."
+        },
+        {
+          "text": "16,000",
+          "explanation": "This double-counts the two factors after their sizes have already been added in d+k."
+        },
+        {
+          "text": "1,000,000",
+          "explanation": "That is the entry count of an unrestricted full update, dk, not the rank-4 factorization."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-4",
+        "section-5"
+      ],
+      "claimIds": [
+        "c4"
+      ]
+    },
+    {
+      "question": "Under merged-weight deployment, what makes a mixed batch containing several task-specific LoRA adaptations difficult?",
+      "options": [
+        {
+          "text": "Every example must use a different tokenizer.",
+          "explanation": "LoRA does not imply that each task requires a different tokenizer."
+        },
+        {
+          "text": "Examples may require different effective dense weights.",
+          "explanation": "Correct. Merging each BA into W_0 produces a task-specific effective weight, so one shared dense multiplication cannot directly serve different merged tasks."
+        },
+        {
+          "text": "The base model is discarded after each merge.",
+          "explanation": "The base model remains required and can be recovered by subtracting the current update."
+        }
+      ],
+      "answer": 1,
+      "sourceIds": [
+        "section-4"
+      ],
+      "claimIds": [
+        "c5",
+        "c6"
+      ]
+    },
+    {
+      "question": "Which conclusion is justified by the paper's very-small-rank GPT-3 results?",
+      "options": [
+        {
+          "text": "Rank one is sufficient for every downstream task.",
+          "explanation": "The paper explicitly rejects this universal interpretation and describes settings where greater rank may help."
+        },
+        {
+          "text": "Full fine-tuning is mathematically equivalent to rank one.",
+          "explanation": "A rank-one update is a strict constraint and does not generally express an arbitrary full-rank change."
+        },
+        {
+          "text": "A few update directions were sufficient for the reported GPT-3 task settings.",
+          "explanation": "Correct. This matches the reported WikiSQL and MultiNLI rank sweeps while preserving their limited scope."
+        }
+      ],
+      "answer": 2,
+      "sourceIds": [
+        "section-7"
+      ],
+      "claimIds": [
+        "c11",
+        "c12"
+      ]
+    }
+  ],
+  "id": "lora",
+  "createdAt": "2026-10-02T00:23:03.099Z",
+  "pipelineVersion": "subjects-lessons-v1",
+  "sources": [
+    {
+      "id": "abstract",
+      "label": "Original paper · abstract",
+      "url": "https://arxiv.org/abs/2106.09685",
+      "digest": "789a5aabe38fc61fd82439a62bbe38d7f4e5da7b21779f16d892dc13c4072553",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:19:49.985Z"
+    },
+    {
+      "id": "main-text",
+      "label": "Original paper · unsectioned main text",
+      "url": "https://arxiv.org/html/2106.09685",
+      "digest": "1826acef46c3017ffd187bf8d570fd479106840256c56ef4d48667b9ca0c8d27",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:19:49.985Z"
+    },
+    {
+      "id": "section-1",
+      "label": "1 Introduction",
+      "url": "https://arxiv.org/html/2106.09685#S1",
+      "digest": "9d235aee5e94fbf6a048f4d5d28dedb3f957114d8fd4a2c0d3e49f4d9ba15557",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:19:49.985Z"
+    },
+    {
+      "id": "section-2",
+      "label": "2 Problem Statement",
+      "url": "https://arxiv.org/html/2106.09685#S2",
+      "digest": "2a38d2ff7d985123d538dd5cff291fafd8df369a3ea41d63e3702aff51b4ed68",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:19:49.985Z"
+    },
+    {
+      "id": "section-3",
+      "label": "3 Aren’t Existing Solutions Good Enough?",
+      "url": "https://arxiv.org/html/2106.09685#S3",
+      "digest": "f5d5c53cf6ad2054f25266068268b17e65bd48237ac316bc70274451fdd3c2b9",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:19:49.985Z"
+    },
+    {
+      "id": "section-4",
+      "label": "4 Our Method",
+      "url": "https://arxiv.org/html/2106.09685#S4",
+      "digest": "8fd172a75d1907ee90ac26ab61f571b9548df635ac26776d58838cbafa2ec1d7",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:19:49.985Z"
+    },
+    {
+      "id": "section-5",
+      "label": "5 Empirical Experiments",
+      "url": "https://arxiv.org/html/2106.09685#S5",
+      "digest": "215e092ea8c4c4392df74c82c84ad0abd56d82b01598d12c4f6034146b080e2d",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:19:49.985Z"
+    },
+    {
+      "id": "section-5-part-2",
+      "label": "5 Empirical Experiments · part 2",
+      "url": "https://arxiv.org/html/2106.09685#S5",
+      "digest": "6f992f8da1e390268dae915fb7ccdee9e22a78237f42e9916189b4e0e98128f6",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:19:49.985Z"
+    },
+    {
+      "id": "section-6",
+      "label": "6 Related Works",
+      "url": "https://arxiv.org/html/2106.09685#S6",
+      "digest": "ff96e2fb462d382d6dce56f54307f15d63a3a0e21324fa2b7e26db59ed708957",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:19:49.985Z"
+    },
+    {
+      "id": "section-7",
+      "label": "7 Understanding the Low-Rank Updates",
+      "url": "https://arxiv.org/html/2106.09685#S7",
+      "digest": "391b11098a781c5a2f1ff2cc48b238717be2b11cb687f5268093c2433054b1b8",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:19:49.985Z"
+    },
+    {
+      "id": "section-7-part-2",
+      "label": "7 Understanding the Low-Rank Updates · part 2",
+      "url": "https://arxiv.org/html/2106.09685#S7",
+      "digest": "e5d7ce2bfdc59e9d17b83aa8fd08c9160b6b5e507c9dad867a9fbadf30b1cd71",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:19:49.985Z"
+    },
+    {
+      "id": "section-8",
+      "label": "8 Conclusion and Future Work",
+      "url": "https://arxiv.org/html/2106.09685#S8",
+      "digest": "cc05dea5ce3f40b7314ca194f837f5e3a88354ef4ef4edf8f9760ff761b5aed3",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:19:49.985Z"
+    }
+  ],
+  "review": {
+    "status": "passed",
+    "reviewedAt": "2026-10-02T00:23:03.100Z",
+    "contentDigest": "13edac05bb432774e268d93ad95cd25e32e7e3db319a130e4a793189c7f8ab38"
+  }
+}

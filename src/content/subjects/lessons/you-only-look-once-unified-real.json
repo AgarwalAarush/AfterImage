@@ -1,0 +1,428 @@
+{
+  "title": "One Glance, Many Decisions: Reconstructing the Original YOLO Detector",
+  "summary": "YOLO turns detection into one image-wide regression, jointly predicting grid-assigned boxes and class scores while trading precise localization for real-time speed.",
+  "prerequisites": [
+    "Conditional probability",
+    "Bounding boxes and intersection over union",
+    "Neural-network outputs and squared-error training",
+    "Mean average precision for object detection"
+  ],
+  "objectives": [
+    "Explain how an object's center assigns responsibility to a grid cell.",
+    "Derive YOLO's class-specific confidence score.",
+    "Interpret each component of the original YOLO prediction tensor.",
+    "Explain predictor responsibility masks and the multi-part training loss.",
+    "Relate YOLO's reported speed and accuracy to its test conditions."
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "mechanism",
+      "statement": "The original YOLO formulation replaces a staged detection pipeline with one network that predicts boxes and class probabilities from a full image.",
+      "conditions": "Original YOLO architecture operating on a complete input image.",
+      "sourceIds": [
+        "abstract"
+      ]
+    },
+    {
+      "id": "c2",
+      "kind": "mechanism",
+      "statement": "An object's center determines which grid cell is assigned responsibility for detecting it.",
+      "conditions": "An input divided into an S by S grid.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c3",
+      "kind": "equation",
+      "statement": "A box's confidence target combines object presence with predicted-versus-truth intersection over union.",
+      "conditions": "For each bounding-box predictor in a grid cell.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c4",
+      "kind": "mechanism",
+      "statement": "Each box predictor emits center coordinates, dimensions, and one confidence value.",
+      "conditions": "Original YOLO box parameterization.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c5",
+      "kind": "mechanism",
+      "statement": "Class probabilities are conditional on an object occupying the cell and are shared by that cell's box predictors.",
+      "conditions": "Each grid cell predicts B boxes and C classes.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c6",
+      "kind": "result",
+      "statement": "For Pascal VOC, the original model used a 7 by 7 grid, two boxes per cell, and 20 classes, producing a 7 by 7 by 30 tensor.",
+      "conditions": "Pascal VOC configuration described in the paper.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c7",
+      "kind": "mechanism",
+      "statement": "During training, the box predictor currently having the greatest IoU with a truth box receives responsibility for it.",
+      "conditions": "Multiple bounding-box predictors within the responsible cell.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c8",
+      "kind": "caveat",
+      "statement": "The squared-error objective is convenient but is not perfectly aligned with average precision.",
+      "conditions": "Training the original detector with its multi-part sum-squared-error loss.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c9",
+      "kind": "mechanism",
+      "statement": "The loss gives coordinate errors more weight and empty-box confidence errors less weight.",
+      "conditions": "Original training configuration with coordinate and no-object coefficients.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c10",
+      "kind": "mechanism",
+      "statement": "Predicting square roots of box dimensions partially reduces the unequal significance of comparable absolute errors on large and small boxes.",
+      "conditions": "Width and height terms in the original loss.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c11",
+      "kind": "result",
+      "statement": "On Pascal VOC 2007, the reported standard YOLO result paired 63.4 mAP with 45 FPS, while Fast YOLO paired 52.7 mAP with 155 FPS.",
+      "conditions": "Table 1; listed models trained on VOC 2007 and 2012 and evaluated on Pascal VOC 2007.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c12",
+      "kind": "caveat",
+      "statement": "The original model's dominant error type was localization rather than background confusion.",
+      "conditions": "VOC 2007 error analysis over the top N detections per category.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c13",
+      "kind": "caveat",
+      "statement": "Fixed per-cell output capacity makes dense groups of small objects especially difficult.",
+      "conditions": "Original grid design, where each cell predicts two boxes and one class distribution.",
+      "sourceIds": [
+        "section-2-part-2"
+      ]
+    },
+    {
+      "id": "c14",
+      "kind": "result",
+      "statement": "YOLO's different error profile complemented Fast R-CNN in a reported model-combination experiment.",
+      "conditions": "VOC 2007 test set; separately run Fast R-CNN and YOLO predictions combined by the paper's rescoring procedure.",
+      "sourceIds": [
+        "section-4-part-2"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "s1",
+      "title": "Detection before the unification",
+      "markdown": "Object detection asks two questions at once: **what** is present and **where** it is. A bounding box can be represented by its center $(x,y)$, width $w$, and height $h$. Its overlap with a ground-truth box is measured by intersection over union,\n\n$$\\operatorname{IoU}(A,B)=\\frac{|A\\cap B|}{|A\\cup B|},$$\n\nwhere $A$ and $B$ are box regions and $|\\cdot|$ denotes area. IoU is $1$ for identical boxes and $0$ for non-overlapping boxes.\n\nEarlier systems commonly searched many windows or generated regions, classified them, refined their coordinates, and removed duplicates. YOLO's particular contribution was to replace that sequence with one image-wide regression model: one network consumes the full image and directly emits boxes plus class information. “Unified” therefore means joint prediction and joint optimization, not that every conventional operation vanished. The paper still allows thresholding and non-maximal suppression after the network output.\n\nThis distinction matters. “You only look once” means one network evaluation for the image, not one predicted object, one output number, or an absence of all post-processing.",
+      "sourceIds": [
+        "abstract",
+        "section-1",
+        "section-2-part-2"
+      ],
+      "claimIds": [
+        "c1"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s2",
+      "title": "From an image to a structured tensor",
+      "markdown": "YOLO divides the image into an $S\\times S$ grid. An object is assigned to the cell containing its **center**, even when most of its box extends into neighboring cells. Each cell predicts $B$ boxes. Every box contributes five numbers: $(x,y,w,h,C_b)$, where $(x,y)$ is the center relative to the cell, $(w,h)$ is relative to the whole image, and $C_b$ is box confidence. The same cell also predicts $C$ conditional class probabilities $p_i=\\Pr(\\text{Class}_i\\mid\\text{Object})$.\n\nThus the output depth is $5B+C$, and the complete tensor has shape\n\n$$S\\times S\\times(5B+C).$$\n\nFor Pascal VOC, $S=7$, $B=2$, and $C=20$. Therefore $5B+C=5(2)+20=30$, giving a $7\\times7\\times30$ tensor. It contains $7\\cdot7\\cdot2=98$ box predictions. This arithmetic is a direct reconstruction of the stated configuration.\n\nThe grid limitation concerns prediction capacity, not hidden image regions: YOLO uses features from the entire image, but each cell predicts only two boxes and one class distribution. Because an object's center assigns it to a cell, several nearby objects whose centers fall in the same cell can exceed that cell's output capacity. This is why the paper connects the spatial constraint to difficulty with grouped small objects.",
+      "sourceIds": [
+        "section-2",
+        "section-2-part-2"
+      ],
+      "claimIds": [
+        "c2",
+        "c4",
+        "c5",
+        "c6",
+        "c13"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s3",
+      "title": "Confidence is two ideas multiplied together",
+      "markdown": "For box predictor $b$, YOLO emits a **single confidence scalar** $C_b$. Its intended semantics are\n\n$$C_b\\approx\\Pr(\\text{Object})\\operatorname{IoU}_{\\text{pred}}^{\\text{truth}}.$$\n\nThis is an interpretation of one network output, not two independently exposed predictions. During training, the confidence target is zero when no object is assigned; for a responsible predictor, it is the IoU between the predicted box and the ground-truth box. At inference, ground-truth IoU is unavailable, so the network does not separately observe or output a true IoU value.\n\nAt test time, the cell's conditional probability for class $i$ is multiplied by the box's confidence:\n\n$$\\Pr(\\text{Class}_i\\mid\\text{Object})C_b\n\\approx\\Pr(\\text{Class}_i)\\operatorname{IoU}_{\\text{pred}}^{\\text{truth}}.$$\n\nThe resulting class-specific score combines class belief with the single confidence output's learned object-presence and localization-quality semantics.\n\nFor an **illustrative semantic factorization**, suppose a box's emitted confidence is $C_b=0.45$. We may interpret that value as the product $0.75\\times0.60$, representing illustrative object-presence and localization-quality factors; these are not two separately observed model outputs. If the cell also assigns $\\Pr(\\text{car}\\mid\\text{Object})=0.80$, then\n\n$$0.80\\times0.45=0.36.$$\n\nThe class-specific confidence is $0.36$. This does not mean the car probability alone is $36\\%$; localization quality is folded into the score. A common misconception is that every one of the $B$ boxes receives a separate class distribution. In the original design, the cell predicts one shared set of $C$ conditional class probabilities, then combines it with each box's confidence.",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c3",
+        "c5"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s4",
+      "title": "Responsibility turns dense output into selective supervision",
+      "markdown": "Two box predictors in a cell should not both be trained identically for the same object. During training, YOLO compares their current boxes with the truth box and marks the predictor having the highest IoU as “responsible.” Let $\\mathbb{1}_{ij}^{\\text{obj}}$ be $1$ when predictor $j$ in cell $i$ has that responsibility and $0$ otherwise. Let $\\mathbb{1}_{i}^{\\text{obj}}$ indicate that an object center lies in cell $i$, while $\\mathbb{1}_{ij}^{\\text{noobj}}$ selects a box predictor with no assigned object.\n\nThese indicators gate the loss. Coordinate errors apply only to the responsible predictor. Classification errors apply only to cells containing objects. Confidence errors are split between responsible and no-object cases. The paper argues that choosing responsibility by current IoU encourages predictors to specialize in different box shapes, sizes, or classes.\n\nThis is not the same as permanently assigning “large objects” to predictor 1 and “small objects” to predictor 2. Responsibility is based on the predictions' **current** overlap with the particular truth box. Nor does the grid mean an object belongs to every cell it covers: the object's center selects one responsible cell.",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c2",
+        "c7"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s5",
+      "title": "Reading the five-part loss",
+      "markdown": "The training objective adds five squared-error blocks: center coordinates, transformed dimensions, object confidence, no-object confidence, and conditional class probabilities. Using hats for the ground-truth targets paired with each predictor, its structure is\n\n$$\\begin{aligned}\nL={}&\\lambda_{\\text{coord}}\\sum_{i,j}\\mathbb{1}_{ij}^{\\text{obj}}\\big[(x_{ij}-\\hat{x}_{ij})^2+(y_{ij}-\\hat{y}_{ij})^2\\big]\\\\\n&+\\lambda_{\\text{coord}}\\sum_{i,j}\\mathbb{1}_{ij}^{\\text{obj}}\\big[(\\sqrt{w_{ij}}-\\sqrt{\\hat{w}_{ij}})^2+(\\sqrt{h_{ij}}-\\sqrt{\\hat{h}_{ij}})^2\\big]\\\\\n&+\\sum_{i,j}\\mathbb{1}_{ij}^{\\text{obj}}(C_{ij}-\\hat C_{ij})^2\n+\\lambda_{\\text{noobj}}\\sum_{i,j}\\mathbb{1}_{ij}^{\\text{noobj}}(C_{ij}-\\hat C_{ij})^2\\\\\n&+\\sum_i\\mathbb{1}_{i}^{\\text{obj}}\\sum_c(p_i(c)-\\hat p_i(c))^2.\n\\end{aligned}$$\n\nHere $i$ indexes cells, $j$ indexes box predictors, and $c$ indexes classes. The quantities $x_{ij},y_{ij},w_{ij},h_{ij},C_{ij}$ are predictor $j$'s outputs in cell $i$; their hatted counterparts are the corresponding training targets. The mask $\\mathbb{1}_{ij}^{\\text{obj}}$ therefore applies coordinate, dimension, and object-confidence error only to the responsible predictor. The mask $\\mathbb{1}_{ij}^{\\text{noobj}}$ applies the down-weighted confidence error to predictor $j$ when it has no assigned object. Classification remains cell-level: $p_i(c)$ is the shared conditional class probability, and its error is applied only when $\\mathbb{1}_{i}^{\\text{obj}}=1$.\n\nThe paper sets $\\lambda_{\\text{coord}}=5$ and $\\lambda_{\\text{noobj}}=0.5$: coordinate learning is emphasized, while the many empty predictions are prevented from overwhelming object-bearing examples.\n\nSquare roots make dimension errors scale differently. Illustratively, increasing a width from $0.01$ to $0.04$ changes its square root from $0.1$ to $0.2$, whereas increasing $0.64$ to $0.81$ changes it from $0.8$ to $0.9$. Both transformed errors are $0.1$ despite very different raw changes. This is only a partial correction, and the authors explicitly note that squared error does not perfectly match average precision.",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c8",
+        "c9",
+        "c10"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s6",
+      "title": "Optimization speed is not detector speed",
+      "markdown": "The paper reports an initially cautious learning-rate schedule because large early steps could produce divergence from unstable gradients. That is a training issue, distinct from the detector's frames per second at inference.\n\nThe illustrative optimizer control makes this separation concrete. It performs ordinary gradient descent on $f(x)=x^2/2$, starting at $x_0=3$. Since $f'(x)=x$, the update with learning rate $\\eta$ is\n\n$$x_{t+1}=x_t-\\eta x_t=(1-\\eta)x_t.$$\n\nFor the illustrative choice $\\eta=0.5$, $x_1=1.5$, $x_2=0.75$, and $x_3=0.375$. Changing $\\eta$ changes the twelve displayed iterates. This accurately demonstrates how step size affects a simple optimization trajectory, but it is not YOLO's high-dimensional training, momentum schedule, data augmentation, or inference benchmark. It therefore supports a conceptual prediction—larger steps can alter stability—without pretending to reproduce the paper's measured training behavior.",
+      "sourceIds": [
+        "section-2",
+        "section-2-part-2"
+      ],
+      "claimIds": [
+        "c8",
+        "c9"
+      ],
+      "figureId": "f2"
+    },
+    {
+      "id": "s7",
+      "title": "What the reported evidence does and does not establish",
+      "markdown": "On the Pascal VOC 2007 test set, Table 1 reports Fast YOLO at $52.7\\%$ mAP and $155$ FPS and standard YOLO at $63.4\\%$ mAP and $45$ FPS. Both rows used VOC 2007+2012 training data. Standard YOLO gained $63.4-52.7=10.7$ mAP points while processing $155/45\\approx3.4$ times fewer frames per second than Fast YOLO. This comparison isolates the tradeoff between the two reported YOLO variants under the table’s benchmark conditions. It does not determine latency on different hardware. The paper’s separate base-network speed description specifies a Titan X GPU, no batch processing, and latency below $25$ milliseconds.\n\nThe VOC 2007 error analysis explains what the aggregate mAP obscures. For each category, the authors examined its top $N$ detections, where $N$ was the number of objects in that category. A detection with the correct class and $\\operatorname{IoU}>0.5$ counted as correct, whereas a correct-class detection with $0.1<\\operatorname{IoU}<0.5$ counted as a localization error. YOLO produced more localization errors than all its other error types combined. Fast R-CNN localized more accurately but generated more background false positives: $13.6\\%$ of its top detections had $\\operatorname{IoU}<0.1$ with every object. Thus YOLO’s speed did not remove the need for precise box placement; coarse or displaced boxes directly reduced the number of detections crossing the evaluation threshold.\n\nThe models’ different error profiles also explain the reported combination result. The best Fast R-CNN model scored $71.8\\%$ mAP on VOC 2007. For each Fast R-CNN box, the combination procedure checked whether YOLO predicted a similar box and, when it did, boosted the detection according to YOLO’s probability and the overlap between the boxes. The resulting score was $75.0\\%$ mAP, an increase of\n\n$$75.0-71.8=3.2\\text{ mAP points}.$$\n\nThis gain was larger than the $0.3$–$0.6$ point gains obtained by combining the best Fast R-CNN with other Fast R-CNN variants, supporting the paper’s interpretation that complementary mistakes mattered. Because both detectors were executed before their results were combined, the $75.0\\%$ system did not retain YOLO’s standalone throughput.\n\nThe principal limitations follow from the detector’s construction. Each grid cell emits only two boxes and one shared class distribution, so several small objects with centers in the same cell can exceed that cell’s prediction capacity. Multiple downsampling layers also leave relatively coarse features for box regression, making small coordinate errors especially damaging to IoU for small objects. Because box shapes are learned from training data, unusual aspect ratios or configurations are harder to predict. These mechanisms are consistent with the observed dominance of localization errors: unified full-image regression made detection fast, but the original grid capacity, coarse localization features, and squared-error objective constrained spatial precision.",
+      "sourceIds": [
+        "section-1",
+        "section-2-part-2",
+        "section-4",
+        "section-4-part-2"
+      ],
+      "claimIds": [
+        "c11",
+        "c12",
+        "c13",
+        "c14"
+      ],
+      "figureId": null
+    }
+  ],
+  "figures": [
+    {
+      "id": "f2",
+      "kind": "optimizer",
+      "title": "Learning-rate sensitivity on a scalar objective",
+      "question": "Starting from the same point, how does changing the learning rate alter the twelve gradient-descent iterates?",
+      "caption": "Ordinary gradient descent minimizes the illustrative quadratic f(x)=x^2/2 from x=3; the learning-rate control changes the update trajectory.",
+      "limitation": "The control is not YOLO training, momentum, Adam, RMSProp, or an empirical model-stability result.",
+      "sourceIds": [
+        "section-2",
+        "section-2-part-2"
+      ],
+      "claimIds": [
+        "c8",
+        "c9"
+      ],
+      "illustrative": true
+    }
+  ],
+  "quiz": [
+    {
+      "question": "A wide object's center lies in cell A, although most of its area lies in cell B. Under the original YOLO assignment rule, which cell is responsible?",
+      "options": [
+        {
+          "text": "Cell A",
+          "explanation": "Correct. Responsibility follows the cell containing the object's center, not the largest covered area."
+        },
+        {
+          "text": "Cell B",
+          "explanation": "Incorrect. Box area within a cell does not determine the responsible cell."
+        },
+        {
+          "text": "Both cells",
+          "explanation": "Incorrect. The assignment rule selects the center-containing cell, although duplicate predictions can still occur at test time."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-2",
+        "section-2-part-2"
+      ],
+      "claimIds": [
+        "c2"
+      ]
+    },
+    {
+      "question": "Illustratively, a box has object probability 0.5, predicted IoU 0.8, and conditional bicycle probability 0.75. What is its bicycle-specific confidence?",
+      "options": [
+        {
+          "text": "0.30",
+          "explanation": "Correct: 0.75 times 0.5 times 0.8 equals 0.30."
+        },
+        {
+          "text": "0.40",
+          "explanation": "Incorrect. This multiplies object probability by IoU but omits the conditional class probability."
+        },
+        {
+          "text": "0.75",
+          "explanation": "Incorrect. This is only the conditional class probability and ignores objectness and localization fit."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c3"
+      ]
+    },
+    {
+      "question": "Which conclusion is justified by the reported 45 FPS and 63.4 mAP result?",
+      "options": [
+        {
+          "text": "YOLO achieved that pair under the stated Pascal VOC 2007 evaluation and training conditions.",
+          "explanation": "Correct. The numbers belong to a particular model, dataset, training set, and reported speed setup."
+        },
+        {
+          "text": "Every YOLO implementation will achieve at least 45 FPS on any hardware.",
+          "explanation": "Incorrect. A benchmark on a specified setup cannot guarantee performance on arbitrary hardware or implementations."
+        },
+        {
+          "text": "The result proves YOLO had the best localization accuracy among compared detectors.",
+          "explanation": "Incorrect. The paper identifies localization as YOLO's main source of error and reports stronger mAP for slower systems."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-1",
+        "section-4"
+      ],
+      "claimIds": [
+        "c11",
+        "c12"
+      ]
+    }
+  ],
+  "id": "you-only-look-once-unified-real",
+  "createdAt": "2026-10-01T23:43:46.650Z",
+  "pipelineVersion": "subjects-lessons-v1",
+  "sources": [
+    {
+      "id": "abstract",
+      "label": "Original paper · abstract",
+      "url": "https://arxiv.org/abs/1506.02640",
+      "digest": "6fc9e6116c55ac31da0d754be5d89f3105611cb33ac238096816bdecc6b77622",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:40:04.180Z"
+    },
+    {
+      "id": "section-1",
+      "label": "1 Introduction",
+      "url": "https://arxiv.org/html/1506.02640#S1",
+      "digest": "e075758fa50aab0e70afc28264fa155c2b9cc4de5748232d7bb22d6026f96d75",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:40:04.180Z"
+    },
+    {
+      "id": "section-2",
+      "label": "2 Unified Detection",
+      "url": "https://arxiv.org/html/1506.02640#S2",
+      "digest": "871aa5bbbbe2636e246a8772897384cb4da58a91ddc2d4b1ca5818b421b687c5",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:40:04.180Z"
+    },
+    {
+      "id": "section-2-part-2",
+      "label": "2 Unified Detection · part 2",
+      "url": "https://arxiv.org/html/1506.02640#S2",
+      "digest": "5235d93401f939fbba8ce57f5e712952b5748631c361ae624a0970ad541718ee",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:40:04.180Z"
+    },
+    {
+      "id": "section-3",
+      "label": "3 Comparison to Other Detection Systems",
+      "url": "https://arxiv.org/html/1506.02640#S3",
+      "digest": "097642a2d1e7d12a88f217ac8b702adc03480e45325a7080e8122300e2162c2d",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:40:04.180Z"
+    },
+    {
+      "id": "section-4",
+      "label": "4 Experiments",
+      "url": "https://arxiv.org/html/1506.02640#S4",
+      "digest": "3b6d8dcee16823201eaca1dcf411d69064f7de7e094fb456cb310df50204fa98",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:40:04.180Z"
+    },
+    {
+      "id": "section-4-part-2",
+      "label": "4 Experiments · part 2",
+      "url": "https://arxiv.org/html/1506.02640#S4",
+      "digest": "191068f9b7c690d33be790a95b274aeb0fd64e91fb1de02cd7207d424175651a",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:40:04.180Z"
+    },
+    {
+      "id": "section-5",
+      "label": "5 Real-Time Detection In The Wild",
+      "url": "https://arxiv.org/html/1506.02640#S5",
+      "digest": "6b385520d594fe144755604f06d7cf6d9b2025e2d60c6c080d60e081b0c9b546",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:40:04.180Z"
+    },
+    {
+      "id": "section-6",
+      "label": "6 Conclusion",
+      "url": "https://arxiv.org/html/1506.02640#S6",
+      "digest": "725641fadeec344c5abfeab08cb00e7e6ff41b59e36eaddcbf83b15ff2650009",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:40:04.180Z"
+    }
+  ],
+  "review": {
+    "status": "passed",
+    "reviewedAt": "2026-10-02T02:06:19.871Z",
+    "contentDigest": "7923d670a45bc99adb0714cdeb258819007040cee2f2c826c0b91dd56bef0a91"
+  }
+}

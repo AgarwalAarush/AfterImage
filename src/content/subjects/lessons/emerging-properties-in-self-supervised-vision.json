@@ -1,0 +1,497 @@
+{
+  "title": "When Labels Disappear, Structure Appears",
+  "summary": "DINO trains a Vision Transformer by matching a moving teacher across image views, yielding features that support strong nearest-neighbor recognition and expose scene layout.",
+  "prerequisites": [
+    "Image patches and token sequences",
+    "Softmax probability distributions",
+    "Cross-entropy between probability distributions",
+    "Exponential moving averages"
+  ],
+  "objectives": [
+    "Explain how DINO creates learning targets without labels.",
+    "Interpret DINO's temperature-scaled softmax and cross-entropy objective.",
+    "Distinguish student optimization from momentum-teacher updates.",
+    "Explain how centering and sharpening prevent different forms of collapse.",
+    "Relate patch size and multi-crop training to the paper's evidence."
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "mechanism",
+      "statement": "DINO sends every generated view through the student but sends only the two global views through the teacher, creating local-to-global prediction pairs.",
+      "conditions": "For the paper's multi-crop formulation with a view set containing two global crops and additional local crops.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c2",
+      "kind": "equation",
+      "statement": "Each network converts its K output logits into probabilities using a temperature-scaled softmax.",
+      "conditions": "For positive student or teacher temperature and output dimension K.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c3",
+      "kind": "equation",
+      "statement": "The student minimizes cross-entropy from each teacher global-view distribution to student distributions of the other views.",
+      "conditions": "The student view paired with a teacher view is required to be different from that teacher view.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c4",
+      "kind": "mechanism",
+      "statement": "Student parameters are learned by gradient-based optimization, while teacher parameters are updated from an exponential moving average of student parameters and receive no gradient through the loss.",
+      "conditions": "For DINO with the momentum-teacher update and stop-gradient teacher branch.",
+      "sourceIds": [
+        "section-1",
+        "section-3"
+      ]
+    },
+    {
+      "id": "c5",
+      "kind": "mechanism",
+      "statement": "DINO uses centering and sharpening together because centering opposes domination by one output dimension while sharpening opposes uniform outputs.",
+      "conditions": "In the momentum-teacher configuration studied in the paper; either operation alone was insufficient in the reported collapse analysis.",
+      "sourceIds": [
+        "section-3",
+        "section-5"
+      ]
+    },
+    {
+      "id": "c6",
+      "kind": "result",
+      "statement": "Removing the momentum encoder from the reported ViT-S/16 DINO ablation reduced both k-NN and linear top-1 accuracy to 0.1%.",
+      "conditions": "ImageNet evaluation after 300 training epochs, with multi-crop and cross-entropy retained as shown in Table 7.",
+      "sourceIds": [
+        "section-5"
+      ]
+    },
+    {
+      "id": "c7",
+      "kind": "result",
+      "statement": "DINO with ViT-S/8 achieved 78.3% ImageNet top-1 accuracy using the paper's weighted k-NN evaluation.",
+      "conditions": "Frozen pretrained features and the ImageNet validation protocol reported in Table 2.",
+      "sourceIds": [
+        "abstract",
+        "section-3-part-2"
+      ]
+    },
+    {
+      "id": "c8",
+      "kind": "result",
+      "statement": "DINO with ViT-B/8 achieved 80.1% ImageNet top-1 accuracy under linear evaluation.",
+      "conditions": "Frozen-feature linear evaluation on ImageNet as reported in Table 2.",
+      "sourceIds": [
+        "abstract",
+        "section-3-part-2"
+      ]
+    },
+    {
+      "id": "c9",
+      "kind": "result",
+      "statement": "For DINO ViT-S, k-NN performance was close to linear-probe performance, whereas the same pattern was not observed for the compared self-supervised methods or ResNet-50.",
+      "conditions": "Same-architecture ImageNet comparisons in Table 2; DINO ViT-S scored 74.5% k-NN and 77.0% linear top-1.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c10",
+      "kind": "result",
+      "statement": "Thresholded last-layer class-token attention from DINO ViTs overlapped object masks substantially more than attention from the compared supervised ViTs.",
+      "conditions": "PASCAL VOC12 validation masks obtained by retaining 60% of attention mass and selecting the best head.",
+      "sourceIds": [
+        "section-4-part-2"
+      ]
+    },
+    {
+      "id": "c11",
+      "kind": "result",
+      "statement": "Reducing ViT patch size improved reported feature quality but sharply reduced throughput without increasing backbone parameter count.",
+      "conditions": "Comparisons among the paper's ViT variants; throughput measurements used the stated V100 evaluation settings.",
+      "sourceIds": [
+        "section-3",
+        "section-4",
+        "section-5"
+      ]
+    },
+    {
+      "id": "c12",
+      "kind": "caveat",
+      "statement": "The reported attention maps are smooth, were not optimized as segmentation masks, and therefore do not constitute a trained segmentation system.",
+      "conditions": "Interpretation of thresholded class-token attention in the paper's qualitative and PASCAL VOC12 analyses.",
+      "sourceIds": [
+        "section-4-part-2"
+      ]
+    },
+    {
+      "id": "c13",
+      "kind": "result",
+      "statement": "Adding local crops improved DINO's reported accuracy-and-training-time tradeoff while increasing peak GPU memory.",
+      "conditions": "ViT-S/16 runs on two 8-GPU machines under the multi-crop variants in Table 8.",
+      "sourceIds": [
+        "section-5",
+        "section-5-part-2"
+      ]
+    },
+    {
+      "id": "c14",
+      "kind": "caveat",
+      "statement": "Multi-crop was not a universally beneficial add-on: its effect depended on the self-supervised framework in the paper's comparisons.",
+      "conditions": "ViT-S/16 comparisons after 300 epochs using either two global crops or two global plus six local crops.",
+      "sourceIds": [
+        "section-7-part-3"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "s1",
+      "title": "The question behind DINO",
+      "markdown": "A labeled image usually contributes one selected category, even though its pixels also describe parts, boundaries, pose, texture, and surrounding objects. The paper asks whether removing that label bottleneck changes what a Vision Transformer learns. Its answer is not merely that self-supervision can train a ViT: the resulting features show two notable properties. They work unusually well with a simple nearest-neighbor classifier, and information about scene layout becomes directly visible in last-block self-attention.\n\nDINO—self-distillation with no labels—is the training framework used to investigate this. Two networks with the same architecture see transformed views of one image. A student learns to match a teacher, but the teacher is not pretrained and no human class target is supplied. It is constructed continuously from the student's history. This makes the phrase “distillation” potentially misleading: there is no permanently fixed, larger expert transferring named classes.",
+      "sourceIds": [
+        "section-1",
+        "section-2",
+        "section-6"
+      ],
+      "claimIds": [
+        "c4",
+        "c9"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s2",
+      "title": "From pixels to tokens and attention",
+      "markdown": "A ViT divides an image into non-overlapping $N\\times N$ patches, maps every patch to an embedding, and prepends a learnable $[\\mathrm{CLS}]$ token. Transformer blocks update these tokens through self-attention and feed-forward layers. In DINO, “class token” is inherited terminology: the token is not given a class label. Its backbone output feeds the projection head during pretraining.\n\nDINO applies a temperature-scaled softmax to the projection head's $K$ output logits. For logits $z_1,\\ldots,z_K$ and temperature $\\tau>0$, the output probability is\n\n$$p^{(i)}=\\frac{\\exp(z_i/\\tau)}{\\sum_{k=1}^{K}\\exp(z_k/\\tau)}.$$\n\nHere $K$ is the projection head's output dimension, $z_i$ is output coordinate $i$'s logit, and $\\tau$ controls the distribution's sharpness. These coordinates are not image tokens or human-named classes. As temperature falls, the largest projection-head logit receives more probability mass, which is the arithmetic behind DINO's sharpened teacher targets.\n\nThe control below instead applies softmax to four fixed illustrative attention scores and displays normalized attention weights. Its arithmetic is analogous, but its quantities are not DINO projection-head logits or output probabilities. Transformer self-attention normalizes compatibility scores into weights over tokens, whereas DINO's distillation loss compares teacher and student probability distributions over projection-head output coordinates. The last-block $[\\mathrm{CLS}]$ attention maps examined later are separate spatial evidence; sharpening the teacher output does not directly sharpen those attention maps.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c2"
+      ],
+      "figureId": "fig-attention"
+    },
+    {
+      "id": "s3",
+      "title": "Cross-view self-distillation, step by step",
+      "markdown": "For one source image, DINO constructs a set $V$ of independently transformed crops. In the paper’s standard multi-crop setting, $V$ contains two global views, $x_1^g$ and $x_2^g$, resized to $224\\times224$, together with several local views resized to $96\\times96$. The global crops cover relatively large regions of the source image—for example, more than $50\\%$—whereas the local crops cover smaller regions—for example, less than $50\\%$. These are random resized crops: “global” and “local” describe the sampled areas of the original image, not fixed groups of ViT patches.\n\nEvery crop is processed by the student, but only the two global crops are processed by the teacher. Let $g_{\\theta_s}$ and $g_{\\theta_t}$ denote networks with the same architecture and different parameters. Each network consists of a backbone $f$ followed by a projection head $h$, so $g=h\\circ f$. The downstream representation comes from the backbone, while the projection head supplies the outputs used by the self-distillation objective. In the reported design, that head is a three-layer MLP with hidden dimension $2048$, followed by $\\ell_2$ normalization and a weight-normalized fully connected layer with $K$ outputs.\n\nFor student output coordinate $i$, temperature-scaled softmax gives\n\n$$P_s(x)^{(i)}=\\frac{\\exp\\!\\left(g_{\\theta_s}(x)^{(i)}/\\tau_s\\right)}{\\sum_{k=1}^{K}\\exp\\!\\left(g_{\\theta_s}(x)^{(k)}/\\tau_s\\right)},$$\n\nand the teacher uses the analogous expression with temperature $\\tau_t$. The $K$ coordinates are learned projection-head dimensions, not human-provided categories, crop identities, or image patches. A lower positive temperature concentrates more probability on the larger logits. In the paper’s training configuration, $\\tau_s=0.1$, while $\\tau_t$ is warmed from $0.04$ to $0.07$ during the first $30$ epochs.\n\nThe student minimizes\n\n$$\\min_{\\theta_s}\\sum_{x\\in\\{x_1^g,x_2^g\\}}\\sum_{\\substack{x'\\in V\\\\x'\\ne x}}H\\!\\left(P_t(x),P_s(x')\\right),$$\n\nwhere\n\n$$H(P_t,P_s)=-\\sum_{i=1}^{K}P_t^{(i)}\\log P_s^{(i)}.$$\n\nFor each global teacher crop $x$, the condition $x'\\ne x$ excludes the student output produced from that identical crop. The target is instead matched by the student output for the other global crop and by the student outputs for all local crops. If $V$ contains $L$ local crops, the objective has $2(1+L)$ ordered teacher–student terms: two teacher targets, each paired with one other global student view and all $L$ local student views.\n\nThis pairing is the mechanism behind DINO’s “local-to-global” correspondence. A local crop can show only an object part or a restricted scene region, yet its student distribution must agree with a teacher distribution computed from a larger crop of the same image. At the same time, the two global crops are trained to predict one another. Because the crops are independently transformed, the objective pressures the networks to preserve information that remains useful across changes of scale, position, color, blur, and solarization used by the augmentation pipeline.\n\nThe target remains a distribution over projection-head coordinates. Cross-entropy does not assign names to those coordinates, identify objects explicitly, or supervise pixel boundaries. The paper’s later attention and downstream experiments are therefore necessary to establish that spatial and semantic structure became accessible in the learned representation. That structure is an empirical property of the trained features, not a direct annotation embedded in the loss.\n\nOnly the student receives gradients from this objective. The teacher branch is stop-gradient, so its parameters are not optimized by differentiating the cross-entropy. Instead, after the student update, the teacher follows an exponential moving average of the student parameters:\n\n$$\\theta_t\\leftarrow\\lambda\\theta_t+(1-\\lambda)\\theta_s.$$\n\nThe paper schedules $\\lambda$ from $0.996$ toward $1$. Early in training the teacher incorporates a somewhat larger fraction of the current student; later it changes more slowly and retains a longer history. The teacher is consequently neither fixed nor a second network trained by the same gradient. It is a temporally averaged model assembled from successive student states, and its outputs become the targets for the next student updates.\n\nThis slow teacher is important because the targets are generated inside the training loop rather than supplied by labels or by a pretrained classifier. Copying the current student into the teacher produced a collapsed result in the reported study, whereas the momentum teacher supplied substantially better targets. In the $300$-epoch ViT-S/16 ablation with multi-crop and cross-entropy retained, removing the momentum encoder reduced both weighted $k$-NN and linear ImageNet top-1 accuracy to $0.1\\%$. That ablation isolates a failure of this training configuration; it does not imply that every non-momentum self-supervised method must collapse.\n\nBefore the teacher softmax, centering uses a smoothed, coordinate-wise statistic of teacher outputs over the batch. This reduces persistent imbalance in which one output coordinate dominates across different images. A low teacher temperature then sharpens the resulting distribution, concentrating probability on its larger coordinates. The statistic changes gradually across batches, while the student learns to match these centered and sharpened targets across views.\n\nCentering and sharpening address different constant solutions. Without effective centering, one output coordinate can dominate for every input. Centering opposes that persistent coordinate imbalance, but by itself pushes the teacher toward a uniform distribution. Sharpening, implemented with a low teacher temperature, lowers target entropy and opposes uniform outputs; used without centering, it can instead reinforce domination by one coordinate. In the momentum-teacher configuration studied by the paper, combining the two balanced these tendencies. Their purpose is to preserve informative variation among inputs while student and teacher distributions are brought into agreement, not to assign predetermined semantics to individual output coordinates.\n\nThe collapse analysis can be expressed through\n\n$$H(P_t,P_s)=h(P_t)+D_{\\mathrm{KL}}(P_t\\Vert P_s),$$\n\nwhere $h(P_t)$ is the teacher entropy. If student and teacher emit the same constant distribution for every image, their KL divergence can vanish even though the representation is useless. The entropy distinguishes the two limiting cases discussed in the paper: a single-coordinate target has entropy near zero, whereas a uniform distribution over $K$ coordinates has entropy $\\log K$. Agreement is thus necessary for the objective but is not sufficient evidence that the representation contains image-dependent information.\n\nMulti-crop changes which predictions are coupled by this objective. With two $224^2$ global crops and six $96^2$ local crops, each image supplies fourteen ordered cross-view loss terms rather than the two terms obtained from a pair of global crops: each of the two teacher views is paired with the other global student view and all six local student views. The additional terms repeatedly require restricted views to predict distributions obtained from larger views. In the paper’s $300$-epoch ViT-S/16 comparison, moving from two $224^2$ crops to two $224^2$ plus six $96^2$ crops raised weighted $k$-NN top-1 accuracy from $67.9\\%$ to $72.7\\%$ and linear top-1 accuracy from $72.5\\%$ to $75.9\\%$.\n\nThat gain depended on the complete learning framework. Under the same crop comparison, MoCo-v2 and SwAV improved by different amounts, while the reported BYOL results declined from $66.6\\%$ to $59.8\\%$ in weighted $k$-NN and from $71.4\\%$ to $64.8\\%$ in linear evaluation. The scientific consequence is that extra local views cannot be treated as an independently reliable augmentation. In DINO, their benefit arises through the ordered local-to-global cross-entropy terms together with the momentum teacher, centered and sharpened targets, and the rest of the optimization procedure.",
+      "sourceIds": [
+        "section-3",
+        "section-7-part-3"
+      ],
+      "claimIds": [
+        "c1",
+        "c2",
+        "c3",
+        "c14"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s4",
+      "title": "A numerical pass through the objective",
+      "markdown": "Consider an illustrative three-coordinate student output with logits $z=(2,1,0)$ and temperature $\\tau_s=1$. Then $e^2\\approx7.389$, $e^1\\approx2.718$, and $e^0=1$, so the denominator is $11.107$. The student distribution is approximately\n\n$$P_s=(0.665,0.245,0.090).$$\n\nSuppose an illustrative teacher distribution for another view is $P_t=(0.8,0.1,0.1)$. The cross-entropy is\n\n$$H(P_t,P_s)=-[0.8\\log(0.665)+0.1\\log(0.245)+0.1\\log(0.090)]\\approx0.708.$$\n\nThis arithmetic is illustrative, not a reported training measurement. It shows that the loss rewards the student for placing probability where the teacher does; it does not compare the image against a human label.\n\nOnly $\\theta_s$ receives this loss gradient. The teacher follows\n\n$$\\theta_t\\leftarrow\\lambda\\theta_t+(1-\\lambda)\\theta_s,$$\n\nwhere $\\lambda$ is the momentum coefficient. For a one-dimensional illustrative parameter with old teacher value $4$, student value $10$, and $\\lambda=0.75$, the new teacher is $0.75(4)+0.25(10)=5.5$. This lagged average is smoother than copying the current student. In the actual method, the paper schedules $\\lambda$ and updates full parameter tensors.",
+      "sourceIds": [
+        "section-1",
+        "section-3"
+      ],
+      "claimIds": [
+        "c2",
+        "c3",
+        "c4"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s5",
+      "title": "Why agreement does not automatically produce meaning",
+      "markdown": "A matching loss admits useless solutions. Every image could receive the same uniform distribution, or one coordinate could dominate for every image. DINO combines two teacher-side operations. Centering adjusts teacher logits using a running batch mean, opposing persistent domination by one coordinate. Sharpening uses a low teacher temperature, opposing an indiscriminately uniform target.\n\nThe paper describes their effects as complementary: centering alone pushes toward uniformity, while sharpening alone favors the opposite failure. With a momentum teacher, balancing both was sufficient in the studied configuration. A helpful identity is\n\n$$H(P_t,P_s)=h(P_t)+D_{\\mathrm{KL}}(P_t\\Vert P_s),$$\n\nwhere $h(P_t)=-\\sum_iP_t^{(i)}\\log P_t^{(i)}$ is teacher entropy and $D_{\\mathrm{KL}}$ is Kullback–Leibler divergence. Agreement, represented by small divergence, is not itself proof of useful representation: student and teacher can agree on a constant output.\n\nThe retained normalization control starts with the fixed activation vector $[-2,-1,0,2,6]$. It adds the same offset $b$ to every entry, subtracts the resulting vector's mean, and divides by its population standard deviation. The original mean is $1$ and the population variance is $8$, so the displayed values are $[-3,-2,-1,1,5]/\\sqrt8$ at every offset: adding $b$ moves both each activation and the mean by the same amount, which cancels when they are subtracted. Predict this invariance before moving the control. Here the mean and scale come from one vector; DINO instead maintains a running batch statistic for each teacher-output coordinate and separately uses temperature to shape the teacher distribution. The example makes removal of a common shift tangible while the lesson's batch statistic and temperature explain how DINO balances its two collapse modes.",
+      "sourceIds": [
+        "section-3",
+        "section-5"
+      ],
+      "claimIds": [
+        "c5",
+        "c6"
+      ],
+      "figureId": "fig-normalization"
+    },
+    {
+      "id": "s6",
+      "title": "What emerged under the reported evaluations",
+      "markdown": "The strongest evidence must be tied to its protocol. With frozen ImageNet features, DINO ViT-S/8 reached $78.3\\%$ top-1 using the paper's weighted $k$-NN evaluation. DINO ViT-B/8 reached $80.1\\%$ under linear evaluation. For the same-architecture ViT-S comparison, DINO scored $74.5\\%$ with $k$-NN and $77.0\\%$ with a linear classifier; the paper emphasizes that this unusually small gap did not appear for its compared self-supervised alternatives or ResNet-50.\n\nSpatial evidence came from a different probe. The authors thresholded last-layer $[\\mathrm{CLS}]$ attention to retain a specified share of its mass and compared the resulting masks with PASCAL VOC12 object masks. Under the 60%-mass protocol, DINO attention produced markedly higher Jaccard overlap than supervised ViT attention. Frozen patch features also supported nearest-neighbor propagation between video frames on DAVIS-2017, with /8 variants outperforming their /16 counterparts in the reported dense task.\n\nThese results support the claim that spatial information is accessible, not that DINO was trained as a segmenter. The attention is smooth, the best head was selected for the mask comparison, and thresholding supplies an extra extraction rule.",
+      "sourceIds": [
+        "abstract",
+        "section-3-part-2",
+        "section-4",
+        "section-4-part-2"
+      ],
+      "claimIds": [
+        "c7",
+        "c8",
+        "c9",
+        "c10",
+        "c12"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s7",
+      "title": "Tradeoffs, misconceptions, and limits",
+      "markdown": "A common misconception is that DINO succeeds simply because student and teacher share an architecture. The ablations contradict that shortcut. In the 300-epoch ViT-S/16 study, removing momentum while retaining multi-crop and cross-entropy produced $0.1\\%$ top-1 in both $k$-NN and linear evaluation. Removing multi-crop or replacing cross-entropy with mean squared error also hurt the reported features, though not identically. The evidence therefore concerns a coupled recipe, not a generic guarantee for self-distillation.\n\nFiner patches improve spatial granularity and reported feature quality, but increase token count and computation. At $224^2$ input resolution, the paper lists 197 tokens for /16 and 785 for /8; ViT-S throughput fell from 1007 to 180 images per second in the stated V100 setting. Multi-crop likewise traded resources: more local views improved the reported accuracy/time tradeoff but raised peak memory, and the appendix showed that multi-crop did not benefit every framework equally.\n\nFinally, the headline accuracies are conditional on ImageNet pretraining and the stated evaluation procedures. They do not establish that attention always equals object segmentation, that nearest neighbors are universally optimal, or that the same hyperparameters transfer unchanged to arbitrary data. The paper itself presents uncurated large-scale pretraining as future work rather than completed evidence.",
+      "sourceIds": [
+        "section-3",
+        "section-5",
+        "section-5-part-2",
+        "section-6",
+        "section-7-part-3"
+      ],
+      "claimIds": [
+        "c6",
+        "c11",
+        "c12",
+        "c13",
+        "c14"
+      ],
+      "figureId": null
+    }
+  ],
+  "figures": [
+    {
+      "id": "fig-attention",
+      "kind": "attention",
+      "title": "Temperature and abstract attention weights",
+      "question": "As the positive temperature decreases, how does the normalized weight on the fixed largest attention score change?",
+      "caption": "Four fixed illustrative attention scores $[2,1,0,-1]$ are divided by a positive temperature and passed through softmax, showing how temperature changes the concentration of normalized attention weights.",
+      "limitation": "This abstract calculation uses fixed teaching scores. It is not a measured attention head, a learned token-similarity pattern, or DINO projection-head logits and probabilities.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c2"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "fig-normalization",
+      "kind": "normalization",
+      "title": "Removing a shared activation offset",
+      "question": "After standardization, what changes when the same offset is added to all five fixed activations?",
+      "caption": "Five fixed activations are shifted, then standardized by subtracting their mean and dividing by their population standard deviation.",
+      "limitation": "This single-vector calculation is not DINO's running teacher centering, LayerNorm, BatchNorm, or a model-training simulation.",
+      "sourceIds": [
+        "section-3",
+        "section-5"
+      ],
+      "claimIds": [
+        "c5"
+      ],
+      "illustrative": true
+    }
+  ],
+  "quiz": [
+    {
+      "question": "With a fixed teacher distribution $P_t$ and student distribution $P_s$, which change is guaranteed not to increase their cross-entropy?",
+      "options": [
+        {
+          "text": "Replace $P_s$ by $(1-\\alpha)P_s+\\alpha P_t$ for any $0<\\alpha\\leq1$.",
+          "explanation": "Correct. Cross-entropy is convex in the student distribution, and the teacher distribution minimizes cross-entropy against itself, so moving along this mixture toward the fixed teacher cannot increase the loss."
+        },
+        {
+          "text": "Increase only the student's probability on the teacher's largest coordinate, taking the required mass from unspecified coordinates.",
+          "explanation": "Incorrect. The result depends on which other normalized probabilities lose mass and on the teacher's full distribution."
+        },
+        {
+          "text": "Make the student's probabilities uniform.",
+          "explanation": "Incorrect. A uniform distribution is not guaranteed to be closer to the fixed teacher and can increase cross-entropy."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c2",
+        "c3"
+      ]
+    },
+    {
+      "question": "What distinguishes the momentum teacher from the student in DINO?",
+      "options": [
+        {
+          "text": "The teacher is optimized by the same loss gradient but uses a smaller learning rate.",
+          "explanation": "Incorrect. The teacher branch is stop-gradient; its parameters are not optimized by that loss gradient."
+        },
+        {
+          "text": "The teacher is an exponential moving average of student parameters.",
+          "explanation": "Correct. The student is optimized, while the teacher is updated from current student parameters and its prior state."
+        },
+        {
+          "text": "The teacher is a permanently fixed supervised classifier.",
+          "explanation": "Incorrect. DINO uses no label-trained fixed teacher; the teacher evolves during self-supervised training."
+        }
+      ],
+      "answer": 1,
+      "sourceIds": [
+        "section-1",
+        "section-3"
+      ],
+      "claimIds": [
+        "c4"
+      ]
+    },
+    {
+      "question": "Which conclusion is justified by the paper's attention-mask evidence?",
+      "options": [
+        {
+          "text": "DINO is a fully supervised segmentation method.",
+          "explanation": "Incorrect. DINO was pretrained without segmentation labels and its objective was not designed for dense prediction."
+        },
+        {
+          "text": "Every attention head exactly traces every object boundary.",
+          "explanation": "Incorrect. The maps are smooth, thresholded, and evaluated using a selected head; exact universal boundaries were not established."
+        },
+        {
+          "text": "Under the stated thresholding protocol, DINO attention exposed more object-layout information than supervised ViT attention.",
+          "explanation": "Correct. This matches the reported PASCAL VOC12 comparison while preserving its evaluation conditions."
+        }
+      ],
+      "answer": 2,
+      "sourceIds": [
+        "section-4-part-2"
+      ],
+      "claimIds": [
+        "c10",
+        "c12"
+      ]
+    }
+  ],
+  "id": "emerging-properties-in-self-supervised-vision",
+  "createdAt": "2026-10-02T00:15:27.354Z",
+  "pipelineVersion": "subjects-lessons-v1",
+  "sources": [
+    {
+      "id": "abstract",
+      "label": "Original paper · abstract",
+      "url": "https://arxiv.org/abs/2104.14294",
+      "digest": "59338873cb647006eb740f58e07d1b3391819ffb9d58047d9d73613b638afbcb",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:11:36.562Z"
+    },
+    {
+      "id": "main-text",
+      "label": "Original paper · unsectioned main text",
+      "url": "https://arxiv.org/html/2104.14294",
+      "digest": "5a99302a93e75c998d1fd3b12bc038eb86890eb23eb4cc55b85a58bdf744d68f",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:11:36.562Z"
+    },
+    {
+      "id": "section-1",
+      "label": "1 Introduction",
+      "url": "https://arxiv.org/html/2104.14294#S1",
+      "digest": "5d162a1682009ed3fef15d29dce1a5532ae44e80e7afbc5b8bf7eb1aa24be204",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:11:36.562Z"
+    },
+    {
+      "id": "section-2",
+      "label": "2 Related work",
+      "url": "https://arxiv.org/html/2104.14294#S2",
+      "digest": "5d500581ef3e98c9547981cab60678ecb948439f9fa56dd074f41d6798dffbf2",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:11:36.562Z"
+    },
+    {
+      "id": "section-3",
+      "label": "3 Approach",
+      "url": "https://arxiv.org/html/2104.14294#S3",
+      "digest": "a28c0fc90f68ae8a59d9b2fe7ea69ea3a111a008cc23438727f1e959449a6e04",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:11:36.562Z"
+    },
+    {
+      "id": "section-3-part-2",
+      "label": "3 Approach · part 2",
+      "url": "https://arxiv.org/html/2104.14294#S3",
+      "digest": "73774b4a04bfe1271d4f9122d538ff7f1e805e5ba7aa3b321ad55bcf2ba34509",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:11:36.562Z"
+    },
+    {
+      "id": "section-4",
+      "label": "4 Main Results",
+      "url": "https://arxiv.org/html/2104.14294#S4",
+      "digest": "3f329d171682c25ec0ab9a85be2053e12f70a9797b4040105eeb77812e16f879",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:11:36.562Z"
+    },
+    {
+      "id": "section-4-part-2",
+      "label": "4 Main Results · part 2",
+      "url": "https://arxiv.org/html/2104.14294#S4",
+      "digest": "8f696f76d72a6f9ad65e939ca0012693d7a24eb36d9f0df4da99c1619cb12924",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:11:36.562Z"
+    },
+    {
+      "id": "section-5",
+      "label": "5 Ablation Study of DINO",
+      "url": "https://arxiv.org/html/2104.14294#S5",
+      "digest": "672a59e65faf3e76c4f8b12db647fe262095a057268748607908500583684bc7",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:11:36.562Z"
+    },
+    {
+      "id": "section-5-part-2",
+      "label": "5 Ablation Study of DINO · part 2",
+      "url": "https://arxiv.org/html/2104.14294#S5",
+      "digest": "847b304937b1ed77b7b21a3d89ee26261f52d7896a284d1794c5cfb5f20335b3",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:11:36.562Z"
+    },
+    {
+      "id": "section-6",
+      "label": "6 Conclusion",
+      "url": "https://arxiv.org/html/2104.14294#S6",
+      "digest": "0277d3f498f1689355634adb0f0f164686339e60223e689f3f75cea7c781db55",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:11:36.562Z"
+    },
+    {
+      "id": "section-7",
+      "label": "Appendix",
+      "url": "https://arxiv.org/html/2104.14294#Sx1",
+      "digest": "d1916dba161d587daaf62ba6e2ee48d6e9f094aa7b57d5eae30026c19e73132d",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:11:36.562Z"
+    },
+    {
+      "id": "section-7-part-2",
+      "label": "Appendix · part 2",
+      "url": "https://arxiv.org/html/2104.14294#Sx1",
+      "digest": "6de90e5323a12e0a7b79d8b0809354326128e7100c19e11d360e95a61323b9d9",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:11:36.562Z"
+    },
+    {
+      "id": "section-7-part-3",
+      "label": "Appendix · part 3",
+      "url": "https://arxiv.org/html/2104.14294#Sx1",
+      "digest": "bbc1f903815c6d0aaec1676a91df72dbee85a1f16c47df271a51c42934430057",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:11:36.562Z"
+    }
+  ],
+  "review": {
+    "status": "passed",
+    "reviewedAt": "2026-10-02T02:22:15.648Z",
+    "contentDigest": "1e769b0a3f54ed86a5e2207e7b070afa9669b545cbfbf4532f14894f736a18bf"
+  }
+}

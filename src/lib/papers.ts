@@ -1,6 +1,6 @@
 import * as cheerio from "cheerio";
 import type { Paper, Source } from "./types";
-import { sourcesFromHtml } from "./source-extraction";
+import { sourcesFromHtml,hasSubstantiveSourceBody } from "./source-extraction";
 export async function importPaper(id: string): Promise<Paper> {
   const r = await fetch(`https://arxiv.org/abs/${id}`, {
     headers: { "User-Agent": "AfterImage/0.1 (personal research library)" },
@@ -66,7 +66,7 @@ export async function extractSources(
     const html = await r.text();
     if (html.length > 12_000_000) throw new Error("Too large");
     const sources = sourcesFromHtml(paper, html);
-    return { scope: sources.length > 1 ? "full-text" : "abstract", sources };
+    return { scope: hasSubstantiveSourceBody(sources) ? "full-text" : "abstract", sources };
   } catch {
     return { scope: "abstract", sources: paper.sources.slice(0, 1) };
   }

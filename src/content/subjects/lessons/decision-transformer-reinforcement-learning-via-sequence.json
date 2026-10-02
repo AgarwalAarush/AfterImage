@@ -1,0 +1,410 @@
+{
+  "title": "Prompting a Policy with Tomorrow’s Return",
+  "summary": "Decision Transformer reframes offline control as causal sequence prediction, choosing actions from desired return, state, and history without Bellman backups.",
+  "prerequisites": [
+    "Markov decision processes and trajectories",
+    "Returns and return-to-go",
+    "Autoregressive sequence models",
+    "Causal self-attention",
+    "Supervised discrete and continuous action prediction"
+  ],
+  "objectives": [
+    "Explain why return-to-go serves as a conditioning token.",
+    "Construct Decision Transformer's interleaved token sequence.",
+    "Trace training and deployment without Bellman backups.",
+    "Calculate and update a target return over a short trajectory.",
+    "Interpret reported results within their dataset conditions."
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "mechanism",
+      "statement": "Decision Transformer treats offline reinforcement learning as conditional autoregressive sequence modeling rather than learning a value function or applying policy gradients.",
+      "conditions": "The setting is offline RL with a fixed dataset of previously collected trajectories.",
+      "sourceIds": [
+        "abstract"
+      ]
+    },
+    {
+      "id": "c2",
+      "kind": "equation",
+      "statement": "The undiscounted return-to-go at time $t$ is $\\widehat{R}_t=\\sum_{t'=t}^{T}r_{t'}$, the sum of rewards from the current timestep through the episode end.",
+      "conditions": "Finite trajectories with rewards indexed through terminal timestep $T$; no discount factor is used in this definition.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c3",
+      "kind": "mechanism",
+      "statement": "A trajectory is serialized as repeating return-to-go, state, and action tokens, so the model can predict an action after observing its desired return and current state.",
+      "conditions": "The representation uses the paper’s ordered triplets for timesteps $1$ through $T$.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c4",
+      "kind": "mechanism",
+      "statement": "At deployment, the requested return is reduced by each reward actually received before the next action is generated.",
+      "conditions": "The environment reveals the achieved reward after execution, and generation continues until episode termination.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c5",
+      "kind": "mechanism",
+      "statement": "A context of $K$ timesteps contains $3K$ modality tokens, with learned modality projections and a shared episodic-timestep embedding for each triplet.",
+      "conditions": "Linear state embeddings apply to nonvisual inputs; the paper substitutes a convolutional encoder for visual states.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c6",
+      "kind": "mechanism",
+      "statement": "Training is supervised action prediction: discrete actions use cross-entropy, continuous actions use mean-squared error, and timestep losses are averaged.",
+      "conditions": "Minibatches are sampled as trajectory subsequences of length $K$ from the fixed offline dataset.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c7",
+      "kind": "mechanism",
+      "statement": "Causal masking prevents a prediction from attending to future tokens while permitting attention to the available prefix.",
+      "conditions": "GPT-style autoregressive generation with token positions ordered causally.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c8",
+      "kind": "result",
+      "statement": "On the four reported Atari games, Decision Transformer was competitive with CQL on three and matched or exceeded REM, QR-DQN, and behavior cloning on all four.",
+      "conditions": "One percent of DQN replay data, four specified Atari games, gamer-normalized scores, and three-seed reporting for Decision Transformer.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c9",
+      "kind": "result",
+      "statement": "Longer history materially improved the reported Atari performance relative to $K=1$.",
+      "conditions": "The ablation used $K=50$ for Pong and $K=30$ for the other reported Atari games, with frame stacking retained.",
+      "sourceIds": [
+        "section-5"
+      ]
+    },
+    {
+      "id": "c10",
+      "kind": "result",
+      "statement": "In Key-to-Door, return-aware methods learned effective behavior from random-action trajectories, while the reported CQL result remained poor.",
+      "conditions": "The entire episode was used as context in the paper’s Key-to-Door variant; success was evaluated for datasets of 1K and 10K random trajectories.",
+      "sourceIds": [
+        "section-5"
+      ]
+    },
+    {
+      "id": "c11",
+      "kind": "caveat",
+      "statement": "Return conditioning is not a guarantee that arbitrary requested returns are achievable; the reported relationship was empirical and task-dependent.",
+      "conditions": "The claim concerns evaluated Atari and D4RL medium-replay tasks, including limited extrapolation observations on some tasks.",
+      "sourceIds": [
+        "section-5"
+      ]
+    },
+    {
+      "id": "c12",
+      "kind": "caveat",
+      "statement": "The paper leaves large-scale pretraining, richer embeddings, stochastic return distributions, and deeper study of transformer errors as future work.",
+      "conditions": "These are stated research directions and safety gaps, not evaluated capabilities of the presented system.",
+      "sourceIds": [
+        "section-7"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "s1",
+      "title": "The reframing: control as completion",
+      "markdown": "Offline reinforcement learning begins with a fixed collection of trajectories rather than permission to gather new experience. In an MDP, $\\mathcal{S}$ is the state space, $\\mathcal{A}$ the action space, $P(s'\\mid s,a)$ the transition distribution, and $\\mathcal{R}(s,a)$ the reward function. At timestep $t$, the agent sees $s_t$, chooses $a_t$, and receives $r_t=\\mathcal{R}(s_t,a_t)$. A trajectory records these events through a terminal time $T$.\n\nDecision Transformer changes the learning question. A conventional value-based method might estimate how good states or state-action pairs are and then improve a policy against that estimate. Decision Transformer instead asks: given a requested outcome and the trajectory prefix so far, what action token should come next? The model is trained with an ordinary supervised prediction loss on an offline dataset.\n\nThat reframing does not make the environment disappear. Actions still affect later states and rewards. It changes where control knowledge is represented: within the conditional distribution learned from trajectories, rather than in an explicit learned value function used by a Bellman optimizer. This is the paper’s particular contribution—not merely placing a Transformer inside an otherwise conventional RL algorithm.",
+      "sourceIds": [
+        "section-1",
+        "section-2",
+        "abstract"
+      ],
+      "claimIds": [
+        "c1"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s2",
+      "title": "The conditioning variable comes from the future",
+      "markdown": "Raw past reward is insufficient for requesting a future level of performance. The paper therefore labels every dataset timestep with its hindsight return-to-go:\n\n$$\n\\widehat{R}_t=\\sum_{t'=t}^{T} r_{t'}.\n$$\n\nHere $\\widehat{R}_t$ is the return-to-go at time $t$, $r_{t'}$ is the reward received at timestep $t'$, $t'$ is the summation index, and $T$ is the terminal timestep. The hat distinguishes the return-to-go token used in the method. The definition is undiscounted.\n\nConsider an illustrative four-step reward sequence $(2,-1,3,4)$. Working backward gives\n\n$$\n\\widehat{R}_4=4,\\quad \\widehat{R}_3=3+4=7,\\quad\n\\widehat{R}_2=-1+3+4=6,\\quad \\widehat{R}_1=2-1+3+4=8.\n$$\n\nThe serialized training example is therefore\n\n$$\n(8,s_1,a_1,6,s_2,a_2,7,s_3,a_3,4,s_4,a_4).\n$$\n\nThe numbers are illustrative, not reported experimental data. Their purpose is to expose a subtle point: the return token at each dataset position contains hindsight information, but the model remains causally trained. When predicting $a_t$, it receives the desired return at $t$ and the available prefix; it does not receive future state or action tokens.",
+      "sourceIds": [
+        "section-2",
+        "section-3"
+      ],
+      "claimIds": [
+        "c2",
+        "c3",
+        "c7"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s3",
+      "title": "What causal attention contributes",
+      "markdown": "Each token embedding is transformed into a query $q_i$, key $k_i$, and value $v_i$. Conceptually, attention assigns larger normalized weight to prefix tokens whose keys align more strongly with the current query. A causal mask restricts position $i$ to positions no later than $i$, so an action prediction cannot inspect the future.\n\nThe interactive attention figure uses four fixed illustrative scores $(2,1,0,-1)$. Dividing them by a positive temperature $\\theta$ and applying softmax gives\n\n$$\nw_j=\\frac{\\exp(e_j/\\theta)}{\\sum_{m=1}^{4}\\exp(e_m/\\theta)},\n$$\n\nwhere $e_j$ is the fixed score for item $j$, $w_j$ is its normalized weight, and $m$ indexes all four items. Predict what happens as $\\theta$ decreases: weight concentrates on the score $2$ item. This toy makes normalization and selectivity visible. It is not a measured Decision Transformer head, does not identify states or returns as particular items, and says nothing about what similarities training will learn.\n\nThe useful connection is structural. In the real model, the available prefix can include requested returns, states, and earlier actions. Attention supplies content-dependent access to that history, while causal ordering keeps action generation autoregressive.",
+      "sourceIds": [
+        "section-2",
+        "main-text"
+      ],
+      "claimIds": [
+        "c7"
+      ],
+      "figureId": "fig-attention"
+    },
+    {
+      "id": "s4",
+      "title": "From trajectory records to action predictions",
+      "markdown": "For a context window of $K$ timesteps, Decision Transformer forms $3K$ tokens: one return-to-go, one state, and one action per timestep. Separate learned projections map the three modalities into a common embedding dimension. Visual states use a convolutional encoder instead of the state linear layer. A learned episodic-timestep embedding is added to all three tokens belonging to the same timestep; this differs from treating their three sequence positions as three unrelated times.\n\nA GPT model processes the resulting prefix. The prediction head located after $s_t$ predicts $a_t$. If actions are discrete, training minimizes cross-entropy; if actions are continuous, it minimizes mean-squared error. Losses are averaged over timesteps in sampled length-$K$ subsequences. The paper reports that additionally predicting states or returns-to-go did not improve its results, although the framework permits those heads.\n\nStep by step, training is: compute hindsight returns for each stored trajectory; sample a window; embed its modalities and episodic times; apply causally masked Transformer layers; predict each target action from its preceding return-state context; and update the model with supervised loss. There is no Bellman target, explicit critic, or environment interaction in this loop.\n\nThe walkthrough uses two timesteps and assumes $K\\ge2$. First, the prefix $(\\widehat R_1,s_1^{\\mathrm{off}})$ predicts the recorded action $a_1^{\\mathrm{off}}$, which is withheld as the supervised target. For the second prediction, the prefix becomes $(\\widehat R_1,s_1^{\\mathrm{off}},a_1^{\\mathrm{off}},\\widehat R_2,s_2^{\\mathrm{off}})$. The earlier action is now causal history; $a_2^{\\mathrm{off}}$ remains the withheld target. Both predictions reuse the stored trajectory without interacting with the environment.\n\nThe deployment branch begins separately with requested return $G_1$ and current observation $s_1^{\\mathrm{dep}}$. The model generates $a_1^*$ from that prefix; after execution reveals reward $r_1^{\\mathrm{dep}}$ and successor observation $s_2^{\\mathrm{dep}}$, the next request is $G_2=G_1-r_1^{\\mathrm{dep}}$. The prompt then appends the executed action, updated request, and new observation in that order, retaining at most the last $K$ timesteps. Offline targets supervise learning; actual observed rewards update the deployment request.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c3",
+        "c5",
+        "c6"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s5",
+      "title": "Deployment is a receding return prompt",
+      "markdown": "At the start of an episode, the user supplies a desired return $G_1$ and the environment supplies $s_1$. The model predicts $a_1$. After that action produces reward $r_1$, the next desired return is updated by\n\n$$\nG_2=G_1-r_1.\n$$\n\nIn general, $G_{t+1}=G_t-r_t$, where $G_t$ is the remaining requested return before action $a_t$. Suppose, illustratively, that $G_1=8$ and the first two observed rewards are $2$ and $-1$. Then $G_2=8-2=6$, followed by $G_3=6-(-1)=7$. A negative reward raises the remaining amount needed to meet the original total. The calculation matches the return-to-go labels in the previous worked trajectory.",
+      "sourceIds": [
+        "section-1",
+        "section-3"
+      ],
+      "claimIds": [
+        "c4"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s6",
+      "title": "What the experiments establish",
+      "markdown": "Evidence must be tied to its data regime. On Atari, the paper used 500,000 transitions—one percent of a 50-million-transition DQN replay dataset—and reported gamer-normalized scores over three seeds for Decision Transformer. Across Breakout, Qbert, Pong, and Seaquest, it described Decision Transformer as competitive with CQL on three games and as matching or exceeding REM, QR-DQN, and behavior cloning on all four. This supports competitiveness under that protocol, not universal superiority.\n\nThe context ablation sharpens the mechanism claim. Performance was worse with $K=1$ than with the longer contexts used in the main Atari results: $K=50$ for Pong and $K=30$ for the others. The authors hypothesize that history may help identify which behavior policy produced a trajectory. The result establishes the utility of context in those experiments; it does not prove that policy identification is the cause.\n\nKey-to-Door isolates delayed credit. An episode requires collecting a key, crossing an unrewarded phase, and later reaching a door. Using entire episodes as context and random-action trajectory datasets, return-aware Decision Transformer and percentile behavior cloning achieved high reported success, while CQL performed poorly. The comparison supports hindsight-conditioned learning in that constructed long-horizon setting. It does not by itself show that supervised sequence modeling solves every sparse-reward task.",
+      "sourceIds": [
+        "section-4",
+        "section-5"
+      ],
+      "claimIds": [
+        "c8",
+        "c9",
+        "c10"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s7",
+      "title": "Misconceptions, boundaries, and open questions",
+      "markdown": "A common misconception is that requesting a high return makes the model optimize until it finds behavior that achieves it. It does not. The prompt selects from—or sometimes interpolates or extrapolates beyond—the behavior distribution learned from fixed data. The paper found high correlation between requested and realized returns on evaluated tasks and observed extrapolation on some Atari cases, but this is empirical behavior, not a feasibility guarantee. An unsupported request may induce poor or out-of-distribution actions.\n\nNor is Decision Transformer simply behavior cloning on only the best episodes. It trains on the full sampled trajectory distribution while conditioning actions on return-to-go. The paper’s percentile-cloning comparison found that carefully chosen subsets could be strong when data was plentiful, yet selecting the best percentile required environment rollouts and was therefore not a realistic offline selection procedure. On low-data Atari experiments, Decision Transformer generally compared favorably with those filtered clones.\n\nThe paper identifies richer embeddings, self-supervised pretraining, stochastic return distributions, and state-evolution modeling as future directions. It also warns that transformer errors in MDPs and dataset-induced destructive biases are underexplored. Return conditioning faithfully pursues correlations in its data and reward labels; it does not certify that the requested behavior is safe, causal, reachable, or aligned with human intent.",
+      "sourceIds": [
+        "section-5",
+        "section-7"
+      ],
+      "claimIds": [
+        "c11",
+        "c12"
+      ],
+      "figureId": null
+    }
+  ],
+  "figures": [
+    {
+      "id": "fig-attention",
+      "kind": "attention",
+      "title": "Temperature and attention selectivity",
+      "question": "As the positive temperature decreases, which of the four fixed scores receives more of the normalized weight?",
+      "caption": "Four fixed illustrative scores $[2,1,0,-1]$ are divided by temperature and normalized with softmax, showing how temperature changes weight concentration.",
+      "limitation": "This is not a measured attention head or learned token similarity from Decision Transformer; it displays only normalized weights for fixed scores.",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c7"
+      ],
+      "illustrative": true
+    }
+  ],
+  "quiz": [
+    {
+      "question": "Assume an undiscounted finite episode has rewards $(3,-2,5)$. What return-to-go token accompanies the second state?",
+      "options": [
+        {
+          "text": "$3$",
+          "explanation": "Correct: from the second timestep onward, $-2+5=3$."
+        },
+        {
+          "text": "$6$",
+          "explanation": "This is the total return from the first timestep, $3-2+5$, not the second return-to-go."
+        },
+        {
+          "text": "$-2$",
+          "explanation": "This is only the immediate second reward and omits the future reward $5$."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-2",
+        "section-3"
+      ],
+      "claimIds": [
+        "c2"
+      ]
+    },
+    {
+      "question": "After requesting return $10$, an agent receives reward $-2$ on its first action. Under the paper’s deployment update, what target is supplied next?",
+      "options": [
+        {
+          "text": "$8$",
+          "explanation": "Subtracting the magnitude rather than the signed reward is incorrect."
+        },
+        {
+          "text": "$10$",
+          "explanation": "The target is updated after each observed reward; it is not held fixed."
+        },
+        {
+          "text": "$12$",
+          "explanation": "Correct: $G_2=G_1-r_1=10-(-2)=12$."
+        }
+      ],
+      "answer": 2,
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c4"
+      ]
+    },
+    {
+      "question": "Which conclusion is justified by the paper’s return-conditioning evidence?",
+      "options": [
+        {
+          "text": "Any numerically requested return is guaranteed to be reached.",
+          "explanation": "Incorrect: conditioning is not optimization with a feasibility guarantee, especially outside the data distribution."
+        },
+        {
+          "text": "Requested and realized returns were highly correlated on the evaluated tasks.",
+          "explanation": "Correct: this is the reported empirical relationship under the evaluated conditions."
+        },
+        {
+          "text": "Return prompts remove the need for informative offline trajectories.",
+          "explanation": "Incorrect: the model still learns its conditional behavior from the fixed trajectory dataset."
+        }
+      ],
+      "answer": 1,
+      "sourceIds": [
+        "section-5"
+      ],
+      "claimIds": [
+        "c11"
+      ]
+    }
+  ],
+  "id": "decision-transformer-reinforcement-learning-via-sequence",
+  "createdAt": "2026-10-01T23:46:02.908Z",
+  "pipelineVersion": "subjects-lessons-v1",
+  "sources": [
+    {
+      "id": "abstract",
+      "label": "Original paper · abstract",
+      "url": "https://arxiv.org/abs/2106.01345",
+      "digest": "0dfbbf45e8163cc6fcae6d6340f8681e40c39c7ebfa1cc805979341080023fc0",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:44:09.038Z"
+    },
+    {
+      "id": "main-text",
+      "label": "Original paper · unsectioned main text",
+      "url": "https://arxiv.org/html/2106.01345",
+      "digest": "b4d82dbfa54bc6f2676e32706a074fd6ea48bd92670b60c20720f6caea5656a2",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:44:09.038Z"
+    },
+    {
+      "id": "section-1",
+      "label": "1 Introduction",
+      "url": "https://arxiv.org/html/2106.01345#S1",
+      "digest": "7e7553f22a491ab6738fd12177f9914f2692bc660b20aad793e444229f6507a2",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:44:09.038Z"
+    },
+    {
+      "id": "section-2",
+      "label": "2 Preliminaries",
+      "url": "https://arxiv.org/html/2106.01345#S2",
+      "digest": "9369c10e11905744edd0e558fae10f86c7af9eb509253a4bef55efc6fd298059",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:44:09.038Z"
+    },
+    {
+      "id": "section-3",
+      "label": "3 Method",
+      "url": "https://arxiv.org/html/2106.01345#S3",
+      "digest": "f32fa785f1e8565d4485ac7df726264439a295dc58fc803abaf6f89f8ebc0c7f",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:44:09.038Z"
+    },
+    {
+      "id": "section-4",
+      "label": "4 Evaluations on Offline RL Benchmarks",
+      "url": "https://arxiv.org/html/2106.01345#S4",
+      "digest": "754d39d54dba9a9304f564ef4a329a1197c22487baa53c0b78a132023ac82c19",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:44:09.038Z"
+    },
+    {
+      "id": "section-5",
+      "label": "5 Discussion",
+      "url": "https://arxiv.org/html/2106.01345#S5",
+      "digest": "bf26ee6ea7bb60632eda300503167a05d6d26c84b00174ca78ec689760843e89",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:44:09.038Z"
+    },
+    {
+      "id": "section-5-part-2",
+      "label": "5 Discussion · part 2",
+      "url": "https://arxiv.org/html/2106.01345#S5",
+      "digest": "d7259c471627e1ca8a83b90f7710164ba31d00181165e55309411d951caa9edc",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:44:09.038Z"
+    },
+    {
+      "id": "section-6",
+      "label": "6 Related Work",
+      "url": "https://arxiv.org/html/2106.01345#S6",
+      "digest": "0126fc2a0f7503889b217874fd92224e503b3e19d06629eb88a04a7ec7b8bdcc",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:44:09.038Z"
+    },
+    {
+      "id": "section-7",
+      "label": "7 Conclusion",
+      "url": "https://arxiv.org/html/2106.01345#S7",
+      "digest": "21ef34c963f2c5129c2b830a889062c16a9be87bbb57362e2c4effe2caaf6459",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:44:09.038Z"
+    }
+  ],
+  "review": {
+    "status": "passed",
+    "reviewedAt": "2026-10-02T02:08:24.930Z",
+    "contentDigest": "a97a9e6447e33636c663b7b3551ed90ed91a1562d848dba853f1cf70bcfa9408"
+  }
+}

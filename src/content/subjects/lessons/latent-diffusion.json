@@ -1,0 +1,436 @@
+{
+  "title": "The Bottleneck Before the Noise: Why Latent Diffusion Moves the Expensive Part",
+  "summary": "Latent diffusion separates perceptual compression from generative denoising, reducing spatial computation while retaining structured latents and flexible cross-attention conditioning.",
+  "prerequisites": [
+    "Basic tensor shapes and spatial downsampling",
+    "Gaussian noise and mean-squared error",
+    "Encoder–decoder models",
+    "Softmax attention",
+    "Reconstruction fidelity and generative sample quality"
+  ],
+  "objectives": [
+    "Explain why latent diffusion reduces the cost of repeated denoising.",
+    "Trace the two-stage pipeline from encoding through denoising to decoding.",
+    "Interpret latent diffusion and cross-attention equations and their symbols.",
+    "Analyze the compression–fidelity trade-off under the reported conditions.",
+    "Distinguish illustrative controls from trained models and measured results."
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "mechanism",
+      "statement": "An LDM separates perceptual compression from generative learning: a pretrained autoencoder defines a lower-dimensional image-like space, and a diffusion model subsequently learns a distribution in that fixed space.",
+      "conditions": "The autoencoder is trained before the diffusion model, and its encoder and decoder define the latent representation used by the later generative stage.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c2",
+      "kind": "mechanism",
+      "statement": "For an RGB image, the encoder produces a spatial latent tensor and the decoder maps that tensor back to image space.",
+      "conditions": "For images of shape H by W by 3 and latents of shape h by w by c.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c3",
+      "kind": "equation",
+      "statement": "The paper trains the latent denoiser by minimizing expected squared error between sampled Gaussian noise and the UNet’s noise prediction at a sampled diffusion time.",
+      "conditions": "The expectation is over encoded training images, standard-normal noise, and diffusion times; the UNet receives the noisy latent z_t and time t.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c4",
+      "kind": "mechanism",
+      "statement": "After latent sampling, image reconstruction requires one decoder evaluation rather than a diffusion chain in pixel space.",
+      "conditions": "The diffusion chain has produced a sample from the learned latent distribution p(z), and the pretrained decoder is available.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c5",
+      "kind": "mechanism",
+      "statement": "The first-stage models use mild latent regularization: either a KL penalty toward a standard normal or vector quantization in the decoder path.",
+      "conditions": "These are the two first-stage regularization variants investigated in the paper, not a claim that they are mathematically equivalent.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c6",
+      "kind": "mechanism",
+      "statement": "Cross-attention lets spatial UNet features query a modality-specific conditioning representation, providing a common interface for text and other tokenized conditions.",
+      "conditions": "Using a row-vector convention, the condition y is mapped by a domain-specific encoder to τ_θ(y)∈ℝ^{M×d_τ}; flattened UNet features satisfy φ_i(z_t)∈ℝ^{N×d_ε^i}; and right-side projections W_Q^(i)∈ℝ^{d_ε^i×d} and W_K^(i),W_V^(i)∈ℝ^{d_τ×d} produce Q∈ℝ^{N×d} and K,V∈ℝ^{M×d}.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c7",
+      "kind": "equation",
+      "statement": "In the paper’s attention module, softmax-normalized query–key scores weight the value vectors.",
+      "conditions": "Q, K, and V have compatible inner dimensions d, and the score matrix is scaled by the square root of d.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c8",
+      "kind": "result",
+      "statement": "Under a controlled ImageNet comparison, intermediate spatial compression learned faster than pixel diffusion, while very aggressive compression limited fidelity.",
+      "conditions": "Class-conditional ImageNet models were trained for two million steps on one NVIDIA A100 with equal step counts and parameter counts; reported sampling used 100 DDIM steps and κ=0.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c9",
+      "kind": "result",
+      "statement": "The paper identifies LDM-4 and LDM-8 as its strongest compression choices for high-quality synthesis in the comparisons discussed.",
+      "conditions": "Based on the CelebA-HQ and ImageNet comparisons using DDIM with multiple denoising-step counts and the training budgets described in Section 4.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c10",
+      "kind": "result",
+      "statement": "For the reported inpainting comparison, latent diffusion improved both throughput and the stated FID ratio relative to pixel diffusion.",
+      "conditions": "Models had fixed parameter counts; throughput was evaluated at 256² and 512², and validation FID was measured after six epochs under the Table 6 setup.",
+      "sourceIds": [
+        "section-4-part-3"
+      ]
+    },
+    {
+      "id": "c11",
+      "kind": "caveat",
+      "statement": "Latent diffusion remains an iterative generator, so reducing the state’s spatial size does not give it GAN-like one-pass sampling speed.",
+      "conditions": "Comparison is to GAN sampling, not to pixel-space diffusion under an identical implementation.",
+      "sourceIds": [
+        "section-5"
+      ]
+    },
+    {
+      "id": "c12",
+      "kind": "caveat",
+      "statement": "The autoencoder can impose a reconstruction ceiling, making LDMs unsuitable when exact pixel-level detail is essential.",
+      "conditions": "The concern applies especially to fine-grained pixel-space accuracy; the authors specifically suggest super-resolution may already encounter this limit.",
+      "sourceIds": [
+        "section-5"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "s1",
+      "title": "The computation is hiding in the representation",
+      "markdown": "A diffusion model learns to reverse a gradual corruption process. During training, it receives a noisy example at time $t$ and predicts the noise that was added. During generation, it repeatedly evaluates the denoiser, moving from noise toward a sample. The difficulty for high-resolution images is therefore not merely that an RGB tensor is large: the same large spatial grid participates in many sequential network evaluations.\n\nThe paper’s key intervention is representational. Instead of asking diffusion to operate on every RGB value, it first learns which image information can be compressed without seriously damaging perceptual reconstruction. Diffusion then models the remaining spatial representation. This is not simply “a smaller image generator.” It is a deliberate division of labor: the autoencoder handles perceptual compression, while the diffusion model handles semantic and compositional variation [c1].\n\nTo recall the Gaussian ingredient, the illustrative control below samples vectors from $\\mathcal N(0,\\sigma^2 I_D)$. Here $D$ is vector dimension, $I_D$ is the $D\\times D$ identity, and $\\sigma$ is the per-coordinate standard deviation. Its typical root-mean-square radius is $\\sigma\\sqrt D$. Predict what happens to length when $\\sigma$ changes, and to concentration when $D$ changes. This prepares the idea of Gaussian noise, but it neither corrupts images nor runs the paper’s reverse process.",
+      "sourceIds": [
+        "section-1",
+        "section-3"
+      ],
+      "claimIds": [
+        "c1",
+        "c3"
+      ],
+      "figureId": "f-noise"
+    },
+    {
+      "id": "s2",
+      "title": "Stage one: build a perceptual coordinate system",
+      "markdown": "Let $x\\in\\mathbb R^{H\\times W\\times3}$ be an RGB image with height $H$ and width $W$. The encoder $\\mathcal E$ maps it to\n\n$$z=\\mathcal E(x),\\qquad z\\in\\mathbb R^{h\\times w\\times c},$$\n\nwhere $h,w$ are latent spatial dimensions and $c$ is the number of latent channels. The decoder $\\mathcal D$ reconstructs\n\n$$\\tilde x=\\mathcal D(z)=\\mathcal D(\\mathcal E(x)).$$\n\nThe spatial downsampling factor is $f=H/h=W/w$ [c2]. For example, if an illustrative $256\\times256$ image uses $f=4$, then $h=w=64$. The number of spatial positions falls from $256^2=65{,}536$ to $64^2=4{,}096$, a $16\\times$ reduction. This arithmetic says nothing by itself about runtime because channel widths, layers, attention, hardware, and memory traffic also matter. It only exposes why modest spatial compression can substantially reduce the grid on which a UNet works.\n\nThe autoencoder is trained with perceptual and patch-based adversarial objectives rather than only pixelwise $L_1$ or $L_2$ loss. Its purpose is a perceptually faithful coordinate system, not exact bit preservation. The paper investigates KL-regularized and vector-quantized variants [c5]. The distinction matters: “latent” does not imply that every LDM uses a discrete codebook, nor that every latent is exactly standard normal.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c1",
+        "c2",
+        "c5"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s3",
+      "title": "A small KL calculation—and what it does not prove",
+      "markdown": "The KL-regularized first stage applies a slight pressure toward a standard normal [c5]. A narrow toy case makes that idea concrete. Compare $q=\\mathcal N(\\mu,1)$ with $p=\\mathcal N(0,1)$. For equal unit variances,\n\n$$D_{\\mathrm{KL}}(q\\|p)=\\frac{\\mu^2}{2}.$$\n\nIf the illustrative mean is $\\mu=2$, then $D_{\\mathrm{KL}}=2^2/2=2$ nats. If $\\mu=0.5$, it is $0.5^2/2=0.125$ nats. Moving the mean four times closer to zero reduces this particular KL by a factor of sixteen because the penalty is quadratic.\n\nUse the figure to predict how shifting $\\mu$ changes overlap with the reference density and the displayed KL. The control represents only a scalar, unit-variance posterior. The paper’s learned image latents are multidimensional; their first-stage training also includes reconstruction, perceptual, and adversarial considerations. Consequently, this toy cannot predict reconstruction quality, sample quality, or the actual distribution of trained latents. It explains only the direction of one regularizing pressure.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c5"
+      ],
+      "figureId": "f-latent"
+    },
+    {
+      "id": "s4",
+      "title": "Stage two: diffuse the code, not the pixels",
+      "markdown": "After the first stage is trained, an encoded example $z=\\mathcal E(x)$ is corrupted according to a fixed forward process. Because that process is fixed, the paper states that the noisy latent $z_t$ can be obtained efficiently from the encoded example during training.\n\nThe time-conditional UNet $\\epsilon_\\theta$ predicts the sampled noise:\n\n$$L_{\\mathrm{LDM}}=\\mathbb E_{\\mathcal E(x),\\,\\epsilon\\sim\\mathcal N(0,I),\\,t}\\left[\\|\\epsilon-\\epsilon_\\theta(z_t,t)\\|_2^2\\right].$$\n\nHere $L_{\\mathrm{LDM}}$ is the training loss; $x$ is a training image; $z=\\mathcal E(x)$ is its encoding; $t$ is a sampled diffusion time; $z_t$ is the noisy latent produced by the fixed forward process at that time; $\\epsilon$ is standard Gaussian noise; $I$ is an identity covariance; $\\theta$ denotes trainable UNet parameters; and $\\|\\cdot\\|_2^2$ sums squared prediction errors [c3]. Efficiently obtaining a chosen training-time corruption does not replace the iterative reverse process used to generate a new latent.\n\nAt generation time, reverse diffusion constructs a latent sample through repeated denoising. Only after that chain finishes does $\\mathcal D$ map the latent to an image, using a single decoder pass [c4]. Thus “one decoder pass” does not mean “one-step generation.” The sequential denoiser still runs many times [c11]. The saving is that those repeated evaluations occur on a compressed spatial representation rather than the full RGB grid.\n\nA common misconception is that the autoencoder itself generates the novel image. It does not supply the learned prior over possible scenes. It provides the representation and reconstruction map; the diffusion model learns how likely latent configurations are and how to sample them.",
+      "sourceIds": [
+        "section-3",
+        "section-5"
+      ],
+      "claimIds": [
+        "c2",
+        "c3",
+        "c4",
+        "c11"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s5",
+      "title": "Conditioning enters as queries, keys, and values",
+      "markdown": "For a condition $y$—such as text—the domain-specific encoder $\\tau_\\theta$ produces $M$ conditioning vectors of width $d_\\tau$. Using a row-vector convention, let the flattened spatial features at UNet layer $i$ be $\\varphi_i(z_t)\\in\\mathbb R^{N\\times d_\\epsilon^i}$ and the encoded condition be $\\tau_\\theta(y)\\in\\mathbb R^{M\\times d_\\tau}$. With learned projections\n\n$$W_Q^{(i)}\\in\\mathbb R^{d_\\epsilon^i\\times d},\\qquad W_K^{(i)},W_V^{(i)}\\in\\mathbb R^{d_\\tau\\times d},$$\n\nthe queries, keys, and values are\n\n$$Q=\\varphi_i(z_t)W_Q^{(i)}\\in\\mathbb R^{N\\times d},\\quad K=\\tau_\\theta(y)W_K^{(i)}\\in\\mathbb R^{M\\times d},\\quad V=\\tau_\\theta(y)W_V^{(i)}\\in\\mathbb R^{M\\times d}.$$\n\nThus $QK^T\\in\\mathbb R^{N\\times M}$ contains one compatibility score for every spatial-feature and conditioning-element pair. The attention output is\n\n$$\\operatorname{Attention}(Q,K,V)=\\operatorname{softmax}_{M}\\!\\left(\\frac{QK^T}{\\sqrt d}\\right)V\\in\\mathbb R^{N\\times d},$$\n\nwhere $d$ is the shared query–key width and $\\operatorname{softmax}_{M}$ normalizes each spatial query’s row across the $M$ conditioning elements [c6,c7]. Each of the $N$ spatial UNet features therefore retrieves a weighted mixture of condition-derived value vectors. This gives the denoiser a common interface to tokenized inputs while preserving the spatial organization of its latent features.\n\nThe figure makes the normalization step explicit with the constructed dimensionless scores $[2,1,0,-1]$. At temperature $1$, exponentiation gives approximately $[7.389,2.718,1,0.368]$; dividing by their sum, $11.475$, assigns the first element weight $7.389/11.475\\approx0.644$. Lowering the positive temperature increases the contrast between scores and concentrates more weight on the largest one, while raising it produces a flatter distribution without changing their ranking. This control illustrates how score scale affects softmax concentration. In the LDM equation, the fixed factor $1/\\sqrt d$ instead calibrates dot-product scores to their query–key width before the learned attention weights are formed.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c6",
+        "c7"
+      ],
+      "figureId": "f-attention"
+    },
+    {
+      "id": "s6",
+      "title": "Compression has a sweet spot, not a free lunch",
+      "markdown": "Increasing $f$ shrinks the latent grid, but it also asks the first stage to discard more information. Too little compression leaves diffusion paying much of the pixel-space cost; too much compression fixes an information bottleneck that the generative model cannot reverse.\n\nThe paper tested $f\\in\\{1,2,4,8,16,32\\}$ for class-conditional ImageNet, holding the number of parameters, training steps, and single-A100 resource setting comparable. In that setting, $f=1$ and $f=2$ progressed slowly, whereas $f=32$ reached a fidelity ceiling early [c8]. The authors identify LDM-4 and LDM-8 as the best conditions for high-quality synthesis in their comparisons [c9]. This is evidence for an intermediate operating region under those datasets and budgets—not a universal theorem that $f=4$ or $8$ is optimal for every resolution, architecture, task, or metric.\n\nIt is also important to separate two ceilings. First-stage reconstruction determines what information can survive encoding and decoding. Diffusion training determines how well the model learns the distribution inside that representation. Better denoising cannot recreate distinctions the encoder systematically removed.",
+      "sourceIds": [
+        "section-4"
+      ],
+      "claimIds": [
+        "c8",
+        "c9"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s7",
+      "title": "Reading the reported gains without overgeneralizing",
+      "markdown": "The reported evidence spans multiple tasks, but every number belongs to a specific protocol. In the inpainting efficiency comparison, the paper held parameter counts fixed and compared the pixel-space LDM-1 with several LDM-4 variants. At resolutions of $256^2$ and $512^2$, Table 6 reports training and sampling throughput, hours per epoch, and validation FID after six epochs. Under those conditions, the latent models achieved at least a $2.7\\times$ speed-up and improved FID by a factor of at least $1.6\\times$ [c10]. These ratios characterize that comparison; hardware, batch size, architecture, and evaluation settings can change the magnitude of the gain.\n\nThe ImageNet experiment isolates the effect of spatial compression under another controlled setting: equal parameter counts and training-step counts, with every model trained on one NVIDIA A100. LDM-1 and LDM-2 progressed more slowly, intermediate compression factors learned more effectively, and LDM-32 encountered an early fidelity ceiling [c8]. Across the ImageNet and CelebA-HQ comparisons, LDM-4 and LDM-8 gave the strongest balance of sample quality and throughput [c9].\n\nTogether, these results support the method’s central efficiency argument. Mild spatial compression reduces the grid processed at every denoising step while retaining enough information for high-quality synthesis. More aggressive compression saves additional spatial computation but can make first-stage information loss the dominant limit. The reported optimum is therefore an operating region established by these datasets, models, samplers, and training budgets, not a universal compression factor.",
+      "sourceIds": [
+        "section-4",
+        "section-4-part-3"
+      ],
+      "claimIds": [
+        "c8",
+        "c9",
+        "c10"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s8",
+      "title": "The boundary of the method",
+      "markdown": "Latent diffusion relocates the expensive repeated computation; it does not eliminate it. A generated latent still emerges through a sequential chain of denoiser evaluations, so LDM sampling remains slower than the one-pass generation typical of GANs [c11]. The single decoder evaluation occurs only after that reverse process has produced the latent sample [c4].\n\nThe more fundamental boundary is set by the first-stage representation. The decoder can reconstruct only information retained in the latent. The authors report that even the small reconstruction loss of their $f=4$ autoencoder can become a bottleneck for tasks requiring fine-grained pixel-space accuracy, and they suggest that their super-resolution models are already somewhat limited by this effect [c12]. Additional denoising cannot reliably restore distinctions that the encoder discarded, so perceptual plausibility and exact recovery must be treated as different goals.\n\nReduced training and inference cost also broadens access to image generation, with both beneficial and harmful consequences. The paper notes easier creation and distribution of manipulated media, possible exposure of training data, and reproduction or amplification of dataset bias. It also emphasizes that image-diffusion leakage and the representational effects of combining adversarial first-stage training with a likelihood-based diffusion objective were not yet fully understood.\n\nThe lasting contribution is the separation of roles: learn a reusable perceptual representation that preserves spatial structure, train the iterative generative model in that cheaper space, decode the completed latent once, and introduce varied conditions through cross-attention [c1,c6]. The method succeeds when compression is strong enough to reduce repeated computation but mild enough to preserve the details required by the task.",
+      "sourceIds": [
+        "section-3",
+        "section-5",
+        "section-6"
+      ],
+      "claimIds": [
+        "c1",
+        "c4",
+        "c6",
+        "c11",
+        "c12"
+      ],
+      "figureId": null
+    }
+  ],
+  "figures": [
+    {
+      "id": "f-noise",
+      "kind": "noise",
+      "title": "Gaussian radius before diffusion",
+      "question": "If σ doubles at fixed dimension, how should the histogram of sampled vector norms move, and what changes when dimension increases instead?",
+      "caption": "Illustrative seeded Gaussian vectors show a norm histogram, the RMS radius σ√D, and the measured mean radius; σ rescales lengths while dimension changes their concentration.",
+      "limitation": "This samples independent Gaussian vectors only. D is not displayed as three physical dimensions, and the control does not implement image corruption, learned denoising, or the paper’s reverse diffusion process.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c3"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "f-latent",
+      "kind": "latent",
+      "title": "A one-dimensional view of KL regularization",
+      "question": "As μ moves away from zero, how do density overlap and KL(q‖p)=μ²/2 change?",
+      "caption": "Illustrative scalar densities compare q=N(μ,1) with p=N(0,1), displaying the exact equal-variance KL penalty μ²/2.",
+      "limitation": "This is a scalar unit-variance example, not a learned posterior, a reconstruction likelihood, the complete autoencoder objective, or evidence about actual LDM latent distributions.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c5"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "f-attention",
+      "kind": "attention",
+      "title": "Softmax turns compatibility scores into weights",
+      "question": "When the positive temperature is lowered, which of the four fixed scores receives more normalized weight, and does their ranking change?",
+      "caption": "Four illustrative scores [2,1,0,-1] are divided by temperature and normalized with softmax to expose how score sharpness changes attention weights.",
+      "limitation": "The scores are fixed and illustrative, not a measured attention head or learned token similarity; temperature variation is not a simulation of the paper’s learned projections or its 1/√d scaling.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c6",
+        "c7"
+      ],
+      "illustrative": true
+    }
+  ],
+  "quiz": [
+    {
+      "question": "Assume two denoisers have comparable architecture and channel costs, but one repeatedly processes a 256×256 grid while the other processes a 64×64 latent grid and decodes once. What is the most direct source of the latent model’s potential computational advantage?",
+      "options": [
+        {
+          "text": "Its repeated denoising evaluations occur over 16 times fewer spatial positions.",
+          "explanation": "Correct. The spatial-position ratio is 256²/64²=16, although actual runtime also depends on channels, layers, attention, hardware, and memory."
+        },
+        {
+          "text": "The decoder eliminates the need for iterative denoising.",
+          "explanation": "Incorrect. The decoder runs after the latent reverse process; LDM sampling remains sequential."
+        },
+        {
+          "text": "Compression guarantees that no perceptual information is lost.",
+          "explanation": "Incorrect. Compression can discard information, and the decoder’s reconstruction capability can become a quality ceiling."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-3",
+        "section-5"
+      ],
+      "claimIds": [
+        "c2",
+        "c4",
+        "c11",
+        "c12"
+      ]
+    },
+    {
+      "question": "In the paper’s cross-attention mechanism, what roles do an intermediate spatial UNet feature and the encoded condition primarily play?",
+      "options": [
+        {
+          "text": "The UNet feature supplies queries; the condition supplies keys and values.",
+          "explanation": "Correct. Learned projections map flattened UNet features to Q and the condition representation to K and V."
+        },
+        {
+          "text": "The condition supplies queries; Gaussian noise supplies keys and values.",
+          "explanation": "Incorrect. That reverses the stated mapping and assigns a role to noise that is not present in the cross-attention equations."
+        },
+        {
+          "text": "Both are concatenated only after the final image has been decoded.",
+          "explanation": "Incorrect. Cross-attention is inserted into intermediate UNet layers during latent denoising."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c6",
+        "c7"
+      ]
+    },
+    {
+      "question": "Which conclusion best respects the paper’s stated limitation when exact pixel-level detail is required?",
+      "options": [
+        {
+          "text": "A plausible decoded image may still be unsuitable because the autoencoder can irreversibly discard fine detail.",
+          "explanation": "Correct. The paper identifies reconstruction capability as a possible bottleneck for fine-grained pixel accuracy."
+        },
+        {
+          "text": "More reverse-diffusion steps necessarily recover every detail removed by the encoder.",
+          "explanation": "Incorrect. Denoising cannot guarantee recovery of information absent from the latent representation."
+        },
+        {
+          "text": "Latent diffusion is always less accurate than pixel diffusion on every perceptual metric.",
+          "explanation": "Incorrect. The paper reports favorable perceptual results; its caveat concerns precision-critical reconstruction, not universal inferiority."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-5"
+      ],
+      "claimIds": [
+        "c12"
+      ]
+    }
+  ],
+  "id": "latent-diffusion",
+  "createdAt": "2026-10-01T23:16:30.639Z",
+  "pipelineVersion": "subjects-lessons-v1",
+  "sources": [
+    {
+      "id": "abstract",
+      "label": "Original paper · abstract",
+      "url": "https://arxiv.org/abs/2112.10752",
+      "digest": "585143d800043bc39f24ae1e367299afbf7ae6c0d04dcb3c3531ab94cffea97c"
+    },
+    {
+      "id": "section-1",
+      "label": "1 Introduction",
+      "url": "https://arxiv.org/html/2112.10752#S1",
+      "digest": "017a9a2d29d6553a05d598979642124768658bcc679bab91aead53126d4b9b1b"
+    },
+    {
+      "id": "section-2",
+      "label": "2 Related Work",
+      "url": "https://arxiv.org/html/2112.10752#S2",
+      "digest": "ab99bd15e1fd2ea78d8e1800daf207e8c3c42a842f085252f23708ba234dc013"
+    },
+    {
+      "id": "section-3",
+      "label": "3 Method",
+      "url": "https://arxiv.org/html/2112.10752#S3",
+      "digest": "87253f38be4fc7962e344fdae2fbf7ed1c16a64d9f01003ede5081be9fdacb9b"
+    },
+    {
+      "id": "section-4",
+      "label": "4 Experiments",
+      "url": "https://arxiv.org/html/2112.10752#S4",
+      "digest": "12527c9c9f4ed5e25c6cb385fe0f9fe2e7f2b30b2a09ec8d51226619289955bb"
+    },
+    {
+      "id": "section-4-part-2",
+      "label": "4 Experiments · part 2",
+      "url": "https://arxiv.org/html/2112.10752#S4",
+      "digest": "a2411e8816a1890ccbfaf17c6bd38201ea2d2711b0f54d58dbf92af74fb1b169"
+    },
+    {
+      "id": "section-4-part-3",
+      "label": "4 Experiments · part 3",
+      "url": "https://arxiv.org/html/2112.10752#S4",
+      "digest": "50795d593fc716441f19b58e55e314a5d2e7ab0dc3bcb071088b678c0dc487c1"
+    },
+    {
+      "id": "section-5",
+      "label": "5 Limitations & Societal Impact",
+      "url": "https://arxiv.org/html/2112.10752#S5",
+      "digest": "88f3b4149aa1eb785b1c23a11cf4e4d8ad572773462aee11600de07f05f2b273"
+    },
+    {
+      "id": "section-6",
+      "label": "6 Conclusion",
+      "url": "https://arxiv.org/html/2112.10752#S6",
+      "digest": "a905cfca4fa0e05ce5977778b48cd470a12a11a0affacd894c6b3dccb52a8026"
+    }
+  ],
+  "review": {
+    "status": "passed",
+    "reviewedAt": "2026-10-02T01:58:04.287Z",
+    "contentDigest": "cc718924683f23805310a4ecb00b478356c2ea3d3954e9d48cedce697f76aa4c"
+  }
+}

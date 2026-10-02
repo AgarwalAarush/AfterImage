@@ -2716,3 +2716,35 @@ h3 {
   .paper-preparation.readable { padding: 22px 16px; }
   .preparation-activity { gap: 8px 12px; }
 }
+
+/* Subject lessons own their reading typography; shared controls stay in ui.css. */
+.subject-reader-page { max-width:1192px; margin:auto; --recall-font-size:16px; }
+.subject-reader-layout { display:grid; grid-template-columns:190px minmax(0,760px); gap:48px; padding:50px 32px 70px; }
+.subject-article { min-width:0; }
+.subject-article-header { padding-bottom:36px; border-bottom:1px solid var(--line); margin-bottom:36px; }
+.subject-article-header h1 { font:400 44px/1.08 var(--font-serif); letter-spacing:-1.1px; margin:20px 0; }
+.subject-article-header > p { font:400 17px/1.6 var(--font-serif); color:var(--muted); }
+.subject-objectives { margin-bottom:44px; }
+.subject-objectives h2 { font:400 27px/1.25 var(--font-serif); margin-bottom:16px; }
+.subject-objectives li { margin:12px 0; font:400 var(--recall-font-size)/1.85 var(--font-serif); }
+.subject-section { margin:46px 0; scroll-margin-top:24px; }
+.subject-section > h2, .subject-quiz > h2, .subject-sources > h2 { font:400 27px/1.25 var(--font-serif); letter-spacing:-.35px; margin-bottom:22px; }
+.subject-prose { font:400 var(--recall-font-size)/1.85 var(--font-serif); color:var(--theme-ink, #363b34); }
+.subject-prose p { line-height:1.85; margin:10px 0; }
+.subject-prose h3 { font:500 var(--recall-font-size)/1.5 var(--font-sans); margin:24px 0 14px; }
+.subject-article .katex { font-size:1em; }
+.subject-prose .katex:not(.katex-display .katex) { white-space:nowrap; }
+.subject-article :is(h1,h2,h3) .katex { font-size:.95em; }
+.subject-article :is(p,li,legend,.subject-answer-copy) { overflow-wrap:break-word; }
+.subject-prose .katex-display { overflow-x:auto; overflow-y:hidden; margin:20px 0; padding:12px 16px; border:1px solid var(--line); border-radius:7px; background:var(--paper); font-size:var(--recall-font-size); }
+.subject-prose .katex-display .katex { font-size:1.08em; }
+.subject-experiment-heading h3 { font:500 16px/1.5 var(--font-sans); }
+.subject-experiment-canvas { display:block; width:100%; height:275px; margin:12px 0; overflow:visible; font-family:var(--font-sans); }
+.subject-quiz, .subject-sources { scroll-margin-top:24px; margin:56px 0 40px; }
+@media (max-width:1050px) { .subject-reader-layout { grid-template-columns:170px minmax(0,1fr); gap:30px; } .subject-article-header h1 { font-size:40px; } }
+@media (max-width:760px) { .subject-reader-layout { display:block; padding:30px 20px 50px; } .subject-article-header h1 { font-size:36px; } .subject-reader-page { --recall-font-size:15px; } }
+@media print { .subject-reader-layout { display:block; padding:0; } }
+
+.subject-objectives li p { display:inline; margin:0; }
+.subject-prerequisites .katex { font-size:1em; }
+.subject-experiment-question p { margin:0; }

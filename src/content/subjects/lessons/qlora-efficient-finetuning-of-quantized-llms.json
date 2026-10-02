@@ -1,0 +1,488 @@
+{
+  "title": "QLoRA: Training Around a Frozen Four-Bit Core",
+  "summary": "QLoRA stores a frozen pretrained model in four bits, computes through dequantized weights, and trains low-rank adapters to make large-model finetuning practical.",
+  "prerequisites": [
+    "Matrix multiplication and linear layers",
+    "Gradient-based optimization",
+    "Low-rank matrix factorization",
+    "Scalar quantization and dequantization"
+  ],
+  "objectives": [
+    "Explain how QLoRA separates storage precision from computation precision.",
+    "Trace gradients through a frozen quantized layer and trainable LoRA adapters.",
+    "Calculate the parameter cost of a low-rank adapter.",
+    "Derive the paper's double-quantization overhead.",
+    "Interpret the reported comparisons within their stated scope."
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "result",
+      "statement": "The paper reports that QLoRA made 65B-parameter finetuning fit on one 48 GB GPU and, at that scale, matched the reported BF16 LoRA comparison rather than a full-model-finetuning control.",
+      "conditions": "For the paper’s 65B setup and evaluated tasks; parity with full 16-bit full-model finetuning was tested only for models up to 3B and was not established at 33B or 65B.",
+      "sourceIds": [
+        "abstract",
+        "section-4",
+        "section-8"
+      ]
+    },
+    {
+      "id": "c2",
+      "kind": "mechanism",
+      "statement": "QLoRA keeps the quantized pretrained weights frozen and optimizes attached low-rank adapters through backpropagation.",
+      "conditions": "During QLoRA finetuning with LoRA adapters attached to the pretrained model.",
+      "sourceIds": [
+        "abstract"
+      ]
+    },
+    {
+      "id": "c3",
+      "kind": "equation",
+      "statement": "A LoRA-augmented projection adds a rank-at-most-r update, scaled by s, to the frozen base projection.",
+      "conditions": "For a linear projection with compatible dimensions and adapter rank r.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c4",
+      "kind": "mechanism",
+      "statement": "Stored low-precision weights are dequantized to BF16 when used, and the matrix multiplication is performed in 16-bit arithmetic.",
+      "conditions": "For the paper’s usual 4-bit storage and BFloat16 computation configuration.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c5",
+      "kind": "mechanism",
+      "statement": "NF4 constructs code values from normal-distribution quantiles and is designed for zero-centered normally distributed weights.",
+      "conditions": "When pretrained weights approximately follow the assumed zero-centered normal distribution after blockwise scaling.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c6",
+      "kind": "result",
+      "statement": "With the stated block sizes, double quantization reduces scale-storage overhead from 0.5 to 0.127 bits per model parameter.",
+      "conditions": "First-level block size 64, 8-bit second-level constants, and second-level block size 256.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c7",
+      "kind": "mechanism",
+      "statement": "Paged optimizers place optimizer states in unified memory so they can move to CPU RAM during temporary GPU-memory pressure.",
+      "conditions": "When optimizer state is paged and GPU memory is temporarily exhausted.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c8",
+      "kind": "mechanism",
+      "statement": "Only LoRA parameters receive weight updates; the frozen base still participates in forward and backward computations after dequantization.",
+      "conditions": "For QLoRA’s frozen NF4 base and BF16 LoRA parameters.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c9",
+      "kind": "result",
+      "statement": "The paper found that adapting every linear transformer-block layer was necessary to match full-finetuning performance in its LLaMA 7B Alpaca study.",
+      "conditions": "For the reported LLaMA 7B Alpaca experiments; this does not establish the same necessity for every architecture or task.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c10",
+      "kind": "result",
+      "statement": "Across the reported LLaMA 7B–65B instruction-tuning comparison, NF4 with double quantization matched the aggregate BF16 LoRA MMLU result, whereas FP4 was lower on average.",
+      "conditions": "Five-shot MMLU after adapter finetuning LLaMA 7B–65B on Alpaca or FLAN v2, as summarized in Table 4.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c11",
+      "kind": "caveat",
+      "statement": "The large-scale results do not prove parity with full 16-bit full-model finetuning at 33B and 65B.",
+      "conditions": "Full-model 16-bit comparisons at 33B and 65B were not conducted because of their resource cost.",
+      "sourceIds": [
+        "section-8"
+      ]
+    },
+    {
+      "id": "c12",
+      "kind": "caveat",
+      "statement": "Paged-optimizer performance was not comprehensively characterized because paging occurred only for rare long-sequence minibatches in the reported setup.",
+      "conditions": "For the paper’s workloads and observed paging behavior.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c13",
+      "kind": "caveat",
+      "statement": "Chatbot benchmark rankings were sensitive to evaluator behavior, including response-order effects.",
+      "conditions": "For GPT-4 scoring in the paper’s chatbot evaluation protocol.",
+      "sourceIds": [
+        "section-6-part-2"
+      ]
+    },
+    {
+      "id": "c14",
+      "kind": "caveat",
+      "statement": "The study did not establish how QLoRA behaves with more aggressive precisions such as three-bit bases or with alternative adapter families.",
+      "conditions": "These configurations were outside the reported evaluation.",
+      "sourceIds": [
+        "section-8"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "s1",
+      "title": "The memory problem QLoRA separates",
+      "markdown": "Full finetuning stores a large model and the training state needed to update it. QLoRA changes the problem: preserve the pretrained transformation in a compact, frozen form, then learn a much smaller correction. The paper contrasts the more than 780 GB estimated for regular 16-bit full finetuning of a 65B model with fitting 65B QLoRA in under 48 GB. These memory figures compare regular full finetuning with QLoRA, but the large-scale performance control was BF16 LoRA rather than a 65B full-model run. The reported full-model-finetuning comparisons extended only to models up to 3B, so the 65B result establishes single-GPU feasibility and parity with the studied BF16 LoRA comparison, not experimentally demonstrated parity with 65B full-model finetuning.\n\nIt helps to separate three kinds of memory. First, persistent base-weight storage holds the pretrained parameters. Second, trainable state includes adapter parameters and the optimizer state associated with the variables being updated. Third, runtime memory includes activations and gradients needed to propagate the loss through the network. QLoRA attacks these categories differently rather than making every tensor four-bit. Quantizing the frozen base substantially reduces its persistent footprint, LoRA restricts optimization to small factor matrices, and paging addresses occasional runtime peaks. Activations and backward computations still matter, so adapter parameter count alone does not determine whether a run fits.\n\nThree ideas cooperate. NF4 compresses the frozen base weights; double quantization compresses the scales needed to decode those weights; paged optimizers manage transient memory pressure. LoRA supplies the trainable degrees of freedom. The essential distinction is therefore **frozen versus trainable**, not simply four-bit versus sixteen-bit: the large base is stored in four bits, but the adapter parameters are trained in BF16 and computation uses dequantized weights.\n\nThis separation also explains why QLoRA is not ordinary low-precision full-model training. The quantized representation is the stored form of a pretrained transformation, not a set of four-bit parameters repeatedly rewritten by the optimizer. During a layer evaluation, the base weights are decoded into the computation type and contribute to both the forward result and the gradients needed farther back in the network. The optimizer nevertheless changes only the attached adapters. In that sense, QLoRA trains around a compressed core: the core remains functionally involved while its stored values remain fixed.\n\nThe components solve complementary problems. NF4 concerns how the base weights are represented; double quantization concerns the overhead of the blockwise constants required by that representation; LoRA concerns where task-specific changes are learned; and paged optimizers concern temporary memory pressure. None of these mechanisms alone is the complete method described by the paper. Keeping their roles distinct makes later claims easier to interpret: a memory result does not by itself establish task performance, and a benchmark comparison does not imply that every allocation or precision choice behaves identically.",
+      "sourceIds": [
+        "abstract",
+        "section-1",
+        "section-3"
+      ],
+      "claimIds": [
+        "c1",
+        "c2",
+        "c4"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s2",
+      "title": "Low-rank adaptation as a learned correction",
+      "markdown": "Let $\\mathbf{X}\\in\\mathbb{R}^{b\\times h}$ be a batch of $b$ hidden vectors of width $h$, and let the frozen projection be $\\mathbf{W}\\in\\mathbb{R}^{h\\times o}$ with output width $o$. LoRA computes\n\n$$\n\\mathbf{Y}=\\mathbf{X}\\mathbf{W}+s\\mathbf{X}\\mathbf{L}_1\\mathbf{L}_2,\n$$\n\nwhere $\\mathbf{Y}\\in\\mathbb{R}^{b\\times o}$ is the output, $\\mathbf{L}_1\\in\\mathbb{R}^{h\\times r}$ and $\\mathbf{L}_2\\in\\mathbb{R}^{r\\times o}$ are trainable, $r$ is the adapter rank, and $s$ is a scalar multiplier. Because $\\mathbf{L}_1\\mathbf{L}_2$ has rank at most $r$, it expresses a constrained correction to $\\mathbf{W}$.\n\n**Illustrative worked example.** If $h=6$, $o=4$, and $r=2$, a full learned replacement contains $6\\times4=24$ parameters. The two adapter factors contain $6\\times2+2\\times4=20$ parameters. For realistic transformer widths and small $r$, the relative saving is much larger; these tiny dimensions are only arithmetic practice.\n\nThe low-rank figure lets you vary how many singular components of a fixed diagonal matrix are retained. It visualizes rank and retained energy, explaining why rank limits expressiveness. It is not a trained LoRA update and reports no QLoRA compression result.",
+      "sourceIds": [
+        "section-2",
+        "section-4"
+      ],
+      "claimIds": [
+        "c3",
+        "c9"
+      ],
+      "figureId": "f1"
+    },
+    {
+      "id": "s3",
+      "title": "Four-bit storage, sixteen-bit computation",
+      "markdown": "A frequent misconception is that QLoRA performs the entire training computation in four-bit arithmetic. It does not. The pretrained weight tensor is stored in NF4. Whenever a layer uses it, the stored representation is dequantized to BF16, and matrix multiplication proceeds in 16-bit. Gradients pass through this computation so that the adapter can learn, while the base tensor remains frozen and receives no weight update.\n\nThe quantization figure rounds four fixed values to a uniform grid. Increasing its bit count increases the available levels and usually lowers reconstruction error for that vector. This teaches the generic storage tradeoff and the meaning of reconstruction error. Its levels are uniformly spaced, however, whereas NF4 uses a normal-aware codebook; the control must not be read as an NF4 implementation or as paper-measured accuracy.\n\nNF4 is motivated by approximately zero-centered, normally distributed pretrained weights. Its values derive from normal quantiles so that, under that distributional assumption, bins receive equal expected mass. The paper also constructs an asymmetric codebook with an exact zero. “Information-theoretically optimal” is thus tied to a distributional model; it does not mean optimal for arbitrary tensors.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c4",
+        "c5",
+        "c8"
+      ],
+      "figureId": "f2"
+    },
+    {
+      "id": "s4",
+      "title": "Quantizing the quantization metadata",
+      "markdown": "Blockwise quantization assigns a scale to each block because one global scale can waste representational levels when a tensor contains outliers. Smaller blocks improve local scaling but create more scale metadata. Double quantization compresses those first-level scales.\n\nFor the paper’s stated configuration, a 32-bit scale shared by 64 weights costs\n\n$$\n\\frac{32}{64}=0.5\\ \\text{bits per parameter}.\n$$\n\nAfter double quantization, each first-level scale uses 8 bits, and one 32-bit second-level scale is shared across 256 such scales. The overhead becomes\n\n$$\n\\frac{8}{64}+\\frac{32}{64\\cdot256}=0.125+0.001953125=0.126953125,\n$$\n\nor $0.127$ bits per parameter after rounding. The saving is\n\n$$\n0.5-0.126953125=0.373046875\\approx0.373\n$$\n\nbits per parameter. This calculation concerns metadata, not the four-bit weight payload itself. It also depends on the specified block sizes and data types; changing them changes the arithmetic.",
+      "sourceIds": [
+        "section-2",
+        "section-3"
+      ],
+      "claimIds": [
+        "c6"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s5",
+      "title": "What one QLoRA layer actually does",
+      "markdown": "For one layer, the paper’s mechanism can be read as a pipeline. First, load $\\mathbf{W}^{\\mathrm{NF4}}$, the frozen four-bit weights. Second, decode the quantized first-level constants using a higher-level constant, then decode the weights to obtain $\\mathbf{W}^{\\mathrm{BF16}}$. Third, compute the frozen path $\\mathbf{X}^{\\mathrm{BF16}}\\mathbf{W}^{\\mathrm{BF16}}$. Fourth, compute the adapter path $\\mathbf{X}^{\\mathrm{BF16}}\\mathbf{L}_1^{\\mathrm{BF16}}\\mathbf{L}_2^{\\mathrm{BF16}}$. Finally, add the two paths.\n\nIn symbols,\n\n$$\n\\mathbf{Y}^{\\mathrm{BF16}}=\\mathbf{X}^{\\mathrm{BF16}}\\operatorname{doubleDequant}(c_1,c_2,\\mathbf{W}^{\\mathrm{NF4}})+\\mathbf{X}^{\\mathrm{BF16}}\\mathbf{L}_1^{\\mathrm{BF16}}\\mathbf{L}_2^{\\mathrm{BF16}},\n$$\n\nwhere $c_2$ denotes quantized first-level block constants and $c_1$ denotes the second-level constant used to decode them. During backpropagation, the loss gradient passes through both computational paths, including the dequantized base-weight multiplication, to produce gradients with respect to the layer input and the adapter factors. Optimizer updates apply only to $\\mathbf{L}_1$ and $\\mathbf{L}_2$; no weight gradient or update is required for the frozen $\\mathbf{W}$. Freezing a weight does not remove it from the computation graph; it removes that weight from the set of optimized variables.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c2",
+        "c4",
+        "c8"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s6",
+      "title": "Transient memory and paging",
+      "markdown": "Compression of persistent weights does not eliminate peaks from activations, long sequences, or optimizer work. QLoRA’s paged optimizers allocate optimizer state in NVIDIA unified memory. Under GPU pressure, pages can be evicted to CPU RAM and returned when the optimizer update needs them.\n\nThe memory figure varies block width while placing nine live tokens into a sixteen-slot illustrative layout. It makes fragmentation and padding visible: changing allocation granularity can change unused slots even when the live-token count stays fixed. That is a useful analogy for why capacity and peak allocation differ. It does not model unified-memory transfers, optimizer bytes, latency, or QLoRA’s allocator.\n\nThe paper calls paging critical for fitting its 33B and 65B runs on single 24 GB and 48 GB GPUs, respectively, but it does not provide a broad measurement of paging behavior. Its reported same-speed observation used a 65B model on a 48 GB GPU with batch size 16, while paging was rare and associated with long-sequence minibatches. One should not infer zero paging overhead in other workloads.",
+      "sourceIds": [
+        "section-3",
+        "section-4"
+      ],
+      "claimIds": [
+        "c7",
+        "c12"
+      ],
+      "figureId": "f3"
+    },
+    {
+      "id": "s7",
+      "title": "Evidence, boundaries, and the right conclusion",
+      "markdown": "The evidence supports a scale-dependent conclusion rather than a universal claim that four-bit finetuning equals full-model finetuning. For RoBERTa and T5 models from 125M to 3B parameters, the reported GLUE and Super-NaturalInstructions experiments found that the studied 4-bit adapter methods replicated the 16-bit full-finetuning baseline. For LLaMA models from 7B through 65B, the large-scale control changed: QLoRA was compared with BF16 LoRA after finetuning on Alpaca or FLAN v2 and evaluation by five-shot MMLU. Across those conditions, NF4 with double quantization had a mean accuracy of 53.1 versus 53.0 for BF16 LoRA, while FP4 averaged 52.2. These aggregate results support parity with the tested BF16 LoRA configuration, not with full-model finetuning at 33B or 65B.\n\nAdapter placement was an important part of recovering performance. In the LLaMA 7B Alpaca study, restricting LoRA to the query and value projections did not reproduce the full-finetuning result. Attaching adapters to every linear layer in the transformer blocks did. This result explains why QLoRA’s efficiency should not be interpreted as a mandate to minimize adapter coverage: activations and gradients dominate much of training memory, so broader adapter placement can add useful trainable capacity at comparatively modest parameter cost. The necessity claim remains specific to the reported architecture, dataset, and experiment rather than a guarantee for every model or task.\n\nThe chatbot experiments answer a different question from the controlled precision comparisons. Guanaco models were trained by supervised cross-entropy on instruction data and evaluated with MMLU, Vicuna prompts, and Open Assistant prompts. Performance depended strongly on the relationship between the finetuning data and the evaluation: FLAN v2 produced strong MMLU results but weak Vicuna chatbot scores, illustrating that success on one benchmark did not imply general conversational quality. The reported chatbot rankings also depended on the judging protocol. GPT-4 tended to score the response shown first more highly, had relatively weak example-level agreement with human majority judgments, and rated its own outputs more favorably than human raters did. The paper’s qualitative analysis further found confident factual and mathematical errors and inconsistent instruction following, so high aggregate scores should not be read as reliable behavior on every prompt.\n\nThe appropriate conclusion is therefore conditional. QLoRA stores a frozen pretrained model in NF4, dequantizes it for BF16 forward and backward computation, and learns BF16 LoRA factors; under the reported benchmark, model, dataset, and optimization conditions, this design recovered the corresponding 16-bit comparison while greatly reducing memory requirements. The experiments did not establish full-model-finetuning parity at 33B or 65B, nor do they show that the result extends to three-bit bases, other adapter families, or untested benchmarks. Those are open empirical questions, not consequences of the method’s memory arithmetic.",
+      "sourceIds": [
+        "section-4",
+        "section-6",
+        "section-6-part-2",
+        "section-8"
+      ],
+      "claimIds": [
+        "c9",
+        "c10",
+        "c11",
+        "c13",
+        "c14"
+      ],
+      "figureId": null
+    }
+  ],
+  "figures": [
+    {
+      "id": "f1",
+      "kind": "low-rank",
+      "title": "Rank as a capacity dial",
+      "question": "As retained rank increases from one to six, how do retained energy and reconstruction capacity change?",
+      "caption": "An illustrative diagonal $6\\times6$ matrix with singular values $[6,4,3,2,1,0.5]$ retains its first $r$ singular components, showing how rank controls retained energy.",
+      "limitation": "This is a fixed singular-value decomposition, not a trained LoRA update, a QLoRA layer, or a reported compression result.",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c3"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "f2",
+      "kind": "quantization",
+      "title": "Bits, levels, and reconstruction error",
+      "question": "For the fixed vector, which entries change reconstruction most as the number of uniform levels increases?",
+      "caption": "A fixed vector $[-0.8,-0.3,0.1,0.7]$ is rounded to uniformly spaced levels on $[-1,1]$; the control changes bit count and displays reconstruction MSE.",
+      "limitation": "The codec is uniform scalar quantization, not NF4, double quantization, a learned codebook, or a measured paper experiment.",
+      "sourceIds": [
+        "section-2",
+        "section-3"
+      ],
+      "claimIds": [
+        "c4",
+        "c5"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "f3",
+      "kind": "memory",
+      "title": "Allocation granularity and padding",
+      "question": "With nine live tokens, which block widths leave more allocated-but-unused slots than the fixed reservation?",
+      "caption": "Nine live tokens occupy an illustrative sixteen-slot layout; changing block width changes allocation padding relative to a fixed sixteen-slot reservation.",
+      "limitation": "The figure shows slot allocation only; it contains no physical byte counts, transfer latency, optimizer implementation, or unified-memory paging simulation.",
+      "sourceIds": [
+        "section-3",
+        "section-4"
+      ],
+      "claimIds": [
+        "c7",
+        "c12"
+      ],
+      "illustrative": true
+    }
+  ],
+  "quiz": [
+    {
+      "question": "Assume the base tensor is frozen in NF4 storage and adapters are BF16. Which parameters receive optimizer updates?",
+      "options": [
+        {
+          "text": "Only the LoRA factors",
+          "explanation": "Correct. Gradients pass through the dequantized base computation, but weight updates are computed for the adapter factors."
+        },
+        {
+          "text": "The NF4 base and LoRA factors",
+          "explanation": "Incorrect. The pretrained base weights remain frozen in QLoRA."
+        },
+        {
+          "text": "Only the NF4 base",
+          "explanation": "Incorrect. Updating only the base reverses the method’s frozen-base design."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "abstract",
+        "section-3"
+      ],
+      "claimIds": [
+        "c2",
+        "c8"
+      ]
+    },
+    {
+      "question": "Using the paper’s block sizes, what is the double-quantized scale overhead per model parameter?",
+      "options": [
+        {
+          "text": "About 0.127 bits",
+          "explanation": "Correct: $8/64+32/(64\\cdot256)=0.126953125$, which rounds to 0.127."
+        },
+        {
+          "text": "Exactly 0.5 bits",
+          "explanation": "Incorrect. That is the original overhead from one 32-bit scale per 64 weights."
+        },
+        {
+          "text": "Exactly 4 bits",
+          "explanation": "Incorrect. Four bits describes the weight payload, not the scale metadata overhead."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c6"
+      ]
+    },
+    {
+      "question": "Which conclusion is justified for the paper’s 33B and 65B experiments?",
+      "options": [
+        {
+          "text": "NF4 QLoRA matched the compared BF16 LoRA results",
+          "explanation": "Correct. The large-scale controlled comparison was against 16-bit LoRA on the reported setups."
+        },
+        {
+          "text": "QLoRA proved parity with full-model finetuning",
+          "explanation": "Incorrect. The paper explicitly says full 16-bit full-finetuning parity was not established at those scales."
+        },
+        {
+          "text": "Every four-bit codec matched BF16 LoRA",
+          "explanation": "Incorrect. The reported FP4 aggregate result lagged, so the claim does not extend to every four-bit representation."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-4",
+        "section-8"
+      ],
+      "claimIds": [
+        "c10",
+        "c11"
+      ]
+    }
+  ],
+  "id": "qlora-efficient-finetuning-of-quantized-llms",
+  "createdAt": "2026-10-01T23:39:04.144Z",
+  "pipelineVersion": "subjects-lessons-v1",
+  "sources": [
+    {
+      "id": "abstract",
+      "label": "Original paper · abstract",
+      "url": "https://arxiv.org/abs/2305.14314",
+      "digest": "6272079be29d11ca8f943e1c3e9ebb29ac5113ef009a0e85a6fb8b4fc88723ce",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:37:31.247Z"
+    },
+    {
+      "id": "section-1",
+      "label": "1 Introduction",
+      "url": "https://arxiv.org/html/2305.14314#S1",
+      "digest": "f4a0c92e1cd750b8aa099b861a3301d8250d1e1a911a3a67dbcca87544949017",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:37:31.247Z"
+    },
+    {
+      "id": "section-2",
+      "label": "2 Background",
+      "url": "https://arxiv.org/html/2305.14314#S2",
+      "digest": "4d7f9d6c14846fb461d30b0c4d26bfe6f7d17579eacdbdc67f4bea6f0ed5b308",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:37:31.247Z"
+    },
+    {
+      "id": "section-3",
+      "label": "3 QLoRA Finetuning",
+      "url": "https://arxiv.org/html/2305.14314#S3",
+      "digest": "acd51d4edbedc82f6bbf854d2b3c2b486363bb6ee01dc4bc49a0f2b4e52fb5d0",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:37:31.247Z"
+    },
+    {
+      "id": "section-4",
+      "label": "4 QLoRA vs. Standard Finetuning",
+      "url": "https://arxiv.org/html/2305.14314#S4",
+      "digest": "ee0936ac0884bde94c58a0beda26813860c98e28c23dc1393eff052aa07190f8",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:37:31.247Z"
+    },
+    {
+      "id": "section-5",
+      "label": "5 Pushing the Chatbot State-of-the-art with QLoRA",
+      "url": "https://arxiv.org/html/2305.14314#S5",
+      "digest": "2d5d9c646cd580d2eef49a0f5aebc4bb0d335592110c19e3c21c73088e42adf2",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:37:31.247Z"
+    },
+    {
+      "id": "section-5-part-2",
+      "label": "5 Pushing the Chatbot State-of-the-art with QLoRA · part 2",
+      "url": "https://arxiv.org/html/2305.14314#S5",
+      "digest": "17b1eb7a02da82f5469845ac32583a2fe11b4c9b77e74c9f43704bc196b222cb",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:37:31.247Z"
+    },
+    {
+      "id": "section-6",
+      "label": "6 Qualitative Analysis",
+      "url": "https://arxiv.org/html/2305.14314#S6",
+      "digest": "d8ef56aa0638804e64161b5f0af325aa882278083e55aa423e7222704e76cbc1",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:37:31.247Z"
+    },
+    {
+      "id": "section-6-part-2",
+      "label": "6 Qualitative Analysis · part 2",
+      "url": "https://arxiv.org/html/2305.14314#S6",
+      "digest": "65a076495bd299369936dec3f94a8bc9f92a16ff274e9c2301c4c7de666e3d0c",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:37:31.247Z"
+    },
+    {
+      "id": "section-7",
+      "label": "7 Related Work",
+      "url": "https://arxiv.org/html/2305.14314#S7",
+      "digest": "94172bb50b442c7634da199763451d981a1b30e9d68170797cb96343b78ee874",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:37:31.247Z"
+    },
+    {
+      "id": "section-8",
+      "label": "8 Limitations and Discussion",
+      "url": "https://arxiv.org/html/2305.14314#S8",
+      "digest": "64f0d344da1882cc1fbf2141705df28d5328cc0947e98af1d8350846d6eb5b4c",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:37:31.247Z"
+    },
+    {
+      "id": "section-9",
+      "label": "9 Broader Impacts",
+      "url": "https://arxiv.org/html/2305.14314#S9",
+      "digest": "1f41fa115ecf75ad0fcdaee56d125860a99af143d20a382c883a72621fcc98fe",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:37:31.247Z"
+    }
+  ],
+  "review": {
+    "status": "passed",
+    "reviewedAt": "2026-10-02T02:05:23.309Z",
+    "contentDigest": "d3c4e828f3fdb8eb966c5f07d2a6ca877c7d57e2d3de28cfc2bd3d4d588d56d6"
+  }
+}

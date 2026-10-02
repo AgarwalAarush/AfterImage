@@ -1,0 +1,534 @@
+{
+  "title": "One Interface, Many Problems: Inside T5’s Experimental Framework",
+  "summary": "T5 turns diverse NLP tasks into text generation, providing a common interface for controlled comparisons of architectures, denoising objectives, and pre-training data.",
+  "prerequisites": [
+    "Tokenized sequences and ordered token IDs",
+    "Maximum-likelihood training for known targets",
+    "Cross-entropy as negative log-probability",
+    "Full-context Transformer encoders",
+    "Autoregressive token-by-token decoding",
+    "Transfer learning from pretrained parameters"
+  ],
+  "objectives": [
+    "Explain how prefixes and text targets give diverse NLP tasks one interface.",
+    "Distinguish full encoder attention from causal decoder attention.",
+    "Build a sentinel span-corruption example and calculate its target length.",
+    "Interpret controlled comparisons without treating results as universal advice.",
+    "Identify limits from coordinate-wise tests, validation results, filtering, and source coverage."
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "mechanism",
+      "statement": "T5 represents every studied task as text-conditioned text generation, allowing one model family and training interface to span both generative and label-prediction tasks.",
+      "conditions": "For the English-based tasks considered in the paper, after applying task-specific preprocessing and textual prefixes.",
+      "sourceIds": [
+        "section-1"
+      ]
+    },
+    {
+      "id": "c2",
+      "kind": "mechanism",
+      "statement": "A task-specific textual prefix tells the shared model which transformation to perform.",
+      "conditions": "Under the paper’s supervised text-to-text preprocessing; the exact prefix wording remains a hyperparameter.",
+      "sourceIds": [
+        "section-2-part-2"
+      ]
+    },
+    {
+      "id": "c3",
+      "kind": "equation",
+      "statement": "For self-attention output position $i$, the contextual value is $y_i=\\sum_j w_{i,j}x_j$, where $x_j$ is input element $j$ and $w_{i,j}$ is its scalar attention weight; a causal mask forces $w_{i,j}=0$ whenever $j>i$.",
+      "conditions": "For the Transformer self-attention abstraction used to explain the architectural variants; projection details and multi-head concatenation are suppressed.",
+      "sourceIds": [
+        "section-3-part-3"
+      ]
+    },
+    {
+      "id": "c4",
+      "kind": "mechanism",
+      "statement": "T5’s baseline denoising task replaces each consecutive corrupted span with a sequence-unique sentinel and asks the decoder to emit only the missing spans, separated by their sentinels and followed by a final sentinel.",
+      "conditions": "For the baseline unsupervised pre-training objective with 15% token corruption.",
+      "sourceIds": [
+        "section-3-part-2"
+      ]
+    },
+    {
+      "id": "c5",
+      "kind": "result",
+      "statement": "Within the architecture comparison, the encoder-decoder model paired with denoising achieved the best reported score on every listed task, although it also had the largest parameter count among the compared full-cost variants.",
+      "conditions": "Table 2 configurations, objectives, training pipeline, validation benchmarks, and approximate parameter/compute accounting used by the paper.",
+      "sourceIds": [
+        "section-3-part-4"
+      ]
+    },
+    {
+      "id": "c6",
+      "kind": "result",
+      "statement": "The investigated denoising variants were broadly close in downstream performance, making sequence length and training cost important selection criteria within that tested family.",
+      "conditions": "The objectives, baseline model, tasks, corruption constructions, and training budget studied in Sections 3.3.1–3.3.4.",
+      "sourceIds": [
+        "section-3-part-6"
+      ]
+    },
+    {
+      "id": "c7",
+      "kind": "result",
+      "statement": "At 15% corruption, random spans of average length three modestly outperformed independent token corruption on most non-translation benchmarks in the reported comparison.",
+      "conditions": "Table 7, with 15% corruption, the baseline encoder-decoder setup, and the paper’s validation metrics.",
+      "sourceIds": [
+        "section-3-part-6"
+      ]
+    },
+    {
+      "id": "c8",
+      "kind": "result",
+      "statement": "Heuristic cleaning mattered in the paper’s data comparison: the much larger unfiltered C4 variant performed worse than filtered C4 on every reported task.",
+      "conditions": "Table 8 under the baseline pre-training budget and downstream evaluation setup; the “unfiltered” variant still retained language-detection filtering.",
+      "sourceIds": [
+        "section-3-part-7"
+      ]
+    },
+    {
+      "id": "c9",
+      "kind": "result",
+      "statement": "Pre-training improved every listed baseline benchmark numerically relative to training from scratch, but the gain for high-resource English-to-French translation was only marginal and was the reported exception to significant gains.",
+      "conditions": "Table 1 validation results, using the same number of downstream training steps and best-validation-checkpoint selection.",
+      "sourceIds": [
+        "section-3-part-2"
+      ]
+    },
+    {
+      "id": "c10",
+      "kind": "caveat",
+      "statement": "The study changes one major factor at a time, so its comparisons can miss interactions between choices such as model size and pre-training objective.",
+      "conditions": "The systematic empirical survey rather than an exhaustive factorial search over all configurations.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c11",
+      "kind": "result",
+      "statement": "Data-domain alignment sometimes outweighed corpus breadth: particular constrained corpora improved tasks whose sources resembled those corpora.",
+      "conditions": "Table 8’s baseline-sized models and fixed pre-training budget; these are task-specific observations, not a claim that narrow corpora are generally superior.",
+      "sourceIds": [
+        "section-3-part-7"
+      ]
+    },
+    {
+      "id": "c12",
+      "kind": "caveat",
+      "statement": "Repeated small pre-training corpora showed worse downstream performance as corpus size shrank, while lower training loss suggested possible memorization rather than better transfer.",
+      "conditions": "Artificial C4 truncations repeatedly consumed over the same total $2^{35}$-token pre-training budget.",
+      "sourceIds": [
+        "section-3-part-7"
+      ]
+    },
+    {
+      "id": "c13",
+      "kind": "result",
+      "statement": "The controlled scaling study compares longer training, larger batches, larger models and ensembles under roughly four-times-baseline scaling budgets, without one universally best choice across tasks.",
+      "conditions": "Table 13 validation comparisons use the study’s baseline and controlled changes; larger models add gains, ensembles help some tasks but not SuperGLUE, and inference/fine-tuning cost differs between strategies. Table13 GLUE validation: baseline83.28, four-times-steps85.33, four-times-batch84.60, two-times-size/two-times-steps86.18.",
+      "sourceIds": [
+        "supplement-s3-ss6"
+      ]
+    },
+    {
+      "id": "c14",
+      "kind": "mechanism",
+      "statement": "The final T5 recipe uses 15% span corruption with mean span length 3, C4, one million pre-training steps and batches of 2048 sequences of length 512, with unsupervised/supervised multi-task pre-training followed by fine-tuning.",
+      "conditions": "Approximately one trillion pre-training token positions; the final recipe combines changes and is distinct from the shorter baseline comparison study.",
+      "sourceIds": [
+        "supplement-s3-ss7"
+      ]
+    },
+    {
+      "id": "c15",
+      "kind": "mechanism",
+      "statement": "The final family spans Small≈60M, Base≈220M, Large≈770M, 3B≈2.8B and 11B≈11B parameters; the largest models widen the feed-forward network rather than simply increasing depth.",
+      "conditions": "3B and 11B each use a24-layer encoder and 24-layer decoder with d_model1024 and d_kv128; d_ff16384/65536 and 32/128 attention heads respectively.",
+      "sourceIds": [
+        "supplement-s3-ss7"
+      ]
+    },
+    {
+      "id": "c16",
+      "kind": "mechanism",
+      "statement": "The final evaluation uses per-task GLUE/SuperGLUE fine-tuning with smaller batches, beam search for translation/summarization, and test-set scores except for SQuAD validation.",
+      "conditions": "GLUE/SuperGLUE fine-tuning batches8 sequences of length 512 and checkpoints every 1000 steps; beam width 4 and length penalty 0.6 for WMT/CNN-DM. SQuAD remains on validation due to server resource constraints.",
+      "sourceIds": [
+        "supplement-s3-ss7"
+      ]
+    },
+    {
+      "id": "c17",
+      "kind": "result",
+      "statement": "The final11B model reports GLUE 90.3 and SuperGLUE 88.9 on test, and SQuAD Exact Match 91.26/F1 96.22 on validation; it does not achieve the paper’s comparison-table best on any WMT translation task.",
+      "conditions": "Table 14 comparisons are to reported prior best results as of October 24,2019, with task-specific splits and metrics; these are historical benchmark scores, not current rankings or universal measures of understanding.",
+      "sourceIds": [
+        "supplement-s3-ss7-part-2",
+        "supplement-s3-ss7"
+      ]
+    },
+    {
+      "id": "c18",
+      "kind": "result",
+      "statement": "At Base model size, the Table 15 validation comparison shows gains from extra pre-training and further gains from the final T5 recipe beyond the baseline trained for one trillion tokens.",
+      "conditions": "GLUE 83.28→84.80→85.97 for baseline≈34B tokens, baseline-1T, and T5-Base; SuperGLUE 71.36→73.90→75.64. The final recipe changes several non-scaling ingredients jointly, so this does not isolate one ingredient’s effect.",
+      "sourceIds": [
+        "supplement-s3-ss7-part-3"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "s1",
+      "title": "The research move: standardize the interface before comparing methods",
+      "markdown": "Transfer learning separates learning into two stages. During **pre-training**, a model learns from a large, data-rich objective. During **fine-tuning**, its parameters adapt to a downstream task with supervised examples. T5’s distinctive contribution was not merely a larger Transformer. It built a common experimental interface: every problem consumes text and produces text.\n\nFor translation, an input can begin with `translate English to German:` and the target is a German sentence. For MNLI classification, the input contains the premise and hypothesis and the target is a label word such as `entailment`. Question answering emits an answer string; summarization emits a summary. A short textual prefix identifies the requested transformation. Thus task identity is represented inside the sequence rather than by swapping in a separate task-specific output head.\n\nThis unification matters scientifically. If classification used one loss and architecture while translation used another, a comparison of pre-training objectives would be entangled with those task-specific choices. T5 instead applies sequence maximum likelihood throughout. If the target tokens are $y_1,\\ldots,y_T$ and the prefixed input is $x$, the loss can be written\n\n$$\n\\mathcal L(x,y)=-\\sum_{t=1}^{T}\\log p_\\theta(y_t\\mid y_{<t},x),\n$$\n\nwhere $\\theta$ denotes model parameters, $T$ is target length, and $y_{<t}$ denotes earlier target tokens supplied by teacher forcing. This equation expresses the common training interface, not a claim that all tasks have become semantically identical.\n\nA common misconception is that “text-to-text” means T5 performs every task simultaneously. It does not. The framework *permits* mixing tasks, but the main baseline pre-trains and then separately fine-tunes on each downstream task. Likewise, emitting a label word does not turn classification into open-ended prose: an output outside the allowed labels is counted as wrong.",
+      "sourceIds": [
+        "section-1",
+        "section-2-part-2",
+        "section-3"
+      ],
+      "claimIds": [
+        "c1",
+        "c2"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s2",
+      "title": "The computation beneath the interface",
+      "markdown": "The baseline is an encoder-decoder Transformer. Token IDs first become vectors. Encoder blocks repeatedly apply self-attention and a feed-forward network, with normalization, residual connections, and dropout. The decoder has causal self-attention plus attention to encoder outputs; it generates one token at a time.\n\nSelf-attention can be idealized as\n\n$$\ny_i=\\sum_j w_{i,j}x_j,\n$$\n\nwhere $x_j$ is the vector at input position $j$, $y_i$ is the contextualized vector produced at output position $i$, and $w_{i,j}$ is the normalized scalar weight connecting them. Encoder self-attention is fully visible: every $i$ may use every input position $j$. Decoder self-attention is causal: $w_{i,j}=0$ for $j>i$, preventing token $i$ from reading future target tokens. Encoder-decoder attention then lets a decoding position inspect the encoded input.\n\nThe illustrative attention control makes one prerequisite concrete. It fixes four scores $[2,1,0,-1]$, divides them by a positive temperature $\\tau$, and applies\n\n$$\nw_j=\\frac{e^{s_j/\\tau}}{\\sum_k e^{s_k/\\tau}}.\n$$\n\nPredict before moving the control: will a smaller $\\tau$ make the weights flatter or more concentrated? It makes the largest score dominate more strongly. This clarifies how normalized weighting behaves, but it is not a measurement from T5: real scores are learned, depend on token representations, and are computed separately across heads and layers.\n\nThe masking distinction is more important than the toy temperature. An ordinary causal language model restricts representations of early input tokens to earlier context. An encoder can contextualize every input token using the complete input before generation begins. The paper’s comparison found the encoder-decoder denoising configuration best across its listed tasks, but parameter count is a confound in interpreting that result: it used $2P$ parameters versus $P$ for the decoder-only models at approximately equal reported compute $M$.",
+      "sourceIds": [
+        "section-2",
+        "section-3-part-3",
+        "section-3-part-4"
+      ],
+      "claimIds": [
+        "c3",
+        "c5"
+      ],
+      "figureId": "fig-attention"
+    },
+    {
+      "id": "s3",
+      "title": "Turning raw text into a reconstruction puzzle",
+      "markdown": "T5 learns from unlabeled text through corruption and reconstruction. Begin with tokenized text, choose tokens to hide, merge consecutive hidden tokens into spans, and replace each span with a unique sentinel. The decoder target contains only the removed spans, introduced by their matching sentinels, plus a final sentinel.\n\nThe walkthrough uses a constructed five-token sequence, treating each displayed word as one token:\n\n`red birds sing near home`\n\nRemove the adjacent tokens `birds sing`. They form one span because there is no visible token between them. Assign that span its own sentinel, S0. The transformed pair is:\n\n- Encoder input: `red S0 near home`\n- Decoder target: `S0 birds sing S1`\n\nS0 has the same identity in both sequences. In the input it locates the missing region; in the target it introduces the text that belongs there. S1 is the next unique sentinel and ends the target after the final missing span. The decoder restores the removed tokens in their original order rather than repeating the visible words. For multiple disjoint spans, each receives a different sentinel and their removed contents appear in span order in the target.\n\nLet $n$ be the original token count, $m$ the removed-token count and $s$ the number of spans. Corruption removes $m$ words from the input and adds $s$ markers, so\n\n$$n-m+s=5-2+1=4$$\n\ninput tokens remain. The target includes the removed tokens, one marker for each span and one final marker:\n\n$$m+s+1=2+1+1=4.$$\n\nHere both sequences happen to have four tokens; that equality is a consequence of this particular example rather than a requirement of span corruption. The constructed pair uses two removed tokens to make the operation visible. The final T5 training recipe instead corrupts 15% of tokens with mean span length 3.\n\nWhy predict only missing spans? Reconstructing the whole original sequence makes the decoder process a long target even though most tokens were already visible. Sentinel targets shorten that work. The encoder can contextualize the complete corrupted input, while the decoder predicts the ordered target autoregressively using causal self-attention and attention to the encoded input.\n\nIn the paper’s tested family, denoising variants were broadly similar, while their sequence lengths—and therefore computational costs—could differ. At 15% corruption, average span length three slightly outperformed independent corruption on most non-translation benchmarks. That is a conditional observation within the study, and it motivates the final recipe without establishing a universal optimum.",
+      "sourceIds": [
+        "section-3-part-2",
+        "section-3-part-5",
+        "section-3-part-6",
+        "supplement-s3-ss7"
+      ],
+      "claimIds": [
+        "c4",
+        "c6",
+        "c7",
+        "c14"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s4",
+      "title": "The corpus is part of the method",
+      "markdown": "A self-supervised objective still depends on what text it sees. T5 introduced C4 by filtering an April 2019 Common Crawl extraction into roughly 750 GB of English text. The stated heuristics included terminal-punctuation and minimum-length requirements; removal of any line containing `Javascript`; removal of whole pages containing a listed bad word, `lorem ipsum`, or a curly bracket; removal of some boilerplate lines and citation markers; language detection; and three-sentence-span deduplication.\n\nThese rules are operational choices, not a proof of cleanliness or neutrality. They determine which language remains available to the model and can remove legitimate material along with unwanted content. “Web scale” therefore does not mean an unfiltered sample of language.\n\nThe controlled data comparison reinforces two separate lessons. First, quantity did not rescue the less-clean variant: the 6.1 TB unfiltered C4 version was worst on every reported task, whereas filtered C4 was 745 GB in that table. Here “unfiltered” still included language detection, so even the label needs its experimental definition. Second, narrower data sometimes helped a matching downstream domain. Wikipedia improved SQuAD, whose passages come from Wikipedia; Wikipedia plus the Toronto Books Corpus especially improved a reading task with substantial fiction-book material; and RealNews-like data improved a news-based task. This supports domain alignment, not a blanket rule that small specialized corpora beat broad corpora.\n\nCorpus diversity also interacts with repetition. Under a fixed $2^{35}$-token pre-training budget, successively smaller C4 truncations were repeated more often and eventually transferred worse, even as their training loss fell. Lower training loss can therefore coexist with poorer downstream generalization: memorizing a repeated corruption source is not the same as acquiring broadly reusable language knowledge.",
+      "sourceIds": [
+        "section-2",
+        "section-2-part-2",
+        "section-3-part-7"
+      ],
+      "claimIds": [
+        "c8",
+        "c11",
+        "c12"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s5",
+      "title": "Reading the evidence without flattening its conditions",
+      "markdown": "The baseline study fixed a substantial pipeline: a roughly 220-million-parameter encoder-decoder, C4 pre-training, maximum sequence length 512, batches of 128 sequences, $2^{19}=524{,}288$ pre-training steps, task-specific fine-tuning, and greedy decoding. Most tables reported validation results. These conditions are essential whenever a result is reused.\n\nTable 1 compared that baseline with training each downstream task from scratch for the same number of steps used in fine-tuning. Pre-training improved every listed benchmark numerically. For English-to-French translation, the score rose only from 39.77 without pre-training to 39.82 with pre-training, a gain of 0.05 that is smaller than the baseline run standard deviation of 0.090. It was therefore the exception to significant gains, not an exception to numerical improvement; the authors associated this marginal benefit with the task’s high-resource regime. This is evidence that transfer’s benefit depends on downstream data availability, not evidence that pre-training is intrinsically helpful by the same amount everywhere.\n\nThe study also trained the baseline ten times to estimate run-to-run variation, then treated that variance as indicative for other variants. That was a pragmatic response to cost, not repeated trials of every configuration. Low-resource tasks such as CB showed larger variation, and the paper cautioned that aggregate GLUE or SuperGLUE scores can hide volatile constituents.\n\nA useful way to read any table row is to ask four questions: What changed? What stayed fixed? Which split and metric were used? How large is the difference relative to observed variability? For example, the architecture result does not isolate architecture alone when parameter counts differ. Likewise, a modest objective advantage under one model and budget need not survive a different scale or data domain. The paper’s tables are controlled evidence within their settings, not timeless rankings detached from those settings.",
+      "sourceIds": [
+        "section-3",
+        "section-3-part-2",
+        "section-3-part-4"
+      ],
+      "claimIds": [
+        "c5",
+        "c9",
+        "c10"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s6",
+      "title": "Spending compute: longer training, larger models, ensembles",
+      "markdown": "The baseline’s coordinate-wise study does not finish with choosing an objective. Section 3.6 asks how to spend more compute: train the same model for more steps, use a larger batch, increase model size, or combine predictions from separate models.\n\nThe main comparison considers roughly four times the baseline scaling budget: $4\\times$ training steps at fixed size, $4\\times$ batch size, $2\\times$ model size with $2\\times$ training steps, or $4\\times$ model size. A separate four-model ensemble comparison measures the value of combining independently trained predictions. An additional cheaper ensemble shares pre-training and branches into separately fine-tuned models; it should not be mistaken for four fully independent pre-training runs.\n\nMore steps and larger batches both help, with no clear winner between them in the reported tasks. Larger models generally add a further performance gain. For one validation metric, GLUE, the baseline scores 83.28, four-times training steps 85.33, four-times batch 84.60, and two-times size plus two-times steps 86.18. These are specific Table 13 rows, not a universal scaling law. Other metrics differ in which strategy wins: four independently trained models perform particularly well for CNN/DM and some translation tasks, while ensembling does not significantly improve SuperGLUE.\n\nServing cost changes the decision. A bigger model costs more on every fine-tuning or inference use. Pre-training a small model longer incurs an upfront cost that can be amortized across many downstream tasks. An ensemble combines several predictions and carries their inference cost. Thus even a fixed training budget does not make these choices interchangeable: the eventual task and serving budget help determine which improvement is useful.\n\nThis study motivates scaling the final recipe, but it does not establish that model size is the only useful variable or that one budget allocation dominates all tasks. The reported comparisons remain validation measurements within their training setup.",
+      "sourceIds": [
+        "supplement-s3-ss6"
+      ],
+      "claimIds": [
+        "c13"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s7",
+      "title": "Putting the final T5 recipe together",
+      "markdown": "The final models combine insights from the controlled study. They use the encoder-decoder interface, corrupt 15% of tokens into spans of mean length 3, and retain C4 because it can support much longer training without repeating a tiny corpus hundreds of times. Pre-training mixes the unsupervised reconstruction task with supervised tasks, then each downstream task is fine-tuned. This differs from claiming one jointly trained model is already optimal on every task without adaptation.\n\nThe nominal training volume is easy to check:\n\n$$1{,}000{,}000\\ \\mathrm{steps}\\times2{,}048\\ \\mathrm{sequences/step}\\times512\\ \\mathrm{positions/sequence}=1.048576\\times10^{12}\\ \\mathrm{positions}.$$\n\nThe paper calls this about one trillion pre-training tokens and about 32 times its baseline amount. Using the baseline’s exact $2^{35}$ nominal positions gives a ratio about 30.5; these are rounded training-budget descriptions rather than exact counts of unique words or distinct documents. Repeated positions, tokenization and sequence construction are separate questions from this budget arithmetic.\n\nThe final family offers several capacities:\n\n| Variant | Approximate parameters | Encoder/decoder layers |\n| --- | --- | --- |\n| Small | 60 million | 6/6 |\n| Base | 220 million | baseline configuration |\n| Large | 770 million | 24/24 |\n| 3B | 2.8 billion | 24/24 |\n| 11B | 11 billion | 24/24 |\n\nThe largest two retain model width 1024 and 24 layers per side, but expand feed-forward width to 16384 or 65536 and use 32 or 128 attention heads with key/value width 128. Scaling therefore does not mean increasing every dimension equally. The authors favor large dense feed-forward operations because they suit their TPU training hardware; this is a design choice under that hardware setting, not a claim that every device prefers the same shape.\n\nMulti-task mixing also remains controlled. The authors assign model-dependent effective sizes to the unlabeled task before example-proportional mixing and cap the effective English-to-French and English-to-German training datasets at one million examples. That controls how often a task contributes, rather than changing its label semantics.\n\nFinal fine-tuning separates individual GLUE and SuperGLUE tasks, uses batches of 8 sequences of length 512, and saves checkpoints every 1000 steps. A pre-training batch of 2048 would repeat tiny task datasets within a single batch, so reusing that large batch is inappropriate. For long outputs, WMT translation and CNN/DM summarization use beam width 4 and length penalty 0.6, whereas earlier comparisons used greedy decoding. Consequently the final result reflects both learned parameters and an explicitly changed decoding procedure.",
+      "sourceIds": [
+        "supplement-s3-ss7"
+      ],
+      "claimIds": [
+        "c4",
+        "c7",
+        "c14",
+        "c15",
+        "c16"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s8",
+      "title": "What the final results establish",
+      "markdown": "Table 14 reports final test-set results for GLUE, SuperGLUE, CNN/DailyMail and WMT, with a deliberate exception: SQuAD remains a validation-set comparison because the evaluation server cannot run the largest models. T5-11B reports GLUE 90.3, SuperGLUE 88.9, and SQuAD Exact Match 91.26 with F1 96.22. These numbers use different metrics and splits, so they are not interchangeable percentages measuring the same capability.\n\nThe previous-best comparison is historical, dated October 24,2019. Strong aggregate performance does not mean every task is solved: the authors discuss remaining gaps on low-resource reasoning tasks, and no WMT translation task reaches its compared previous best. Their English-only unsupervised corpus and the comparison systems’ use of backtranslation or additional cross-lingual data matter. CNN/DM ROUGE gains similarly need not imply a proportional increase in summary coherence. A benchmark score is evidence under an evaluation protocol, not a complete measure of language understanding.\n\nIs the final improvement simply more tokens? Table 15 supplies a useful controlled contrast at Base model size, reporting **validation** results for three configurations:\n\n| Configuration | Nominal pre-training volume | GLUE | SuperGLUE |\n| --- | --- | --- | --- |\n| Original baseline | about 34 billion tokens | 83.28 | 71.36 |\n| Baseline-1T | about 1 trillion tokens | 84.80 | 73.90 |\n| Final T5-Base | about 1 trillion tokens | 85.97 | 75.64 |\n\nAdditional pre-training improves the baseline. The final recipe then improves on baseline-1T across the displayed tasks. This comparison rules out the claim that token budget alone explains the final Base model’s gains, but it does not isolate a single non-scaling ingredient: span corruption, multi-task pre-training, fine-tuning and decoding choices changed together.\n\nNor should the validation GLUE 85.97 here be substituted for T5-Base’s official test-set score in Table 14. A metric name alone is insufficient provenance; model variant, split and comparison protocol all matter.\n\nT5’s one-factor-at-a-time experiments can miss interactions, and baseline variability is not a repeated-trial uncertainty estimate for every scaled configuration. Its contribution is nevertheless broader than a large model: standardize the interface, test ingredients under a shared protocol, combine useful choices, and verify that scale and recipe both contribute. Those are the methodological ideas that survive beyond the paper’s historical leaderboard results.",
+      "sourceIds": [
+        "section-3",
+        "supplement-s3-ss7",
+        "supplement-s3-ss7-part-2",
+        "supplement-s3-ss7-part-3"
+      ],
+      "claimIds": [
+        "c10",
+        "c14",
+        "c16",
+        "c17",
+        "c18"
+      ],
+      "figureId": null
+    }
+  ],
+  "figures": [
+    {
+      "id": "fig-attention",
+      "kind": "attention",
+      "title": "Temperature and normalized attention weights",
+      "question": "With fixed scores $[2,1,0,-1]$, does lowering the positive temperature concentrate more weight on the largest score or distribute it more evenly?",
+      "caption": "An illustrative control divides four fixed scores by a positive temperature and applies softmax, exposing how temperature changes the concentration of normalized weights.",
+      "limitation": "This is not a measured T5 attention head or learned token similarity; it omits queries, keys, values, masking, multiple heads, layers, and training.",
+      "sourceIds": [
+        "section-2",
+        "section-3-part-3"
+      ],
+      "claimIds": [
+        "c3"
+      ],
+      "illustrative": true
+    }
+  ],
+  "quiz": [
+    {
+      "question": "In the constructed sequence red birds sing near home, remove the adjacent tokens birds sing as one span. How many target tokens result, counting span and final sentinels?",
+      "options": [
+        {
+          "text": "Four",
+          "explanation": "Correct. S0, birds, sing and the final sentinel S1 give two removed tokens plus two sentinel tokens."
+        },
+        {
+          "text": "Three",
+          "explanation": "Incorrect. This counts the span marker and removed words but omits the final sentinel closing the target."
+        },
+        {
+          "text": "Five",
+          "explanation": "Incorrect. Visible input words are not repeated in the target; its length need not equal the original sequence length."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-3-part-2",
+        "supplement-s3-ss7"
+      ],
+      "claimIds": [
+        "c4",
+        "c14"
+      ]
+    },
+    {
+      "question": "What is the key attention distinction between T5’s encoder and decoder in the baseline encoder-decoder architecture?",
+      "options": [
+        {
+          "text": "The encoder is fully visible, while decoder self-attention is causal.",
+          "explanation": "Correct: the encoder can contextualize using the full input, while the decoder cannot attend to future target positions."
+        },
+        {
+          "text": "Both encoder and decoder self-attention are fully visible during target generation.",
+          "explanation": "Incorrect: fully visible decoder self-attention would expose future target tokens during training."
+        },
+        {
+          "text": "The encoder is causal, while the decoder reads the entire future target.",
+          "explanation": "Incorrect: this reverses the masking roles and would leak future outputs."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-2",
+        "section-3-part-3"
+      ],
+      "claimIds": [
+        "c3"
+      ]
+    },
+    {
+      "question": "What does the Base-size validation comparison between baseline-1T and final T5-Base establish?",
+      "options": [
+        {
+          "text": "The final recipe improves beyond an equal nominal token budget, without isolating one changed ingredient.",
+          "explanation": "Correct. Both use about one trillion pre-training tokens, while the final recipe changes several non-scaling choices jointly."
+        },
+        {
+          "text": "The extra parameters of T5-11B explain the entire comparison.",
+          "explanation": "Incorrect. Table 15 compares Base-size configurations, not the11B model against the220M baseline."
+        },
+        {
+          "text": "The GLUE validation scores are interchangeable with Table 14’s official test scores.",
+          "explanation": "Incorrect. Split and protocol differ; a validation comparison cannot be relabeled as an official test measurement."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "supplement-s3-ss7-part-3"
+      ],
+      "claimIds": [
+        "c18"
+      ]
+    }
+  ],
+  "id": "t5",
+  "createdAt": "2026-10-01T23:15:36.874Z",
+  "pipelineVersion": "subjects-lessons-v1",
+  "sources": [
+    {
+      "id": "abstract",
+      "label": "Original paper · abstract",
+      "url": "https://arxiv.org/abs/1910.10683",
+      "digest": "21e3cc6cee4ea8d280be18eb3708378f7ddea24609df0362fb86a94143b6438c"
+    },
+    {
+      "id": "section-1",
+      "label": "1 Introduction",
+      "url": "https://arxiv.org/html/1910.10683#S1",
+      "digest": "15c9607b35c01070c4a3b06de577f1b9562d489ae22411f8048f0ef160f0eb95"
+    },
+    {
+      "id": "section-2",
+      "label": "2 Setup",
+      "url": "https://arxiv.org/html/1910.10683#S2",
+      "digest": "3c55ce3e90b226e5b48fa8a469e1992d01e600d6f14f565a6832c70ab303b903"
+    },
+    {
+      "id": "section-2-part-2",
+      "label": "2 Setup · part 2",
+      "url": "https://arxiv.org/html/1910.10683#S2",
+      "digest": "b23e8b96a6334dc6c12d03e0fcba6293f04614579d4c3f9ab615889e33281150"
+    },
+    {
+      "id": "section-2-part-3",
+      "label": "2 Setup · part 3",
+      "url": "https://arxiv.org/html/1910.10683#S2",
+      "digest": "2082912bc4b5e165b5679be542ad8184b78a263e1cb39ec19ace4ddb93fcc916"
+    },
+    {
+      "id": "section-3",
+      "label": "3 Experiments",
+      "url": "https://arxiv.org/html/1910.10683#S3",
+      "digest": "6369c30614f1c4dc0a707ca607f751d6625be43f0aba3c6c26cd669c4ec82e12"
+    },
+    {
+      "id": "section-3-part-2",
+      "label": "3 Experiments · part 2",
+      "url": "https://arxiv.org/html/1910.10683#S3",
+      "digest": "2e51096c3419f3a725c60d4da2b21f883bee57e1541dad9e90f8d16449d3aa19"
+    },
+    {
+      "id": "section-3-part-3",
+      "label": "3 Experiments · part 3",
+      "url": "https://arxiv.org/html/1910.10683#S3",
+      "digest": "e495e8ee26db77677365559cff292c6c641a65e071a3430a2e7ff493a56df3d2"
+    },
+    {
+      "id": "section-3-part-4",
+      "label": "3 Experiments · part 4",
+      "url": "https://arxiv.org/html/1910.10683#S3",
+      "digest": "22da1571791b63e494b18b03af278900a5ccab4ee491ef3f7eb039d7018bb057"
+    },
+    {
+      "id": "section-3-part-5",
+      "label": "3 Experiments · part 5",
+      "url": "https://arxiv.org/html/1910.10683#S3",
+      "digest": "0b38cf25b0511bdb42c07aec68a52e90a542fd7247fa7e5427e4a21be290e7ef"
+    },
+    {
+      "id": "section-3-part-6",
+      "label": "3 Experiments · part 6",
+      "url": "https://arxiv.org/html/1910.10683#S3",
+      "digest": "563125ce201c4f62ec16bd7b573372a7330834e29623c99e41e7ddf3f1edde41"
+    },
+    {
+      "id": "section-3-part-7",
+      "label": "3 Experiments · part 7",
+      "url": "https://arxiv.org/html/1910.10683#S3",
+      "digest": "17501fd7c00d2a58f520ae9f4cb2a9365dc38740c08931aec19cfd5b95a2cab2"
+    },
+    {
+      "id": "section-3-part-8",
+      "label": "3 Experiments · part 8",
+      "url": "https://arxiv.org/html/1910.10683#S3",
+      "digest": "dfd519bd5e719ed60ba2446a6a127f92c4ab081741b0f48f5f2581e570945a7f"
+    },
+    {
+      "id": "section-3-part-9",
+      "label": "3 Experiments · part 9",
+      "url": "https://arxiv.org/html/1910.10683#S3",
+      "digest": "89e5e39d04fefb8d06934593abecdf8581f821168acd8328505381d57a56aab2"
+    },
+    {
+      "id": "supplement-s3-ss6",
+      "label": "3.6 Scaling",
+      "url": "https://arxiv.org/html/1910.10683#S3.SS6",
+      "digest": "3dc28cc53e4dbd421f212f0e86152b4b20d413afa9bc5b30285ed0eea6b5e4d6",
+      "extractionVersion": "arxiv-html-scientific-body-v5",
+      "capturedAt": "2026-10-02T00:33:49.446Z"
+    },
+    {
+      "id": "supplement-s3-ss7",
+      "label": "3.7 Putting It All Together",
+      "url": "https://arxiv.org/html/1910.10683#S3.SS7",
+      "digest": "49f9af96878d3d5719f70c21d02793604046625b07774ed73a7eff86f8b47155",
+      "extractionVersion": "arxiv-html-scientific-body-v5",
+      "capturedAt": "2026-10-02T00:33:49.446Z"
+    },
+    {
+      "id": "supplement-s3-ss7-part-2",
+      "label": "3.7 Putting It All Together · part 2",
+      "url": "https://arxiv.org/html/1910.10683#S3.SS7",
+      "digest": "7537d3882921f6fa540d9dbdf8aab1059b6af3a25c3ef793a0ccdd4d50e4ea07",
+      "extractionVersion": "arxiv-html-scientific-body-v5",
+      "capturedAt": "2026-10-02T00:33:49.446Z"
+    },
+    {
+      "id": "supplement-s3-ss7-part-3",
+      "label": "3.7 Putting It All Together · part 3",
+      "url": "https://arxiv.org/html/1910.10683#S3.SS7",
+      "digest": "d445552c175601a22b75717a95ee000d3b116c667147753c249bf25350c6b8f6",
+      "extractionVersion": "arxiv-html-scientific-body-v5",
+      "capturedAt": "2026-10-02T00:33:49.446Z"
+    }
+  ],
+  "review": {
+    "status": "passed",
+    "reviewedAt": "2026-10-02T01:54:14.229Z",
+    "contentDigest": "bfeaff6deb6b8c724bcc73de5945b5fedbd3ae89e3d33190f4bc9f6d87d337b2"
+  }
+}

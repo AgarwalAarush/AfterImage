@@ -1,0 +1,440 @@
+{
+  "version": 1,
+  "sectionId": "s3",
+  "title": "Span corruption keeps missing text ordered",
+  "introduction": "Use the constructed sequence “red birds sing near home,” treating each displayed word as one token. Remove the adjacent tokens “birds sing” as one span. S0 marks that span; S1 closes the decoder target. The input keeps the visible tokens, while the target contains only the removed text and sentinels.",
+  "entities": [
+    {
+      "id": "red",
+      "label": "red",
+      "meaning": "The first token in the constructed five-token sequence."
+    },
+    {
+      "id": "birds",
+      "label": "birds",
+      "meaning": "The second token, removed as part of the single adjacent span."
+    },
+    {
+      "id": "sing",
+      "label": "sing",
+      "meaning": "The third token, removed in the same span after birds."
+    },
+    {
+      "id": "near",
+      "label": "near",
+      "meaning": "The fourth token remains visible after the corrupted span."
+    },
+    {
+      "id": "home",
+      "label": "home",
+      "meaning": "The fifth token remains visible at the end of the input."
+    },
+    {
+      "id": "sentinel-zero",
+      "label": "S0",
+      "meaning": "The unique sentinel replacing the removed span in the input and introducing it in the target."
+    },
+    {
+      "id": "sentinel-one",
+      "label": "S1",
+      "meaning": "The next unique sentinel, appended after the last removed token to close this one-span target."
+    }
+  ],
+  "objects": [
+    {
+      "id": "original",
+      "form": "tokens",
+      "label": "Original sequence",
+      "detail": "Five ordered example tokens",
+      "sourceIds": [
+        "section-3-part-2",
+        "supplement-s3-ss7"
+      ],
+      "claimIds": [
+        "c4",
+        "c14"
+      ]
+    },
+    {
+      "id": "selected",
+      "form": "vector",
+      "label": "Selected span",
+      "detail": "Two adjacent missing tokens",
+      "sourceIds": [
+        "section-3-part-2",
+        "supplement-s3-ss7"
+      ],
+      "claimIds": [
+        "c4",
+        "c14"
+      ]
+    },
+    {
+      "id": "sentinels",
+      "form": "bank",
+      "label": "Sentinel identities",
+      "detail": "Ordered unique span markers",
+      "sourceIds": [
+        "section-3-part-2",
+        "supplement-s3-ss7"
+      ],
+      "claimIds": [
+        "c4",
+        "c14"
+      ]
+    },
+    {
+      "id": "input",
+      "form": "tokens",
+      "label": "Encoder input",
+      "detail": "Visible tokens and span marker",
+      "sourceIds": [
+        "section-3-part-2",
+        "supplement-s3-ss7"
+      ],
+      "claimIds": [
+        "c4",
+        "c14"
+      ]
+    },
+    {
+      "id": "target",
+      "form": "tokens",
+      "label": "Decoder target",
+      "detail": "Missing span and final marker",
+      "sourceIds": [
+        "section-3-part-2",
+        "supplement-s3-ss7"
+      ],
+      "claimIds": [
+        "c4",
+        "c14"
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "id": "select",
+      "from": "original",
+      "to": "selected",
+      "label": "choose adjacent span",
+      "dashed": false,
+      "sourceIds": [
+        "section-3-part-2",
+        "supplement-s3-ss7"
+      ],
+      "claimIds": [
+        "c4",
+        "c14"
+      ]
+    },
+    {
+      "id": "retain-visible",
+      "from": "original",
+      "to": "input",
+      "label": "retain visible order",
+      "dashed": false,
+      "sourceIds": [
+        "section-3-part-2",
+        "supplement-s3-ss7"
+      ],
+      "claimIds": [
+        "c4",
+        "c14"
+      ]
+    },
+    {
+      "id": "replace-span",
+      "from": "selected",
+      "to": "input",
+      "label": "replace span",
+      "dashed": false,
+      "sourceIds": [
+        "section-3-part-2",
+        "supplement-s3-ss7"
+      ],
+      "claimIds": [
+        "c4",
+        "c14"
+      ]
+    },
+    {
+      "id": "input-marker",
+      "from": "sentinels",
+      "to": "input",
+      "label": "insert S0",
+      "dashed": false,
+      "sourceIds": [
+        "section-3-part-2",
+        "supplement-s3-ss7"
+      ],
+      "claimIds": [
+        "c4",
+        "c14"
+      ]
+    },
+    {
+      "id": "target-span",
+      "from": "selected",
+      "to": "target",
+      "label": "copy missing span",
+      "dashed": false,
+      "sourceIds": [
+        "section-3-part-2",
+        "supplement-s3-ss7"
+      ],
+      "claimIds": [
+        "c4",
+        "c14"
+      ]
+    },
+    {
+      "id": "target-markers",
+      "from": "sentinels",
+      "to": "target",
+      "label": "bracket target span",
+      "dashed": false,
+      "sourceIds": [
+        "section-3-part-2",
+        "supplement-s3-ss7"
+      ],
+      "claimIds": [
+        "c4",
+        "c14"
+      ]
+    }
+  ],
+  "beats": [
+    {
+      "title": "Select one adjacent span",
+      "explanation": "The original order is red, birds, sing, near, home. Selecting birds and sing produces one span because the removed tokens are adjacent. This constructed example uses two removed tokens out of five to make the transformation legible; the final T5 training recipe uses a 15% corruption rate and mean span length 3. Span count and removed-token count are different quantities.",
+      "sourceIds": [
+        "section-3-part-2",
+        "supplement-s3-ss7"
+      ],
+      "claimIds": [
+        "c4",
+        "c14"
+      ],
+      "objects": [
+        {
+          "objectId": "original",
+          "status": "active",
+          "entityIds": [
+            "red",
+            "birds",
+            "sing",
+            "near",
+            "home"
+          ]
+        },
+        {
+          "objectId": "selected",
+          "status": "active",
+          "entityIds": [
+            "birds",
+            "sing"
+          ]
+        },
+        {
+          "objectId": "sentinels",
+          "status": "retained",
+          "entityIds": [
+            "sentinel-zero",
+            "sentinel-one"
+          ]
+        },
+        {
+          "objectId": "input",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "target",
+          "status": "pending",
+          "entityIds": []
+        }
+      ],
+      "relationships": [
+        {
+          "relationshipId": "select",
+          "entityIds": [
+            "birds",
+            "sing"
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Replace the span with its unique sentinel",
+      "explanation": "The encoder input becomes red, S0, near, home. S0 replaces the entire adjacent span, so the input has four tokens: three visible tokens plus one marker. The marker identifies the missing region without exposing birds or sing to the encoder. Unique markers let the decoder distinguish multiple removed spans when a longer sequence contains them.",
+      "sourceIds": [
+        "section-3-part-2",
+        "supplement-s3-ss7"
+      ],
+      "claimIds": [
+        "c4",
+        "c14"
+      ],
+      "objects": [
+        {
+          "objectId": "original",
+          "status": "retained",
+          "entityIds": [
+            "red",
+            "birds",
+            "sing",
+            "near",
+            "home"
+          ]
+        },
+        {
+          "objectId": "selected",
+          "status": "retained",
+          "entityIds": [
+            "birds",
+            "sing"
+          ]
+        },
+        {
+          "objectId": "sentinels",
+          "status": "active",
+          "entityIds": [
+            "sentinel-zero",
+            "sentinel-one"
+          ]
+        },
+        {
+          "objectId": "input",
+          "status": "active",
+          "entityIds": [
+            "red",
+            "sentinel-zero",
+            "near",
+            "home"
+          ]
+        },
+        {
+          "objectId": "target",
+          "status": "pending",
+          "entityIds": []
+        }
+      ],
+      "relationships": [
+        {
+          "relationshipId": "retain-visible",
+          "entityIds": [
+            "red",
+            "near",
+            "home"
+          ]
+        },
+        {
+          "relationshipId": "replace-span",
+          "entityIds": []
+        },
+        {
+          "relationshipId": "input-marker",
+          "entityIds": [
+            "sentinel-zero"
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Build the ordered missing-text target",
+      "explanation": "The decoder target is S0, birds, sing, S1. S0 introduces the missing span; birds and sing keep their original order; the next sentinel S1 closes the target after the final span. The target also has four tokens: two removed words, one span marker and one final marker. Visible input words are not repeated in the target. Training predicts this target autoregressively from the corrupted input.",
+      "sourceIds": [
+        "section-3-part-2",
+        "supplement-s3-ss7"
+      ],
+      "claimIds": [
+        "c4",
+        "c14"
+      ],
+      "objects": [
+        {
+          "objectId": "original",
+          "status": "retained",
+          "entityIds": [
+            "red",
+            "birds",
+            "sing",
+            "near",
+            "home"
+          ]
+        },
+        {
+          "objectId": "selected",
+          "status": "retained",
+          "entityIds": [
+            "birds",
+            "sing"
+          ]
+        },
+        {
+          "objectId": "sentinels",
+          "status": "retained",
+          "entityIds": [
+            "sentinel-zero",
+            "sentinel-one"
+          ]
+        },
+        {
+          "objectId": "input",
+          "status": "retained",
+          "entityIds": [
+            "red",
+            "sentinel-zero",
+            "near",
+            "home"
+          ]
+        },
+        {
+          "objectId": "target",
+          "status": "active",
+          "entityIds": [
+            "sentinel-zero",
+            "birds",
+            "sing",
+            "sentinel-one"
+          ]
+        }
+      ],
+      "relationships": [
+        {
+          "relationshipId": "target-span",
+          "entityIds": [
+            "birds",
+            "sing"
+          ]
+        },
+        {
+          "relationshipId": "target-markers",
+          "entityIds": [
+            "sentinel-zero",
+            "sentinel-one"
+          ]
+        }
+      ]
+    }
+  ],
+  "takeaway": "Each unique sentinel identifies a removed span; the target restores only its missing tokens in order and ends with the next sentinel.",
+  "sourceIds": [
+    "section-3-part-2",
+    "supplement-s3-ss7"
+  ],
+  "claimIds": [
+    "c4",
+    "c14"
+  ],
+  "lessonId": "t5",
+  "parentContentDigest": "bfeaff6deb6b8c724bcc73de5945b5fedbd3ae89e3d33190f4bc9f6d87d337b2",
+  "review": {
+    "status": "source-passed",
+    "reviewedAt": "2026-10-02T01:52:55.754Z",
+    "contentDigest": "b0fc843bf6ae9ccdb01df1bd8755f5d01c457b41ab305d0dd2f6a91541202771",
+    "rendererDigest": "2cc690a7105c5faca75e22053e83674a2cf2e227ae22afe88cc4662d09c98bb4",
+    "visualReviewedAt": null
+  }
+}

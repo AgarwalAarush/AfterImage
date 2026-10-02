@@ -1,0 +1,464 @@
+{
+  "title": "Moving the Outlier: How SmoothQuant Makes W8A8 Practical",
+  "summary": "SmoothQuant preserves each linear layer while shifting channel-wise scale from troublesome activations into easier-to-quantize weights before inference.",
+  "prerequisites": [
+    "Matrix multiplication and diagonal scaling",
+    "Uniform symmetric integer quantization",
+    "Transformer linear layers and activation channels",
+    "Calibration and retraining differences"
+  ],
+  "objectives": [
+    "Explain how activation outliers waste uniform quantization levels.",
+    "Derive SmoothQuant's function-preserving channel transformation.",
+    "Calculate smoothing factors and transformed tensors in a small example.",
+    "Explain migration strength as a tradeoff between quantization errors.",
+    "Interpret reported accuracy and speed results within their test conditions."
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "mechanism",
+      "statement": "Uniform quantization maps floating-point values to discrete integer levels, with the largest absolute value setting the symmetric quantization step.",
+      "conditions": "Symmetric, zero-centered integer quantization with N bits.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c2",
+      "kind": "equation",
+      "statement": "For symmetric N-bit quantization, the paper uses step size Δ=max(|X|)/(2^(N−1)−1) and rounds X/Δ to obtain the integer tensor.",
+      "conditions": "The tensor is treated as symmetric around zero; the paper uses N=8.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c3",
+      "kind": "mechanism",
+      "statement": "Activation outliers can determine a large shared step size, leaving ordinary channels with very few effective quantization levels.",
+      "conditions": "Per-tensor activation quantization, where one scale covers the whole activation matrix.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c4",
+      "kind": "result",
+      "statement": "In the paper's OPT study, activation outliers were concentrated in a small set of channels and persisted across tokens.",
+      "conditions": "The activation patterns examined in the paper's difficult LLM linear layers.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c5",
+      "kind": "caveat",
+      "statement": "Although per-channel activation quantization addressed the observed accuracy problem, its inner-dimension scaling was incompatible with the targeted high-throughput INT8 GEMM path.",
+      "conditions": "Hardware-accelerated GEMM kernels described by the paper, with scaling restricted to outer dimensions.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c6",
+      "kind": "equation",
+      "statement": "SmoothQuant divides each activation input channel by s_j and multiplies the corresponding weight row by s_j, leaving the exact floating-point linear map unchanged.",
+      "conditions": "Every smoothing factor is nonzero and the paired transformations are applied to matching input channels.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c7",
+      "kind": "mechanism",
+      "statement": "The smoothing can often be folded into parameters of the preceding operation, avoiding an additional runtime scaling kernel.",
+      "conditions": "The activation is produced by a preceding operation whose parameters can absorb the scale; residual inputs may require extra handling.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c8",
+      "kind": "equation",
+      "statement": "Migration strength α constructs each scale from the activation-channel maximum and corresponding weight-row maximum.",
+      "conditions": "Channel maxima are estimated from calibration activations and existing weights; α controls the division of difficulty.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c9",
+      "kind": "caveat",
+      "statement": "Sending all scale variation to either activations or weights is harmful; the method seeks a balance rather than simply shrinking activations as much as possible.",
+      "conditions": "Both weights and activations will subsequently be quantized.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c10",
+      "kind": "result",
+      "statement": "For OPT-175B, SmoothQuant-O3 closely matched the FP16 aggregate zero-shot accuracy and WikiText perplexity reported in Table 3.",
+      "conditions": "Seven listed zero-shot tasks plus WikiText; O3 uses per-tensor weights and per-tensor static activations.",
+      "sourceIds": [
+        "section-5"
+      ]
+    },
+    {
+      "id": "c11",
+      "kind": "result",
+      "statement": "The accuracy study calibrated activation statistics once using 512 random Pile sentences and reused the resulting model across downstream tasks.",
+      "conditions": "The OPT, BLOOM, and GLM evaluation procedure described in the paper; model-specific α choices were used.",
+      "sourceIds": [
+        "section-5"
+      ]
+    },
+    {
+      "id": "c12",
+      "kind": "result",
+      "statement": "The reported maximum FasterTransformer acceleration was 1.56× for smaller OPT models on a single A100-80GB GPU.",
+      "conditions": "FasterTransformer context-stage experiments on NVIDIA A100-80GB GPUs, comparing SmoothQuant-O3 with FP16.",
+      "sourceIds": [
+        "section-5-part-2"
+      ]
+    },
+    {
+      "id": "c13",
+      "kind": "result",
+      "statement": "For MT-NLG 530B, the reported W8A8 deployment used eight rather than sixteen A100-80GB GPUs at similar latency.",
+      "conditions": "The sequence lengths and latency measurements in Tables 9 and 10 for MT-NLG 530B.",
+      "sourceIds": [
+        "section-5-part-2"
+      ]
+    },
+    {
+      "id": "c14",
+      "kind": "caveat",
+      "statement": "The useful α region is model-dependent: in the OPT-175B LAMBADA ablation, values that were too low burdened activations and values that were too high burdened weights.",
+      "conditions": "OPT-175B evaluated on LAMBADA in the paper's α ablation.",
+      "sourceIds": [
+        "section-5-part-3"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "s1",
+      "title": "The real obstacle is not eight bits alone",
+      "markdown": "A Transformer linear layer computes\n\n$$\n\\mathbf{Y}=\\mathbf{X}\\mathbf{W},\n$$\n\nwhere $\\mathbf{X}\\in\\mathbb{R}^{T\\times C_i}$ contains activations for $T$ tokens and $C_i$ input channels, $\\mathbf{W}\\in\\mathbb{R}^{C_i\\times C_o}$ contains weights, and $\\mathbf{Y}\\in\\mathbb{R}^{T\\times C_o}$ contains $C_o$ output channels. W8A8 represents both $\\mathbf{X}$ and $\\mathbf{W}$ with 8-bit integers for the costly matrix multiplication. The difficulty is not simply that eight bits provide fewer values than FP16; it is that a shared quantization range can be badly matched to the distribution of activation magnitudes.\n\nThe figure isolates the range-resolution tradeoff with the fixed illustrative vector\n\n$$\n[-0.8,-0.3,0.1,0.7].\n$$\n\nFor a selected bit count $N$, the control constructs $2^N$ uniformly spaced reconstruction levels on the fixed interval $[-1,1]$, rounds each entry to its nearest level, and reports the mean-squared reconstruction error\n\n$$\n\\operatorname{MSE}=\\frac{1}{4}\\sum_{i=1}^{4}(x_i-\\hat{x}_i)^2,\n$$\n\nwhere $x_i$ is an original value and $\\hat{x}_i$ is its quantized reconstruction. Reducing the bit count leaves fewer levels in the same interval, increases the spacing between adjacent levels, and generally moves the reconstructed entries farther from their originals. The control changes only this level count: its input values and range remain fixed, so the displayed error comes directly from coarser rounding.\n\nThat calculation explains why activation outliers are especially damaging under one scale for an entire tensor. In the paper's symmetric quantizer, the largest absolute value sets the represented range and therefore the step between adjacent codes. If a rare activation is roughly $100\\times$ larger than ordinary values, preserving it forces those ordinary values into a small central subset of the available codes. The paper found this imbalance concentrated in a small set of activation channels, whereas weights were comparatively uniform and easier to quantize. The fixed vector in the figure teaches the underlying rounding effect; SmoothQuant addresses the additional channel structure by moving part of the range variation from activation columns into the corresponding weight rows before the W8A8 multiplication.",
+      "sourceIds": [
+        "section-1",
+        "section-2",
+        "section-3"
+      ],
+      "claimIds": [
+        "c1",
+        "c3"
+      ],
+      "figureId": "f1"
+    },
+    {
+      "id": "s2",
+      "title": "Range, resolution, and persistent channels",
+      "markdown": "For the paper's symmetric quantizer,\n\n$$\n\\Delta=\\frac{\\max(|\\mathbf{X}|)}{2^{N-1}-1},\\qquad\n\\bar{\\mathbf{X}}=\\operatorname{round}\\!\\left(\\frac{\\mathbf{X}}{\\Delta}\\right),\n$$\n\nwhere $N$ is the bit width, $\\Delta$ is the step size, $\\mathbf{X}$ is a floating-point tensor, and $\\bar{\\mathbf{X}}$ is its integer representation. At $N=8$, the positive magnitude limit is $127$. If an activation tensor has maximum magnitude $100$, then $\\Delta=100/127\\approx0.787$. An ordinary value $0.3$ rounds to integer zero and reconstructs as zero, an error of $-0.3$. This arithmetic is illustrative, not a reported paper measurement.\n\nWhy not assign a separate scale to every activation channel? That would directly protect small channels, and the paper's simulated per-channel results nearly restored FP16 accuracy. The hardware problem is where those scales sit. Channels of $\\mathbf{X}$ are the inner dimension of $\\mathbf{X}\\mathbf{W}$; inserting conversions or floating-point multiplications there disrupts the targeted high-throughput INT8 GEMM sequence. Outer-dimension scales—per token for activations and per output channel for weights—can instead be applied after multiplication.\n\nPersistence makes another route possible. The troublesome magnitude is associated with particular channels across tokens, so a fixed channel-wise reparameterization can be prepared offline. SmoothQuant changes the tensors before quantization rather than asking the integer kernel to perform unsupported inner-dimension scaling.",
+      "sourceIds": [
+        "section-2",
+        "section-3"
+      ],
+      "claimIds": [
+        "c2",
+        "c4",
+        "c5"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s3",
+      "title": "A function-preserving change of coordinates",
+      "markdown": "Let $\\mathbf{X}\\in\\mathbb{R}^{T\\times C_i}$ be the activation matrix, $\\mathbf{W}\\in\\mathbb{R}^{C_i\\times C_o}$ the weight matrix, and $\\mathbf{s}\\in\\mathbb{R}_{>0}^{C_i}$ a vector of positive channel scales. SmoothQuant defines\n\n$$\n\\hat{\\mathbf{X}}=\\mathbf{X}\\operatorname{diag}(\\mathbf{s})^{-1},\n\\qquad\n\\hat{\\mathbf{W}}=\\operatorname{diag}(\\mathbf{s})\\mathbf{W}.\n$$\n\nThus activation column $j$ is divided by $s_j$, while the corresponding weight row is multiplied by $s_j$. Their product is unchanged:\n\n$$\n\\hat{\\mathbf{X}}\\hat{\\mathbf{W}}\n=\\mathbf{X}\\operatorname{diag}(\\mathbf{s})^{-1}\n\\operatorname{diag}(\\mathbf{s})\\mathbf{W}\n=\\mathbf{X}\\mathbf{W}.\n$$\n\nThe cancellation also appears inside every output dot product. For token $t$ and output channel $k$,\n\n$$\n\\hat{Y}_{tk}\n=\\sum_{j=1}^{C_i}\\left(\\frac{X_{tj}}{s_j}\\right)(s_jW_{jk})\n=\\sum_{j=1}^{C_i}X_{tj}W_{jk}\n=Y_{tk}.\n$$\n\nThe interactive figure uses the following chosen toy inputs:\n\n$$\n\\mathbf{X}=\n\\begin{bmatrix}\n8&2&-1\\\\\n-4&1&0.5\n\\end{bmatrix},\n\\qquad\n\\mathbf{W}=\n\\begin{bmatrix}\n0.5&-0.25\\\\\n1&0.5\\\\\n-1&0.5\n\\end{bmatrix}.\n$$\n\nTheir activation-column absolute maxima are $\\mathbf{a}=[8,2,1]$, and their corresponding weight-row absolute maxima are $\\mathbf{b}=[0.5,1,1]$. At $\\alpha=0.5$, the scales are\n\n$$\n\\mathbf{s}=[4,\\sqrt{2},1].\n$$\n\nThe transformed tensors are\n\n$$\n\\hat{\\mathbf{X}}=\n\\begin{bmatrix}\n2&\\sqrt{2}&-1\\\\\n-1&1/\\sqrt{2}&0.5\n\\end{bmatrix},\n\\qquad\n\\hat{\\mathbf{W}}=\n\\begin{bmatrix}\n2&-1\\\\\n\\sqrt{2}&1/\\sqrt{2}\\\\\n-1&0.5\n\\end{bmatrix}.\n$$\n\nOn both transformed sides, the three channel maxima are $[2,\\sqrt{2},1]$. Direct multiplication gives\n\n$$\n\\mathbf{X}\\mathbf{W}\n=\\hat{\\mathbf{X}}\\hat{\\mathbf{W}}\n=\n\\begin{bmatrix}\n7&-1.5\\\\\n-1.5&1.75\n\\end{bmatrix}.\n$$\n\nThese fixed matrices are illustrative rather than measured model tensors. The control performs this exact unquantized transformation only. Actual INT8 quantization subsequently rounds the transformed tensors, so the algebraic equality does not imply zero quantization error.",
+      "sourceIds": [
+        "section-4"
+      ],
+      "claimIds": [
+        "c6",
+        "c8",
+        "c9"
+      ],
+      "figureId": "f2"
+    },
+    {
+      "id": "s4",
+      "title": "Choosing how far to move the difficulty",
+      "markdown": "SmoothQuant constructs each channel scale as\n\n$$\ns_j=\\frac{a_j^{\\alpha}}{b_j^{1-\\alpha}},\n\\qquad\na_j=\\max_t|X_{tj}|,\n\\qquad\nb_j=\\max_k|W_{jk}|,\n$$\n\nwhere $a_j$ is the absolute maximum of activation column $j$, $b_j$ is the absolute maximum of the matching weight row, and $\\alpha\\in[0,1]$ is the migration strength. In a model, activation maxima are estimated from calibration samples, while weight maxima come from the existing weights.\n\nThe transformed maxima follow directly from the paired scaling:\n\n$$\n\\hat{a}_j=\\frac{a_j}{s_j}\n=a_j^{1-\\alpha}b_j^{1-\\alpha},\n\\qquad\n\\hat{b}_j=s_jb_j\n=a_j^{\\alpha}b_j^{\\alpha}.\n$$\n\nAt $\\alpha=0$, $s_j=1/b_j$, so every transformed weight-row maximum is $1$. For the figure's illustrative inputs, $\\mathbf{s}=[2,1,1]$, the transformed activation maxima are $[4,2,1]$, and the transformed weight maxima are $[1,1,1]$. This makes the weights uniform but leaves more range variation on the activation side.\n\nAt $\\alpha=1$, $s_j=a_j$, so every transformed activation-column maximum is $1$. In the same example, $\\mathbf{s}=[8,2,1]$, the activation maxima become $[1,1,1]$, and the weight maxima become $[4,2,1]$. Activation range has been equalized by transferring its variation into the weights.\n\nAt the balanced value $\\alpha=0.5$,\n\n$$\n\\hat{a}_j=\\hat{b}_j=\\sqrt{a_jb_j}.\n$$\n\nAccordingly, the example produces $[2,\\sqrt{2},1]$ on both sides. Changing $\\alpha$ redistributes range; it never changes the exact unquantized output because the inverse activation scale and forward weight scale still cancel channel by channel.\n\nNeither extreme is automatically desirable once both tensors will be quantized. Sending all difficulty toward activations can make activation rounding harmful, while sending it all toward weights can make weight rounding harmful. The paper therefore treats $\\alpha$ as a model-dependent balance: it reports $0.5$ as a useful point for OPT and BLOOM, $0.75$ for GLM-130B, and a $0.4$–$0.6$ sweet region in its OPT-175B LAMBADA ablation. Those empirical findings come from the paper's calibration and evaluation settings; the figure's constructed values demonstrate only the exact scaling arithmetic.",
+      "sourceIds": [
+        "section-4",
+        "section-5",
+        "section-5-part-3"
+      ],
+      "claimIds": [
+        "c6",
+        "c8",
+        "c9",
+        "c14"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s5",
+      "title": "Offline preparation, efficient runtime",
+      "markdown": "The operational sequence is: collect representative calibration activations; compute each activation-channel absolute maximum $a_j=\\max_t|X_{tj}|$; compute the matching weight-row absolute maximum $b_j=\\max_k|W_{jk}|$ from the existing weights; choose $\\alpha$; construct each smoothing factor as $s_j=a_j^{\\alpha}/b_j^{1-\\alpha}$; divide activation channel $j$ by $s_j$ through an equivalent preceding-layer adjustment; multiply matching weight row $j$ by $s_j$; and finally determine the chosen static or dynamic quantization scales.\n\nWhen the input comes from a preceding parameterized operation, the inverse activation scaling can often be fused into that operation's parameters offline. Runtime then receives already smoothed activations, rather than launching a separate scaling kernel. The paper notes that residual-add cases may need an extra branch scaling, so fusion is not literally free in every graph topology.\n\nThe runtime precision plan is selective. Compute-heavy linear layers and attention batched matrix multiplications use INT8 inputs and weights, while lightweight elementwise operations such as Softmax and LayerNorm remain FP16. The contribution is therefore not “turn every number in the Transformer into INT8.” It is a function-preserving preparation that makes W8A8 practical at the matrix multiplications where integer kernels matter most.",
+      "sourceIds": [
+        "section-4",
+        "section-5"
+      ],
+      "claimIds": [
+        "c7",
+        "c11"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s6",
+      "title": "Reading the accuracy evidence without flattening it",
+      "markdown": "On OPT-175B, Table 3 reports FP16 average accuracy of $66.9\\%$ across seven listed zero-shot tasks and WikiText perplexity $10.99$. SmoothQuant-O3 reports $66.8\\%$ and $11.17$, respectively. In the same table, naive W8A8 reports $35.5\\%$ and perplexity $93080$. These numbers support the method under that benchmark suite; they do not prove that every downstream distribution is unaffected.\n\nThe variants also matter. O1 uses per-token dynamic activation quantization, O2 uses per-tensor dynamic activation quantization, and O3 uses per-tensor static activation quantization; all list per-tensor weights. Coarser, static scaling avoids runtime scale computation and was faster in the reported implementation, but it depends more strongly on calibration statistics. For BLOOM-176B, the paper attributes O3's $0.8$ percentage-point average degradation relative to FP16 to mismatch between static calibration statistics and evaluation activations.\n\nCalibration used 512 random sentences from the Pile and the resulting model was applied across downstream tasks. That is still post-training quantization: no model-parameter retraining is reported. It is not data-free, however, because activation ranges and migration choices require calibration evidence.",
+      "sourceIds": [
+        "section-5",
+        "section-5-part-3"
+      ],
+      "claimIds": [
+        "c10",
+        "c11"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s7",
+      "title": "Efficiency claims and honest boundaries",
+      "markdown": "The efficiency results depend on a particular interaction between the reparameterization, the quantization scheme, and the available integer kernels. In FasterTransformer context-stage experiments on NVIDIA A100-80GB GPUs, SmoothQuant-O3 reduced latency by up to $1.56\\times$ relative to FP16 for OPT-13B and OPT-30B on one GPU. These tests generated all hidden states for a batch of four sentences in one pass. Because O3 uses per-tensor static activation quantization, it avoids computing activation step sizes at runtime; the paper's latency comparison consequently improved from the finer O1 setting toward O3 when accuracy permitted the coarser scheme.\n\nFor MT-NLG 530B, the systems benefit appeared primarily as reduced deployment width. The reported FP16 runs used 16 A100-80GB GPUs, whereas W8A8 used 8. At sequence lengths 128, 256, 512, and 1024, the respective FP16 versus INT8 latencies were $232$ versus $253$ ms, $451$ versus $434$ ms, $838$ versus $839$ ms, and $1707$ versus $1689$ ms. Reported memory fell from $1040$–$1095$ GB across those cases to $527$–$570$ GB. Thus “similar latency” does not mean identical timing at every sequence length: the INT8 run was slightly slower at 128, essentially equal at 512, and slightly faster at 256 and 1024, while fitting on half as many GPUs.\n\nThose measurements establish performance for the stated models, batch or sequence conditions, FasterTransformer implementation, and A100 hardware. A different serving stack can change the fraction of time spent in INT8 matrix multiplication, scale handling, communication, or operations that remain FP16, so the reported maximum is not a hardware-independent consequence of the algebra. Static activation scales also inherit the calibration distribution: if later inputs contain materially different extremes, the fixed range can produce larger rounding error. Dynamic quantization adapts its range at runtime but pays for that calculation.\n\nMigration strength creates a related accuracy constraint. In the OPT-175B LAMBADA ablation, $\\alpha<0.4$ left activations difficult to quantize, while $\\alpha>0.6$ moved enough range into the weights to make their quantization difficult. The observed $0.4$–$0.6$ region therefore identifies a balance for that model and evaluation, not a universal setting. Likewise, the identity\n\n$$\n(\\mathbf{X}\\operatorname{diag}(\\mathbf{s})^{-1})(\\operatorname{diag}(\\mathbf{s})\\mathbf{W})=\\mathbf{X}\\mathbf{W}\n$$\n\nholds before integer rounding. Its practical value is that it redistributes channel maxima without changing the floating-point linear map; the eventual W8A8 tensors still incur rounding error. When a residual path prevents the inverse scale from being absorbed directly into preceding parameters, that branch also needs scaling, which can add runtime work.\n\nThe durable result is therefore precise: SmoothQuant moves channel-wise scale across an exact algebraic boundary so that both sides of important matrix multiplications are better suited to INT8 quantization. Under the reported implementations, that redistribution preserved the evaluated model quality closely enough to unlock faster kernels and substantially lower memory use, including an eight-GPU deployment of MT-NLG 530B.",
+      "sourceIds": [
+        "section-4",
+        "section-5-part-2",
+        "section-5-part-3"
+      ],
+      "claimIds": [
+        "c6",
+        "c12",
+        "c13",
+        "c14"
+      ],
+      "figureId": null
+    }
+  ],
+  "figures": [
+    {
+      "id": "f1",
+      "kind": "quantization",
+      "title": "Levels, rounding, and reconstruction error",
+      "question": "As the bit count decreases, what happens to the reconstruction error of the fixed vector under the displayed uniform quantizer?",
+      "caption": "The control rounds a fixed four-value vector to uniformly spaced levels on [-1,1], making the relationship between bit count, level spacing, and reconstruction MSE visible.",
+      "limitation": "This is uniform scalar quantization of a fixed illustrative vector, not an INT8 LLM tensor, channel-outlier experiment, NF4 codec, or reported SmoothQuant result.",
+      "sourceIds": [
+        "section-2",
+        "section-3"
+      ],
+      "claimIds": [
+        "c1",
+        "c2",
+        "c3"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "f2",
+      "kind": "paired-scaling",
+      "title": "Paired channel scaling preserves the linear layer",
+      "question": "As migration strength $\\alpha$ moves from $0$ to $1$, how does the exact paired transformation redistribute channel maxima between activations and weights while preserving $\\mathbf{X}\\mathbf{W}$?",
+      "caption": "The control applies SmoothQuant's exact pre-quantization transformation to fixed illustrative matrices. It shows the channel scales, transformed tensors, channel maxima, and unchanged matrix product as $\\alpha$ varies.",
+      "limitation": "The matrices and their derived values are constructed arithmetic examples, not calibration statistics or measured results. The control performs no INT8 rounding and measures neither quantization error, accuracy, nor latency.",
+      "sourceIds": [
+        "section-4"
+      ],
+      "claimIds": [
+        "c6",
+        "c8",
+        "c9"
+      ],
+      "illustrative": true
+    }
+  ],
+  "quiz": [
+    {
+      "question": "Under one symmetric per-tensor activation scale, what is the most direct consequence of a single much larger activation magnitude?",
+      "options": [
+        {
+          "text": "The shared step grows, so ordinary values use fewer effective levels.",
+          "explanation": "Correct. The maximum absolute value determines the shared step, so an outlier coarsens reconstruction elsewhere."
+        },
+        {
+          "text": "Every activation channel receives its own smaller step.",
+          "explanation": "Incorrect. That describes per-channel quantization, not one per-tensor scale."
+        },
+        {
+          "text": "The linear layer becomes mathematically nonlinear.",
+          "explanation": "Incorrect. Rounding introduces approximation, but the underlying linear-layer definition does not become a nonlinear architecture."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-2",
+        "section-3"
+      ],
+      "claimIds": [
+        "c2",
+        "c3"
+      ]
+    },
+    {
+      "question": "If channel j is divided by a positive factor s_j in X, what preserves the exact pre-quantization product XW?",
+      "options": [
+        {
+          "text": "Divide the matching weight row by s_j.",
+          "explanation": "Incorrect. Dividing both sides would scale that channel's product contribution by 1/s_j squared."
+        },
+        {
+          "text": "Multiply the matching weight row by s_j.",
+          "explanation": "Correct. The inverse activation factor and forward weight factor cancel in the matrix product."
+        },
+        {
+          "text": "Subtract s_j from the output channel.",
+          "explanation": "Incorrect. An additive output correction cannot generally undo channel-wise multiplicative scaling."
+        }
+      ],
+      "answer": 1,
+      "sourceIds": [
+        "section-4"
+      ],
+      "claimIds": [
+        "c6"
+      ]
+    },
+    {
+      "question": "Which conclusion is justified by the reported 1.56x maximum speedup?",
+      "options": [
+        {
+          "text": "Every W8A8 model is exactly 1.56x faster on any device.",
+          "explanation": "Incorrect. Speed depends on hardware, kernels, model, workload, and quantization setting."
+        },
+        {
+          "text": "The algebraic smoothing transformation alone guarantees a 1.56x speedup.",
+          "explanation": "Incorrect. The result also depends on the FasterTransformer INT8 implementation and test conditions."
+        },
+        {
+          "text": "SmoothQuant-O3 reached up to 1.56x under the reported single-A100 FasterTransformer tests for smaller OPT models.",
+          "explanation": "Correct. This preserves the implementation, hardware, model, and maximum-result qualifications."
+        }
+      ],
+      "answer": 2,
+      "sourceIds": [
+        "section-5-part-2"
+      ],
+      "claimIds": [
+        "c12"
+      ]
+    }
+  ],
+  "id": "smoothquant",
+  "createdAt": "2026-10-02T00:08:20.325Z",
+  "pipelineVersion": "subjects-lessons-v1",
+  "sources": [
+    {
+      "id": "abstract",
+      "label": "Original paper · abstract",
+      "url": "https://arxiv.org/abs/2211.10438",
+      "digest": "b3de60d29b71dc6c80c1472ed10704aecc313dfc87db4410d790d9cc9a5fdefe",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:22:33.473Z"
+    },
+    {
+      "id": "main-text",
+      "label": "Original paper · unsectioned main text",
+      "url": "https://arxiv.org/html/2211.10438",
+      "digest": "5ff46635a954254d23b82b02bd2857adec0b1faa255ff1eba2c35c565c1d6cdb",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:22:33.473Z"
+    },
+    {
+      "id": "section-1",
+      "label": "1 Introduction",
+      "url": "https://arxiv.org/html/2211.10438#S1",
+      "digest": "e7138ffdf576cb787e7eebfae668a011552d99a6cf167723b26de55562ed9e8e",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:22:33.473Z"
+    },
+    {
+      "id": "section-2",
+      "label": "2 Preliminaries",
+      "url": "https://arxiv.org/html/2211.10438#S2",
+      "digest": "3c84b426692601876b04baac2beaa3f9d8ee4bcd7ab28589b539f8a80a96cf42",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:22:33.473Z"
+    },
+    {
+      "id": "section-3",
+      "label": "3 Review of Quantization Difficulty",
+      "url": "https://arxiv.org/html/2211.10438#S3",
+      "digest": "ba983f824b7c71328cda707f827aaaaa4ccce9db70d0e1e440443ca529f341cb",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:22:33.473Z"
+    },
+    {
+      "id": "section-4",
+      "label": "4 SmoothQuant",
+      "url": "https://arxiv.org/html/2211.10438#S4",
+      "digest": "b1778ad8e53ac5c79e66857c77e6b3f1bc54c4cbc08a1ff0df71f1b0ba3b473e",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:22:33.473Z"
+    },
+    {
+      "id": "section-5",
+      "label": "5 Experiments",
+      "url": "https://arxiv.org/html/2211.10438#S5",
+      "digest": "ca7b2e382e7eee83b5172839bab27fcd298a453fb8b5feeea88fe6b43d58fb6c",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:22:33.473Z"
+    },
+    {
+      "id": "section-5-part-2",
+      "label": "5 Experiments · part 2",
+      "url": "https://arxiv.org/html/2211.10438#S5",
+      "digest": "ca752b54d561fee7789c541f42776c140b917a422c1d87efe0a9778fc03d9320",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:22:33.473Z"
+    },
+    {
+      "id": "section-5-part-3",
+      "label": "5 Experiments · part 3",
+      "url": "https://arxiv.org/html/2211.10438#S5",
+      "digest": "1e29aed395983e2cca9bf41b1f4675c8001e8408407d712b537a1e4b072a49a6",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:22:33.473Z"
+    },
+    {
+      "id": "section-6",
+      "label": "6 Related Work",
+      "url": "https://arxiv.org/html/2211.10438#S6",
+      "digest": "f47f5fca7687e53387292b04a5d8d603276edaac73978b8bbc7a9c9306e1d208",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:22:33.473Z"
+    },
+    {
+      "id": "section-7",
+      "label": "7 Conclusion",
+      "url": "https://arxiv.org/html/2211.10438#S7",
+      "digest": "ed8164a89badd0dad3697f75d84e9596ab2bb0a7b871cde2117ac7b3f8822c66",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:22:33.473Z"
+    }
+  ],
+  "review": {
+    "status": "passed",
+    "reviewedAt": "2026-10-02T00:27:28.265Z",
+    "contentDigest": "b147cefc301c8fc87386369cd90aad2c382f15a7c00aaf78cdecabf7b0a0b8c9"
+  }
+}

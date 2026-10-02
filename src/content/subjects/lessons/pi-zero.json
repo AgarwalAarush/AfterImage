@@ -1,0 +1,456 @@
+{
+  "title": "From Noisy Action Chunks to Dexterous Control",
+  "summary": "Pi-zero joins a pretrained vision-language backbone to a flow-matching action expert, then combines broad robot pretraining with task-focused post-training.",
+  "prerequisites": [
+    "Conditional probability and Gaussian noise",
+    "Vectors, squared Euclidean distance, and expectations",
+    "Conceptual knowledge of transformers, tokens, and attention",
+    "Euler integration for ordinary differential equations"
+  ],
+  "objectives": [
+    "Explain how observations condition future action chunks.",
+    "Derive the flow-matching target from demonstrated actions and sampled noise.",
+    "Trace how Euler integration transforms noise into an action chunk.",
+    "Distinguish broad robot pretraining from task-specific post-training.",
+    "Interpret reported comparisons while accounting for confounders."
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "mechanism",
+      "statement": "Pi-zero augments a pretrained vision-language model with a separate action expert that generates continuous robot actions through flow matching.",
+      "conditions": "Architecture described for the paper's vision-language-action policy.",
+      "sourceIds": [
+        "main-text"
+      ]
+    },
+    {
+      "id": "c2",
+      "kind": "mechanism",
+      "statement": "The policy predicts a conditional distribution over a chunk of future actions rather than only the next action.",
+      "conditions": "The paper's formal model uses an action horizon of 50 robot timesteps.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c3",
+      "kind": "mechanism",
+      "statement": "Each observation combines camera images, a language command, and proprioceptive joint state.",
+      "conditions": "Robots in the reported setup provide two or three images.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c4",
+      "kind": "equation",
+      "statement": "Training minimizes the expected squared error between the learned conditional velocity and the target flow velocity.",
+      "conditions": "Conditional flow matching over robot action chunks, with flow time between zero and one.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c5",
+      "kind": "equation",
+      "statement": "A noisy training point linearly interpolates between Gaussian noise at flow time zero and the demonstrated action chunk at flow time one.",
+      "conditions": "The paper's linear-Gaussian probability path with independently sampled standard-normal noise.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c6",
+      "kind": "equation",
+      "statement": "For that interpolation, the supervised target velocity is the demonstrated action chunk minus the sampled noise.",
+      "conditions": "The same noise sample is used both to construct the noisy action and its target velocity.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c7",
+      "kind": "equation",
+      "statement": "Inference advances an action chunk through the learned vector field with forward Euler updates.",
+      "conditions": "Generation starts from standard-normal noise and integrates from flow time zero to one.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c8",
+      "kind": "mechanism",
+      "statement": "The reported inference procedure uses ten Euler steps of size 0.1.",
+      "conditions": "Experimental inference configuration reported in the paper.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c9",
+      "kind": "mechanism",
+      "statement": "Cross-embodiment inputs and actions are placed in a shared maximum-width representation using zero padding, while absent camera slots are masked.",
+      "conditions": "Training mixture whose largest robot representation has dimension 18 and at most three images.",
+      "sourceIds": [
+        "section-5"
+      ]
+    },
+    {
+      "id": "c10",
+      "kind": "mechanism",
+      "statement": "Pretraining is intended to build broad capabilities, while post-training uses curated task-specific data to improve fluent execution.",
+      "conditions": "The paper's multi-stage recipe for downstream robot tasks.",
+      "sourceIds": [
+        "section-5"
+      ]
+    },
+    {
+      "id": "c11",
+      "kind": "result",
+      "statement": "In the out-of-box study, scores were normalized and averaged over ten episodes for each task-method pair, with partial credit defined by task rubrics.",
+      "conditions": "Five pretraining-mixture tasks; comparisons include models trained for unequal numbers of updates and a compute-parity Pi-zero variant.",
+      "sourceIds": [
+        "section-6"
+      ]
+    },
+    {
+      "id": "c12",
+      "kind": "result",
+      "statement": "Under the paper's downstream evaluations, pretraining usually helped more on tasks resembling the pretraining data, but benefits were not uniform across every condition.",
+      "conditions": "Ten trials per task, varying fine-tuning data, with some baselines evaluated at only one dataset size.",
+      "sourceIds": [
+        "section-6-part-2"
+      ]
+    },
+    {
+      "id": "c13",
+      "kind": "caveat",
+      "statement": "The experiments do not determine an optimal composition or weighting for the pretraining mixture.",
+      "conditions": "The authors combined the data available to them; broader data-selection laws were not established.",
+      "sourceIds": [
+        "section-7"
+      ]
+    },
+    {
+      "id": "c14",
+      "kind": "caveat",
+      "statement": "The evidence does not establish that positive transfer will extend to substantially different robot domains.",
+      "conditions": "Domains named as unresolved include autonomous driving, navigation, and legged locomotion.",
+      "sourceIds": [
+        "section-7"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "s1",
+      "title": "The control problem hidden inside a language model",
+      "markdown": "A robot command such as “fold the shirt” does not directly specify joint motion. The policy must connect semantics, current visual geometry, and the robot's physical configuration to a sequence of continuous controls. Pi-zero addresses that junction rather than treating actions as ordinary text tokens.\n\nAt robot time $t$, write the observation as\n\n$$\n\\mathbf{o}_t=[\\mathbf{I}_t^1,\\ldots,\\mathbf{I}_t^n,\\ell_t,\\mathbf{q}_t].\n$$\n\nHere $\\mathbf{I}_t^i$ is camera image $i$, $n$ is the camera count, $\\ell_t$ is the language-token sequence, and $\\mathbf{q}_t$ is the proprioceptive vector of joint angles. The desired output is not one control but\n\n$$\n\\mathbf{A}_t=[\\mathbf{a}_t,\\mathbf{a}_{t+1},\\ldots,\\mathbf{a}_{t+H-1}],\n$$\n\nwhere each $\\mathbf{a}_{t'}$ is an action vector and $H=50$ in the reported tasks. Thus $p(\\mathbf{A}_t\\mid\\mathbf{o}_t)$ is a conditional distribution over coherent future action chunks.\n\nThis distinction matters. Predicting a chunk lets action tokens coordinate across future timesteps; the action expert uses bidirectional attention among them. It does not mean the system has produced a fifty-step symbolic plan or guaranteed that every sampled control will remain suitable as the world changes.",
+      "sourceIds": [
+        "section-4"
+      ],
+      "claimIds": [
+        "c2",
+        "c3"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s2",
+      "title": "One backbone, a robotics-specific expert",
+      "markdown": "Images are encoded and projected into the language model's embedding space, as is robot state. The pretrained vision-language backbone supplies representations for image and text context. A separate set of transformer weights processes robotics-specific state and action tokens; the paper calls this set the action expert. Continuous action tokens receive a flow-matching objective rather than the cross-entropy objective normally associated with discrete language tokens.\n\nThat division is the architectural contribution's center: semantic conditioning and continuous motor generation occupy one model while retaining specialized weights. It is best understood as an integration strategy, not as a claim that Internet image-text training alone teaches manipulation. Robot-action training is still required.\n\nDifferent embodiments also need a common interface. In the reported mixture, state and action vectors use the largest robot dimensionality, 18, and smaller spaces are zero-padded. Missing image positions are masked. Padding aligns tensor shapes; it does not make two robots' joints physically interchangeable. The model must learn the meaning of the active coordinates from the mixed training data and context.",
+      "sourceIds": [
+        "main-text",
+        "section-4",
+        "section-5"
+      ],
+      "claimIds": [
+        "c1",
+        "c9"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s3",
+      "title": "Building the training path through noise",
+      "markdown": "Flow matching turns action learning into velocity prediction. Let $\\epsilon\\sim\\mathcal{N}(\\mathbf{0},\\mathbf{I})$ be a standard-normal noise chunk, $\\tau\\in[0,1]$ the flow time, and $\\mathbf{A}_t$ a demonstrated action chunk. The paper constructs\n\n$$\n\\mathbf{A}_t^\\tau=\\tau\\mathbf{A}_t+(1-\\tau)\\epsilon.\n$$\n\nAt $\\tau=0$, the point equals noise; at $\\tau=1$, it equals the demonstration. The target velocity is\n\n$$\n\\mathbf{u}(\\mathbf{A}_t^\\tau\\mid\\mathbf{A}_t)=\\mathbf{A}_t-\\epsilon.\n$$\n\nThe network $\\mathbf{v}_\\theta$, parameterized by $\\theta$, sees the intermediate chunk and observation and is trained with\n\n$$\nL^\\tau(\\theta)=\\mathbb{E}\\left[\\left\\|\\mathbf{v}_\\theta(\\mathbf{A}_t^\\tau,\\mathbf{o}_t)-\\mathbf{u}(\\mathbf{A}_t^\\tau\\mid\\mathbf{A}_t)\\right\\|_2^2\\right].\n$$\n\nThe expectation covers demonstrated conditional actions and sampled noisy points; $\\|\\cdot\\|_2^2$ is squared Euclidean error.\n\nIllustrative worked example: take a scalar demonstrated action $A=2$, sampled noise $\\epsilon=-1$, and $\\tau=0.25$. Then $A^\\tau=0.25(2)+0.75(-1)=-0.25$, while the target velocity is $u=2-(-1)=3$. This arithmetic illustrates the paper's equations; it is not a reported robot trajectory.\n\nThe noise-shells control gives geometric intuition for Gaussian scale. It displays two ideal thin RMS spheres in three dimensions around one point: the outer radius is $\\sqrt{3}$ and the adjustable inner radius is $\\sigma\\sqrt{3}$. Predict how changing $\\sigma$ changes radius, then rotate the shared camera to verify that rotation changes only the view. Actual flow training uses Gaussian samples in a high-dimensional action-chunk space, not thin three-dimensional shells.",
+      "sourceIds": [
+        "section-4"
+      ],
+      "claimIds": [
+        "c4",
+        "c5",
+        "c6"
+      ],
+      "figureId": "f1"
+    },
+    {
+      "id": "s4",
+      "title": "Generation is numerical transport",
+      "markdown": "At inference, no demonstrated action is available. The system initializes $\\mathbf{A}_t^0\\sim\\mathcal{N}(\\mathbf{0},\\mathbf{I})$ and repeatedly queries the learned conditional velocity. With step size $\\delta$, forward Euler performs\n\n$$\n\\mathbf{A}_t^{\\tau+\\delta}=\\mathbf{A}_t^\\tau+\\delta\\mathbf{v}_\\theta(\\mathbf{A}_t^\\tau,\\mathbf{o}_t).\n$$\n\nThe reported experiments use $\\delta=0.1$, hence ten steps from $\\tau=0$ to $1$. The observation prefix can be cached while the changing action suffix is recomputed.\n\nA small illustrative calculation makes the update concrete. Suppose one scalar component currently equals $-0.25$, the learned velocity for the current observation is $3$, and $\\delta=0.1$. One Euler step gives $-0.25+0.1(3)=0.05$. This is only a local numerical example; the real network predicts a vector field over a full chunk and its velocity changes after each update.\n\nThe ODE control shows forward Euler on the fixed toy equation $dx/dt=-x$, starting from $x(0)=1$. Compare larger and smaller step sizes against $e^{-t}$. The pictured field is not learned and is unrelated to robot dynamics, but it exposes the numerical fact relevant here: step size affects how closely discrete updates follow a continuous trajectory. It cannot measure Pi-zero's action quality or justify a different inference-step setting.",
+      "sourceIds": [
+        "section-4"
+      ],
+      "claimIds": [
+        "c7",
+        "c8"
+      ],
+      "figureId": "f2"
+    },
+    {
+      "id": "s5",
+      "title": "Why broad experience and polished demonstrations differ",
+      "markdown": "The training recipe separates breadth from specialization. Pretraining mixes many tasks, embodiments, environments, and behavior qualities to build a broadly useful base policy. Post-training then uses a smaller, curated task-specific dataset whose demonstrations express a more consistent and fluent strategy.\n\nThe proposed intuition is subtle: imperfectly varied data may contain corrections and recoveries that clean expert demonstrations omit, while curated data shows efficient execution. Combining them is meant to preserve a recovery repertoire while steering behavior toward the desired style. This is not equivalent to claiming that low-quality data is always beneficial; the paper explicitly leaves mixture composition and weighting unresolved.\n\nA real misconception is that post-training merely supplies a new language prompt. It changes model weights using downstream robot data. Conversely, pretraining is not presented as complete mastery: the base model may follow commands at rudimentary proficiency, while demanding tasks can require substantial task-specific adaptation. A high-level VLM can additionally issue intermediate language commands for tasks needing semantic decomposition, but that planner does not replace the continuous action expert.",
+      "sourceIds": [
+        "section-3",
+        "section-5",
+        "section-7"
+      ],
+      "claimIds": [
+        "c10",
+        "c13"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s6",
+      "title": "Reading the experimental evidence at the right resolution",
+      "markdown": "## Reading the experimental evidence at the right resolution\n\nThe out-of-box evaluation asks how well the pretrained base policy performs when prompted directly, without task-specific post-training. It covers five tasks: shirt folding, easy and hard table bussing, grocery bagging, and removing toast from a toaster. For each task–method pair, the reported score is the average over ten episodes. A complete execution receives $1.0$, while partial progress receives task-specific fractional credit—for example, the bussing score is the fraction of objects placed in the correct receptacle.\n\nUnder this protocol, the full $\\pi_0$ model trained for 700,000 updates achieved the strongest reported results across the five tasks. Because OpenVLA and Octo were not trained for as many updates, the authors also evaluated a $\\pi_0$ variant trained for 160,000 updates; this compute-parity variant still outperformed the evaluated baselines. That comparison reduces the update-count mismatch, but it does not isolate a single cause: the methods also differ in architecture, action representation, model capacity, initialization, and—in the UR5e-only OpenVLA condition—the training mixture. Likewise, $\\pi_0$-small lacks VLM initialization but is also much smaller, so its comparison with the full model cannot attribute the entire difference specifically to VLM pretraining.\n\nThe language-conditioned study separates a flat task command from intermediate commands supplied either by a human or by a high-level VLM. Averaged over ten trials per task, the full model benefited substantially from intermediate human commands and also benefited from autonomous high-level guidance. The smaller non-VLM model showed weaker language following and did not obtain the same overall benefit from high-level guidance. This supports the interpretation that the pretrained VLM initialization contributes useful language-conditioned representations, while the size confound prevents treating the comparison as a clean estimate of that contribution alone.\n\nThe downstream fine-tuning experiments vary the amount of task-specific data across tasks chosen to have different degrees of similarity to pretraining. The reported pattern is qualified rather than uniform: pretraining often improved performance, with larger gains generally appearing on tasks closer to the pretraining distribution, and in some tested conditions the pretrained model scored as much as twice the scratch-trained model. The five-hour $\\pi_0$ policy on the microwave task performed similarly to the baselines, whereas its one-hour version was reported to perform substantially better. OpenVLA and Octo were evaluated at only one dataset size on some tasks because of real-world evaluation cost, so those results do not define complete data-scaling comparisons.\n\nFor the longer post-training tasks, scores were again averaged over ten trials, with $1.0$ denoting complete execution and fractional scores representing completed portions of the task. The full pretrained-and-fine-tuned model performed best among the reported ablations and exceeded half of the maximum score on every task, but absolute performance varied with task difficulty and representation in pretraining. Taken together, the experiments support the paper’s combined architecture-and-training recipe under the tested robots, datasets, update budgets, and scoring rules; they do not establish that any one ingredient independently accounts for every observed gain.",
+      "sourceIds": [
+        "section-6",
+        "section-6-part-2"
+      ],
+      "claimIds": [
+        "c11",
+        "c12"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s7",
+      "title": "What the paper establishes—and leaves open",
+      "markdown": "## What the paper establishes—and leaves open\n\nPi-zero supports a concrete systems thesis: a pretrained vision-language backbone can be augmented with a flow-matching action expert, trained on a large cross-embodiment mixture, and then used directly or adapted with curated downstream data. In the reported setting, the mixture contains roughly 10,000 hours of dexterous manipulation data from seven robot configurations and 68 tasks, together with previously collected robot datasets. The evaluations cover direct prompting, language-guided execution, fine-tuning to new skills, and multi-stage manipulation lasting several minutes.\n\nThe scientific interpretation is narrower than universal robot competence. The results show useful transfer within the tested manipulation setting and indicate that broad pretraining can provide zero-shot capabilities and a stronger starting point for post-training. They also support the authors’ proposed division of labor between stages: diverse pretraining exposes the policy to varied situations, corrections, and recoveries, while curated post-training encourages more consistent and fluent task execution. This is an empirical tendency of the reported recipe, not a guarantee that lower-quality data is always helpful or that every downstream task benefits equally.\n\nDataset design remains an open variable. The experiments combine the available sources using a chosen weighting scheme, but they do not determine which kinds of robot data should be added, how sources should be balanced, or how much task-specific data is required to reach a desired reliability level. Some evaluated tasks remained unreliable, and the observed dependence on task similarity indicates that transfer must be assessed condition by condition rather than assumed from aggregate scale.\n\nThe domain boundary is equally important. Positive transfer among the studied manipulation tasks and robot platforms does not establish transfer to substantially different control problems such as autonomous driving, navigation, or legged locomotion. Those domains introduce different observations, dynamics, action spaces, horizons, and safety requirements, and the paper explicitly leaves such universality for future work.\n\nFinally, flow matching supplies a way to represent and generate conditional continuous action chunks; it does not by itself provide formal stability, collision avoidance, calibrated uncertainty, or guaranteed recovery. The reported averages over ten real-world trials characterize performance under particular task rubrics and experimental conditions, not worst-case behavior or a safety guarantee. Pi-zero is therefore best read as evidence that the combined model and training recipe can produce broad, dexterous manipulation capabilities at substantial scale, while reliability prediction, optimal data composition, causal attribution among components, and transfer beyond manipulation remain unresolved.",
+      "sourceIds": [
+        "section-1",
+        "section-6-part-3",
+        "section-7"
+      ],
+      "claimIds": [
+        "c13",
+        "c14"
+      ],
+      "figureId": null
+    }
+  ],
+  "figures": [
+    {
+      "id": "f1",
+      "kind": "noise-shells",
+      "title": "Noise scale as an ideal RMS radius",
+      "question": "If the inner scale increases from 0.2 to 0.8 while dimension stays at three, how should its displayed radius change relative to the fixed outer sphere?",
+      "caption": "Two deterministic thin 3D RMS spheres share a center and camera. The outer sphere has radius $\\sqrt{3}$; the inner has radius $\\sigma\\sqrt{3}$. Visibility and rotation do not alter coordinates.",
+      "limitation": "This is geometric intuition for scale only: the points are seeded uniform directions on ideal surfaces, not Gaussian draws, action chunks, or evidence of high-dimensional shell separation.",
+      "sourceIds": [
+        "section-4"
+      ],
+      "claimIds": [
+        "c5"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "f2",
+      "kind": "ode",
+      "title": "Euler steps approximate continuous transport",
+      "question": "When the step size is reduced, how does the Euler trajectory for $dx/dt=-x$ compare with the exact curve $e^{-t}$ over the same interval?",
+      "caption": "Forward Euler advances the illustrative scalar system $dx/dt=-x$ from $x(0)=1$ over $t\\in[0,3]$ and compares its discrete trajectory with $e^{-t}$.",
+      "limitation": "The control is a fixed scalar decay equation, not Pi-zero's learned vector field, an adaptive solver, robot dynamics, or an empirical action-quality comparison.",
+      "sourceIds": [
+        "section-4"
+      ],
+      "claimIds": [
+        "c7",
+        "c8"
+      ],
+      "illustrative": true
+    }
+  ],
+  "quiz": [
+    {
+      "question": "For a scalar demonstration $A=4$, noise sample $\\epsilon=0$, and flow time $\\tau=0.25$, what training pair follows from the paper's linear path?",
+      "options": [
+        {
+          "text": "$A^\\tau=1$ and target velocity $u=4$.",
+          "explanation": "Correct: $A^\\tau=0.25(4)+0.75(0)=1$, and $u=A-\\epsilon=4$."
+        },
+        {
+          "text": "$A^\\tau=3$ and target velocity $u=1$.",
+          "explanation": "This reverses the interpolation weights and does not use the stated velocity target."
+        },
+        {
+          "text": "$A^\\tau=4$ and target velocity $u=0$.",
+          "explanation": "That would incorrectly treat every intermediate point as the clean action."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-4"
+      ],
+      "claimIds": [
+        "c5",
+        "c6"
+      ]
+    },
+    {
+      "question": "Which statement best distinguishes Pi-zero's action generation from ordinary autoregressive action tokenization?",
+      "options": [
+        {
+          "text": "It predicts only one discrete action symbol and repeats it for the full horizon.",
+          "explanation": "Incorrect: the modeled output is a continuous future action chunk."
+        },
+        {
+          "text": "It transports a noisy continuous action chunk through a learned conditional vector field.",
+          "explanation": "Correct: flow matching trains the conditional velocity, and inference integrates it from noise."
+        },
+        {
+          "text": "It retrieves a memorized action chunk using language similarity alone.",
+          "explanation": "Incorrect: the architecture conditions a generative action expert on the full observation."
+        }
+      ],
+      "answer": 1,
+      "sourceIds": [
+        "section-2",
+        "section-4"
+      ],
+      "claimIds": [
+        "c1",
+        "c2",
+        "c7"
+      ]
+    },
+    {
+      "question": "Under the limitations reported by the authors, what is the safest interpretation of cross-embodiment success?",
+      "options": [
+        {
+          "text": "It proves positive transfer to driving, navigation, and legged locomotion.",
+          "explanation": "Incorrect: transfer to those substantially different domains is explicitly left for future work."
+        },
+        {
+          "text": "It proves that any added robot dataset will improve every downstream task.",
+          "explanation": "Incorrect: helpful mixture composition and weighting remain open questions."
+        },
+        {
+          "text": "It supports transfer within the tested setting but does not establish universality across distant domains.",
+          "explanation": "Correct: this matches both the evidence's scope and the paper's stated uncertainty."
+        }
+      ],
+      "answer": 2,
+      "sourceIds": [
+        "section-7"
+      ],
+      "claimIds": [
+        "c13",
+        "c14"
+      ]
+    }
+  ],
+  "id": "pi-zero",
+  "createdAt": "2026-10-01T23:42:16.331Z",
+  "pipelineVersion": "subjects-lessons-v1",
+  "sources": [
+    {
+      "id": "abstract",
+      "label": "Original paper · abstract",
+      "url": "https://arxiv.org/abs/2410.24164",
+      "digest": "b3f9cf40e28c2e75c15ac409d4f760bfcc00055e5e2bdc13980bb3c70f25c22a",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:40:18.856Z"
+    },
+    {
+      "id": "main-text",
+      "label": "Original paper · unsectioned main text",
+      "url": "https://arxiv.org/html/2410.24164",
+      "digest": "b2970b627fe7ea115759403c8f3e46bc6e8351fff0c845a53bc572d109ddf551",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:40:18.856Z"
+    },
+    {
+      "id": "section-1",
+      "label": "I Introduction",
+      "url": "https://arxiv.org/html/2410.24164#S1",
+      "digest": "8c2754029f373b74efe03ce3a2832664308c314ec82f6a520472b07bc3af4425",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:40:18.856Z"
+    },
+    {
+      "id": "section-2",
+      "label": "II Related Work",
+      "url": "https://arxiv.org/html/2410.24164#S2",
+      "digest": "056831bc3de61991ff14ab62f9ec9cc15baa5c46e89b435f61d60e2aa4b1910c",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:40:18.856Z"
+    },
+    {
+      "id": "section-3",
+      "label": "III Overview",
+      "url": "https://arxiv.org/html/2410.24164#S3",
+      "digest": "fe9b4dfeffb1ef01dda22808343694c4825a61b08a85685d1a3c51dfd48e122e",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:40:18.856Z"
+    },
+    {
+      "id": "section-4",
+      "label": "IV The  LATEX: \\pi_{0}  Model",
+      "url": "https://arxiv.org/html/2410.24164#S4",
+      "digest": "09dbf1d226faa452b0991b15d3d2c72474c9e90b4443b5747f306dda2266a5a6",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:40:18.856Z"
+    },
+    {
+      "id": "section-5",
+      "label": "V Data Collection and Training Recipe",
+      "url": "https://arxiv.org/html/2410.24164#S5",
+      "digest": "65e6fe4002ad20a9011e4750047f0cbc260d5b53d28ca52363be1904a516c861",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:40:18.856Z"
+    },
+    {
+      "id": "section-6",
+      "label": "VI Experimental Evaluation",
+      "url": "https://arxiv.org/html/2410.24164#S6",
+      "digest": "1b146dd03b0c22a293c95558b88c4770a64fd14767dc24d99d8d64e2b8119317",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:40:18.856Z"
+    },
+    {
+      "id": "section-6-part-2",
+      "label": "VI Experimental Evaluation · part 2",
+      "url": "https://arxiv.org/html/2410.24164#S6",
+      "digest": "fbe9ca2a44e82e4b7c5299a7a8f2efc0df0cd6196d3e1fb70a5809e14617c95b",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:40:18.856Z"
+    },
+    {
+      "id": "section-6-part-3",
+      "label": "VI Experimental Evaluation · part 3",
+      "url": "https://arxiv.org/html/2410.24164#S6",
+      "digest": "6f2b2b959362aed6108f99a0e2b1b082548e9b9a0dab8f20e008bfce3331b410",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:40:18.856Z"
+    },
+    {
+      "id": "section-7",
+      "label": "VII Discussion, Limitations, and Future Work",
+      "url": "https://arxiv.org/html/2410.24164#S7",
+      "digest": "5c384e54d65e8b28b6edfa84f0f4cc9d4fcc872f97ea9e39a500c97933e29c31",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:40:18.856Z"
+    }
+  ],
+  "review": {
+    "status": "passed",
+    "reviewedAt": "2026-10-02T02:05:09.543Z",
+    "contentDigest": "61abf55a3df1e8db8e9057ab8eb0a97ad335f809401c56410358e25ad91210a0"
+  }
+}

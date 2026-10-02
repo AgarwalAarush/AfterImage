@@ -1,0 +1,441 @@
+{
+  "title": "Dreams with Consequences: Building a Controller Inside a Learned World",
+  "summary": "World Models separates visual compression, probabilistic latent dynamics, and a tiny controller, then shows both the promise and danger of training policies inside learned dreams.",
+  "prerequisites": [
+    "Reinforcement learning fundamentals",
+    "Latent-variable modeling",
+    "Recurrent neural networks",
+    "Probability distributions"
+  ],
+  "objectives": [
+    "Explain how vision, memory, and control divide the learning problem.",
+    "Trace observations and actions through the full agent loop.",
+    "Interpret the probabilistic latent transition model and linear controller.",
+    "Compare the reported CarRacing and VizDoom results under their stated conditions.",
+    "Explain how a policy can exploit flaws in a learned environment."
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "mechanism",
+      "statement": "The agent separates vision, memory, and control: a VAE compresses frames, an MDN-RNN predicts latent transitions, and a small controller selects actions.",
+      "conditions": "For the V–M–C architecture presented in the paper.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c2",
+      "kind": "equation",
+      "statement": "The memory model represents the next latent state with the conditional distribution $P(z_{t+1}\\mid a_t,z_t,h_t)$.",
+      "conditions": "For the paper's general agent model, where the transition depends on the current action, latent code, and recurrent hidden state.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c3",
+      "kind": "equation",
+      "statement": "The controller is a single linear layer, $a_t=W_c[z_t\\;h_t]+b_c$, mapping current visual and recurrent features to an action.",
+      "conditions": "For the controller definition that uses both vision and memory features.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c4",
+      "kind": "mechanism",
+      "statement": "The paper trains the large vision and memory models with differentiable objectives while optimizing the much smaller controller separately with CMA-ES.",
+      "conditions": "For the reported experiments and their deliberately compact controllers.",
+      "sourceIds": [
+        "section-2",
+        "section-3"
+      ]
+    },
+    {
+      "id": "c5",
+      "kind": "result",
+      "statement": "In CarRacing-v0, the full world-model controller scored $906\\pm21$ over 100 random trials, compared with $632\\pm251$ for the controller using only the visual latent.",
+      "conditions": "Under the paper's CarRacing-v0 evaluation over 100 random trials.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c6",
+      "kind": "mechanism",
+      "statement": "The CarRacing world model was trained from 10,000 random-policy rollouts without access to environment rewards; only the controller used reward information.",
+      "conditions": "For the reported CarRacing training procedure.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c7",
+      "kind": "mechanism",
+      "statement": "For VizDoom Take Cover, the memory model predicts both the next latent state and the next termination event, enabling a latent virtual environment for controller training.",
+      "conditions": "For the paper's VizDoom experiment.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c8",
+      "kind": "result",
+      "statement": "A controller trained in the VizDoom virtual environment at temperature $\\tau=1.15$ scored $1092\\pm556$ in the actual environment over 100 rollouts.",
+      "conditions": "After dream training at $\\tau=1.15$, evaluated on 100 random rollouts of the actual Take Cover environment.",
+      "sourceIds": [
+        "section-4-part-2"
+      ]
+    },
+    {
+      "id": "c9",
+      "kind": "caveat",
+      "statement": "Low-temperature dream training can reward model exploits: at $\\tau=0.10$, virtual performance was $2086\\pm140$ but actual performance was only $193\\pm58$.",
+      "conditions": "For the reported VizDoom temperature experiment over 100-rollout evaluations.",
+      "sourceIds": [
+        "section-4-part-2"
+      ]
+    },
+    {
+      "id": "c10",
+      "kind": "mechanism",
+      "statement": "Increasing sampling temperature makes the learned dynamics more stochastic and can hinder exploitation, but excessive temperature can make the virtual task too difficult to learn.",
+      "conditions": "For sampling from the paper's MDN-RNN dream environment.",
+      "sourceIds": [
+        "section-4",
+        "section-4-part-2"
+      ]
+    },
+    {
+      "id": "c11",
+      "kind": "caveat",
+      "statement": "A standalone unsupervised VAE can preserve visually salient but task-irrelevant detail while losing task-relevant detail.",
+      "conditions": "When the visual encoder is trained independently of task rewards.",
+      "sourceIds": [
+        "section-7"
+      ]
+    },
+    {
+      "id": "c12",
+      "kind": "caveat",
+      "statement": "The demonstrated world model advances imagined futures one time step at a time and does not provide human-like hierarchical planning or abstract reasoning.",
+      "conditions": "For the particular C–M implementation evaluated in the paper.",
+      "sourceIds": [
+        "section-7"
+      ]
+    },
+    {
+      "id": "c13",
+      "kind": "mechanism",
+      "statement": "More difficult environments may require an iterative loop that gathers new real trajectories, retrains the world model, and improves the controller inside that model.",
+      "conditions": "For environments whose important regions are not adequately covered by initial random-policy data.",
+      "sourceIds": [
+        "section-5"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "s1",
+      "title": "The bottleneck is deliberate",
+      "markdown": "A reinforcement-learning agent receives an observation $x_t$, takes an action $a_t$, and seeks high cumulative reward. With image observations, however, asking one policy to discover visual features, temporal dynamics, and useful actions at once creates a difficult credit-assignment problem: a distant reward must somehow shape a large number of parameters.\n\nThe paper's central move is architectural separation. **Vision** $V$ turns the high-dimensional frame $x_t$ into a compact latent vector $z_t$. **Memory** $M$ uses the history summarized by its hidden state $h_t$ to model what latent state may follow an action. **Controller** $C$ maps the learned features to $a_t$. Most capacity resides in $V$ and $M$; $C$ is intentionally small.\n\nThis is not merely a conventional policy with an auxiliary predictor. The components are trained for different purposes: visual reconstruction trains $V$, latent-sequence prediction trains $M$, and task reward trains $C$. In the reported experiments, the large differentiable models are learned with backpropagation, while CMA-ES searches the controller parameters using rollout returns. That division lets reward optimization operate in a much smaller parameter space.",
+      "sourceIds": [
+        "section-1",
+        "section-2",
+        "section-3"
+      ],
+      "claimIds": [
+        "c1",
+        "c4"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s2",
+      "title": "Vision turns frames into a navigable code",
+      "markdown": "The visual model is a variational autoencoder. Its encoder maps a frame $x_t$ to a distribution over a latent code $z_t$; a sampled code is then decoded toward a reconstruction of the frame. Here, $x_t$ denotes the observed image at time $t$, and $z_t$ is its compressed representation. The compression is lossy: the objective is not to preserve every pixel exactly, but to retain enough structure for reconstruction.\n\nThe accompanying toy isolates one VAE prerequisite. It compares $q(z)=\\mathcal{N}(\\mu,1)$ with the standard-normal prior $p(z)=\\mathcal{N}(0,1)$. For these scalar unit-variance Gaussians,\n\n$$\nD_{\\mathrm{KL}}(q\\|p)=\\frac{\\mu^2}{2}.\n$$\n\nIf the illustrative control sets $\\mu=2$, the KL value is $2^2/2=2$ nats. Moving $\\mu$ changes the separation between the two displayed densities and this penalty. The toy does not encode an image, calculate reconstruction likelihood, or reproduce the paper's learned posterior; it only makes the latent-prior regularization idea concrete.\n\nA crucial limitation follows from the training signal. An independently trained VAE does not know the downstream task. The paper reports that its encoder could reproduce unimportant wall patterns in Doom yet fail to reproduce task-relevant road tiles in CarRacing. Compression therefore does not automatically mean task-sufficient compression.",
+      "sourceIds": [
+        "section-2",
+        "section-3",
+        "section-7"
+      ],
+      "claimIds": [
+        "c1",
+        "c11"
+      ],
+      "figureId": "fig-latent"
+    },
+    {
+      "id": "s3",
+      "title": "Memory predicts possibilities, not one ordained future",
+      "markdown": "A single latent $z_t$ describes one moment. To supply temporal context, the MDN-RNN maintains a recurrent hidden state $h_t$ and models\n\n$$\nP(z_{t+1}\\mid a_t,z_t,h_t).\n$$\n\nHere, $z_{t+1}$ is the next latent code, $a_t$ is the current action, and $h_t$ summarizes preceding inputs. Rather than outputting one next code, the mixture-density head parameterizes a mixture of Gaussians. This matters when several outcomes are plausible, including discrete-like events such as whether a Doom monster fires.\n\nThe state toy illustrates only the prerequisite that recurrence carries history. It computes\n\n$$\nh_t=\\alpha h_{t-1}+u_t,\n$$\n\nwhere $u_0=1$, later inputs are zero, and the retention control $\\alpha$ determines decay over 12 steps. With $h_{-1}=0$ and the illustrative choice $\\alpha=0.5$, the sequence begins $h_0=1$, $h_1=0.5$, $h_2=0.25$, and $h_3=0.125$. A larger $\\alpha$ preserves the initial impulse longer.\n\nThis scalar recurrence is not the paper's LSTM, MDN output, or learned rollout. Its value is narrower: it shows why $h_t$ can contain information unavailable in a single frame. The actual model uses recurrent state together with the current latent and action to parameterize a distribution over the next latent.",
+      "sourceIds": [
+        "section-2",
+        "section-4-part-2"
+      ],
+      "claimIds": [
+        "c2",
+        "c7"
+      ],
+      "figureId": "fig-state"
+    },
+    {
+      "id": "s4",
+      "title": "A reflex policy reads the learned state",
+      "markdown": "The controller using the complete world model is\n\n$$\na_t=W_c[z_t\\;h_t]+b_c.\n$$\n\nThe bracket denotes concatenation; $W_c$ is a learned weight matrix, $b_c$ is a bias vector, and $a_t$ is the action vector. Despite being linear in its inputs, the controller can exploit nonlinear features already computed by $V$ and $M$. At each real-environment step, $V$ encodes the new frame, $C$ chooses an action from $z_t$ and $h_t$, and $M$ consumes the current latent-action pair to update its hidden state.\n\nA common misconception is that a world model is useful only if the agent explicitly searches a tree of imagined futures before every action. That is not the demonstrated CarRacing mechanism. There, the controller directly reads $h_t$, whose features were shaped by next-latent prediction, and produces an action without an online planning rollout.\n\nFor a small illustrative calculation, suppose one scalar action uses $[z_t\\;h_t]=[0.4,-0.2]$, $W_c=[1.5,-0.5]$, and $b_c=0.1$. Then\n\n$$\na_t=1.5(0.4)+(-0.5)(-0.2)+0.1=0.8.\n$$\n\nThese numbers are illustrative, not reported parameters. They show how a tiny linear controller can combine present visual evidence with temporal context.",
+      "sourceIds": [
+        "section-2",
+        "section-3"
+      ],
+      "claimIds": [
+        "c3",
+        "c4"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s5",
+      "title": "What the racing comparison actually establishes",
+      "markdown": "The CarRacing pipeline collected 10,000 random-policy rollouts, trained a VAE with $z\\in\\mathbb{R}^{32}$, trained the MDN-RNN on encoded sequences and recorded actions, and then optimized an 867-parameter controller. The world model received no reward signal; reward was reserved for controller optimization.\n\nThe most informative comparison changes the controller's inputs. With access only to $z_t$, the linear controller produced unstable driving and scored $632\\pm251$ over 100 random trials. Adding a hidden layer while still using visual features reached $788\\pm141$. Giving the linear controller both $z_t$ and $h_t$ reached $906\\pm21$ over 100 trials, exceeding the environment's stated solution threshold of an average 900 over 100 consecutive trials.\n\nUnder these conditions, the result supports the claim that predictive recurrent features can make a compact controller more effective than a snapshot-only controller. It does not isolate every possible confound, prove that the latent state is minimal, or establish superiority across reinforcement-learning tasks. Nor does the score show that the model reconstructs every scene detail: the controller may succeed using only the subset of encoded and remembered information needed for driving.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c5",
+        "c6"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s6",
+      "title": "When the dream becomes the training ground",
+      "markdown": "VizDoom tests the stronger proposal: replace the real environment during controller training. The memory model now represents\n\n$$\nP(z_{t+1},d_{t+1}\\mid a_t,z_t,h_t),\n$$\n\nwhere $d_{t+1}$ is a binary termination event. Predicting both the next latent and whether the episode ends supplies the ingredients needed for a virtual environment. The controller is optimized for survival entirely within this latent dream and then deployed in the actual game.\n\nSampling temperature $\\tau$ changes the stochasticity of the MDN-RNN. The reported table exposes a striking reversal. At $\\tau=0.10$, the controller scored $2086\\pm140$ virtually but only $193\\pm58$ in reality. The low-temperature model often omitted fireballs, so an excellent dream policy could be worse than the reported random-policy score in the real environment. At $\\tau=1.15$, virtual performance fell to $918\\pm546$, while actual performance rose to $1092\\pm556$ over 100 rollouts.\n\nThus a harder dream was more useful in this setting because it discouraged reliance on model defects. But temperature is not a monotonic quality dial: at $\\tau=1.30$, actual performance dropped to $753\\pm139$. The evidence supports a tuned tradeoff between realism, stochastic robustness, and learnability—not the universal rule that more noise always improves transfer.",
+      "sourceIds": [
+        "section-4",
+        "section-4-part-2"
+      ],
+      "claimIds": [
+        "c7",
+        "c8",
+        "c9",
+        "c10"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s7",
+      "title": "The boundary between useful imagination and fantasy",
+      "markdown": "A learned environment is accurate mainly where its data constrain it. Once the controller is optimized against that approximation, it can deliberately visit regions where prediction errors are advantageous. The paper observed policies that suppressed hallucinated fireballs—behavior rewarded by the dream but unavailable in the real game. Access to the RNN's hidden state can widen this attack surface because the controller sees internal model features that an ordinary player would not observe.\n\nThe architecture also has broader limits. A standalone visual objective may preserve the wrong details; a finite recurrent model may forget or lack capacity; and the demonstrated simulator advances one step at a time rather than performing hierarchical abstract reasoning. Successful transfer on Take Cover therefore does not imply a generally faithful simulator.\n\nFor harder worlds, the paper proposes an iterative loop: gather trajectories in reality, retrain the model, optimize the controller within it, and return to reality for new data. This addresses distribution shift only if exploration actually covers consequential states. Curiosity based on model loss is suggested as a way to seek unfamiliar regions, but it is a research direction rather than a demonstrated result here.\n\nThe durable lesson is that predictive compression can provide powerful policy features and even a training arena, yet the controller's success is bounded by what the learned world represents correctly. A dream should be judged by transfer under stated conditions, not by how rewarding it appears from inside.",
+      "sourceIds": [
+        "section-4",
+        "section-4-part-2",
+        "section-5",
+        "section-7"
+      ],
+      "claimIds": [
+        "c9",
+        "c11",
+        "c12",
+        "c13"
+      ],
+      "figureId": null
+    }
+  ],
+  "figures": [
+    {
+      "id": "fig-latent",
+      "kind": "latent",
+      "title": "A scalar latent moves away from its prior",
+      "question": "As the posterior mean moves farther from zero, how does the displayed KL divergence change?",
+      "caption": "An illustrative scalar posterior $q=\\mathcal{N}(\\mu,1)$ is compared with $p=\\mathcal{N}(0,1)$; the control changes $\\mu$ and displays $D_{\\mathrm{KL}}=\\mu^2/2$.",
+      "limitation": "This is a one-dimensional constructed comparison, not a learned image posterior, reconstruction likelihood, or measurement from the paper.",
+      "sourceIds": [
+        "section-2",
+        "section-3"
+      ],
+      "claimIds": [
+        "c1"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "fig-state",
+      "kind": "state",
+      "title": "How recurrent retention carries an impulse",
+      "question": "When the retention value increases, how many later steps retain a visibly large trace of the initial impulse?",
+      "caption": "A scalar recurrence $h_t=\\alpha h_{t-1}+u_t$ receives one initial impulse; changing $\\alpha$ changes its decay across 12 steps.",
+      "limitation": "This is a scalar impulse response, not the paper's learned LSTM, mixture-density transition, or simulated environment.",
+      "sourceIds": [
+        "section-2",
+        "section-3"
+      ],
+      "claimIds": [
+        "c2"
+      ],
+      "illustrative": true
+    }
+  ],
+  "quiz": [
+    {
+      "question": "In the reported CarRacing architecture, what information does the full linear controller receive that the visual-only linear controller lacks?",
+      "options": [
+        {
+          "text": "The recurrent hidden state alongside the current latent code.",
+          "explanation": "Correct. The full controller maps the concatenation of $z_t$ and $h_t$ to the action."
+        },
+        {
+          "text": "The raw RGB frame alongside the latent code.",
+          "explanation": "Incorrect. The controller consumes learned features rather than the raw image."
+        },
+        {
+          "text": "A tree of explicitly rolled-out future trajectories.",
+          "explanation": "Incorrect. The demonstrated controller acts directly from current latent and recurrent features without online tree search."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-2",
+        "section-3"
+      ],
+      "claimIds": [
+        "c3",
+        "c5"
+      ]
+    },
+    {
+      "question": "Under the reported VizDoom conditions, why is a nearly perfect low-temperature virtual score weak evidence of real-environment competence?",
+      "options": [
+        {
+          "text": "The controller may exploit missing or incorrect events in the learned dynamics.",
+          "explanation": "Correct. At low temperature, omitted fireballs enabled high dream returns that did not transfer."
+        },
+        {
+          "text": "The virtual score is necessarily calculated from image reconstruction error.",
+          "explanation": "Incorrect. The virtual objective is survival time, not VAE reconstruction error."
+        },
+        {
+          "text": "A linear controller cannot represent any action policy.",
+          "explanation": "Incorrect. A linear controller can act effectively when its learned inputs already contain useful nonlinear features."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-4",
+        "section-4-part-2"
+      ],
+      "claimIds": [
+        "c9",
+        "c10"
+      ]
+    },
+    {
+      "question": "Suppose an initial random-policy dataset never reaches a task-critical region. Which conclusion best follows from the paper's limitations and proposed extension?",
+      "options": [
+        {
+          "text": "Good reconstruction on the collected frames guarantees correct predictions there.",
+          "explanation": "Incorrect. Accuracy on observed frames does not guarantee predictions in an unvisited region."
+        },
+        {
+          "text": "Iterative real-environment collection may be needed to expose and learn that region.",
+          "explanation": "Correct. The proposed loop gathers new experience and refines the world model as the agent explores."
+        },
+        {
+          "text": "Raising dream temperature guarantees that the missing dynamics become accurate.",
+          "explanation": "Incorrect. Temperature changes sampling uncertainty; it does not supply absent evidence or guarantee accuracy."
+        }
+      ],
+      "answer": 1,
+      "sourceIds": [
+        "section-5",
+        "section-7"
+      ],
+      "claimIds": [
+        "c10",
+        "c13"
+      ]
+    }
+  ],
+  "id": "world-models",
+  "createdAt": "2026-10-02T00:33:14.674Z",
+  "pipelineVersion": "subjects-lessons-v1",
+  "sources": [
+    {
+      "id": "abstract",
+      "label": "Original paper · abstract",
+      "url": "https://arxiv.org/abs/1803.10122",
+      "digest": "ea0f1e8e45f73ae4dc22ae8540698ceb12634f019740daa23bca7b773b98c37a",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:31:22.986Z"
+    },
+    {
+      "id": "section-1",
+      "label": "1 Introduction",
+      "url": "https://arxiv.org/html/1803.10122#S1",
+      "digest": "e8fc3a964fcf54926c4f9fec93c36596750eca2b88ae0ad472ae3392a8e57905",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:31:22.986Z"
+    },
+    {
+      "id": "section-2",
+      "label": "2 Agent Model",
+      "url": "https://arxiv.org/html/1803.10122#S2",
+      "digest": "48fec36b6f691f76583ec42e5d40ae69befb173522fd22990edfbb4fcfb937a0",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:31:22.986Z"
+    },
+    {
+      "id": "section-3",
+      "label": "3 Car Racing Experiment",
+      "url": "https://arxiv.org/html/1803.10122#S3",
+      "digest": "055c7581986a0a2a769692082d9ef2cc13b96e1ec1d672febfbd9a82c40b1d92",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:31:22.986Z"
+    },
+    {
+      "id": "section-4",
+      "label": "4 VizDoom Experiment",
+      "url": "https://arxiv.org/html/1803.10122#S4",
+      "digest": "d91ee0ca1f2c69d2af03ac9e892b346a33be5fae80187bbc06bc24e732fb81a2",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:31:22.986Z"
+    },
+    {
+      "id": "section-4-part-2",
+      "label": "4 VizDoom Experiment · part 2",
+      "url": "https://arxiv.org/html/1803.10122#S4",
+      "digest": "58d9bc6e74ea131dee28b130729238cec2590d0e52563178406d84b5af0296ee",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:31:22.986Z"
+    },
+    {
+      "id": "section-5",
+      "label": "5 Iterative Training Procedure",
+      "url": "https://arxiv.org/html/1803.10122#S5",
+      "digest": "a83a5e264ce3c8f722bb6803fd3d49401174f7043768e88e9acd76b0fa7c77e0",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:31:22.986Z"
+    },
+    {
+      "id": "section-6",
+      "label": "6 Related Work",
+      "url": "https://arxiv.org/html/1803.10122#S6",
+      "digest": "91607be56dcf39464316ac149054272dab65c58118534c9b5cd1274d09262da3",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:31:22.986Z"
+    },
+    {
+      "id": "section-7",
+      "label": "7 Discussion",
+      "url": "https://arxiv.org/html/1803.10122#S7",
+      "digest": "cc823d921c21a2cbdd761c25285df7c340c458cdcfa87b8b043e3124b19d1142",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:31:22.986Z"
+    }
+  ],
+  "review": {
+    "status": "passed",
+    "reviewedAt": "2026-10-02T00:33:14.675Z",
+    "contentDigest": "0710bdcdb756d7d8aae33718a3b7c0628b5e4d936b71781a97a65b752d60d23c"
+  }
+}

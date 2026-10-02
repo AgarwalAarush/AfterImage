@@ -1,0 +1,486 @@
+{
+  "title": "Learning to Walk Backward Through Noise",
+  "summary": "DDPMs turn a fixed Gaussian corruption chain into an image generator by learning the noise at each scale, linking variational inference to denoising score matching.",
+  "prerequisites": [
+    "Gaussian distributions and independent noise",
+    "Conditional probability and Markov chains",
+    "Expectations, squared error, and KL divergence",
+    "Basic neural-network training"
+  ],
+  "objectives": [
+    "Explain why the forward diffusion process has no learned parameters.",
+    "Derive a noisy sample directly from clean data at any timestep.",
+    "Connect predicted noise to the learned reverse-process mean.",
+    "Distinguish the simplified training objective from the variational bound.",
+    "Interpret the reported sample-quality results within their experimental conditions."
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "mechanism",
+      "statement": "The model uses a fixed forward Markov chain that gradually adds Gaussian noise and a learned reverse Markov chain with Gaussian transitions.",
+      "conditions": "For the diffusion-model construction defined in the paper, with sufficiently small forward variances motivating Gaussian reverse transitions.",
+      "sourceIds": [
+        "section-1",
+        "section-2"
+      ]
+    },
+    {
+      "id": "c2",
+      "kind": "equation",
+      "statement": "With alpha_t = 1 - beta_t and cumulative alpha_bar_t, a sample at any timestep can be drawn directly as x_t = sqrt(alpha_bar_t) x_0 + sqrt(1-alpha_bar_t) epsilon.",
+      "conditions": "For epsilon distributed as a standard multivariate normal under the paper's Gaussian forward process.",
+      "sourceIds": [
+        "section-2",
+        "section-3"
+      ]
+    },
+    {
+      "id": "c3",
+      "kind": "mechanism",
+      "statement": "Conditioned on the clean sample, the one-step forward posterior is Gaussian with a closed-form mean and variance.",
+      "conditions": "Under the fixed Gaussian forward process and for reverse steps with t greater than one.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c4",
+      "kind": "equation",
+      "statement": "The epsilon-prediction parameterization converts a predicted noise vector into the reverse mean by subtracting a schedule-scaled prediction from x_t and dividing by sqrt(alpha_t).",
+      "conditions": "For the paper's fixed isotropic reverse variance and its definitions of beta_t, alpha_t, and alpha_bar_t.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c5",
+      "kind": "equation",
+      "statement": "The simplified training objective samples a timestep and minimizes the squared error between injected Gaussian noise and the network's predicted noise.",
+      "conditions": "Timesteps are sampled uniformly from 1 through T, and noisy inputs are constructed from the closed-form forward marginal.",
+      "sourceIds": [
+        "section-3",
+        "section-3-part-2"
+      ]
+    },
+    {
+      "id": "c6",
+      "kind": "caveat",
+      "statement": "The simplified objective removes the timestep-dependent weighting present in the corresponding variational-bound terms.",
+      "conditions": "For the comparison between Equation 12 and the paper's simplified objective in Equation 14.",
+      "sourceIds": [
+        "section-3-part-2"
+      ]
+    },
+    {
+      "id": "c7",
+      "kind": "mechanism",
+      "statement": "Sampling begins from a standard normal latent and repeatedly applies the learned reverse mean plus time-dependent Gaussian noise.",
+      "conditions": "For the reverse chain defined by the paper; the final displayed step uses the predicted mean without added noise.",
+      "sourceIds": [
+        "section-2",
+        "section-3"
+      ]
+    },
+    {
+      "id": "c8",
+      "kind": "mechanism",
+      "statement": "For the noisy marginal at timestep t, the optimal noise predictor determines its score by $\\nabla_{\\mathbf{x}_t}\\log q_t(\\mathbf{x}_t)=-\\boldsymbol{\\epsilon}_\\theta(\\mathbf{x}_t,t)/\\sqrt{1-\\bar\\alpha_t}$; under this parameterization, Equation 12 is a timestep-weighted denoising-score-matching objective and the reverse sampler is Langevin-like.",
+      "conditions": "At the population optimum of the paper's noise-prediction regression, for its Gaussian corruption process, reverse-process parameterization, and weighted objective.",
+      "sourceIds": [
+        "section-3",
+        "section-5"
+      ]
+    },
+    {
+      "id": "c9",
+      "kind": "result",
+      "statement": "On unconditional CIFAR10, the simplified-objective model reported an Inception score of 9.46 plus or minus 0.11 and a training-set FID of 3.17.",
+      "conditions": "For the paper's reported CIFAR10 experiment with T = 1000, its architecture and schedule, and FID computed against the training set.",
+      "sourceIds": [
+        "abstract",
+        "section-4"
+      ]
+    },
+    {
+      "id": "c10",
+      "kind": "result",
+      "statement": "For the same CIFAR10 study, FID was 5.24 when computed against the test set rather than the training set.",
+      "conditions": "For the paper's simplified-objective unconditional model and the paper's stated test-set FID calculation.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c11",
+      "kind": "result",
+      "statement": "The true variational-bound objective produced a better reported lossless codelength, while the simplified objective produced better reported sample-quality metrics.",
+      "conditions": "Within the paper's CIFAR10 comparison using fixed isotropic reverse variance.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c12",
+      "kind": "caveat",
+      "statement": "The reported diffusion models did not achieve competitive log likelihoods against other likelihood-based generative models.",
+      "conditions": "For the comparisons available to the authors and the CIFAR10 lossless codelength results in the paper.",
+      "sourceIds": [
+        "section-1",
+        "section-4"
+      ]
+    },
+    {
+      "id": "c13",
+      "kind": "result",
+      "statement": "The paper's progressive reconstructions revealed large-scale image features before fine details.",
+      "conditions": "In the reported reverse-process and progressive decompression visualizations, not as a universal theorem about every diffusion model.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c14",
+      "kind": "caveat",
+      "statement": "Generated outputs can inherit dataset biases and can facilitate malicious production of deceptive media.",
+      "conditions": "As broader risks of capable generative models rather than effects uniquely measured for the reported DDPM experiments.",
+      "sourceIds": [
+        "section-7"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "s1",
+      "title": "Two chains, opposite jobs",
+      "markdown": "A denoising diffusion probabilistic model, or DDPM, contains two time-directed stories. The **forward process** starts with a data sample $\\mathbf{x}_0$ and progressively corrupts it into latents $\\mathbf{x}_1,\\ldots,\\mathbf{x}_T$. The **reverse process** starts near pure Gaussian noise and attempts to reconstruct a data-like sample one step at a time.\n\nHere $t\\in\\{1,\\ldots,T\\}$ is the timestep, $\\mathbf{x}_t\\in\\mathbb{R}^D$ is the $D$-dimensional state at that time, and $\\theta$ denotes learned neural-network parameters. Both processes are Markov chains: once $\\mathbf{x}_t$ is known, a transition does not need the entire earlier trajectory. The forward transition is fixed:\n\n$$q(\\mathbf{x}_t\\mid\\mathbf{x}_{t-1})=\\mathcal{N}\\!\\left(\\sqrt{1-\\beta_t}\\,\\mathbf{x}_{t-1},\\beta_t\\mathbf{I}\\right),$$\n\nwhere $q$ names the forward distribution, $\\beta_t$ is the prescribed noise variance, $\\mathbf{I}$ is the identity matrix, and $\\mathcal{N}(\\boldsymbol{\\mu},\\boldsymbol{\\Sigma})$ denotes a Gaussian with mean $\\boldsymbol{\\mu}$ and covariance $\\boldsymbol{\\Sigma}$. The reverse transition is learned:\n\n$$p_\\theta(\\mathbf{x}_{t-1}\\mid\\mathbf{x}_t)=\\mathcal{N}\\!\\left(\\boldsymbol{\\mu}_\\theta(\\mathbf{x}_t,t),\\boldsymbol{\\Sigma}_\\theta(\\mathbf{x}_t,t)\\right).$$\n\nThe asymmetry is essential. Corruption is deliberately simple and known; reconstruction is the difficult conditional prediction learned from data. This is not an autoencoder with one fixed bottleneck. It is a chain of latent variables having the same dimensionality as the image.",
+      "sourceIds": [
+        "section-1",
+        "section-2"
+      ],
+      "claimIds": [
+        "c1"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s2",
+      "title": "Noise accumulation has a shortcut",
+      "markdown": "Define $\\alpha_t=1-\\beta_t$ and $\\bar{\\alpha}_t=\\prod_{s=1}^{t}\\alpha_s$. Repeated Gaussian transitions collapse into a closed-form marginal:\n\n$$q(\\mathbf{x}_t\\mid\\mathbf{x}_0)=\\mathcal{N}\\!\\left(\\sqrt{\\bar{\\alpha}_t}\\,\\mathbf{x}_0,(1-\\bar{\\alpha}_t)\\mathbf{I}\\right).$$\n\nEquivalently,\n\n$$\\mathbf{x}_t=\\sqrt{\\bar{\\alpha}_t}\\,\\mathbf{x}_0+\\sqrt{1-\\bar{\\alpha}_t}\\,\\boldsymbol{\\epsilon},\\qquad \\boldsymbol{\\epsilon}\\sim\\mathcal{N}(\\mathbf{0},\\mathbf{I}).$$\n\nThis shortcut matters because training can choose a random $t$ and construct $\\mathbf{x}_t$ directly; it need not simulate all preceding corruptions.\n\nFor a small **illustrative** scalar calculation, let $\\bar{\\alpha}_t=0.64$, $x_0=0.50$, and draw $\\epsilon=-1$. Then $\\sqrt{0.64}=0.8$ and $\\sqrt{1-0.64}=0.6$, so\n\n$$x_t=(0.8)(0.50)+(0.6)(-1)=0.40-0.60=-0.20.$$\n\nThe clean contribution has been attenuated, while fresh Gaussian noise supplies the remainder. These numbers are invented for arithmetic, not reported settings or measurements.\n\nThe interactive norm experiment makes a related prerequisite visible: it draws seeded Gaussian vectors and compares their measured norms with the RMS scale $\\sigma\\sqrt{D}$. Change $\\sigma$ to rescale lengths or $D$ to change relative concentration. It plots norms, not a literal three-dimensional diffusion trajectory, and it does not reproduce the paper's image distribution.",
+      "sourceIds": [
+        "section-2",
+        "section-3"
+      ],
+      "claimIds": [
+        "c2"
+      ],
+      "figureId": "fig-noise"
+    },
+    {
+      "id": "s3",
+      "title": "What the network is asked to predict",
+      "markdown": "The exact posterior $q(\\mathbf{x}_{t-1}\\mid\\mathbf{x}_t,\\mathbf{x}_0)$ is Gaussian because every relevant forward distribution is Gaussian. Its mean, $\\tilde{\\boldsymbol{\\mu}}_t$, combines the known clean sample $\\mathbf{x}_0$ and the noisy state $\\mathbf{x}_t$ with schedule-dependent coefficients. During generation, however, $\\mathbf{x}_0$ is unavailable. The network must provide the missing information.\n\nThe paper parameterizes that information as the injected noise. Let $\\boldsymbol{\\epsilon}_\\theta(\\mathbf{x}_t,t)$ be the network's noise prediction. With $\\sigma_t^2\\mathbf{I}$ as a fixed reverse covariance, the reverse mean becomes\n\n$$\\boldsymbol{\\mu}_\\theta(\\mathbf{x}_t,t)=\\frac{1}{\\sqrt{\\alpha_t}}\\left(\\mathbf{x}_t-\\frac{\\beta_t}{\\sqrt{1-\\bar{\\alpha}_t}}\\boldsymbol{\\epsilon}_\\theta(\\mathbf{x}_t,t)\\right).$$\n\nEvery symbol now has a role: $\\beta_t$ is the current forward variance, $\\alpha_t=1-\\beta_t$, $\\bar{\\alpha}_t$ is cumulative signal retention, and $\\boldsymbol{\\epsilon}_\\theta$ estimates the noise mixed into the current state. Predicting noise is therefore not an auxiliary cleanup trick; it is a parameterization of the Gaussian reverse transition.\n\nThe thin-shell figure offers an idealized geometric picture. It places two RMS-radius spheres around one point in $D=3$: an outer radius $\\sqrt{3}$ for $\\sigma=1$ and an adjustable inner radius $\\sigma\\sqrt{3}$. Predict how the inner radius changes with $\\sigma$, then rotate the shared camera to check that only the view changes. These are ideal surfaces made from seeded directions, not actual Gaussian samples, high-dimensional coordinates, or evidence that noise levels form disjoint shells.",
+      "sourceIds": [
+        "section-2",
+        "section-3"
+      ],
+      "claimIds": [
+        "c3",
+        "c4"
+      ],
+      "figureId": "fig-shells"
+    },
+    {
+      "id": "s4",
+      "title": "From a variational bound to simple denoising",
+      "markdown": "Variational inference gives an upper bound $L$ on expected negative log likelihood. Its intermediate terms compare the tractable forward posterior with the learned reverse transition using KL divergence, $D_{\\mathrm{KL}}(q\\|p)$, which measures the expected log-density mismatch between distributions $q$ and $p$. Because these distributions are Gaussian, the comparisons have closed forms.\n\nAfter substituting the noise-prediction mean, Equation 12 makes an intermediate term\n\n$$\\mathbb{E}_{\\mathbf{x}_0,\\boldsymbol{\\epsilon}}\\!\\left[\\frac{\\beta_t^2}{2\\sigma_t^2\\alpha_t(1-\\bar\\alpha_t)}\\left\\|\\boldsymbol{\\epsilon}-\\boldsymbol{\\epsilon}_\\theta(\\mathbf{x}_t,t)\\right\\|^2\\right],$$\n\nwhere $\\mathbf{x}_t=\\sqrt{\\bar\\alpha_t}\\mathbf{x}_0+\\sqrt{1-\\bar\\alpha_t}\\boldsymbol{\\epsilon}$. For this Gaussian corruption, the conditional score target is $-\\boldsymbol{\\epsilon}/\\sqrt{1-\\bar\\alpha_t}$. Squared-error regression averages that target over the possible clean samples that could have produced $\\mathbf{x}_t$, so the optimal predictor obeys\n\n$$\\nabla_{\\mathbf{x}_t}\\log q_t(\\mathbf{x}_t)=-\\frac{\\boldsymbol{\\epsilon}_\\theta(\\mathbf{x}_t,t)}{\\sqrt{1-\\bar\\alpha_t}},$$\n\nwith $q_t$ denoting the noisy data marginal at timestep $t$. Equivalently, noise-prediction error is score-prediction error scaled by $1-\\bar\\alpha_t$. Equation 12 therefore trains scores across noise levels with a timestep-dependent weight: it is denoising score matching expressed in the noise-prediction parameterization, while also being a term of the diffusion model's variational bound.\n\nThe paper then trains with the simpler objective\n\n$$L_{\\mathrm{simple}}(\\theta)=\\mathbb{E}_{t,\\mathbf{x}_0,\\boldsymbol{\\epsilon}}\\!\\left[\\left\\|\\boldsymbol{\\epsilon}-\\boldsymbol{\\epsilon}_\\theta\\!\\left(\\sqrt{\\bar{\\alpha}_t}\\mathbf{x}_0+\\sqrt{1-\\bar{\\alpha}_t}\\boldsymbol{\\epsilon},t\\right)\\right\\|^2\\right],$$\n\nwhere $t$ is uniform on $\\{1,\\ldots,T\\}$, $\\mathbf{x}_0$ is a data sample, $\\boldsymbol{\\epsilon}$ is standard Gaussian noise, $\\|\\cdot\\|$ is the Euclidean norm, and the expectation averages over all three random choices.\n\nA training example is consequently compact: select a clean image and timestep, sample noise, form the noisy image in one operation, predict the sampled noise, and backpropagate squared error. The simplification removes the schedule-dependent weighting in Equation 12. Under the paper's schedule, this down-weighted small-$t$ tasks and placed relatively more emphasis on harder, noisier tasks. Thus $L_{\\mathrm{simple}}$ should not be mistaken for the unchanged likelihood bound; it deliberately changes which denoising errors matter most.",
+      "sourceIds": [
+        "section-2",
+        "section-3",
+        "section-3-part-2"
+      ],
+      "claimIds": [
+        "c3",
+        "c5",
+        "c6",
+        "c8"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s5",
+      "title": "Generation is repeated conditional denoising",
+      "markdown": "Generation begins with $\\mathbf{x}_T\\sim\\mathcal{N}(\\mathbf{0},\\mathbf{I})$. For $t=T,T-1,\\ldots,1$, the model computes\n\n$$\\mathbf{x}_{t-1}=\\frac{1}{\\sqrt{\\alpha_t}}\\left(\\mathbf{x}_t-\\frac{\\beta_t}{\\sqrt{1-\\bar{\\alpha}_t}}\\boldsymbol{\\epsilon}_\\theta(\\mathbf{x}_t,t)\\right)+\\sigma_t\\mathbf{z},$$\n\nwhere $\\mathbf{z}\\sim\\mathcal{N}(\\mathbf{0},\\mathbf{I})$ supplies reverse-process randomness and $\\sigma_t$ is the fixed standard deviation at time $t$. At the final display step, the paper uses the predicted mean noiselessly.\n\nThe noise prediction supplies a score estimate at every noise level:\n\n$$\\nabla_{\\mathbf{x}_t}\\log q_t(\\mathbf{x}_t)\\approx-\\frac{\\boldsymbol{\\epsilon}_\\theta(\\mathbf{x}_t,t)}{\\sqrt{1-\\bar\\alpha_t}}.$$\n\nThus the schedule-scaled subtraction in the reverse mean uses a learned direction toward greater probability under the noisy marginal. This is why the repeated updates resemble annealed Langevin dynamics, while Equation 12 makes fitting those directions a timestep-weighted denoising-score-matching problem. The equivalence is tied to the paper's Gaussian corruption, noise-prediction parameterization, and objective; an arbitrary denoiser does not automatically define the same variational model.\n\nA common misconception is that the model removes the exact noise added to one hidden clean image. During unconditional generation there is no hidden original image. The network estimates a conditional direction from the current noisy state, and each stochastic transition samples a plausible predecessor. Repeating those local transitions constructs a new sample.\n\nThe scalar latent figure isolates one useful endpoint idea: it compares $q=\\mathcal{N}(\\mu,1)$ with $p=\\mathcal{N}(0,1)$ and displays $D_{\\mathrm{KL}}(q\\|p)=\\mu^2/2$. Moving $\\mu$ predicts how mismatch from a standard-normal prior grows. This is only a one-dimensional equal-variance comparison; it does not simulate the learned reverse chain, image reconstruction, or the paper's measured terminal KL.",
+      "sourceIds": [
+        "section-2",
+        "section-3",
+        "section-5"
+      ],
+      "claimIds": [
+        "c7",
+        "c8"
+      ],
+      "figureId": "fig-latent"
+    },
+    {
+      "id": "s6",
+      "title": "What the experiments actually establish",
+      "markdown": "The reported experiments used $T=1000$ and a linear variance schedule from $\\beta_1=10^{-4}$ to $\\beta_T=0.02$, with images scaled to $[-1,1]$. The reverse model used a U-Net-like backbone, shared parameters across time, sinusoidal timestep embeddings, group normalization, and self-attention at $16\\times16$ feature resolution.\n\nOn unconditional CIFAR10, the $L_{\\mathrm{simple}}$ model reported an Inception score of $9.46\\pm0.11$ and FID $3.17$. That FID was calculated against the training set; against the test set, the paper reports $5.24$. The conditioning set matters, so the two numbers should not be silently interchanged.\n\nThe comparison also exposes a tradeoff. With fixed isotropic reverse variance, training on the true variational bound reported a test codelength of at most $3.70$ bits per dimension and FID $13.51$, whereas $L_{\\mathrm{simple}}$ reported at most $3.75$ bits per dimension and FID $3.17$. Lower is better for both quantities, but they measure different goals. The true bound was slightly better for lossless codelength; the reweighted objective was dramatically better in this sample-quality comparison.\n\nThe ablation further reported that learned diagonal reverse variances were unstable and gave poorer sample quality than fixed variances in the tested configurations. These results support the paper's design choices under its datasets, architecture, schedule, and evaluation protocol. They do not prove that noise prediction, fixed variance, or this schedule is optimal for every dataset or model family.",
+      "sourceIds": [
+        "section-4"
+      ],
+      "claimIds": [
+        "c9",
+        "c10",
+        "c11"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s7",
+      "title": "Compression insight and scientific limits",
+      "markdown": "The reverse trajectory also supports a progressive-decoding interpretation. From an intermediate state, the paper forms an estimate\n\n$$\\hat{\\mathbf{x}}_0=\\frac{\\mathbf{x}_t-\\sqrt{1-\\bar{\\alpha}_t}\\boldsymbol{\\epsilon}_\\theta(\\mathbf{x}_t,t)}{\\sqrt{\\bar{\\alpha}_t}},$$\n\nwhere $\\hat{\\mathbf{x}}_0$ is a deterministic reconstruction estimate. In the reported visualizations, large-scale features appeared before fine details. The paper's rate-distortion analysis found that much of the lossless codelength described visually subtle distortion, helping explain how strong perceptual samples could coexist with likelihoods that were not competitive with other likelihood-based models.\n\nThis is a useful corrective to another misconception: a better likelihood objective does not necessarily yield a better FID under the same experiment. The objective allocates modeling effort, and imperceptible details can consume probability mass and coding rate without dominating a perceptual metric.\n\nSeveral boundaries remain. Sampling required a long sequence of neural-network evaluations in the reported setup. The score-matching and Langevin interpretations depend on the derived parameterization rather than applying without qualification to all generative chains. The progressive coarse-to-fine observation was empirical, not a theorem guaranteeing semantic ordering. Reported CIFAR10 metrics are tied to a particular evaluation protocol, and the paper itself notes that its likelihoods lagged competing likelihood-based models. Finally, capable image generators may reproduce dataset biases or enable deceptive media; sample quality alone does not resolve those risks.",
+      "sourceIds": [
+        "section-1",
+        "section-4",
+        "section-7"
+      ],
+      "claimIds": [
+        "c11",
+        "c12",
+        "c13",
+        "c14"
+      ],
+      "figureId": null
+    }
+  ],
+  "figures": [
+    {
+      "id": "fig-noise",
+      "kind": "noise",
+      "title": "Gaussian norm scale",
+      "question": "If sigma doubles while dimension stays fixed, how should the RMS radius and sampled norms change?",
+      "caption": "A seeded Gaussian sample shows a norm histogram, measured mean radius, and the reference RMS radius $\\sigma\\sqrt{D}$ as sigma or dimension changes.",
+      "limitation": "This illustrates Gaussian-vector norms only; it is not a diffusion trajectory, an image model, or a measured result from the paper.",
+      "sourceIds": [
+        "section-2",
+        "section-3"
+      ],
+      "claimIds": [
+        "c2"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "fig-shells",
+      "kind": "noise-shells",
+      "title": "Noise scale as ideal RMS radius",
+      "question": "As the inner sigma control rises from 0.1 toward 0.8, how does its ideal radius compare with the fixed outer radius?",
+      "caption": "Two deterministic thin surfaces in $D=3$ have radii $\\sigma\\sqrt{3}$ and $\\sqrt{3}$ around one point; visibility controls and camera rotation preserve their coordinates.",
+      "limitation": "The surfaces are ideal RMS radii, not Gaussian draws or high-dimensional shells, and they establish no concentration or disjointness claim.",
+      "sourceIds": [
+        "section-2",
+        "section-3"
+      ],
+      "claimIds": [
+        "c2",
+        "c4"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "fig-latent",
+      "kind": "latent",
+      "title": "Matching a standard-normal endpoint",
+      "question": "With equal unit variances, what happens to the KL divergence when the posterior mean moves farther from zero?",
+      "caption": "A scalar $q=\\mathcal{N}(\\mu,1)$ is compared with $p=\\mathcal{N}(0,1)$, giving the exact illustrative value $D_{\\mathrm{KL}}(q\\|p)=\\mu^2/2$.",
+      "limitation": "This is a scalar equal-variance example, not the paper's image posterior, learned reverse process, reconstruction likelihood, or measured terminal KL.",
+      "sourceIds": [
+        "section-2",
+        "section-4"
+      ],
+      "claimIds": [
+        "c7"
+      ],
+      "illustrative": true
+    }
+  ],
+  "quiz": [
+    {
+      "question": "Suppose $\\bar{\\alpha}_t=0.36$, $x_0=2$, and an illustrative scalar noise draw is $\\epsilon=-1$. What is $x_t$?",
+      "options": [
+        {
+          "text": "$0.4$",
+          "explanation": "Correct: $\\sqrt{0.36}=0.6$ and $\\sqrt{0.64}=0.8$, so $x_t=(0.6)(2)+(0.8)(-1)=0.4$."
+        },
+        {
+          "text": "$0.08$",
+          "explanation": "This uses the variance coefficients directly instead of their square roots: $(0.36)(2)+(0.64)(-1)=0.08$."
+        },
+        {
+          "text": "$2.8$",
+          "explanation": "This leaves $x_0=2$ unattenuated and adds the noise scale as positive: $2+0.8=2.8$."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-2",
+        "section-3"
+      ],
+      "claimIds": [
+        "c2"
+      ]
+    },
+    {
+      "question": "What does the network directly predict in the paper's principal simplified parameterization?",
+      "options": [
+        {
+          "text": "The complete clean-image distribution in one step",
+          "explanation": "Incorrect: generation remains a multi-step reverse Markov chain, not a one-step prediction of the full distribution."
+        },
+        {
+          "text": "The Gaussian noise mixed into the selected noisy input",
+          "explanation": "Correct: the network is trained by squared error against the sampled $\\boldsymbol{\\epsilon}$ at timestep $t$."
+        },
+        {
+          "text": "A learned forward-process variance schedule",
+          "explanation": "Incorrect: the reported implementation fixes the forward variances rather than learning them."
+        }
+      ],
+      "answer": 1,
+      "sourceIds": [
+        "section-3",
+        "section-3-part-2"
+      ],
+      "claimIds": [
+        "c4",
+        "c5"
+      ]
+    },
+    {
+      "question": "Which conclusion is justified by the reported CIFAR10 comparison?",
+      "options": [
+        {
+          "text": "The simplified objective universally optimizes likelihood and perceptual quality at once.",
+          "explanation": "Incorrect: it slightly worsened reported codelength while improving sample-quality metrics, and universality was not tested."
+        },
+        {
+          "text": "FID 3.17 and FID 5.24 are contradictory measurements of the same reference set.",
+          "explanation": "Incorrect: the values used different reference sets, training and test respectively."
+        },
+        {
+          "text": "Under the reported setup, the true bound gave better codelength while the simplified objective gave better sample quality.",
+          "explanation": "Correct: this is the tradeoff shown by the paper's fixed-variance CIFAR10 comparison."
+        }
+      ],
+      "answer": 2,
+      "sourceIds": [
+        "section-4"
+      ],
+      "claimIds": [
+        "c9",
+        "c10",
+        "c11",
+        "c12"
+      ]
+    }
+  ],
+  "id": "ddpm",
+  "createdAt": "2026-10-02T00:39:30.782Z",
+  "pipelineVersion": "subjects-lessons-v1",
+  "sources": [
+    {
+      "id": "abstract",
+      "label": "Original paper · abstract",
+      "url": "https://arxiv.org/abs/2006.11239",
+      "digest": "3a50b647f9d733f159c2489601bde0857b17dd704fd742747319a93b28af77ea",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:35:50.296Z"
+    },
+    {
+      "id": "main-text",
+      "label": "Original paper · unsectioned main text",
+      "url": "https://arxiv.org/html/2006.11239",
+      "digest": "b48c8be350328406b290275c86d90011f8a37f797a8c290349986d8cbfedbd26",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:35:50.296Z"
+    },
+    {
+      "id": "section-1",
+      "label": "1 Introduction",
+      "url": "https://arxiv.org/html/2006.11239#S1",
+      "digest": "7e01fd042d3beed9ba08f9ba217d441f0a808767fca372e9e0c5a72438f422b4",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:35:50.296Z"
+    },
+    {
+      "id": "section-2",
+      "label": "2 Background",
+      "url": "https://arxiv.org/html/2006.11239#S2",
+      "digest": "f5814414fbd9e9947931fd28a4b1283cba221dc3bbec61d041fdec613b23a86f",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:35:50.296Z"
+    },
+    {
+      "id": "section-3",
+      "label": "3 Diffusion models and denoising autoencoders",
+      "url": "https://arxiv.org/html/2006.11239#S3",
+      "digest": "35cf775d8b9b16a110bc496e0b6b35ff28774404abfc38e195e82eeb19958f74",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:35:50.296Z"
+    },
+    {
+      "id": "section-3-part-2",
+      "label": "3 Diffusion models and denoising autoencoders · part 2",
+      "url": "https://arxiv.org/html/2006.11239#S3",
+      "digest": "cca47c9d07ef90a9fb3c23f6b52c5c14335e6ca82f94020b01c1d9a331d7d6d1",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:35:50.296Z"
+    },
+    {
+      "id": "section-4",
+      "label": "4 Experiments",
+      "url": "https://arxiv.org/html/2006.11239#S4",
+      "digest": "93133f2072683ccb6d3de8f8f7170f2f3df9d90cd62988ded0e6b31008b3a907",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:35:50.296Z"
+    },
+    {
+      "id": "section-4-part-2",
+      "label": "4 Experiments · part 2",
+      "url": "https://arxiv.org/html/2006.11239#S4",
+      "digest": "9516a5fef2daa7bd1eda47e34462a07745fa9a89f9fcad332ef66762d295bff1",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:35:50.296Z"
+    },
+    {
+      "id": "section-5",
+      "label": "5 Related Work",
+      "url": "https://arxiv.org/html/2006.11239#S5",
+      "digest": "a945cf491e8bdbb21bb10275e31619f76563e4c325da5b95ce1be13344137ffd",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:35:50.296Z"
+    },
+    {
+      "id": "section-6",
+      "label": "6 Conclusion",
+      "url": "https://arxiv.org/html/2006.11239#S6",
+      "digest": "be05f01cc7d71bbb29747739eed051097269bf2db9b92d140f7bcb68e02fdeb3",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:35:50.296Z"
+    },
+    {
+      "id": "section-7",
+      "label": "Broader Impact",
+      "url": "https://arxiv.org/html/2006.11239#Sx1",
+      "digest": "dfbccb6938fd378b1d10504892455be7391432ef1a1915134f3ecf9c030aa6d0",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:35:50.296Z"
+    }
+  ],
+  "review": {
+    "status": "passed",
+    "reviewedAt": "2026-10-02T00:39:30.783Z",
+    "contentDigest": "f52c009ef96cc7b4f6cae5e91e9fe80bc1facee433147964b54b994571b62276"
+  }
+}

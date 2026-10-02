@@ -1,0 +1,499 @@
+{
+  "title": "Reasoning in the Prompt: How Intermediate Steps Change Few-Shot Behavior",
+  "summary": "The paper shows that worked intermediate steps in few-shot prompts can elicit stronger arithmetic, commonsense, and symbolic reasoning in sufficiently large language models.",
+  "prerequisites": [
+    "Few-shot prompting with examples and no weight updates",
+    "Autoregressive token-by-token generation",
+    "Final-answer accuracy on evaluated examples",
+    "In-domain and out-of-domain evaluation"
+  ],
+  "objectives": [
+    "Distinguish chain-of-thought prompting from standard few-shot prompting.",
+    "Explain how demonstrations place intermediate reasoning before the answer.",
+    "Interpret evidence about model scale, task complexity, and prompt ablations.",
+    "Explain why readable intermediate steps may not reflect internal reasoning.",
+    "Apply chain-of-thought prompting to a simple multi-step problem."
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "mechanism",
+      "statement": "Chain-of-thought prompting augments few-shot exemplars with intermediate natural-language reasoning steps leading to each final output.",
+      "conditions": "For prompts constructed from worked input–reasoning–output exemplars.",
+      "sourceIds": [
+        "section-1",
+        "section-2",
+        "section-3"
+      ]
+    },
+    {
+      "id": "c2",
+      "kind": "equation",
+      "statement": "A chain-of-thought exemplar can be represented as the ordered triple $\\langle x_i, z_i, y_i\\rangle$, where $x_i$ is an input, $z_i$ is its chain of thought, and $y_i$ is the output.",
+      "conditions": "This notation describes the paper's prompt structure; it is not a probabilistic model or training objective.",
+      "sourceIds": [
+        "section-1",
+        "section-3"
+      ]
+    },
+    {
+      "id": "c3",
+      "kind": "mechanism",
+      "statement": "The reported method elicited reasoning from off-the-shelf language models through prompting and did not finetune the models.",
+      "conditions": "Across the arithmetic, commonsense, and symbolic evaluations reported in the paper.",
+      "sourceIds": [
+        "section-1",
+        "section-6"
+      ]
+    },
+    {
+      "id": "c4",
+      "kind": "result",
+      "statement": "In the arithmetic experiments, positive gains from chain-of-thought prompting appeared mainly at very large model scales, around 100 billion parameters in the tested model families.",
+      "conditions": "For the evaluated GPT-3, LaMDA, PaLM, UL2, and Codex configurations and the paper's few-shot prompts; this is an empirical observation, not a universal threshold.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c5",
+      "kind": "result",
+      "statement": "Arithmetic gains were larger on more complicated problems, while improvements on the single-step SingleOp subset were negative or very small.",
+      "conditions": "For the arithmetic benchmarks and model configurations evaluated in the paper.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c6",
+      "kind": "result",
+      "statement": "For the largest GPT and PaLM models, chain-of-thought prompting more than doubled performance on GSM8K relative to standard prompting.",
+      "conditions": "On GSM8K under the paper's few-shot prompting and greedy-decoding setup.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c7",
+      "kind": "result",
+      "statement": "Equation-only prompting helped little on GSM8K, although it helped on easier one- or two-step datasets.",
+      "conditions": "In the paper's prompting ablations with LaMDA 137B and PaLM 540B, with additional datasets reported in the appendix.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c8",
+      "kind": "result",
+      "statement": "Producing non-semantic filler tokens for additional computation performed about the same as standard prompting.",
+      "conditions": "In the variable-compute-only arithmetic ablation, where dots replaced meaningful intermediate reasoning.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c9",
+      "kind": "result",
+      "statement": "Placing the chain of thought after the answer performed about the same as standard prompting.",
+      "conditions": "In the arithmetic ablation designed to test whether the answer depended on preceding intermediate steps.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c10",
+      "kind": "result",
+      "statement": "Different annotators, reasoning styles, exemplar sets, exemplar orders, and exemplar counts still yielded arithmetic improvements, although results varied.",
+      "conditions": "For the paper's reported robustness studies, including LaMDA 137B evaluations on GSM8K and MAWPS.",
+      "sourceIds": [
+        "section-3-part-2"
+      ]
+    },
+    {
+      "id": "c11",
+      "kind": "result",
+      "statement": "Chain-of-thought prompting improved several evaluated commonsense tasks, but its gain on CSQA was minimal.",
+      "conditions": "For the paper's commonsense benchmarks, with the largest reported gains appearing for PaLM 540B.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c12",
+      "kind": "result",
+      "statement": "On the two constructed symbolic tasks, chain-of-thought prompting facilitated generalization to test sequences longer than the exemplars, though out-of-domain performance remained below in-domain performance.",
+      "conditions": "For last-letter concatenation and coin-flip tasks with sufficiently large evaluated models.",
+      "sourceIds": [
+        "section-5"
+      ]
+    },
+    {
+      "id": "c13",
+      "kind": "caveat",
+      "statement": "A generated chain of thought offers an interpretable trace for inspection but does not fully characterize the model computations supporting an answer.",
+      "conditions": "When treating generated text as behavioral evidence rather than direct access to internal computation.",
+      "sourceIds": [
+        "section-2",
+        "section-6"
+      ]
+    },
+    {
+      "id": "c14",
+      "kind": "caveat",
+      "statement": "Generated reasoning paths are not guaranteed to be correct or factual and can accompany either correct or incorrect final answers.",
+      "conditions": "For model-generated chains of thought; the paper does not recommend treating them as factual records in real-world use.",
+      "sourceIds": [
+        "section-3",
+        "section-6",
+        "section-10"
+      ]
+    },
+    {
+      "id": "c15",
+      "kind": "caveat",
+      "statement": "The paper leaves open whether behavior resembling human step-by-step reasoning means that the neural network is actually reasoning.",
+      "conditions": "As an interpretation of the observed prompting behavior, not a claim about benchmark accuracy.",
+      "sourceIds": [
+        "section-6"
+      ]
+    },
+    {
+      "id": "c16",
+      "kind": "caveat",
+      "statement": "The method's reliance on very large models makes serving costly, and manually authored rationales could become expensive if scaled from few-shot prompting to finetuning datasets.",
+      "conditions": "For practical deployment and large-scale rationale annotation, respectively.",
+      "sourceIds": [
+        "section-6"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "s1",
+      "title": "The intervention is in the demonstration",
+      "markdown": "Standard few-shot prompting supplies examples of the form “input, answer” and asks the model to continue that pattern. Wei and colleagues change the demonstrated output structure: each example now contains an input, a natural-language sequence of intermediate steps, and then the answer. No parameter update is required.\n\nLet exemplar $i$ be\n\n$$\nE_i=\\langle x_i,z_i,y_i\\rangle,\n$$\n\nwhere $x_i$ is the problem, $z_i$ is the demonstrated chain of intermediate reasoning, and $y_i$ is the final output. A prompt contains several such exemplars followed by a new input $x_*$; the model is expected to generate a corresponding $z_*$ and then $y_*$. The ordering matters conceptually: the intermediate text precedes the answer it is meant to support.\n\nThis is an in-context behavioral intervention, not rationale-supervised finetuning. The paper's contribution is therefore narrower and more surprising than “models can be trained to show work”: sufficiently large pretrained models could acquire the output pattern from a few worked demonstrations and use it on new problems.",
+      "sourceIds": [
+        "section-1",
+        "section-2",
+        "section-3",
+        "section-6"
+      ],
+      "claimIds": [
+        "c1",
+        "c2",
+        "c3"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s2",
+      "title": "Why intermediate text can change a computation",
+      "markdown": "Autoregressive language models generate one token at a time, with each new token conditioned on the prompt and the tokens already produced. Standard few-shot prompting demonstrates a direct mapping from an input $x_i$ to an answer $y_i$. Chain-of-thought prompting instead demonstrates the ordered pattern\n\n$$\nx_i \\rightarrow z_i \\rightarrow y_i,\n$$\n\nwhere $z_i$ expresses intermediate natural-language steps. At test time, the model continues that pattern for a new input: it generates intermediate text before committing to the final answer. Because earlier generated tokens are available as context for later ones, the answer can depend on distinctions, quantities, and partial conclusions stated in the chain.\n\nThis ordering creates room to decompose a multi-step problem. A generated step might identify relevant facts, another might connect them, and a later step might perform the resulting calculation. Harder problems can elicit longer sequences, so the amount of generated computation can vary with the problem rather than being compressed into an immediate answer. The same format can express arithmetic operations, commonsense implications, or symbolic transformations because the intermediate representation is ordinary language.\n\nThe displayed chain is also useful for behavioral inspection. If a model maps a phrase to the wrong quantity or reverses a relation, the error may be visible before the final answer. That visibility has a scientific limit: the generated words are observable outputs, whereas the neural computations that produced them are not fully characterized by those words. Consequently, a readable chain can help diagnose the model's behavior without establishing that it is a faithful transcript of an internal, human-like reasoning process.",
+      "sourceIds": [
+        "section-2",
+        "section-6"
+      ],
+      "claimIds": [
+        "c1",
+        "c13",
+        "c15"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s3",
+      "title": "A worked example of the prompt pattern",
+      "markdown": "Consider this deliberately illustrative problem, not a reported benchmark item:\n\n*A shelf begins with 12 books. Three students each borrow 2 books, and then 5 books are returned. How many books are on the shelf?*\n\nA useful intermediate sequence preserves the operation order:\n\n1. Three students borrow $2$ books each, so the number borrowed is $3\\times2=6$.\n2. After borrowing, the shelf has $12-6=6$ books.\n3. Five books return, so the final count is $6+5=11$.\n\nEquivalently,\n\n$$\ny=(12-(3\\times2))+5=11.\n$$\n\nHere $y$ denotes the final book count. The example is correctly calculated, but it does not measure model performance. Its purpose is to show what the demonstrated variable $z_i$ contributes: it binds phrases such as “each borrow” and “returned” to operations before producing $y_i$.\n\nThe paper's equation-only ablation sharpens this point. On difficult GSM8K problems, merely emitting an equation helped little. On easier one- or two-step datasets, equations helped more because translation from language to an expression was easier. Thus, extra symbols alone are not the paper's proposed advantage; meaningful intermediate semantics matter under the tested conditions.",
+      "sourceIds": [
+        "section-2",
+        "section-3"
+      ],
+      "claimIds": [
+        "c1",
+        "c7"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s4",
+      "title": "Scale and difficulty interact",
+      "markdown": "The arithmetic results depended strongly on both model scale and problem difficulty. Across the evaluated GPT-3, LaMDA, PaLM, UL2, and Codex configurations, chain-of-thought prompting did not improve the smaller models. Positive gains appeared mainly in models around $100$ billion parameters or larger within the tested families. The authors also observed a characteristic failure mode at smaller scales: a model could reproduce the linguistic shape of a worked solution while filling it with illogical steps. The useful capability was therefore not simply producing a longer answer or adopting the tone of an explanation. It required carrying the problem’s semantic and arithmetic dependencies through the generated sequence well enough for later tokens, including the final answer, to condition on them.\n\nThis interaction follows directly from the prompt mechanism. Each demonstration presents an ordered triple $\\langle x_i,z_i,y_i\\rangle$, and the model continues that pattern on a new input by generating $z_*$ before $y_*$. When $z_*$ correctly identifies quantities, relations, and partial results, those generated tokens become part of the context used to predict subsequent steps. A chain can therefore preserve intermediate state that would otherwise have to be compressed into the immediate prediction of an answer. If the model cannot reliably generate coherent intermediate state, however, the same autoregressive dependence propagates mistakes: an incorrect quantity or relation written early in the chain becomes context for everything that follows. This explains why the format can help a capable model while harming or failing to help a smaller one.\n\nFor the largest GPT and PaLM models, chain-of-thought prompting more than doubled performance on GSM8K relative to standard few-shot prompting under the paper’s greedy-decoding setup. PaLM 540B with eight chain-of-thought exemplars also achieved the paper’s reported state-of-the-art GSM8K accuracy, surpassing the cited finetuned GPT-3 system with a verifier. The result is especially notable because the model weights were not updated: the worked demonstrations changed the test-time generation pattern. At the same time, the observed onset near $100$ billion parameters belongs to these model families, prompts, benchmarks, and decoding conditions. It does not establish a universal parameter boundary, and the reliance on the largest tested models makes the demonstrated method comparatively expensive to serve.\n\nProblem difficulty determined how much opportunity the intermediate sequence had to help. GSM8K had the lowest standard-prompting baseline among the reported arithmetic benchmarks and commonly requires several linked decisions: interpreting the language, selecting quantities, choosing operations, and carrying partial results forward. A meaningful chain can make each dependency explicit before the answer is generated. If a problem requires quantities $q_1$ and $q_2$ to produce an intermediate result $r=f(q_1,q_2)$, followed by $y=g(r,q_3)$, writing $r$ before $y$ gives the autoregressive model a textual representation of the value needed for the second operation. The representation remains natural language rather than a guaranteed formal execution trace, but it can organize the calculation into locally generated steps.\n\nThe contrast with SingleOp clarifies this difficulty effect. SingleOp is the easiest MAWPS subset and requires only one operation. Its chain-of-thought improvements were negative or very small. With little or no intermediate state to preserve, direct-answer prompting already asks for a short transformation from the problem to the result. Generating extra steps creates additional token predictions without supplying the same decomposition benefit available on a multi-step problem; a mistaken restatement or arithmetic operation can instead divert an otherwise simple answer. Thus the paper’s arithmetic evidence supports a joint account: scale affected whether models could produce useful chains, while task complexity affected whether those chains had meaningful dependencies to represent. The strongest gains occurred where both conditions aligned—a sufficiently large evaluated model and a problem whose answer benefited from several correctly ordered semantic and arithmetic steps.",
+      "sourceIds": [
+        "section-3",
+        "section-6"
+      ],
+      "claimIds": [
+        "c4",
+        "c5",
+        "c6"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s5",
+      "title": "Ablations separate length from meaningful order",
+      "markdown": "Three ablations test simpler explanations of the arithmetic gains.\n\nFirst, equation-only prompts ask for a mathematical expression before the answer. Their limited help on GSM8K suggests that the difficult part often includes interpreting the story, not merely evaluating an already identified expression. Second, the variable-compute condition inserts dots whose length tracks the needed equation. It performs about like the baseline, so additional token positions without semantic content do not explain the gain. Third, putting the reasoning after the answer also performs about like the baseline. This weakens the claim that demonstrations merely activate relevant knowledge regardless of output order.\n\nTogether, these comparisons support a more precise conclusion: in the tested large models, useful intermediate natural language placed before the answer mattered more than extra tokens, equations alone, or post-answer explanations. They do not prove that every generated step causally mirrors an internal algorithm. They show that changing the observable generation sequence changed final-answer behavior under controlled prompt variants.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c7",
+        "c8",
+        "c9",
+        "c13"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s6",
+      "title": "The effect travels, but not uniformly",
+      "markdown": "The effect extended beyond arithmetic, but its size and character varied by task. The commonsense evaluation covered CSQA, StrategyQA, Date Understanding, Sports Understanding, and SayCan. These tasks require different combinations of background knowledge, multi-hop inference, temporal interpretation, plausibility judgments, and action sequencing. Chain-of-thought prompting produced gains beyond standard prompting on several of them, with the largest improvements appearing for PaLM 540B, but the gain on CSQA was minimal. Language-based intermediate steps were therefore applicable across several reasoning settings without providing a uniform advantage.\n\nThe two constructed symbolic tasks isolate repeated transformations more directly. In last-letter concatenation, exemplars showed how to take the final letter of each word in a two-word name and join the resulting symbols in order. Out-of-domain inputs contained three or four words, so success required preserving the same operation over a longer sequence. In the coin-flip task, each stated flip changes the coin's state while each stated non-flip preserves it. The out-of-domain condition increased the number of potential flips beyond those shown in the demonstrations.\n\nFor in-domain tests, the chains already supplied the solution structure, yet small models still failed to apply it reliably to new symbols. With PaLM 540B, chain-of-thought prompting produced almost 100% solve rates on the in-domain symbolic tasks; standard prompting already solved the coin-flip task for that PaLM configuration, though not for LaMDA 137B. On longer out-of-domain sequences, standard prompting failed on both tasks. Chain-of-thought prompting yielded improving scaling curves for sufficiently large models, while remaining less accurate out of domain than in domain. The result is evidence of facilitated length generalization under these constructed conditions, not unrestricted symbolic generalization.\n\nThe attention experiment illustrates one operation available inside an autoregressive model. Given fixed scores $s=[2,1,0,-1]$ and positive temperature $T$, the normalized weights are\n\n$$\na_j=\\frac{\\exp(s_j/T)}{\\sum_k \\exp(s_k/T)}.\n$$\n\nLowering $T$ increases the differences among the scaled scores, concentrating more weight on the largest score; raising $T$ makes the weights more uniform. The scores are fixed illustrative values, so this calculation does not measure a model's learned attention or explain why chain-of-thought behavior emerges with scale. Its relevant role is narrower: it shows how previously available context can contribute unequally when the model generates its next token. The paper's central mechanism remains the prompt-level sequence in which worked intermediate language precedes—and can therefore condition—the final answer.",
+      "sourceIds": [
+        "section-4",
+        "section-5"
+      ],
+      "claimIds": [
+        "c11",
+        "c12"
+      ],
+      "figureId": "fig-attention"
+    },
+    {
+      "id": "s7",
+      "title": "Robustness is not invariance",
+      "markdown": "Prompting methods can be sensitive to example wording and ordering. The paper therefore compared chains written independently by several annotators, including a more concise style, and also tested alternative exemplar sets sampled from GSM8K. All reported chain-of-thought prompt sets substantially exceeded the standard baseline in the highlighted LaMDA 137B arithmetic comparisons, but their results varied. Additional checks varied exemplar order and count.\n\nThe correct lesson is neither “one magic wording caused the result” nor “wording never matters.” The evidence indicates that the arithmetic benefit survived several changes in author, style, examples, order, and count, while retaining ordinary prompt variance. The evaluation protocol also matters: the main model outputs used greedy decoding; LaMDA results were averaged over five shuffled exemplar orders, while other models generally used one order to save compute. Robustness claims should remain tied to those sampled variations rather than generalized to every possible prompt.",
+      "sourceIds": [
+        "section-3",
+        "section-3-part-2"
+      ],
+      "claimIds": [
+        "c10"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s8",
+      "title": "Readable reasoning is evidence, not mind reading",
+      "markdown": "A common misconception is that a coherent chain of thought reveals the model's true internal reasoning. The paper explicitly stops short of that conclusion. Generated steps provide an interpretable behavioral window and can help diagnose where a displayed path fails, but fully characterizing the computations supporting an answer remains open.\n\nThe authors' manual inspection illustrates both value and danger. Among 50 randomly selected correct LaMDA 137B GSM8K answers, two reached the correct result through flawed reasoning. Among 50 wrong answers, 46% had nearly correct chains with minor mistakes and 54% had major semantic or coherence errors. These are small diagnostic samples under one stated model and benchmark condition, not population-wide error rates.\n\nFurther limits are practical and scientific. Reasoning paths are not guaranteed correct or factual. Large-scale rationale annotation could be costly even if authoring a few exemplars is manageable. The effect emerged only in very large tested models, making serving expensive. Finally, benchmark improvements do not settle whether the network is genuinely reasoning in a human-like sense. The defensible conclusion is behavioral: under the paper's conditions, preceding answers with demonstrated, meaningful intermediate steps elicited capabilities that direct-answer prompts often failed to expose.",
+      "sourceIds": [
+        "section-2",
+        "section-3",
+        "section-6",
+        "section-10"
+      ],
+      "claimIds": [
+        "c13",
+        "c14",
+        "c15",
+        "c16"
+      ],
+      "figureId": null
+    }
+  ],
+  "figures": [
+    {
+      "id": "fig-attention",
+      "kind": "attention",
+      "title": "Temperature changes normalized context weights",
+      "question": "For fixed scores $[2,1,0,-1]$, does a lower positive temperature make the normalized weights more concentrated or more uniform?",
+      "caption": "Softmax normalizes four fixed illustrative scores after division by temperature, allowing direct comparison of how sharply weight favors the largest score.",
+      "limitation": "The scores are illustrative, not a measured attention head, learned token similarities, or a mechanism claimed to cause chain-of-thought reasoning.",
+      "sourceIds": [
+        "section-1",
+        "section-2"
+      ],
+      "claimIds": [
+        "c1",
+        "c15"
+      ],
+      "illustrative": true
+    }
+  ],
+  "quiz": [
+    {
+      "question": "Under the paper's tested arithmetic conditions, which change best isolates whether meaningful intermediate language matters beyond merely generating more tokens?",
+      "options": [
+        {
+          "text": "Replace the reasoning with a length-matched sequence of dots.",
+          "explanation": "Correct. This preserves additional generation positions while removing semantic intermediate content; it performed about like the baseline."
+        },
+        {
+          "text": "Increase the number of parameters while leaving every prompt unchanged.",
+          "explanation": "Incorrect. This tests scale, but it does not isolate semantic reasoning from extra generated tokens."
+        },
+        {
+          "text": "Evaluate only problems whose answers are already present in the exemplars.",
+          "explanation": "Incorrect. That would confound reasoning with answer reuse and is not the relevant ablation."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c8"
+      ]
+    },
+    {
+      "question": "Why does putting a chain of thought after the answer differ mechanistically from the proposed prompt format?",
+      "options": [
+        {
+          "text": "It gives the model fewer total tokens than standard prompting.",
+          "explanation": "Incorrect. The distinguishing issue is order, not necessarily total token count."
+        },
+        {
+          "text": "The final answer cannot depend autoregressively on text generated after it.",
+          "explanation": "Correct. Later reasoning cannot condition an answer that has already been generated; the variant performed about like the baseline."
+        },
+        {
+          "text": "It converts the task into supervised finetuning.",
+          "explanation": "Incorrect. Both variants are prompting methods and require no parameter update."
+        }
+      ],
+      "answer": 1,
+      "sourceIds": [
+        "section-3",
+        "section-6"
+      ],
+      "claimIds": [
+        "c3",
+        "c9"
+      ]
+    },
+    {
+      "question": "A model produces a fluent chain and the correct final answer. What conclusion is justified by this paper alone?",
+      "options": [
+        {
+          "text": "The displayed text exactly records the model's internal computation.",
+          "explanation": "Incorrect. The paper says fully characterizing the supporting internal computation remains open."
+        },
+        {
+          "text": "The answer must be reliable because readable steps guarantee factuality.",
+          "explanation": "Incorrect. Generated paths are not guaranteed correct or factual, and flawed paths can reach correct answers."
+        },
+        {
+          "text": "The output is behavioral evidence worth inspecting, but neither faithfulness nor genuine human-like reasoning is established.",
+          "explanation": "Correct. This matches the paper's interpretability caveat and its stated open question about whether the network is actually reasoning."
+        }
+      ],
+      "answer": 2,
+      "sourceIds": [
+        "section-2",
+        "section-3",
+        "section-6",
+        "section-10"
+      ],
+      "claimIds": [
+        "c13",
+        "c14",
+        "c15"
+      ]
+    }
+  ],
+  "id": "chain-of-thought",
+  "createdAt": "2026-10-02T00:12:03.741Z",
+  "pipelineVersion": "subjects-lessons-v1",
+  "sources": [
+    {
+      "id": "abstract",
+      "label": "Original paper · abstract",
+      "url": "https://arxiv.org/abs/2201.11903",
+      "digest": "c2356d45a7feeb60cb94d409fdf4bd215c45dbdefa97f1c75d58748b4202bb3e",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:10:04.840Z"
+    },
+    {
+      "id": "main-text",
+      "label": "Original paper · unsectioned main text",
+      "url": "https://arxiv.org/html/2201.11903",
+      "digest": "29191e1ee783ed05ad5f3ad1317021f3d09adcde4c086b7ce95eeb15224beac4",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:10:04.840Z"
+    },
+    {
+      "id": "section-1",
+      "label": "1 Introduction",
+      "url": "https://arxiv.org/html/2201.11903#S1",
+      "digest": "521cbf01bc45e0895705b3b5cfdd38dcaff9e1c8eec277465c4f04a0a622d921",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:10:04.840Z"
+    },
+    {
+      "id": "section-2",
+      "label": "2 Chain-of-Thought Prompting",
+      "url": "https://arxiv.org/html/2201.11903#S2",
+      "digest": "2c604d46cd44e72f85b0050be9e03295f8bef2f519ce6f966b3646f087f4a2f2",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:10:04.840Z"
+    },
+    {
+      "id": "section-3",
+      "label": "3 Arithmetic Reasoning",
+      "url": "https://arxiv.org/html/2201.11903#S3",
+      "digest": "da0447bfdd4c20d469ea3f0eba59a421ef13af60dc1762e60bbe744593b281e9",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:10:04.840Z"
+    },
+    {
+      "id": "section-3-part-2",
+      "label": "3 Arithmetic Reasoning · part 2",
+      "url": "https://arxiv.org/html/2201.11903#S3",
+      "digest": "6060c98eb2f6611ba687f39ff7cdd3cdeccdbe0305ec190b4baad38fea1f351e",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:10:04.840Z"
+    },
+    {
+      "id": "section-4",
+      "label": "4 Commonsense Reasoning",
+      "url": "https://arxiv.org/html/2201.11903#S4",
+      "digest": "c0ef27bf66c77124f22cd505f6b53189d74cfd5e85be2c4077ebdf797419e75c",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:10:04.840Z"
+    },
+    {
+      "id": "section-5",
+      "label": "5 Symbolic Reasoning",
+      "url": "https://arxiv.org/html/2201.11903#S5",
+      "digest": "0a446ea3ee87c78dddc9516ae96b4c6566293222f99aef1a4b6e202e01888b79",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:10:04.840Z"
+    },
+    {
+      "id": "section-6",
+      "label": "6 Discussion",
+      "url": "https://arxiv.org/html/2201.11903#S6",
+      "digest": "ba86659ef12ca3c76c84c6406c55b95aa5403733e92fbfce9ce6c4b86d04579a",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:10:04.840Z"
+    },
+    {
+      "id": "section-7",
+      "label": "7 Related Work",
+      "url": "https://arxiv.org/html/2201.11903#S7",
+      "digest": "f5b4698cdb62c5c05dd9d0f720475aa2cb29c8a1515fe1ee0cb7a2881a8f4314",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:10:04.840Z"
+    },
+    {
+      "id": "section-8",
+      "label": "8 Conclusions",
+      "url": "https://arxiv.org/html/2201.11903#S8",
+      "digest": "ef752168b10ceb23beda40a7a236195643b11d4c2a4fa0278426d40d7886939e",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:10:04.840Z"
+    },
+    {
+      "id": "section-10",
+      "label": "Checklist",
+      "url": "https://arxiv.org/html/2201.11903#Sx2",
+      "digest": "da2fdee000078bc77b61bf8532791222caa6f1513dec34b14d240437c3d14b0e",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:10:04.840Z"
+    }
+  ],
+  "review": {
+    "status": "passed",
+    "reviewedAt": "2026-10-02T00:27:25.115Z",
+    "contentDigest": "c6ed740df5679e935b0485d8f8d6105be351fdfafde0e72ecdef12820d271a7a"
+  }
+}

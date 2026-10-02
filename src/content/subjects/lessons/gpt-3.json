@@ -1,0 +1,511 @@
+{
+  "title": "The Prompt as a Temporary Task: Reconstructing GPT-3’s In-Context Learning",
+  "summary": "GPT-3 showed that a scaled autoregressive model can infer tasks from instructions and demonstrations at inference time, without updating its trained weights.",
+  "prerequisites": [
+    "Autoregressive next-token prediction",
+    "Conditional probability and softmax",
+    "Differences between training and inference",
+    "Accuracy, F1, BLEU, and perplexity metrics"
+  ],
+  "objectives": [
+    "Distinguish in-context learning from task-specific fine-tuning.",
+    "Explain how demonstrations form a temporary task specification.",
+    "Explain how GPT-3 scores answers without updating its weights.",
+    "Interpret scaling evidence under the paper's evaluation conditions.",
+    "Identify contamination, task variation, and prompt sensitivity as limits."
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "mechanism",
+      "statement": "GPT-3 is an autoregressive language model with 175 billion trainable parameters.",
+      "conditions": "For the largest model named GPT-3 in the paper’s eight-model series.",
+      "sourceIds": [
+        "abstract",
+        "section-2"
+      ]
+    },
+    {
+      "id": "c2",
+      "kind": "mechanism",
+      "statement": "In the reported zero-shot, one-shot, and few-shot evaluations, task information was supplied through text and no gradient updates or task-specific fine-tuning were performed.",
+      "conditions": "For the paper’s inference-time evaluations rather than hypothetical GPT-3 fine-tuning.",
+      "sourceIds": [
+        "abstract",
+        "section-2"
+      ]
+    },
+    {
+      "id": "c3",
+      "kind": "mechanism",
+      "statement": "Few-shot evaluation conditions the model on K completed demonstrations followed by a new context whose completion must be produced.",
+      "conditions": "For tasks that can be represented as context-completion pairs within the model’s context window.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c4",
+      "kind": "result",
+      "statement": "The study evaluated eight principal model sizes from 125 million to 175 billion parameters, all trained for 300 billion tokens.",
+      "conditions": "For the model family and training runs listed in Table 2.1.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c5",
+      "kind": "mechanism",
+      "statement": "All evaluated models used a context window of 2,048 tokens, typically permitting roughly 10 to 100 few-shot demonstrations depending on example length.",
+      "conditions": "For the paper’s models and task-dependent prompt formats.",
+      "sourceIds": [
+        "section-2",
+        "section-2-part-2"
+      ]
+    },
+    {
+      "id": "c6",
+      "kind": "equation",
+      "statement": "For selected multiple-choice datasets, the paper scored a candidate completion with a calibrated ratio P(completion given context) divided by P(completion given a generic answer context).",
+      "conditions": "Used for ARC, OpenBookQA, and RACE after development-set evaluation; most other multiple-choice tasks used per-token likelihood.",
+      "sourceIds": [
+        "section-2-part-2"
+      ]
+    },
+    {
+      "id": "c7",
+      "kind": "result",
+      "statement": "Few-shot GPT-3 reached 71.2% on closed-book TriviaQA, compared with 64.3% zero-shot and 68.0% one-shot.",
+      "conditions": "For GPT-3 175B on the TriviaQA wiki-split test server without retrieval or task-specific fine-tuning.",
+      "sourceIds": [
+        "section-1-part-2",
+        "section-3",
+        "section-3-part-2"
+      ]
+    },
+    {
+      "id": "c8",
+      "kind": "result",
+      "statement": "On LAMBADA, a few-shot fill-in-the-blank format produced 86.4% accuracy, while the reported zero-shot result was 76.2%.",
+      "conditions": "For GPT-3 175B; zero-shot used a different format, and the dataset had substantial potential training contamination.",
+      "sourceIds": [
+        "section-3",
+        "section-4"
+      ]
+    },
+    {
+      "id": "c9",
+      "kind": "result",
+      "statement": "Few-shot performance did not improve uniformly: GPT-3 scored 51.5% on ARC Challenge versus 53.2% one-shot, and 49.4% on WiC, approximately chance.",
+      "conditions": "For the reported GPT-3 175B evaluations and their particular prompts and scoring procedures.",
+      "sourceIds": [
+        "section-3-part-3",
+        "section-3-part-4"
+      ]
+    },
+    {
+      "id": "c10",
+      "kind": "result",
+      "statement": "The few-shot arithmetic evaluation reported 100.0% accuracy for two-digit addition but only 9.3% for five-digit addition.",
+      "conditions": "For GPT-3 175B on 2,000 randomly generated instances per arithmetic task, requiring exact answers.",
+      "sourceIds": [
+        "section-3-part-4",
+        "section-3-part-5"
+      ]
+    },
+    {
+      "id": "c11",
+      "kind": "result",
+      "statement": "Across many tasks, performance improved with model capacity, and the advantage of additional in-context examples often grew for larger models.",
+      "conditions": "A broad empirical pattern rather than a guarantee for every task or every value of K.",
+      "sourceIds": [
+        "section-1",
+        "section-1-part-2",
+        "section-3-part-4",
+        "section-3-part-5"
+      ]
+    },
+    {
+      "id": "c12",
+      "kind": "caveat",
+      "statement": "Detected benchmark overlap led the authors to mark PIQA and Winograd results with asterisks and to omit several heavily contaminated language-modeling benchmarks.",
+      "conditions": "Under the paper’s conservative post-hoc overlap analysis following a filtering bug.",
+      "sourceIds": [
+        "section-2-part-2",
+        "section-4"
+      ]
+    },
+    {
+      "id": "c13",
+      "kind": "result",
+      "statement": "Human evaluators identified approximately 200-word articles from GPT-3 175B with 52% mean accuracy after neutral responses were excluded.",
+      "conditions": "For 25 selected news titles and subtitles, few-shot news conditioning, and roughly 80 US-based participants per model.",
+      "sourceIds": [
+        "section-3-part-6"
+      ]
+    },
+    {
+      "id": "c14",
+      "kind": "caveat",
+      "statement": "The paper’s term in-context learning does not decide whether inference-time behavior constitutes learning a new task or recognizing a pattern acquired during pretraining.",
+      "conditions": "For interpreting the inner-loop behavior observed from prompts without weight updates.",
+      "sourceIds": [
+        "section-1"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "s1",
+      "title": "The problem was not merely predicting better text",
+      "markdown": "Before GPT-3, a common transfer recipe was: pretrain a language model broadly, then update its weights on thousands or more labeled examples for each downstream task. That removes the need to invent a new architecture for every task, but it does not remove task-specific training.\n\nBrown and colleagues asked whether scale could support a different interface. Instead of modifying the model for translation, question answering, or cloze completion, could a user describe or demonstrate the task inside ordinary text and receive the desired continuation? Their largest model, GPT-3, had 175 billion trainable parameters. It belonged to an eight-model series ranging from 125 million to 175 billion parameters, allowing the authors to examine how behavior changed with capacity.\n\nThe contribution is therefore more specific than “a large model performs well.” It is an evaluation of **task specification through context**. GPT-3’s weights encode what pretraining produced; the prompt supplies a temporary description of what those fixed weights should do now. That distinction explains both the method’s appeal and its limits.",
+      "sourceIds": [
+        "abstract",
+        "section-1",
+        "section-2"
+      ],
+      "claimIds": [
+        "c1",
+        "c2",
+        "c4"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s2",
+      "title": "The probability engine underneath the demonstrations",
+      "markdown": "An autoregressive language model assigns a probability to the next token from all preceding tokens. If a token sequence is $x_1,\\ldots,x_T$, its factorization is\n\n$$P(x_1,\\ldots,x_T)=\\prod_{t=1}^{T}P(x_t\\mid x_1,\\ldots,x_{t-1}).$$\n\nHere $T$ is the sequence length, $x_t$ is the token at position $t$, and $P(x_t\\mid x_{<t})$ is the model’s conditional probability for that token given the prefix $x_{<t}=(x_1,\\ldots,x_{t-1})$. Inference does not add a separate symbolic task solver: instructions, demonstrations, test input, and generated answer all occupy one token sequence.\n\nThe interactive figure isolates one prerequisite behind this computation. It takes four fixed scores $s=[2,1,0,-1]$, divides them by a positive temperature $\\tau$, and computes\n\n$$a_i=\\frac{\\exp(s_i/\\tau)}{\\sum_{j=1}^{4}\\exp(s_j/\\tau)}.$$\n\nEach $a_i$ is a normalized attention weight. At $\\tau=1$, the unnormalized values are approximately $[7.389,2.718,1,0.368]$ and sum to $11.475$. Thus the first weight is $7.389/11.475\\approx0.644$, while the last is $0.368/11.475\\approx0.032$. This is an illustrative calculation: lowering temperature sharpens these fixed weights, but it is not a measured GPT-3 head and does not reveal learned token similarity. Its value is narrower—it shows how relative scores can become graded influence rather than a hard rule.",
+      "sourceIds": [
+        "section-1",
+        "section-2"
+      ],
+      "claimIds": [
+        "c1",
+        "c2"
+      ],
+      "figureId": "fig-attention"
+    },
+    {
+      "id": "s3",
+      "title": "A prompt becomes a temporary task specification",
+      "markdown": "The paper separates three inference settings by the number of demonstrations. In **zero-shot**, the model receives a natural-language instruction and no completed example. In **one-shot**, it also receives one demonstration. In **few-shot**, it receives $K$ demonstrations, commonly around 10 to 100, followed by an unfinished instance. No setting changes the weights.\n\nWrite demonstration $i$ as a pair $(c_i,y_i)$, where $c_i$ is its input context and $y_i$ is its desired completion. A few-shot prompt has the conceptual form\n\n$$c_1\\!\\to\\!y_1;\\;c_2\\!\\to\\!y_2;\\;\\ldots;\\;c_K\\!\\to\\!y_K;\\;c_*\\!\\to\\;?$$\n\nHere $K$ is the demonstration count, $c_*$ is the new input, and the question mark denotes the completion to predict. The arrows and semicolons describe structure; the actual implementation used textual formatting and delimiters.\n\nStep by step, the demonstrations can communicate the input-output relation, allowable answer labels, output length, and surface format. LAMBADA illustrates why formatting matters. The underlying benchmark asks for one final word, but ordinary continuation permits many plausible longer endings. Several fill-in-the-blank examples frame the required answer as one word. GPT-3 then reached 86.4% few-shot accuracy versus 76.2% in the differently formatted zero-shot condition. This does not show that examples always help: the paper reports that the one-shot fill-in-the-blank version was worse than zero-shot, suggesting that one example could be insufficient to establish the pattern.",
+      "sourceIds": [
+        "section-1",
+        "section-2",
+        "section-3"
+      ],
+      "claimIds": [
+        "c2",
+        "c3",
+        "c5",
+        "c8",
+        "c14"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s4",
+      "title": "How answers were selected and scored",
+      "markdown": "For multiple-choice tasks, the prompt ended with a context and each candidate completion was evaluated under the language model. Most tasks compared per-token likelihood so that a longer answer was not penalized merely for containing more token factors.\n\nFor ARC, OpenBookQA, and RACE, development-set experiments supported an additional calibration. In simplified notation, the score was\n\n$$S(y;c)=\\frac{P(y\\mid c)}{P(y\\mid a)},$$\n\nwhere $y$ is a candidate completion, $c$ is the full task context, and $a$ is a generic answer prefix such as “Answer: ” or “A: ”. The numerator measures compatibility with the question and demonstrations; the denominator discounts a completion that is generally likely after an answer cue. The selected answer maximizes $S(y;c)$ among the candidates.\n\nFor an illustrative worked example, suppose candidates A and B have $P(A\\mid c)=0.30$ and $P(B\\mid c)=0.24$, while their generic probabilities are $P(A\\mid a)=0.20$ and $P(B\\mid a)=0.08$. Raw probability selects A because $0.30>0.24$. Calibration gives $S(A;c)=0.30/0.20=1.5$ and $S(B;c)=0.24/0.08=3.0$, so it selects B. These invented numbers explain the equation; they are not benchmark measurements.\n\nFree-form tasks required different decoding and metrics. The paper used beam search for specified free-form evaluations and then applied dataset-standard measures such as exact match, F1, or BLEU. Consequently, “GPT-3 performance” is not one universal measurement procedure.",
+      "sourceIds": [
+        "section-2-part-2"
+      ],
+      "claimIds": [
+        "c6"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s5",
+      "title": "Scale changed how useful context could be",
+      "markdown": "The authors compared models across three orders of magnitude in parameter count. Validation cross-entropy followed a smooth power-law trend with training compute over the studied range, while many downstream tasks also improved with capacity. More importantly for the paper’s thesis, the gap between zero-, one-, and few-shot performance often became larger for bigger models. On SuperGLUE, performance rose with both model size and the number of demonstrations.\n\nThe scaling figure provides a deliberately abstract model:\n\n$$L(N)=1+4N^{-0.3},$$\n\nwhere $N$ is an illustrative resource multiplier and $L(N)$ is an invented loss. For example, $L(1)=5$, while $L(8)=1+4\\cdot8^{-0.3}\\approx3.14$. Increasing resources reduces the excess term $4N^{-0.3}$, but with diminishing absolute improvement. The control changes only $N$.\n\nThis toy helps distinguish a **power-law shape** from the paper’s actual fitted evidence. Its coefficients are not GPT-3 measurements, it does not represent an optimal allocation of parameters, data, and compute, and it says nothing by itself about few-shot skill. The empirical claim must remain narrower: within the studied family, scale was associated with smoother loss improvements and usually stronger use of context—not guaranteed monotonic gains on every task.",
+      "sourceIds": [
+        "section-1",
+        "section-1-part-2",
+        "section-2",
+        "section-3",
+        "section-3-part-4"
+      ],
+      "claimIds": [
+        "c4",
+        "c5",
+        "c11"
+      ],
+      "figureId": "fig-scaling"
+    },
+    {
+      "id": "s6",
+      "title": "Evidence is conditional, not a single victory score",
+      "markdown": "The results vary sharply by dataset and evaluation regime. In closed-book TriviaQA—no external retrieval and no task-specific fine-tuning—GPT-3 175B rose from 64.3% zero-shot to 68.0% one-shot and 71.2% few-shot. Yet demonstrations were not a universal improvement operator. ARC Challenge scored 53.2% one-shot but 51.5% few-shot, and WiC few-shot accuracy was 49.4%, approximately random chance.\n\nArithmetic makes the boundary especially visible. On 2,000 randomly generated examples per task, with answers required exactly, few-shot GPT-3 achieved 100.0% on two-digit addition and 80.4% on three-digit addition, but only 9.3% on five-digit addition. The relevant conclusion is graded capability, not possession of a reliable general arithmetic algorithm.\n\nThe news experiment measured something different again: whether people could identify generated articles. With selected titles and subtitles, three conditioning articles, approximately 200-word outputs, and roughly 80 US-based participants per model, mean detection accuracy for GPT-3 175B was 52% after neutral judgments were excluded. That finding concerns this controlled discrimination task. It does not establish factual accuracy, trustworthy journalism, or indistinguishability for arbitrary genres and lengths.",
+      "sourceIds": [
+        "section-3-part-2",
+        "section-3-part-3",
+        "section-3-part-4",
+        "section-3-part-5",
+        "section-3-part-6"
+      ],
+      "claimIds": [
+        "c7",
+        "c9",
+        "c10",
+        "c13"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s7",
+      "title": "What in-context learning does—and does not—mean",
+      "markdown": "A common misconception is that few-shot prompting performs miniature fine-tuning inside the prompt. Operationally, the paper draws a firm boundary: fine-tuning updates weights using task-specific training, whereas in-context learning uses forward passes with fixed weights. The output can change dramatically when demonstrations change, but that alone does not imply a persistent parameter update.\n\nA deeper interpretation remains unresolved. The phrase “in-context learning” describes behavior: the model uses context to adapt or recognize the requested task. It does not prove whether the model constructs a genuinely new procedure during inference or retrieves and recombines patterns absorbed during pretraining.\n\nSeveral limits constrain the conclusions. The 2,048-token window bounds $K$ and creates competition between more demonstrations and longer examples. Prompt wording and format can alter the task the model appears to solve. Gains are uneven across datasets, with weak results on natural-language inference, some reading comprehension tasks, WiC, and larger arithmetic problems. Closed-book answers draw only on information encoded in parameters and can still be wrong.\n\nFinally, web-scale pretraining complicates benchmark validity. A filtering bug left some benchmark overlaps in the training corpus. The authors built conservative clean subsets, marked PIQA and Winograd results with asterisks, and omitted several language-modeling datasets that were largely contained in training data. Their analysis often found little score change, but it could not turn possible overlap into a universal guarantee of uncontaminated evaluation. GPT-3’s central result is therefore best read as evidence that scale can make textual task specification surprisingly effective—under finite context, prompt-sensitive procedures, uneven task performance, and imperfect knowledge of training-test overlap.",
+      "sourceIds": [
+        "section-1",
+        "section-1-part-2",
+        "section-2",
+        "section-2-part-2",
+        "section-3-part-4",
+        "section-4"
+      ],
+      "claimIds": [
+        "c2",
+        "c5",
+        "c9",
+        "c12",
+        "c14"
+      ],
+      "figureId": null
+    }
+  ],
+  "figures": [
+    {
+      "id": "fig-attention",
+      "kind": "attention",
+      "title": "From relative scores to normalized influence",
+      "question": "As temperature decreases, which of the four fixed scores receives a larger share of the normalized attention?",
+      "caption": "Four illustrative scores [2, 1, 0, -1] are divided by a positive temperature and normalized with softmax; lower temperature concentrates weight on the highest score.",
+      "limitation": "The scores are fixed teaching values, not a measured GPT-3 attention head, learned token similarities, or evidence about any benchmark result.",
+      "sourceIds": [
+        "section-1",
+        "section-2"
+      ],
+      "claimIds": [
+        "c1",
+        "c2"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "fig-scaling",
+      "kind": "scaling",
+      "title": "Reading the shape of a power law",
+      "question": "When the resource multiplier increases, how does the illustrative excess-loss term change?",
+      "caption": "The control evaluates the invented teaching law L(N)=1+4N^(-0.3), showing a decreasing excess-loss term as the resource multiplier N grows.",
+      "limitation": "The coefficients are illustrative rather than fitted to GPT-3, and the control does not model compute-optimal allocation or predict downstream few-shot accuracy.",
+      "sourceIds": [
+        "section-1",
+        "section-3"
+      ],
+      "claimIds": [
+        "c11"
+      ],
+      "illustrative": true
+    }
+  ],
+  "quiz": [
+    {
+      "question": "A fixed GPT-3 model is given 20 completed translation examples and then a new sentence to translate. Which description matches the paper’s setting?",
+      "options": [
+        {
+          "text": "Few-shot in-context learning",
+          "explanation": "Correct: multiple demonstrations condition inference, while the model’s weights remain unchanged."
+        },
+        {
+          "text": "Task-specific fine-tuning",
+          "explanation": "Incorrect: fine-tuning requires weight updates on task-specific supervised data."
+        },
+        {
+          "text": "Zero-shot transfer",
+          "explanation": "Incorrect: zero-shot permits an instruction but no completed demonstrations."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c2",
+        "c3"
+      ]
+    },
+    {
+      "question": "Using the illustrative calibrated score S(y;c)=P(y|c)/P(y|a), candidate A scores 0.4/0.2 and B scores 0.3/0.1. Which candidate is selected?",
+      "options": [
+        {
+          "text": "Candidate A",
+          "explanation": "Incorrect: A’s calibrated score is 2, which is lower than B’s score."
+        },
+        {
+          "text": "Candidate B",
+          "explanation": "Correct: B’s calibrated score is 3, exceeding A’s score of 2."
+        },
+        {
+          "text": "They tie",
+          "explanation": "Incorrect: calibration changes their raw probabilities into unequal ratios."
+        }
+      ],
+      "answer": 1,
+      "sourceIds": [
+        "section-2-part-2"
+      ],
+      "claimIds": [
+        "c6"
+      ]
+    },
+    {
+      "question": "What is the most defensible interpretation of GPT-3’s 100% few-shot two-digit addition result?",
+      "options": [
+        {
+          "text": "It proves a reliable general arithmetic algorithm",
+          "explanation": "Incorrect: accuracy fell substantially as digit count and operation complexity increased."
+        },
+        {
+          "text": "It demonstrates exact success under one bounded test condition",
+          "explanation": "Correct: the result applies to the generated two-digit task, its prompt, and exact-match evaluation."
+        },
+        {
+          "text": "It shows demonstrations improve every reasoning task",
+          "explanation": "Incorrect: several reported tasks showed small, inconsistent, or negative few-shot changes."
+        }
+      ],
+      "answer": 1,
+      "sourceIds": [
+        "section-3-part-3",
+        "section-3-part-5"
+      ],
+      "claimIds": [
+        "c9",
+        "c10"
+      ]
+    }
+  ],
+  "id": "gpt-3",
+  "createdAt": "2026-10-02T00:39:23.806Z",
+  "pipelineVersion": "subjects-lessons-v1",
+  "sources": [
+    {
+      "id": "abstract",
+      "label": "Original paper · abstract",
+      "url": "https://arxiv.org/abs/2005.14165",
+      "digest": "f58a1d0d7ec0f2dee132faa85c3f041ac29b01fa439f46a6f80a5724f06367ef",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:37:18.970Z"
+    },
+    {
+      "id": "section-1",
+      "label": "1 Introduction",
+      "url": "https://arxiv.org/html/2005.14165#S1",
+      "digest": "3bd7f5e62ac2859c3ab035b08e0a27eeeed7c341d643aa0edc699e45ab22e654",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:37:18.970Z"
+    },
+    {
+      "id": "section-1-part-2",
+      "label": "1 Introduction · part 2",
+      "url": "https://arxiv.org/html/2005.14165#S1",
+      "digest": "21d97416482dcf533bc484f53a636b86434e7099ff13fa8cf6c7d7c4323b7e16",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:37:18.970Z"
+    },
+    {
+      "id": "section-2",
+      "label": "2 Approach",
+      "url": "https://arxiv.org/html/2005.14165#S2",
+      "digest": "ac9efef34327944ded62cc3c3c8a426d9a0f7ac5dcb72e6c30c733f8b8d106e7",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:37:18.970Z"
+    },
+    {
+      "id": "section-2-part-2",
+      "label": "2 Approach · part 2",
+      "url": "https://arxiv.org/html/2005.14165#S2",
+      "digest": "fa4d96a8fc960a1a5eb67476428d4d0b1eb1cd5ca6fe8d75a1da9b3c6bccc8c6",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:37:18.970Z"
+    },
+    {
+      "id": "section-3",
+      "label": "3 Results",
+      "url": "https://arxiv.org/html/2005.14165#S3",
+      "digest": "517113e7387b9093979d72d7d5f213c7fe3fd0badc0ff6620f217d2f4be8ac37",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:37:18.970Z"
+    },
+    {
+      "id": "section-3-part-2",
+      "label": "3 Results · part 2",
+      "url": "https://arxiv.org/html/2005.14165#S3",
+      "digest": "dc6ffd70eea6ce2b779704f2b5df9e14385411bddadf76b9a5332cd11ce48f7c",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:37:18.970Z"
+    },
+    {
+      "id": "section-3-part-3",
+      "label": "3 Results · part 3",
+      "url": "https://arxiv.org/html/2005.14165#S3",
+      "digest": "1fd4391f014018df99ffea8460260f3118eb6018334e0d2b003868060966aae9",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:37:18.970Z"
+    },
+    {
+      "id": "section-3-part-4",
+      "label": "3 Results · part 4",
+      "url": "https://arxiv.org/html/2005.14165#S3",
+      "digest": "33bce7af152c1765d3a1aef8acb2a169704bef793183846844e07eba7ffc5c95",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:37:18.970Z"
+    },
+    {
+      "id": "section-3-part-5",
+      "label": "3 Results · part 5",
+      "url": "https://arxiv.org/html/2005.14165#S3",
+      "digest": "a7cf8f1dedf991d9a2c73b5834b865d427afb69d2cd577342ca73c534b31221b",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:37:18.970Z"
+    },
+    {
+      "id": "section-3-part-6",
+      "label": "3 Results · part 6",
+      "url": "https://arxiv.org/html/2005.14165#S3",
+      "digest": "e9ffadb0456c8f9339161f10feaf1245191ae7b2dcadcf7fe88b9276511f3315",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:37:18.970Z"
+    },
+    {
+      "id": "section-3-part-7",
+      "label": "3 Results · part 7",
+      "url": "https://arxiv.org/html/2005.14165#S3",
+      "digest": "222b0a6a84b97b188e7d9773bbdb45ab1cd19ea85439593bd194668286a8e192",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:37:18.970Z"
+    },
+    {
+      "id": "section-3-part-8",
+      "label": "3 Results · part 8",
+      "url": "https://arxiv.org/html/2005.14165#S3",
+      "digest": "69aec36900c3f46693a427eea40cf7e6bdaf696b6d5a4011260bb6485397ed58",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:37:18.970Z"
+    },
+    {
+      "id": "section-4",
+      "label": "4 Measuring and Preventing Memorization Of Benchmarks",
+      "url": "https://arxiv.org/html/2005.14165#S4",
+      "digest": "697d9f942a199b4e4f88970a5b4f527f325c3f52f24a38f6739ca59ccb2a684e",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:37:18.970Z"
+    }
+  ],
+  "review": {
+    "status": "passed",
+    "reviewedAt": "2026-10-02T00:39:23.806Z",
+    "contentDigest": "a9c78000a7b72725fb762c3034750ae07e532b5e98f33dff87a82d2c84e6eec8"
+  }
+}

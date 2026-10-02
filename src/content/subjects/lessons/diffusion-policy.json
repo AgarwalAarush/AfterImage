@@ -1,0 +1,485 @@
+{
+  "title": "From Noise to Coordinated Motion: Building a Diffusion Policy",
+  "summary": "Diffusion Policy learns to denoise observation-conditioned action sequences, then executes short prefixes and repeatedly replans for coherent yet responsive robot control.",
+  "prerequisites": [
+    "Supervised behavior cloning from demonstrations",
+    "Conditional probability and multimodal distributions",
+    "Vectors, gradients, Gaussian noise, and mean-squared error",
+    "Receding-horizon planning and control"
+  ],
+  "objectives": [
+    "Explain why direct action regression can fail on multimodal demonstrations.",
+    "Derive the conditional denoising update and define each symbol.",
+    "Distinguish observation, prediction, and execution horizons.",
+    "Explain how sequence sampling promotes temporal consistency.",
+    "Interpret reported results within their stated evaluation conditions."
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "mechanism",
+      "statement": "Diffusion Policy represents a visuomotor policy as an observation-conditioned denoising process over robot actions rather than as a direct action regressor.",
+      "conditions": "Behavior cloning from demonstrations with visual observations used as conditioning information.",
+      "sourceIds": [
+        "abstract"
+      ]
+    },
+    {
+      "id": "c2",
+      "kind": "mechanism",
+      "statement": "The policy begins inference from Gaussian noise and repeatedly refines it into an action sequence.",
+      "conditions": "A DDPM sampler using K denoising iterations.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c3",
+      "kind": "equation",
+      "statement": "One denoising step rescales a noise-corrected sample and adds scheduled Gaussian perturbation: $\\mathbf{x}^{k-1}=\\alpha(\\mathbf{x}^{k}-\\gamma\\epsilon_\\theta(\\mathbf{x}^{k},k)+\\mathcal{N}(0,\\sigma^2I))$.",
+      "conditions": "The paper's generic DDPM formulation; alpha, gamma, and sigma may vary with denoising index k.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c4",
+      "kind": "equation",
+      "statement": "Training corrupts a demonstrated action sample at a randomly chosen noise level and minimizes mean-squared noise-prediction error.",
+      "conditions": "Samples are drawn from the demonstration dataset and corrupted using noise appropriate to iteration k.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c5",
+      "kind": "mechanism",
+      "statement": "For control, the denoiser models the conditional distribution of action sequences given recent observations, without generating future observations.",
+      "conditions": "Visuomotor policy formulation with observations supplied as conditioning rather than denoising outputs.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c6",
+      "kind": "mechanism",
+      "statement": "Closed-loop execution predicts a longer sequence, executes only a prefix, and then replans from newer observations.",
+      "conditions": "Observation horizon To, prediction horizon Tp, and execution horizon Ta with Ta actions committed before replanning.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c7",
+      "kind": "mechanism",
+      "statement": "Stochastic initialization and perturbations permit different samples to settle into different action modes.",
+      "conditions": "Stochastic Langevin-style sampling from an observation-conditioned action distribution.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c8",
+      "kind": "mechanism",
+      "statement": "Jointly sampling an action sequence can preserve commitment to one coherent behavioral mode across adjacent time steps.",
+      "conditions": "Tasks where several trajectories are valid but switching between them mid-sequence would cause jitter.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c9",
+      "kind": "mechanism",
+      "statement": "The paper studies both a temporal CNN denoiser and a transformer denoiser; the latter targets rapidly changing action signals but requires more tuning.",
+      "conditions": "Comparison of the paper's two noise-prediction backbones in its state-based experiments.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c10",
+      "kind": "result",
+      "statement": "The paper reports a 46.9% average success-rate improvement over prior state of the art across its 15-task, four-benchmark evaluation suite.",
+      "conditions": "The paper's simulated and real evaluation suite, containing varied actuation, observation, object, and task settings.",
+      "sourceIds": [
+        "section-5"
+      ]
+    },
+    {
+      "id": "c11",
+      "kind": "result",
+      "statement": "In the reported real-world Push-T comparison, the best end-to-end Diffusion Policy reached 95% success and 0.80 mean IoU.",
+      "conditions": "Real-world multi-stage Push-T; success thresholded by the minimum demonstration IoU; commands predicted at 10 Hz and interpolated to 125 Hz.",
+      "sourceIds": [
+        "section-6"
+      ]
+    },
+    {
+      "id": "c12",
+      "kind": "result",
+      "statement": "The action-execution horizon exhibited a consistency–responsiveness tradeoff, with eight steps reported as best for most tested tasks.",
+      "conditions": "The paper's action-horizon ablation; this is not asserted as a universal default for new tasks.",
+      "sourceIds": [
+        "section-5"
+      ]
+    },
+    {
+      "id": "c13",
+      "kind": "caveat",
+      "statement": "Diffusion Policy retains behavior cloning's dependence on adequate demonstrations.",
+      "conditions": "Learning from demonstrations without an additional objective that exploits suboptimal or negative data.",
+      "sourceIds": [
+        "section-9"
+      ]
+    },
+    {
+      "id": "c14",
+      "kind": "caveat",
+      "statement": "Iterative denoising costs more computation and latency than simpler recurrent mixture policies, which can matter for high-rate control.",
+      "conditions": "Comparison with simpler methods such as LSTM-GMM, especially when the required control frequency is high.",
+      "sourceIds": [
+        "section-9"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "s1",
+      "title": "Why one observation may imply several correct actions",
+      "markdown": "Behavior cloning starts with demonstrations containing an observation $\\mathbf{O}_t$ and an expert action $\\mathbf{a}_t$. A conventional regressor learns one output for each input. That is troublesome when equally competent demonstrators go left or right around an obstacle: averaging the two choices may produce a third action that belongs to neither successful strategy.\n\nDiffusion Policy instead represents a conditional distribution over action sequences. Here $t$ is environment time, $\\mathbf{O}_t$ is a window of recent sensory observations, and $\\mathbf{A}_t=(\\mathbf{a}_t,\\ldots,\\mathbf{a}_{t+T_p-1})$ is a candidate sequence of $T_p$ future actions. The desired object is $p(\\mathbf{A}_t\\mid\\mathbf{O}_t)$, not merely a conditional mean. Different random initializations can therefore produce different coherent candidates.\n\nSequence-valued output also addresses a second difficulty: actions that are individually plausible may be incompatible when placed next to one another. If a robot can pass a block on either side, independently selecting each action could alternate between the left and right modes. Jointly denoising the sequence lets a sample commit to one route across adjacent time steps. This is temporal consistency, not a guarantee that every sampled route will succeed; the distribution is still learned from the demonstrated data.\n\nThe distinction between distribution and sample is important. The learned policy represents many possible action sequences through its conditional denoising process, while one inference run produces one particular $\\mathbf{A}_t^0$. Closed-loop execution can then use only a prefix of that sample and request a new one after receiving newer observations. Multimodal representation and receding-horizon replanning therefore solve different problems: the former preserves alternative demonstrated behaviors, while the latter restores responsiveness during execution.\n\nThis does not mean randomness alone solves multimodality. The learned denoising field must shape noise into modes supported by demonstrations. The important representational change is that inference searches through a structured distribution rather than emitting one averaged vector.",
+      "sourceIds": [
+        "section-1",
+        "section-2",
+        "section-4"
+      ],
+      "claimIds": [
+        "c1",
+        "c5",
+        "c7"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s2",
+      "title": "Prerequisite: what Gaussian initialization really supplies",
+      "markdown": "At inference, sampling begins from a Gaussian action-sequence vector $\\mathbf{A}_t^K$. The superscript $K$ identifies the noisiest diffusion level; it is distinct from the environment-time index $t$. Because the vector represents a complete proposal of $T_p$ actions, its dimension is the per-step action dimension multiplied by the prediction horizon.\n\nThe interactive calculation isolates the geometry of this initialization. For independent Gaussian coordinates with standard deviation $\\sigma$, the expected squared norm is $D\\sigma^2$, so the root-mean-square radius is\n\n$$\n\\sqrt{\\mathbb{E}\\lVert\\mathbf{A}_t^K\\rVert_2^2}=\\sigma\\sqrt{D}.\n$$\n\nFor the constructed setting $D=4$ and $\\sigma=0.5$ action units per coordinate,\n\n$$\n\\sigma\\sqrt{D}=0.5\\sqrt{4}=1\n$$\n\naction unit. This radius is a property of the declared Gaussian example, not a learned parameter or measured result from the robot experiments. Increasing $\\sigma$ rescales every coordinate and therefore the norm distribution. Increasing $D$ raises the RMS radius as $\\sqrt{D}$ and makes sampled norms relatively more concentrated around their typical scale.\n\nGaussian initialization supplies stochastic starting proposals, so separate inference runs can enter different convergence basins of the learned conditional action distribution. It does not by itself encode a maneuver, trajectory, or control objective. The observation-conditioned denoiser provides that task-specific structure by repeatedly transforming the initial noise toward an action sequence supported by the demonstrations.",
+      "sourceIds": [
+        "section-2",
+        "section-4"
+      ],
+      "claimIds": [
+        "c2",
+        "c7"
+      ],
+      "figureId": "fig-noise"
+    },
+    {
+      "id": "s3",
+      "title": "Learning the correction field",
+      "markdown": "Training chooses a demonstrated clean sequence $\\mathbf{A}_t^0$, samples a denoising index $k$, and adds a noise vector $\\boldsymbol{\\epsilon}^k$ appropriate to that level. A neural network $\\epsilon_\\theta(\\mathbf{O}_t,\\mathbf{A}_t^0+\\boldsymbol{\\epsilon}^k,k)$ then predicts the added noise. Here $\\theta$ denotes learned parameters, $k\\in\\{1,\\ldots,K\\}$ is diffusion time, and $MSE$ averages squared coordinate errors:\n\n$$\n\\mathcal{L}=MSE\\!\\left(\\boldsymbol{\\epsilon}^k,\n\\epsilon_\\theta(\\mathbf{O}_t,\\mathbf{A}_t^0+\\boldsymbol{\\epsilon}^k,k)\\right).\n$$\n\nA small illustrative example clarifies the loss. Suppose the true added noise is $(0.2,-0.4)$ and the network predicts $(0.1,-0.1)$. Then\n\n$$\nMSE=\\frac{(0.2-0.1)^2+(-0.4+0.1)^2}{2}\n=\\frac{0.01+0.09}{2}=0.05.\n$$\n\nThe network is not directly rewarded here for choosing a named maneuver such as “go left.” Across many corrupted demonstrations and noise levels, it learns local corrections that collectively describe the conditional action distribution.",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c4",
+        "c5"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s4",
+      "title": "Inference as repeated correction, not one-shot regression",
+      "markdown": "Starting from $\\mathbf{A}_t^K$, a generic denoising step is\n\n$$\n\\mathbf{A}_t^{k-1}=\\alpha_k\\left(\n\\mathbf{A}_t^k-\\gamma_k\\epsilon_\\theta(\\mathbf{O}_t,\\mathbf{A}_t^k,k)\n+\\boldsymbol{\\eta}_k\\right),\n\\qquad\n\\boldsymbol{\\eta}_k\\sim\\mathcal{N}(0,\\sigma_k^2I).\n$$\n\n$\\mathbf{A}_t^k$ is the current noisy sequence; $\\epsilon_\\theta$ is the predicted noise or correction field; $\\alpha_k$ rescales the update; $\\gamma_k$ scales the correction; $\\boldsymbol{\\eta}_k$ is Gaussian perturbation; $\\sigma_k$ is its standard deviation; and $I$ is the identity covariance. The schedules vary with $k$. After $K$ updates, $\\mathbf{A}_t^0$ is the sampled action sequence.\n\nThe optimizer toy isolates one useful analogy. For $f(x)=x^2/2$, ordinary gradient descent applies $x' = x-\\gamma x$. Beginning at $x=3$ with illustrative $\\gamma=0.25$ gives $x'=3-0.25(3)=2.25$. Repeated corrections approach the minimum. Likewise, denoising repeatedly follows a learned field rather than predicting the final action in one pass.\n\nDo not push the analogy too far: the toy is deterministic scalar gradient descent. Diffusion Policy updates a high-dimensional action sequence, conditions on observations, uses a learned noise predictor, follows scheduled coefficients, and may add stochastic noise.",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c2",
+        "c3"
+      ],
+      "figureId": "fig-optimizer"
+    },
+    {
+      "id": "s5",
+      "title": "From an open-loop sequence to a closed-loop policy",
+      "markdown": "A sampled sequence alone would be an open-loop plan. Diffusion Policy makes it closed-loop through three horizons. $T_o$ is the number of recent observation steps supplied to the policy. $T_p$ is the number of future actions predicted. $T_a$ is the prefix actually executed before obtaining updated observations and replanning.\n\nFor an illustrative timeline, let $T_o=2$, $T_p=5$, and $T_a=2$. At environment time $t$, the policy reads observations from $t-1$ and $t$, samples five actions, executes only the first two, and replans at $t+2$. The unused suffix still matters during sampling because joint prediction encourages adjacent actions to form a consistent trajectory.\n\nThis design mediates a real tradeoff. A larger $T_a$ preserves commitment and amortizes inference, but delays reaction to unexpected changes. A smaller $T_a$ reacts sooner but replans more frequently. The paper found eight execution steps optimal for most tasks in its ablation, but that result belongs to those tested conditions—not to every robot, control rate, or latency regime.",
+      "sourceIds": [
+        "section-2",
+        "section-5"
+      ],
+      "claimIds": [
+        "c6",
+        "c8",
+        "c12"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s6",
+      "title": "Visual conditioning and two denoiser backbones",
+      "markdown": "The observation is conditioning, not another trajectory the model must generate. A visual encoder maps images to an embedding used throughout action denoising. This avoids spending sampling capacity on future images or states. In the paper's overview, visual features are extracted once regardless of the number of denoising iterations.\n\nThe CNN version uses temporal one-dimensional convolutions and applies observation features through feature-wise linear modulation. Its temporal bias worked well on many tasks but could oversmooth sharply changing commands. The transformer version treats noisy actions as tokens, supplies diffusion-step information, and injects observation embeddings through decoder processing. The paper reports stronger state-policy performance from transformers on many complex or rapidly changing tasks, accompanied by greater hyperparameter sensitivity.\n\nA misconception is that Diffusion Policy is a dynamics simulator because it predicts a trajectory. It predicts future actions conditioned on recent observations; it does not ordinarily denoise a joint future state–action rollout. The action sequence can implicitly contain task-relevant temporal structure without furnishing explicit predicted observations.",
+      "sourceIds": [
+        "section-1",
+        "section-2",
+        "section-3"
+      ],
+      "claimIds": [
+        "c5",
+        "c9"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s7",
+      "title": "Reading the evidence without outrunning it",
+      "markdown": "The reported 46.9% average success-rate improvement summarizes the paper’s evaluation across 15 tasks from four benchmarks. The suite includes simulated and physical systems, state and visual observations, action spaces from 2DoF to 6DoF, and varied objects and actuation conditions. It therefore provides broad evidence within the evaluated suite, but it does not imply a 46.9% gain on every task or guarantee the same improvement on a new robot. The comparison conditions also matter: most tasks used success rate, Push-T used target-area coverage, and each method was evaluated using its best-performing action space.\n\nA concrete physical result comes from the multi-stage real-world Push-T experiment. The best end-to-end Diffusion Policy reached 95% success with mean intersection-over-union (IoU) of $0.80$, compared with human-demonstration mean IoU of $0.84$. Success meant that the final-state IoU exceeded the minimum achieved in the human demonstration dataset. The policy produced commands at 10 Hz, which were linearly interpolated to 125 Hz for robot execution. These evaluation and control conditions define the scope of the reported numbers.\n\nThe results are consistent with the method’s intended strengths: conditional sequence denoising can represent multiple demonstrated strategies, while executing a short prefix and replanning lets the controller respond to new observations. They do not show that diffusion eliminates the limitations of behavior cloning. Performance still depends on adequate demonstration coverage, and behavior outside that coverage is not guaranteed.\n\nIterative denoising also costs more computation and inference time than simpler policies such as LSTM-GMM. Predicting and executing action sequences can amortize that cost, but longer execution horizons reduce how quickly the robot can react. The reported evidence therefore supports a practical tradeoff among temporal consistency, responsiveness, and inference latency rather than a universal advantage for every control rate or task.",
+      "sourceIds": [
+        "section-5",
+        "section-6",
+        "section-9"
+      ],
+      "claimIds": [
+        "c10",
+        "c11",
+        "c13",
+        "c14"
+      ],
+      "figureId": null
+    }
+  ],
+  "figures": [
+    {
+      "id": "fig-noise",
+      "kind": "noise",
+      "title": "How Gaussian action noise scales",
+      "question": "If sigma stays fixed while dimension increases, how do the sampled norm histogram and the RMS radius change?",
+      "caption": "A seeded Gaussian sample shows its norm histogram, measured mean norm, and the reference RMS radius $\\sigma\\sqrt{D}$ as dimension and sigma change.",
+      "limitation": "This illustrates Gaussian norms only; it is not a robot action space, a denoising trajectory, or a measured property of the paper's trained policies.",
+      "sourceIds": [
+        "section-2",
+        "section-4"
+      ],
+      "claimIds": [
+        "c2",
+        "c7"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "fig-optimizer",
+      "kind": "optimizer",
+      "title": "Repeated local correction on a quadratic",
+      "question": "How does changing the learning rate alter the 12 iterates produced from the same starting point?",
+      "caption": "Ordinary gradient descent starts at $x=3$ and applies 12 updates to the illustrative quadratic $f(x)=x^2/2$, making repeated field-following concrete.",
+      "limitation": "The control is plain scalar gradient descent, not a DDPM sampler, learned denoiser, stochastic Langevin process, or simulation of Diffusion Policy.",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c3"
+      ],
+      "illustrative": true
+    }
+  ],
+  "quiz": [
+    {
+      "question": "Assume two demonstrated routes are individually valid but switching routes between adjacent actions causes failure. Which design most directly supports coherent commitment?",
+      "options": [
+        {
+          "text": "Sample the action sequence jointly, execute a prefix, and then replan.",
+          "explanation": "Correct. Joint sequence sampling promotes temporal consistency, while prefix execution retains closed-loop responsiveness."
+        },
+        {
+          "text": "Regress each action independently to the conditional mean.",
+          "explanation": "Incorrect. With separated modes, a mean can fall between valid routes and independent choices can switch modes."
+        },
+        {
+          "text": "Generate future observations jointly with every action.",
+          "explanation": "Incorrect. Diffusion Policy conditions on observations and denoises actions; generating future observations is not required by its formulation."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-2",
+        "section-4"
+      ],
+      "claimIds": [
+        "c5",
+        "c6",
+        "c8"
+      ]
+    },
+    {
+      "question": "In the illustrative training example, true noise is $(0.2,-0.4)$ and predicted noise is $(0.1,-0.1)$. What is the coordinate-mean squared error?",
+      "options": [
+        {
+          "text": "0.05",
+          "explanation": "Correct. The squared errors are $0.01$ and $0.09$, whose mean is $0.05$."
+        },
+        {
+          "text": "0.10",
+          "explanation": "Incorrect. This is the sum of the squared errors, not their mean over two coordinates."
+        },
+        {
+          "text": "0.20",
+          "explanation": "Incorrect. This does not follow from the stated mean-squared-error calculation."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c4"
+      ]
+    },
+    {
+      "question": "Which conclusion is justified by the reported 46.9% average improvement?",
+      "options": [
+        {
+          "text": "It is an average over the paper's tested 15-task, four-benchmark suite.",
+          "explanation": "Correct. The claim is tied to that heterogeneous but bounded evaluation suite."
+        },
+        {
+          "text": "Every new robot task should improve by exactly 46.9%.",
+          "explanation": "Incorrect. An evaluation-suite average is not a universal per-task guarantee."
+        },
+        {
+          "text": "Iterative denoising has lower latency than every one-pass policy.",
+          "explanation": "Incorrect. The paper explicitly identifies higher computation and inference latency as limitations."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-5",
+        "section-9"
+      ],
+      "claimIds": [
+        "c10",
+        "c14"
+      ]
+    }
+  ],
+  "id": "diffusion-policy",
+  "createdAt": "2026-10-01T23:38:20.498Z",
+  "pipelineVersion": "subjects-lessons-v1",
+  "sources": [
+    {
+      "id": "abstract",
+      "label": "Original paper · abstract",
+      "url": "https://arxiv.org/abs/2303.04137",
+      "digest": "f89b5321b73adf87c0936c38d7b040be624720ae011020aabe8a9bb1a1059f2b",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:36:10.236Z"
+    },
+    {
+      "id": "main-text",
+      "label": "Original paper · unsectioned main text",
+      "url": "https://arxiv.org/html/2303.04137",
+      "digest": "3c8e41fe317928a1412540cb480d9c34506377a375bc4bbc9ce06e9c47efbec8",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:36:10.236Z"
+    },
+    {
+      "id": "section-1",
+      "label": "1 Introduction",
+      "url": "https://arxiv.org/html/2303.04137#S1",
+      "digest": "e43a2e59d22450aacc8be56e8a730ab6a9e28c002b3401f6535f2726e9afeec8",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:36:10.236Z"
+    },
+    {
+      "id": "section-2",
+      "label": "2 Diffusion Policy Formulation",
+      "url": "https://arxiv.org/html/2303.04137#S2",
+      "digest": "68f4f4a574dd7f7e474fbd1a4f598cf4c8946568382ff275103288578b2b744a",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:36:10.236Z"
+    },
+    {
+      "id": "section-3",
+      "label": "3 Key Design Decisions",
+      "url": "https://arxiv.org/html/2303.04137#S3",
+      "digest": "c2dcee4800c0cb72af6c046b3efebbc32067c7a2d82877e98d86ea6ed050fd26",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:36:10.236Z"
+    },
+    {
+      "id": "section-4",
+      "label": "4 Intriguing Properties of Diffusion Policy",
+      "url": "https://arxiv.org/html/2303.04137#S4",
+      "digest": "2e89652d0052aa5b978b61f4f29d60d20d061c47fff4c10c9f3bf8f097455715",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:36:10.236Z"
+    },
+    {
+      "id": "section-4-part-2",
+      "label": "4 Intriguing Properties of Diffusion Policy · part 2",
+      "url": "https://arxiv.org/html/2303.04137#S4",
+      "digest": "66f4343767710cbfcaa2e9b25584312bf798c0feee865b5c79d72be6ce8219dc",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:36:10.236Z"
+    },
+    {
+      "id": "section-5",
+      "label": "5 Evaluation",
+      "url": "https://arxiv.org/html/2303.04137#S5",
+      "digest": "c550f387b6ba9292245ce2d52876c3b1c89797abc0057039ba9c7b5ea0b66295",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:36:10.236Z"
+    },
+    {
+      "id": "section-5-part-2",
+      "label": "5 Evaluation · part 2",
+      "url": "https://arxiv.org/html/2303.04137#S5",
+      "digest": "1507d4f8d10b6ebc728d7a76369a09bb3cd836f5ba77ca7fb60d590c4e220225",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:36:10.236Z"
+    },
+    {
+      "id": "section-6",
+      "label": "6 Realworld Evaluation",
+      "url": "https://arxiv.org/html/2303.04137#S6",
+      "digest": "7a1c2aa4e6879751da9b62f8c8ab87d11b60be6a0393d294753bd6cf1a99d75f",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:36:10.236Z"
+    },
+    {
+      "id": "section-6-part-2",
+      "label": "6 Realworld Evaluation · part 2",
+      "url": "https://arxiv.org/html/2303.04137#S6",
+      "digest": "71adaf9570cd160aa5f9fabbd33ba7af702667a4b9867c492ce069e83c5ded0b",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:36:10.236Z"
+    },
+    {
+      "id": "section-7",
+      "label": "7 Realworld Bimanual Tasks",
+      "url": "https://arxiv.org/html/2303.04137#S7",
+      "digest": "d5137bdcf4d054123e47a7a4b350b44ba4d7c0055421244474067b91562da4fd",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:36:10.236Z"
+    },
+    {
+      "id": "section-8",
+      "label": "8 Related Work",
+      "url": "https://arxiv.org/html/2303.04137#S8",
+      "digest": "22606f0bb610e4abf52513c44125cd2fa3690f24f49bc94a942901fabb7664be",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:36:10.236Z"
+    },
+    {
+      "id": "section-9",
+      "label": "9 Limitations and Future Work",
+      "url": "https://arxiv.org/html/2303.04137#S9",
+      "digest": "3e836aac2fbc692d6796dbbc408d5e7719b8b195aaed15b47bae6d0f6b03be17",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:36:10.236Z"
+    }
+  ],
+  "review": {
+    "status": "passed",
+    "reviewedAt": "2026-10-02T01:55:00.690Z",
+    "contentDigest": "ffd349d9822025e9e55d96e467225296eac59d8695518078792339d943ad6c7a"
+  }
+}

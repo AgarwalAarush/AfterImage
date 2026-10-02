@@ -1,0 +1,540 @@
+{
+  "version": 1,
+  "sectionId": "s3",
+  "title": "A Residual Block Learns the Correction Around Identity",
+  "introduction": "For one input feature vector $\\mathbf{x}$, let $\\mathcal{H}(\\mathbf{x})$ be the desired block output. Instead of fitting that mapping directly, the learned branch produces the correction $\\mathcal{F}(\\mathbf{x})=\\mathcal{H}(\\mathbf{x})-\\mathbf{x}$. An identity shortcut preserves the same $\\mathbf{x}$, and element-wise addition reconstructs $\\mathbf{y}=\\mathcal{F}(\\mathbf{x})+\\mathbf{x}$.",
+  "entities": [
+    {
+      "id": "x",
+      "label": "x",
+      "meaning": "The input vector or feature map supplied to both paths of the residual block."
+    },
+    {
+      "id": "h",
+      "label": "Hx",
+      "meaning": "The desired value of the underlying mapping H for input x."
+    },
+    {
+      "id": "f",
+      "label": "Fx",
+      "meaning": "The learned residual correction F(x), defined as H(x) minus x."
+    },
+    {
+      "id": "y",
+      "label": "y",
+      "meaning": "The residual block output formed by adding F(x) and x."
+    }
+  ],
+  "objects": [
+    {
+      "id": "target",
+      "form": "vector",
+      "label": "Desired mapping",
+      "detail": "Target value for the block",
+      "sourceIds": [
+        "section-1",
+        "section-3"
+      ],
+      "claimIds": [
+        "c3"
+      ]
+    },
+    {
+      "id": "input",
+      "form": "vector",
+      "label": "Block input",
+      "detail": "Shared input feature vector",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c4"
+      ]
+    },
+    {
+      "id": "residual-branch",
+      "form": "module",
+      "label": "Residual branch",
+      "detail": "Learned nonlinear correction",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c4",
+        "c7"
+      ]
+    },
+    {
+      "id": "residual",
+      "form": "vector",
+      "label": "Residual correction",
+      "detail": "Correction relative to identity",
+      "sourceIds": [
+        "section-1",
+        "section-3"
+      ],
+      "claimIds": [
+        "c3",
+        "c4"
+      ]
+    },
+    {
+      "id": "shortcut",
+      "form": "vector",
+      "label": "Identity shortcut",
+      "detail": "Unchanged copy of the input",
+      "sourceIds": [
+        "section-1",
+        "section-3"
+      ],
+      "claimIds": [
+        "c4",
+        "c5"
+      ]
+    },
+    {
+      "id": "addition",
+      "form": "module",
+      "label": "Element-wise addition",
+      "detail": "Identity-plus-correction sum",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c4"
+      ]
+    },
+    {
+      "id": "output",
+      "form": "vector",
+      "label": "Block output",
+      "detail": "Reconstructed target mapping",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c4"
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "id": "rel-learn",
+      "from": "input",
+      "to": "residual-branch",
+      "label": "apply learned residual mapping",
+      "dashed": false,
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c4",
+        "c7"
+      ]
+    },
+    {
+      "id": "rel-copy",
+      "from": "input",
+      "to": "shortcut",
+      "label": "copy by identity",
+      "dashed": false,
+      "sourceIds": [
+        "section-1",
+        "section-3"
+      ],
+      "claimIds": [
+        "c4",
+        "c5"
+      ]
+    },
+    {
+      "id": "rel-emit",
+      "from": "residual-branch",
+      "to": "residual",
+      "label": "emit learned correction",
+      "dashed": false,
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c4",
+        "c7"
+      ]
+    },
+    {
+      "id": "rel-correction",
+      "from": "residual",
+      "to": "addition",
+      "label": "supply correction term",
+      "dashed": false,
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c4"
+      ]
+    },
+    {
+      "id": "rel-identity",
+      "from": "shortcut",
+      "to": "addition",
+      "label": "supply identity term",
+      "dashed": false,
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c4",
+        "c5"
+      ]
+    },
+    {
+      "id": "rel-sum",
+      "from": "addition",
+      "to": "output",
+      "label": "form element-wise sum",
+      "dashed": false,
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c4"
+      ]
+    },
+    {
+      "id": "rel-target",
+      "from": "output",
+      "to": "target",
+      "label": "realize desired mapping",
+      "dashed": true,
+      "sourceIds": [
+        "section-1",
+        "section-3"
+      ],
+      "claimIds": [
+        "c3",
+        "c4"
+      ]
+    }
+  ],
+  "beats": [
+    {
+      "title": "Name the mapping to be realized",
+      "explanation": "The block receives $\\mathbf{x}$, while $\\mathcal{H}(\\mathbf{x})$ names the desired output. The residual correction and computed output are not yet available. This setup distinguishes the information entering the block from the mapping the block is meant to fit.",
+      "sourceIds": [
+        "section-1",
+        "section-3"
+      ],
+      "claimIds": [
+        "c3"
+      ],
+      "objects": [
+        {
+          "objectId": "target",
+          "status": "retained",
+          "entityIds": [
+            "h"
+          ]
+        },
+        {
+          "objectId": "input",
+          "status": "active",
+          "entityIds": [
+            "x"
+          ]
+        },
+        {
+          "objectId": "residual-branch",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "residual",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "shortcut",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "addition",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "output",
+          "status": "pending",
+          "entityIds": []
+        }
+      ],
+      "relationships": []
+    },
+    {
+      "title": "Send the same input down two paths",
+      "explanation": "The unchanged identity $\\mathbf{x}$ becomes available on the shortcut at the same time that the learned branch receives $\\mathbf{x}$. These paths are parallel: the shortcut does not wait for, gate, or concatenate with the nonlinear branch.",
+      "sourceIds": [
+        "section-1",
+        "section-3"
+      ],
+      "claimIds": [
+        "c4",
+        "c5"
+      ],
+      "objects": [
+        {
+          "objectId": "target",
+          "status": "retained",
+          "entityIds": [
+            "h"
+          ]
+        },
+        {
+          "objectId": "input",
+          "status": "retained",
+          "entityIds": [
+            "x"
+          ]
+        },
+        {
+          "objectId": "residual-branch",
+          "status": "active",
+          "entityIds": [
+            "x"
+          ]
+        },
+        {
+          "objectId": "residual",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "shortcut",
+          "status": "active",
+          "entityIds": [
+            "x"
+          ]
+        },
+        {
+          "objectId": "addition",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "output",
+          "status": "pending",
+          "entityIds": []
+        }
+      ],
+      "relationships": [
+        {
+          "relationshipId": "rel-learn",
+          "entityIds": [
+            "x"
+          ]
+        },
+        {
+          "relationshipId": "rel-copy",
+          "entityIds": [
+            "x"
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Produce a correction around identity",
+      "explanation": "The learned nonlinear branch now makes $\\mathcal{F}(\\mathbf{x})$ available. In the paper's two-layer example this branch is $W_2\\sigma(W_1\\mathbf{x})$. The shortcut still retains the original $\\mathbf{x}$, so the addition module simultaneously has the correction and its identity reference.",
+      "sourceIds": [
+        "section-1",
+        "section-3"
+      ],
+      "claimIds": [
+        "c3",
+        "c4",
+        "c7"
+      ],
+      "objects": [
+        {
+          "objectId": "target",
+          "status": "retained",
+          "entityIds": [
+            "h"
+          ]
+        },
+        {
+          "objectId": "input",
+          "status": "retained",
+          "entityIds": [
+            "x"
+          ]
+        },
+        {
+          "objectId": "residual-branch",
+          "status": "retained",
+          "entityIds": [
+            "x",
+            "f"
+          ]
+        },
+        {
+          "objectId": "residual",
+          "status": "active",
+          "entityIds": [
+            "f"
+          ]
+        },
+        {
+          "objectId": "shortcut",
+          "status": "retained",
+          "entityIds": [
+            "x"
+          ]
+        },
+        {
+          "objectId": "addition",
+          "status": "active",
+          "entityIds": [
+            "x",
+            "f"
+          ]
+        },
+        {
+          "objectId": "output",
+          "status": "pending",
+          "entityIds": []
+        }
+      ],
+      "relationships": [
+        {
+          "relationshipId": "rel-emit",
+          "entityIds": [
+            "f"
+          ]
+        },
+        {
+          "relationshipId": "rel-correction",
+          "entityIds": [
+            "f"
+          ]
+        },
+        {
+          "relationshipId": "rel-identity",
+          "entityIds": [
+            "x"
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Reconstruct the desired mapping",
+      "explanation": "Element-wise addition changes the available result from the separate terms $\\mathbf{x}$ and $\\mathcal{F}(\\mathbf{x})$ to the output $\\mathbf{y}=\\mathcal{F}(\\mathbf{x})+\\mathbf{x}$. When the learned correction equals $\\mathcal{H}(\\mathbf{x})-\\mathbf{x}$, this output equals the desired $\\mathcal{H}(\\mathbf{x})$. If identity is desired, the branch only needs to approach zero.",
+      "sourceIds": [
+        "section-1",
+        "section-3"
+      ],
+      "claimIds": [
+        "c3",
+        "c4"
+      ],
+      "objects": [
+        {
+          "objectId": "target",
+          "status": "retained",
+          "entityIds": [
+            "h"
+          ]
+        },
+        {
+          "objectId": "input",
+          "status": "retained",
+          "entityIds": [
+            "x"
+          ]
+        },
+        {
+          "objectId": "residual-branch",
+          "status": "retained",
+          "entityIds": [
+            "x",
+            "f"
+          ]
+        },
+        {
+          "objectId": "residual",
+          "status": "retained",
+          "entityIds": [
+            "f"
+          ]
+        },
+        {
+          "objectId": "shortcut",
+          "status": "retained",
+          "entityIds": [
+            "x"
+          ]
+        },
+        {
+          "objectId": "addition",
+          "status": "retained",
+          "entityIds": [
+            "x",
+            "f",
+            "y"
+          ]
+        },
+        {
+          "objectId": "output",
+          "status": "active",
+          "entityIds": [
+            "y"
+          ]
+        }
+      ],
+      "relationships": [
+        {
+          "relationshipId": "rel-correction",
+          "entityIds": [
+            "f"
+          ]
+        },
+        {
+          "relationshipId": "rel-identity",
+          "entityIds": [
+            "x"
+          ]
+        },
+        {
+          "relationshipId": "rel-sum",
+          "entityIds": [
+            "y"
+          ]
+        },
+        {
+          "relationshipId": "rel-target",
+          "entityIds": []
+        }
+      ]
+    }
+  ],
+  "takeaway": "The invariant is that the shortcut preserves the same $\\mathbf{x}$ while the learned branch supplies only its correction: if $\\mathcal{F}(\\mathbf{x})=\\mathcal{H}(\\mathbf{x})-\\mathbf{x}$, then $\\mathbf{y}=\\mathcal{F}(\\mathbf{x})+\\mathbf{x}=\\mathcal{H}(\\mathbf{x})$.",
+  "sourceIds": [
+    "section-1",
+    "section-3"
+  ],
+  "claimIds": [
+    "c3",
+    "c4",
+    "c5",
+    "c7"
+  ],
+  "lessonId": "resnet",
+  "parentContentDigest": "1615afd99d47bd190d19abb397184248fc754b8a27b16e1f35ba5f9fe0efce43",
+  "review": {
+    "status": "source-passed",
+    "reviewedAt": "2026-10-02T00:01:18.497Z",
+    "contentDigest": "ed8248cbcaea7f1b03e2983f856f5dff17133e6fa16ef54c0dec16a2b24f83bb",
+    "rendererDigest": "2cc690a7105c5faca75e22053e83674a2cf2e227ae22afe88cc4662d09c98bb4",
+    "visualReviewedAt": null
+  }
+}

@@ -1,0 +1,483 @@
+{
+  "title": "Predict the Missing Meaning: Inside I-JEPA",
+  "summary": "I-JEPA learns image features by predicting encoded representations of large hidden regions from one distributed visible context, avoiding pixel reconstruction and hand-crafted view data augmentations during pretraining.",
+  "prerequisites": [
+    "Image patches and feature vectors",
+    "Vision Transformer fundamentals",
+    "Squared Euclidean distance",
+    "Exponential moving averages"
+  ],
+  "objectives": [
+    "Distinguish latent prediction from pixel reconstruction and view invariance.",
+    "Trace patches through the context encoder, predictor, and target encoder.",
+    "Calculate a patch-level I-JEPA loss and explain each term.",
+    "Explain how target scale and distributed context shape prediction.",
+    "Interpret reported results within their stated evaluation conditions."
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "mechanism",
+      "statement": "I-JEPA predicts representations of multiple target blocks from one context block taken from the same image.",
+      "conditions": "During self-supervised image pretraining with the paper's joint-embedding predictive architecture.",
+      "sourceIds": [
+        "abstract",
+        "section-1",
+        "section-3"
+      ]
+    },
+    {
+      "id": "c2",
+      "kind": "mechanism",
+      "statement": "Unlike view-invariance methods, I-JEPA does not construct compatible inputs using hand-crafted view augmentations during pretraining.",
+      "conditions": "For the I-JEPA pretraining procedure described in the paper; ordinary preprocessing is not the same claim as view augmentation.",
+      "sourceIds": [
+        "abstract",
+        "section-1",
+        "section-2"
+      ]
+    },
+    {
+      "id": "c3",
+      "kind": "mechanism",
+      "statement": "I-JEPA applies its prediction loss in learned representation space rather than reconstructing pixels or input tokens.",
+      "conditions": "For the paper's non-generative masked prediction objective.",
+      "sourceIds": [
+        "section-1",
+        "section-2",
+        "section-3"
+      ]
+    },
+    {
+      "id": "c4",
+      "kind": "mechanism",
+      "statement": "Target representations are computed for the full patch sequence and target blocks are selected by masking the target encoder's output, not its input.",
+      "conditions": "For target construction in the method described in Section 3.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c5",
+      "kind": "mechanism",
+      "statement": "The context encoder processes only visible context patches after regions overlapping the sampled targets have been removed.",
+      "conditions": "Under the paper's multi-block masking procedure.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c6",
+      "kind": "mechanism",
+      "statement": "The predictor receives encoded context patches plus location-bearing mask tokens and is applied separately for each target block.",
+      "conditions": "For each of the M sampled target masks in one training example.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c7",
+      "kind": "equation",
+      "statement": "The training loss averages, across target blocks, the summed squared Euclidean error between predicted and target patch representations.",
+      "conditions": "With M target blocks, target index sets B_i, predictions hat{s}_{y_j}, and target vectors s_{y_j}.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c8",
+      "kind": "mechanism",
+      "statement": "Predictor and context-encoder parameters are optimized by gradients, while target-encoder parameters follow an exponential moving average of context-encoder parameters.",
+      "conditions": "During I-JEPA pretraining; the paper reports the moving-average target encoder as essential to training.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c9",
+      "kind": "result",
+      "statement": "The paper's multi-block masking ablation obtained 54.2 top-1, versus 15.5 for rasterized, 20.2 for single-block, and 17.6 for random masking.",
+      "conditions": "ImageNet-1K 1% linear evaluation after 300 epochs of ViT-B/16 I-JEPA pretraining, using the masking variants defined in Table 6.",
+      "sourceIds": [
+        "section-7",
+        "section-9"
+      ]
+    },
+    {
+      "id": "c10",
+      "kind": "result",
+      "statement": "Representation targets obtained 66.9 top-1 while pixel targets obtained 40.7 in the reported target-type ablation.",
+      "conditions": "ImageNet-1K 1% linear evaluation with ViT-L/16; representation-target and pixel-target runs used 500 and 800 epochs respectively.",
+      "sourceIds": [
+        "section-9"
+      ]
+    },
+    {
+      "id": "c11",
+      "kind": "result",
+      "statement": "A ViT-H/14 I-JEPA model achieved 79.3 top-1 in the reported ImageNet-1K linear evaluation without view data augmentations.",
+      "conditions": "The Table 1 ViT-H/14 run used 300 pretraining epochs; comparisons across rows retain their listed architectures and epochs.",
+      "sourceIds": [
+        "section-4",
+        "section-5"
+      ]
+    },
+    {
+      "id": "c12",
+      "kind": "result",
+      "statement": "I-JEPA was about 7% slower per iteration than MAE but was reported to converge in roughly five times fewer iterations.",
+      "conditions": "The scalability comparison against pixel-reconstruction pretraining reported in Section 7.",
+      "sourceIds": [
+        "section-7"
+      ]
+    },
+    {
+      "id": "c13",
+      "kind": "result",
+      "statement": "Frozen I-JEPA ViT-H/14 features scored 86.7 on Clevr/Count and 72.4 on Clevr/Dist with linear models.",
+      "conditions": "The Table 4 low-level transfer protocol after ImageNet-1K pretraining; encoder weights were frozen.",
+      "sourceIds": [
+        "section-6"
+      ]
+    },
+    {
+      "id": "c14",
+      "kind": "caveat",
+      "statement": "Increasing model size on ImageNet-22K improved reported semantic-task results but did not improve the reported low-level tasks, where larger input patches may be detrimental.",
+      "conditions": "Comparison of ViT-H/14 and ViT-G/16 entries in Table 5, which also differ in patch size.",
+      "sourceIds": [
+        "section-6",
+        "section-7"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "s1",
+      "title": "Three ways to create a learning target",
+      "markdown": "Self-supervised learning needs a target derived from the data rather than a human label. In a view-invariance system, two transformed views of one image should receive similar embeddings. That can produce semantic features, but the chosen crops, color changes, and other transformations encode assumptions about what should be ignored. A pixel-reconstruction system instead hides image content and asks a decoder to reproduce it. This requires fewer task-specific view rules, yet exact pixels contain texture, color, and other details that may not be central to object identity.\n\nI-JEPA takes a third route. It hides regions but predicts their learned feature vectors rather than their RGB values. Both the context and targets come from one image. The intended distinction is therefore not simply “masked versus unmasked”; it is **what must be predicted**. Representation-space targets can omit some unpredictable pixel detail while retaining regularities useful to the learned encoder. This is a design motivation, not a guarantee that every learned coordinate has a semantic interpretation.\n\nA useful misconception to remove immediately is that I-JEPA is an image generator. Its training predictor outputs embeddings for target patches. The paper later trains a separate decoder for qualitative visualization, but that decoder is not the I-JEPA pretraining objective.",
+      "sourceIds": [
+        "section-1",
+        "section-2",
+        "section-3",
+        "section-8"
+      ],
+      "claimIds": [
+        "c1",
+        "c2",
+        "c3"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s2",
+      "title": "Patches, masks, and the information boundary",
+      "markdown": "A Vision Transformer divides an image into non-overlapping patches and maps them to vectors. Before following I-JEPA's networks, use the illustrative patch grid below to reason about the information boundary. Its control changes how many cells of a fixed $8\\times8$ grid are hidden. Predict first: as the hidden fraction grows, how many observations remain available to constrain a missing region?\n\nThe pictured computation merely counts visible and masked cells under a deterministic mask. It does not run an encoder or measure reconstruction quality. That narrow toy still exposes an important distinction: a mask determines both the prediction target and the evidence left for solving it. Hiding too little can permit a nearly local shortcut; hiding too much can make the target weakly constrained.\n\nI-JEPA does not use an arbitrary scattered mask as its defining strategy. The paper samples multiple relatively large target blocks and one large context block, then removes target-overlapping regions from that context. Consequently, the context can be spatially distributed even though it began as one block. In the typical configuration described in Section 3, $M=4$ targets have scales in $(0.15,0.2)$ and aspect ratios in $(0.75,1.5)$; the initial context scale lies in $(0.85,1.0)$ with unit aspect ratio. These are paper-specific sampling settings, whereas the interactive grid is only a counting analogy.",
+      "sourceIds": [
+        "abstract",
+        "section-3",
+        "section-7",
+        "section-9"
+      ],
+      "claimIds": [
+        "c1",
+        "c5",
+        "c9"
+      ],
+      "figureId": "fig-patches"
+    },
+    {
+      "id": "s3",
+      "title": "Constructing targets without showing them to the learner",
+      "markdown": "Let the input image be $\\bm{y}$ and let its $N$ non-overlapping patches be indexed by $1,\\ldots,N$. The target encoder $f_{\\bar{\\theta}}$ maps the image to patch representations\n\n$$\n\\bm{s}_y=\\{\\bm{s}_{y_1},\\ldots,\\bm{s}_{y_N}\\},\n$$\n\nwhere $\\bm{s}_{y_k}$ is the feature vector for patch $k$, and $\\bar{\\theta}$ denotes target-encoder parameters. For target block $i$, the index set $B_i$ identifies its patches, so its target is\n\n$$\n\\bm{s}_y(i)=\\{\\bm{s}_{y_j}\\}_{j\\in B_i}.\n$$\n\nThe sequencing matters: the target encoder first processes the patch sequence, and the method then selects blocks from its output. The context path is different. Let $B_x$ be the indices remaining in context block $\\bm{x}$ after overlaps with targets are removed. The context encoder $f_\\theta$, with parameters $\\theta$, receives only those visible patches and produces\n\n$$\n\\bm{s}_x=\\{\\bm{s}_{x_j}\\}_{j\\in B_x}.\n$$\n\nThus the predictor cannot copy a target patch through the context encoder. Meanwhile, the target branch supplies the learning signal. “The target encoder sees the image” does not mean the predictor is given hidden pixels: its inputs are the encoded context and positional mask tokens, while target features appear on the loss side.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c4",
+        "c5"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s4",
+      "title": "Location-conditioned prediction and its loss",
+      "markdown": "For target block $i$, each desired patch location $j\\in B_i$ receives a mask token $\\bm{m}_j$. It combines a shared learned vector with a positional embedding, telling the predictor where an answer is requested. The predictor $g_\\phi$, whose trainable parameters are $\\phi$, computes\n\n$$\n\\hat{\\bm{s}}_y(i)=g_\\phi\\!\\left(\\bm{s}_x,\\{\\bm{m}_j\\}_{j\\in B_i}\\right),\n$$\n\nwhere $\\hat{\\bm{s}}_{y_j}$ denotes the predicted feature for target patch $j$. The same predictor is run for each of the $M$ target blocks. Its objective is\n\n$$\n\\mathcal{L}=\\frac{1}{M}\\sum_{i=1}^{M}\\sum_{j\\in B_i}\\left\\lVert\\hat{\\bm{s}}_{y_j}-\\bm{s}_{y_j}\\right\\rVert_2^2.\n$$\n\nHere $\\mathcal{L}$ is the loss, $M$ is the number of target blocks, $B_i$ is the patch-index set of block $i$, and $\\lVert\\cdot\\rVert_2^2$ is squared Euclidean distance. Notice that the formula averages over blocks but, as written in the paper, sums patch errors inside each block.\n\nFor a small **illustrative** calculation, take $M=2$ with one scalar target per block. Suppose the predictions are $2$ and $-1$, while the target features are $1$ and $1$. The squared errors are $(2-1)^2=1$ and $(-1-1)^2=4$, giving\n\n$$\n\\mathcal{L}=\\frac{1}{2}(1+4)=2.5.\n$$\n\nThese invented scalars are not measurements from I-JEPA; they only instantiate the published loss. The example also shows why a badly missed target can dominate a squared-error objective.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c6",
+        "c7"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s5",
+      "title": "Two encoders, two update rules",
+      "markdown": "The predictor parameters $\\phi$ and context-encoder parameters $\\theta$ are changed by gradient-based optimization. The target encoder is deliberately updated differently: $\\bar{\\theta}$ follows an exponential moving average of the context encoder. A conventional expression for that update is\n\n$$\n\\bar{\\theta}\\leftarrow \\tau\\bar{\\theta}+(1-\\tau)\\theta,\n$$\n\nwhere $\\tau$ is a moving-average coefficient, $\\theta$ is the current context-encoder parameter vector, and $\\bar{\\theta}$ is the updated target-encoder parameter vector. This equation explains the averaging operation; no numerical value for $\\tau$ is asserted here.\n\nThe asymmetry supplies a gradually changing target rather than allowing both sides to chase the same instantaneous gradient. That matters because joint-embedding systems admit a useless solution in which every input maps to the same representation. The paper identifies collapse as a concern for JEPAs and reports that the moving-average target encoder is essential for I-JEPA training. Still, asymmetry should not be paraphrased as a mathematical proof that collapse is impossible under every optimizer, architecture, or dataset. It is the training design used in the reported system.",
+      "sourceIds": [
+        "section-2",
+        "section-3"
+      ],
+      "claimIds": [
+        "c8"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s6",
+      "title": "Why the mask geometry changes the lesson",
+      "markdown": "The masking policy controls the abstraction level and difficulty of the prediction problem. Large target blocks encourage predictions about coherent regions rather than isolated local texture. A broad context offers evidence from separated portions of the scene. Removing overlaps prevents the context from directly containing target patches. These ingredients act together: “larger masks are always better” is not the paper's claim.\n\nThe reported ablation makes the condition concrete. After 300 epochs of ViT-B/16 pretraining, ImageNet-1K 1% linear evaluation gave 54.2 top-1 for multi-block masking, compared with 15.5 for rasterized quadrants, 20.2 for a single block, and 17.6 for random masking. The alternatives differed in target organization and context construction, so these values support the complete multi-block recipe under that protocol; they do not isolate target size as the sole causal variable.\n\nTarget type also mattered. In a separate ViT-L/16 ablation, representation targets scored 66.9 while pixel targets scored 40.7. The runs used 500 and 800 epochs respectively, so this is evidence for the full compared configurations, not a perfectly compute-matched estimate of one variable. It nevertheless directly contradicts the misconception that I-JEPA is merely a masked pixel autoencoder with different terminology.",
+      "sourceIds": [
+        "section-3",
+        "section-7",
+        "section-9"
+      ],
+      "claimIds": [
+        "c3",
+        "c5",
+        "c9",
+        "c10"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s7",
+      "title": "Reading the evidence without outrunning it",
+      "markdown": "The experiments show that I-JEPA can produce useful frozen features under several stated protocols. In ImageNet-1K linear evaluation, a ViT-H/14 pretrained for 300 epochs reached 79.3 top-1. On Clevr, linear models trained over frozen ViT-H/14 features reached 86.7 on counting and 72.4 on distance prediction. These results demonstrate transfer under the specified datasets, architectures, and evaluation procedures; they do not establish universal superiority across visual tasks.\n\nThe interactive calculation isolates one operation used inside the transformer-based context encoder, target encoder, and predictor. For fixed illustrative scores $z_k$, it computes\n\n$$\na_k=\\frac{\\exp(z_k/T)}{\\sum_\\ell \\exp(z_\\ell/T)},\n$$\n\nwhere $T>0$ is temperature and each $a_k$ is a dimensionless normalized weight satisfying $\\sum_k a_k=1$. The control changes only $T$: decreasing it amplifies score differences and concentrates weight on the largest score, while increasing it makes the four weights more even. With the declared scores $[2,1,0,-1]$, this is a constructed softmax calculation rather than a measurement from a trained model. Its scientific role is to show how attention can form a weighted combination of token information. I-JEPA's distinctive mechanism lies at a different level: visible context tokens and location-bearing mask tokens are processed to predict target-encoder representations at missing locations.\n\nEfficiency must be interpreted per training run rather than per iteration alone. Relative to MAE in the paper's comparison, computing representation targets made an I-JEPA iteration about 7% slower, but I-JEPA was reported to converge in roughly five times fewer iterations. The resulting compute advantage therefore came from needing substantially fewer optimization steps, not from making each step cheaper.\n\nScaling was also task-dependent. With ImageNet-22K pretraining, ViT-G/16 improved reported semantic classification results such as Places205 and iNat18 relative to ViT-H/14, but did not improve the reported Clevr low-level tasks. Because the two models also use different patch sizes, the authors identify the larger input patches as a possible disadvantage for local prediction rather than attributing the outcome solely to parameter count.\n\nTaken together, the evidence supports a bounded conclusion: predicting learned representations of sufficiently large missing regions from an informative, spatially distributed context can yield transferable image features without hand-crafted view augmentations during pretraining. The reported gains remain conditional on the paper's masking strategy, learned moving-average target encoder, Vision Transformer configurations, datasets, training schedules, and evaluation protocols.",
+      "sourceIds": [
+        "section-4",
+        "section-5",
+        "section-6",
+        "section-7",
+        "section-8"
+      ],
+      "claimIds": [
+        "c11",
+        "c12",
+        "c13",
+        "c14"
+      ],
+      "figureId": "fig-attention"
+    }
+  ],
+  "figures": [
+    {
+      "id": "fig-patches",
+      "kind": "patches",
+      "title": "How much context survives masking?",
+      "question": "As the hidden fraction increases, how do the visible and masked cell counts change on the fixed grid?",
+      "caption": "An illustrative deterministic mask partitions an $8\\times8$ grid into visible context cells and hidden cells, making the information boundary of masked prediction countable.",
+      "limitation": "This control only counts cells under a deterministic mask; it does not reproduce I-JEPA's block sampler, run an encoder, or measure representation or reconstruction quality.",
+      "sourceIds": [
+        "section-3",
+        "section-7",
+        "section-9"
+      ],
+      "claimIds": [
+        "c5",
+        "c9"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "fig-attention",
+      "kind": "attention",
+      "title": "A tiny attention weighting calculation",
+      "question": "When positive temperature increases, do the four normalized weights become sharper or more even?",
+      "caption": "Four fixed illustrative scores $[2,1,0,-1]$ are divided by a positive temperature and normalized with softmax, showing how a transformer-style weighted selection changes.",
+      "limitation": "The scores are invented and fixed; this is not a measured I-JEPA attention head, learned patch similarity, predictor simulation, or empirical performance result.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c1",
+        "c6"
+      ],
+      "illustrative": true
+    }
+  ],
+  "quiz": [
+    {
+      "question": "Suppose target locations stay fixed but their pixels are revealed to the context encoder. What key protection is lost?",
+      "options": [
+        {
+          "text": "The non-trivial information boundary",
+          "explanation": "Correct. The predictor could receive the content it is supposed to infer, enabling a copying shortcut."
+        },
+        {
+          "text": "The definition of squared Euclidean distance",
+          "explanation": "Incorrect. Revealing patches changes the inputs, not the mathematical definition of the loss metric."
+        },
+        {
+          "text": "The existence of positional mask tokens",
+          "explanation": "Incorrect. Position tokens could still exist, although the prediction task would be compromised."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c5",
+        "c6"
+      ]
+    },
+    {
+      "question": "Under the published loss, two one-patch blocks have scalar errors of 1 and 3. What is the loss?",
+      "options": [
+        {
+          "text": "2",
+          "explanation": "Incorrect. This averages absolute errors, whereas the objective squares each Euclidean error."
+        },
+        {
+          "text": "5",
+          "explanation": "Correct. The block-average squared loss is $\\frac{1}{2}(1^2+3^2)=5$."
+        },
+        {
+          "text": "10",
+          "explanation": "Incorrect. Ten is the sum of squared errors before division by $M=2$."
+        }
+      ],
+      "answer": 1,
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c7"
+      ]
+    },
+    {
+      "question": "What is the most defensible interpretation of the 54.2 versus 15.5 masking-ablation result?",
+      "options": [
+        {
+          "text": "Large targets alone caused the entire gain",
+          "explanation": "Incorrect. The masking variants also changed target organization and context construction, so the result does not isolate size alone."
+        },
+        {
+          "text": "Multi-block masking always wins on any vision dataset",
+          "explanation": "Incorrect. The reported result is bounded to its ImageNet-1K 1% protocol, model, and training schedule."
+        },
+        {
+          "text": "The complete multi-block recipe helped under the tested protocol",
+          "explanation": "Correct. This matches what the ablation supports without extending beyond its stated conditions."
+        }
+      ],
+      "answer": 2,
+      "sourceIds": [
+        "section-7",
+        "section-9"
+      ],
+      "claimIds": [
+        "c9"
+      ]
+    }
+  ],
+  "id": "i-jepa",
+  "createdAt": "2026-10-02T00:19:49.644Z",
+  "pipelineVersion": "subjects-lessons-v1",
+  "sources": [
+    {
+      "id": "abstract",
+      "label": "Original paper · abstract",
+      "url": "https://arxiv.org/abs/2301.08243",
+      "digest": "60ac4eb8d00fbe20e164acfbccac785be01f6733a8ececc5be382f9d2e014b90",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:17:17.902Z"
+    },
+    {
+      "id": "main-text",
+      "label": "Original paper · unsectioned main text",
+      "url": "https://arxiv.org/html/2301.08243",
+      "digest": "29d798bff70c39758d781c1b199c0241618f8a4aecedde285fef34571600bf06",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:17:17.902Z"
+    },
+    {
+      "id": "section-1",
+      "label": "1 Introduction",
+      "url": "https://arxiv.org/html/2301.08243#S1",
+      "digest": "dd6afc511bf2280745f5c166858b0b73530ab04f565d67082f593d302e6aa023",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:17:17.902Z"
+    },
+    {
+      "id": "section-2",
+      "label": "2 Background",
+      "url": "https://arxiv.org/html/2301.08243#S2",
+      "digest": "e33ccaf0ecc5a8f486813b5abd7b972bd166e9888122fabe697157544e99633f",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:17:17.902Z"
+    },
+    {
+      "id": "section-3",
+      "label": "3 Method",
+      "url": "https://arxiv.org/html/2301.08243#S3",
+      "digest": "96bf6f996b3ca83bb4dcb08dc00cc16c915a4990f8a911d31e5a2bbd5105f4e6",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:17:17.902Z"
+    },
+    {
+      "id": "section-4",
+      "label": "4 Related Work",
+      "url": "https://arxiv.org/html/2301.08243#S4",
+      "digest": "8263bb307169e40b3d298d375dec78c6d1added70e5bb8508e0899b09fb4e2f3",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:17:17.902Z"
+    },
+    {
+      "id": "section-5",
+      "label": "5 Image Classification",
+      "url": "https://arxiv.org/html/2301.08243#S5",
+      "digest": "0aa19010c6cedd099cab42b641a550268c1285825283b72593630aabc7792215",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:17:17.902Z"
+    },
+    {
+      "id": "section-6",
+      "label": "6 Local Prediction Tasks",
+      "url": "https://arxiv.org/html/2301.08243#S6",
+      "digest": "9818be1efd7d2c90bf7d240c66571a16fe013476d1b7350cb95e4f455e8604bc",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:17:17.902Z"
+    },
+    {
+      "id": "section-7",
+      "label": "7 Scalability",
+      "url": "https://arxiv.org/html/2301.08243#S7",
+      "digest": "3416a71f4971904f54535050ca4d80eb3c37ebdab5b475cbbc3b804ae80e2a57",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:17:17.902Z"
+    },
+    {
+      "id": "section-8",
+      "label": "8 Predictor Visualizations",
+      "url": "https://arxiv.org/html/2301.08243#S8",
+      "digest": "443d5229a944ffe5595b4391ce3fe6525dfb2332d74ed2b5dce0a2d2347de0f2",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:17:17.902Z"
+    },
+    {
+      "id": "section-9",
+      "label": "9 Ablations",
+      "url": "https://arxiv.org/html/2301.08243#S9",
+      "digest": "5108beaec4d1bd021c7938f25af4996256091997d00ceea3059d32de4a387df9",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:17:17.902Z"
+    },
+    {
+      "id": "section-10",
+      "label": "10 Conclusion",
+      "url": "https://arxiv.org/html/2301.08243#S10",
+      "digest": "811d5469eae38443929c92da7e3bf6827f01788bd19e3a37b5f9a102b834b507",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:17:17.902Z"
+    }
+  ],
+  "review": {
+    "status": "passed",
+    "reviewedAt": "2026-10-02T01:56:49.646Z",
+    "contentDigest": "0c35d1f9ce41d668c983a0896675c0d1b84a68e30fea76dd9f21205ec21dca0d"
+  }
+}

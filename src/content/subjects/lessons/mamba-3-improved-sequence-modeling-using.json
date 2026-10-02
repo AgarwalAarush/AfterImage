@@ -1,0 +1,463 @@
+{
+  "title": "Three Levers for a Faster Recurrent Machine",
+  "summary": "Mamba-3 strengthens selective state-space models through endpoint-aware discretization, rotational state updates, and MIMO computation designed for efficient decoding.",
+  "prerequisites": [
+    "Hidden-state recurrence updates",
+    "Continuous-to-discrete dynamics",
+    "Arithmetic intensity and memory traffic"
+  ],
+  "objectives": [
+    "Derive the exponential-trapezoidal recurrence and explain its terms.",
+    "Explain how rotations track changes that positive scalar decay cannot.",
+    "Compare Mamba-3 SISO and MIMO state updates.",
+    "Interpret quality and latency results within the tested conditions."
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "equation",
+      "statement": "Mamba-2 can be written as the selective recurrence h_t = alpha_t h_(t-1) + gamma_t B_t x_t, where alpha_t = exp(Delta_t A_t) lies between zero and one when Delta_t is positive and A_t is negative.",
+      "conditions": "For the scalar-times-identity transition parameterization described in the paper.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c2",
+      "kind": "mechanism",
+      "statement": "Mamba-3's exponential-trapezoidal recurrence combines the decayed previous state with both the preceding and current state-inputs, using data-dependent coefficients beta_t and gamma_t.",
+      "conditions": "For the generalized trapezoidal discretization with lambda_t in [0,1].",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c3",
+      "kind": "caveat",
+      "statement": "The exponential-trapezoidal state-input approximation has local error of order Delta_t cubed only when lambda_t = 1/2 + O(Delta_t), although the paper reports better empirical performance without enforcing that constraint.",
+      "conditions": "Under the paper's stated standard stability assumptions for the discretization analysis.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c4",
+      "kind": "mechanism",
+      "statement": "The exponential-trapezoidal update is equivalent to applying a data-dependent width-two convolution to the state-input inside the recurrence, rather than applying a conventional short convolution independently outside it.",
+      "conditions": "Under the recurrence expansion and SSD factorization given by the paper.",
+      "sourceIds": [
+        "section-3-part-2"
+      ]
+    },
+    {
+      "id": "c5",
+      "kind": "equation",
+      "statement": "A discretized complex SSM can be represented in real coordinates by pairing dimensions into 2-by-2 rotations, with each transition equal to scalar decay multiplied by a block-diagonal rotation matrix.",
+      "conditions": "For the complex diagonal transition and exponential discretization developed in the paper.",
+      "sourceIds": [
+        "section-3-part-2"
+      ]
+    },
+    {
+      "id": "c6",
+      "kind": "mechanism",
+      "statement": "The paper's RoPE trick moves accumulated data-dependent rotations onto the input and output projections, producing the same output as the corresponding complex-state recurrence.",
+      "conditions": "For the equivalent real formulation in Propositions 2 and 3.",
+      "sourceIds": [
+        "section-3-part-2"
+      ]
+    },
+    {
+      "id": "c7",
+      "kind": "mechanism",
+      "statement": "Mamba-3 MIMO replaces a rank-one outer-product state input with rank-R matrix multiplication, increasing arithmetic intensity while preserving the dominant N-by-P recurrent-state shape.",
+      "conditions": "When R is small relative to state size N and head dimension P; practical latency depends on hardware and kernels.",
+      "sourceIds": [
+        "section-3-part-3"
+      ]
+    },
+    {
+      "id": "c8",
+      "kind": "result",
+      "statement": "At 1.5B parameters, Mamba-3 SISO averaged 56.4 and Mamba-3 MIMO averaged 57.6 across the reported language evaluations, versus 55.8 for GDN and 55.7 for Mamba-2.",
+      "conditions": "Models pretrained on 100B FineWeb-Edu tokens with a 2K context and the paper's common training protocol; MIMO used rank 4 and parameter matching.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c9",
+      "kind": "result",
+      "statement": "On the paper's formal-language evaluation, Mamba-3 reached 100.00 scaled accuracy on parity, while Mamba-3 with standard RoPE, Mamba-3 without RoPE, and Mamba-2 scored 1.56, 2.27, and 0.90 respectively.",
+      "conditions": "For the reported short-sequence training and longer-length evaluation setup; these synthetic results do not establish general language reasoning ability.",
+      "sourceIds": [
+        "section-4-part-2"
+      ]
+    },
+    {
+      "id": "c10",
+      "kind": "result",
+      "statement": "In the single-step decode benchmark, Mamba-3 SISO had the lowest reported latency in three of the four listed precision and state-size configurations; at FP32 with state size 64, Mamba-2 was faster at 0.295 ms versus 0.310 ms.",
+      "conditions": "Batch size 128 on one H100, 1.5B-parameter models, model dimension 2048, state sizes 64 or 128, using the implementations evaluated by the authors.",
+      "sourceIds": [
+        "section-4-part-2"
+      ]
+    },
+    {
+      "id": "c11",
+      "kind": "caveat",
+      "statement": "Fixed-size recurrent state remains a retrieval bottleneck: Mamba-3 was competitive on associative recall and question answering but struggled on the reported semi-structured and unstructured extraction tasks.",
+      "conditions": "For the paper's 1.5B pretrained models and cloze-style real-world retrieval evaluations truncated to 2K tokens.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c12",
+      "kind": "caveat",
+      "statement": "Mamba-3 MIMO trades additional training computation and moderate prefill overhead for greater modeling power while retaining competitive decode efficiency.",
+      "conditions": "For the paper's rank-4, parameter-matched MIMO models and optimized kernels.",
+      "sourceIds": [
+        "section-3-part-4",
+        "section-4-part-3",
+        "section-6"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "s1",
+      "title": "The design target: useful work per decoded token",
+      "markdown": "Autoregressive generation repeatedly updates a model after each new token. Attention can revisit an expanding cache, whereas a recurrent state-space layer compresses the past into a fixed-size state. That makes recurrence attractive for long decoding, but asymptotic efficiency is not enough: an update may move a large state through memory while performing too little arithmetic to occupy the processor.\n\nMamba-3 therefore attacks three different restrictions. Its discretization gives each interval a richer input rule. Its complex transition adds rotation to ordinary decay, enabling stronger state tracking. Its MIMO formulation performs more useful matrix multiplication around essentially the same dominant recurrent state. These are complementary: the first changes how evidence enters memory, the second changes how memory can evolve, and the third changes how much modeling computation accompanies state movement.",
+      "sourceIds": [
+        "abstract",
+        "section-1",
+        "section-3"
+      ],
+      "claimIds": [
+        "c2",
+        "c5",
+        "c7"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s2",
+      "title": "From a continuous system to a token recurrence",
+      "markdown": "Begin with a continuous state-space model\n\n$$\n\\dot{\\bm{h}}(t)=\\bm{A}(t)\\bm{h}(t)+\\bm{B}(t)x(t),\\qquad y(t)=\\bm{C}(t)^\\top\\bm{h}(t).\n$$\n\nHere $t$ is continuous time, $\\bm{h}(t)\\in\\mathbb{R}^N$ is the hidden state, $x(t)$ is a scalar input, $y(t)$ is the scalar output, $\\bm{A}(t)$ is the state transition, and $\\bm{B}(t),\\bm{C}(t)$ inject and read information. A sequence supplies observations only at times $\\tau_t$, with step $\\Delta_t=\\tau_t-\\tau_{t-1}$, so the differential equation must become a recurrence.\n\nFor Mamba-2's scalar-times-identity transition, define $A_t<0$, $\\Delta_t>0$, $\\alpha_t=e^{\\Delta_t A_t}\\in(0,1)$, and $\\gamma_t=\\Delta_t$. Its update is\n\n$$\n\\bm{h}_t=\\alpha_t\\bm{h}_{t-1}+\\gamma_t\\bm{B}_t x_t,\n\\qquad y_t=\\bm{C}_t^\\top\\bm{h}_t.\n$$\n\nThe coefficient $\\alpha_t$ retains old state; the vector $\\bm{B}_t x_t$ writes the current input. Because the token controls parameters such as $\\Delta_t$, forgetting and writing are selective.\n\nThe illustrative control below strips this to $h_t=a h_{t-1}+u_t$, with one impulse $u_0=1$ and later inputs zero. Moving $a$ shows how retention alone changes a twelve-step trace. It is useful for understanding decay, but it does not implement token-dependent parameters, rotations, vectors, or Mamba-3.",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c1"
+      ],
+      "figureId": "f-state"
+    },
+    {
+      "id": "s3",
+      "title": "Endpoint-aware writing: exponential-trapezoidal",
+      "markdown": "Mamba-3 separates two approximations. It treats the transition over an interval exponentially, then approximates the state-input integral using both endpoints. The resulting recurrence is\n\n$$\n\\bm{h}_t=\\alpha_t\\bm{h}_{t-1}+\\beta_t\\bm{B}_{t-1}x_{t-1}+\\gamma_t\\bm{B}_t x_t,\n$$\n\nwhere\n\n$$\n\\alpha_t=e^{\\Delta_t A_t},\\quad\n\\beta_t=(1-\\lambda_t)\\Delta_t e^{\\Delta_t A_t},\\quad\n\\gamma_t=\\lambda_t\\Delta_t,\n$$\n\nand $\\lambda_t\\in[0,1]$ is data-dependent. Setting $\\lambda_t=1$ makes $\\beta_t=0$ and recovers exponential-Euler; setting $\\lambda_t=1/2$ gives equal endpoint mixing before accounting for decay.\n\nConsider an explicitly illustrative scalar step with $h_{t-1}=2$, $\\alpha_t=0.8$, $\\Delta_t=0.5$, $\\lambda_t=0.5$, previous state-input $B_{t-1}x_{t-1}=4$, and current state-input $B_tx_t=6$. Then $\\beta_t=0.5\\cdot0.5\\cdot0.8=0.2$ and $\\gamma_t=0.5\\cdot0.5=0.25$, so\n\n$$\nh_t=0.8(2)+0.2(4)+0.25(6)=1.6+0.8+1.5=3.9.\n$$\n\nExponential-Euler at the same $\\alpha_t$ and $\\Delta_t$ would give $h_t=0.8(2)+0.5(6)=4.6$. This constructed arithmetic demonstrates the mechanism, not an empirical advantage.\n\nUnrolling the new recurrence reveals a data-dependent width-two convolution on $\\bm{B}_t x_t$ inside the SSM. That is not the same as the separate short causal convolution often placed before a recurrent layer. The formal second-order error statement also has a condition: $\\lambda_t$ must remain $1/2+O(\\Delta_t)$. The learned model does not enforce it, so mathematical order and empirical usefulness should not be conflated.",
+      "sourceIds": [
+        "section-3",
+        "section-3-part-2"
+      ],
+      "claimIds": [
+        "c2",
+        "c3",
+        "c4"
+      ],
+      "figureId": "f-ode"
+    },
+    {
+      "id": "s4",
+      "title": "Rotation supplies a missing kind of memory",
+      "markdown": "Positive scalar decay can shrink or preserve a direction, but cannot alternate among distinct orientations. Mamba-3 starts from a complex state and rewrites it in real coordinates. Each complex coordinate becomes a real pair transformed by\n\n$$\nR(\\theta)=\\begin{bmatrix}\\cos\\theta&-\\sin\\theta\\\\ \\sin\\theta&\\cos\\theta\\end{bmatrix}.\n$$\n\nWith block-diagonal $\\bm{R}_t$ made from such matrices, the real recurrence contains the transition $e^{\\Delta_t A_t}\\bm{R}_t$: scalar decay controls magnitude while rotation controls phase. The angle is data-dependent through $\\Delta_t\\bm{\\theta}_t$, where $\\bm{\\theta}_t$ contains learned imaginary transition components.\n\nParity exposes the distinction. Represent even state by $(1,0)$ and odd state by $(-1,0)$. For a bit $x_t$, rotating by $\\pi x_t$ leaves the state unchanged when $x_t=0$ and flips it when $x_t=1$. After the illustrative sequence $[1,0,1]$, the rotations are $\\pi,0,\\pi$; two flips return to even. A nonnegative scalar multiplier cannot perform that sign-changing cycle by itself.\n\nFor efficient computation, the paper's RoPE trick accumulates the rotations and applies them to the input and output projections rather than materializing a general complex transition. A common misconception is that this is merely standard positional RoPE. It is not: the paper's rotations are data-dependent and derived as an equivalent computation for complex SSM dynamics. In the reported formal-language experiment, this distinction mattered sharply, but those synthetic accuracies should not be read as proof of unrestricted symbolic reasoning.",
+      "sourceIds": [
+        "section-3-part-2",
+        "section-3-part-3",
+        "section-4-part-2"
+      ],
+      "claimIds": [
+        "c5",
+        "c6",
+        "c9"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s5",
+      "title": "MIMO turns memory traffic into modeling work",
+      "markdown": "For one SISO head with head width $P$ and state size $N$, the recurrent state is a matrix $\\bm{H}_t\\in\\mathbb{R}^{N\\times P}$. A conventional write uses an outer product between $\\bm{B}_t\\in\\mathbb{R}^N$ and $\\bm{x}_t\\in\\mathbb{R}^P$. Moving $\\bm{H}_t$ dominates traffic, while that rank-one update performs relatively little computation.\n\nMamba-3 introduces rank $R$: $\\bm{B}_t\\in\\mathbb{R}^{N\\times R}$ and $\\bm{x}_t\\in\\mathbb{R}^{P\\times R}$. Their product supplies an $N\\times P$ update, now through matrix multiplication. The read projection $\\bm{C}_t$ also gains rank $R$. For $R\\ll N,P$, the dominant state shape is unchanged while update FLOPs grow roughly with $R$, raising arithmetic intensity and mapping the work to tensor-core-friendly matmul.\n\nThis does not mean that extra FLOPs are universally free. The argument depends on a memory-bound decode regime, small $R$, suitable dimensions, hardware, and optimized kernels. Training also costs more: the paper describes chunking that reduces the increase from a naive $R^2$ pattern toward an $R$-fold one, and its rank-4 kernels still introduce training and prefill overhead. MIMO is best understood as spending otherwise-idle compute during decode, not as eliminating computation.",
+      "sourceIds": [
+        "section-3-part-3",
+        "section-3-part-4",
+        "section-4-part-3"
+      ],
+      "claimIds": [
+        "c7",
+        "c12"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s6",
+      "title": "What the experiments establish",
+      "markdown": "The cleanest language-model comparison used models trained on 100B FineWeb-Edu tokens, a 2K context, and a common protocol. At 1.5B parameters, average downstream accuracy was 55.7 for Mamba-2, 55.8 for GDN, 56.4 for Mamba-3 SISO, and 57.6 for rank-4 Mamba-3 MIMO. The MIMO models were parameter-matched by narrowing the MLP, so their advantage is not simply an unconstrained parameter increase.\n\nThe formal-language results isolate a different capability. Mamba-3 scored 100.00 on parity, while its standard-RoPE, no-RoPE, and Mamba-2 comparisons were near the bottom of the scaled-accuracy measure. This supports the proposed data-dependent rotational mechanism under that training and evaluation setup. It does not show that every complex recurrence will train successfully or that parity performance predicts broad language quality.\n\nFor systems evidence, single-token decode was measured at batch size 128 on one H100 with 1.5B models, dimension 2048, and state sizes 64 or 128. Mamba-3 SISO had the lowest listed latency in three of the four precision/state-size combinations: FP32 with state size 128 and BF16 with state sizes 64 and 128. The exception was FP32 with state size 64, where Mamba-2 measured 0.295 ms and Mamba-3 SISO measured 0.310 ms. End-to-end measurements also showed rank-4 MIMO near Mamba-2 in decode while paying a moderate prefill cost. These are implementation- and hardware-conditioned measurements, not architecture-independent speed laws.",
+      "sourceIds": [
+        "section-4",
+        "section-4-part-2",
+        "section-4-part-3"
+      ],
+      "claimIds": [
+        "c8",
+        "c9",
+        "c10",
+        "c12"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s7",
+      "title": "The frontier moved, but compression still bites",
+      "markdown": "Mamba-3 combines a more expressive write rule, rotational dynamics, and a higher-intensity MIMO update. The paper also adds normalization and biases, and reports that biases plus exponential-trapezoidal discretization made the external short convolution unnecessary in its ablation. Consequently, credit should go to the evaluated package and controlled ablations rather than to one equation alone.\n\nThe central limitation remains fixed-state compression. On the paper's 2K real-world retrieval tests, Mamba-3 was competitive for associative recall and question answering but weak on extraction from semi-structured or unstructured inputs. Hybrid models that periodically use attention are therefore a plausible deployment pattern. Even there, normalization placement produced competing retrieval tradeoffs, and the paper says the ideal choice remains unclear.\n\nThe broader lesson is precise: Mamba-3 improves what a constant-memory recurrent layer can write, track, and compute per state transfer. It does not grant unrestricted access to earlier tokens, make discretization error guarantees unconditional, or make MIMO overhead vanish outside the measured decode regime.",
+      "sourceIds": [
+        "section-3-part-4",
+        "section-4",
+        "section-4-part-2",
+        "section-6"
+      ],
+      "claimIds": [
+        "c3",
+        "c4",
+        "c11",
+        "c12"
+      ],
+      "figureId": null
+    }
+  ],
+  "figures": [
+    {
+      "id": "f-state",
+      "kind": "state",
+      "title": "How scalar retention shapes an impulse",
+      "question": "As retention a approaches one, how does the visible influence of the initial impulse change over twelve steps?",
+      "caption": "An illustrative scalar recurrence shows h_t = a h_(t-1) + u_t for one initial impulse; the control changes only retention a and displays the resulting decay.",
+      "limitation": "This is a scalar, nonselective impulse response, not Mamba-3's vector state, complex rotations, learned inputs, or reported model behavior.",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c1"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "f-ode",
+      "kind": "ode",
+      "title": "Why discretization choice matters",
+      "question": "When the Euler step size is reduced, how does its trajectory compare with the exact exponential decay?",
+      "caption": "Forward Euler approximates dx/dt = -x from x(0) = 1 on t in [0,3], while the exact curve is exp(-t); the control changes the step size.",
+      "limitation": "This fixed scalar ODE illustrates discretization error only; it is not Mamba-3's exponential-trapezoidal rule, selective dynamics, or a learned vector field.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c2",
+        "c3"
+      ],
+      "illustrative": true
+    }
+  ],
+  "quiz": [
+    {
+      "question": "In the illustrative exponential-trapezoidal step, what happens when lambda_t is set to 1 while all other quantities remain fixed?",
+      "options": [
+        {
+          "text": "The preceding state-input term vanishes.",
+          "explanation": "Correct. Since beta_t = (1-lambda_t)Delta_t exp(Delta_t A_t), lambda_t = 1 makes beta_t zero and recovers exponential-Euler."
+        },
+        {
+          "text": "The previous hidden state is discarded.",
+          "explanation": "Incorrect. Hidden-state retention is controlled by alpha_t, not directly by lambda_t."
+        },
+        {
+          "text": "The rotation angle becomes pi.",
+          "explanation": "Incorrect. Lambda_t mixes interval endpoints; it does not determine the complex transition angle."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c2"
+      ]
+    },
+    {
+      "question": "Why can a two-dimensional rotation represent parity more naturally than a strictly positive scalar transition?",
+      "options": [
+        {
+          "text": "A rotation by pi can flip between two state orientations.",
+          "explanation": "Correct. Applying the flip once per input bit equal to one records whether the number of flips is even or odd."
+        },
+        {
+          "text": "Rotation stores every earlier bit in a growing cache.",
+          "explanation": "Incorrect. The example uses a fixed-size state and does not retain an explicit history."
+        },
+        {
+          "text": "Rotation guarantees exact arithmetic for every sequence task.",
+          "explanation": "Incorrect. It supplies a useful class of dynamics, not a universal training or accuracy guarantee."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-3-part-2",
+        "section-4-part-2"
+      ],
+      "claimIds": [
+        "c5",
+        "c9"
+      ]
+    },
+    {
+      "question": "Under the paper's stated MIMO motivation, when is extra rank most likely to add little decode latency?",
+      "options": [
+        {
+          "text": "When decode is memory-bound, R is small, and optimized matmul kernels are used.",
+          "explanation": "Correct. Those conditions allow more arithmetic to overlap with movement of the dominant recurrent state."
+        },
+        {
+          "text": "Whenever R is increased, regardless of hardware or workload.",
+          "explanation": "Incorrect. Arithmetic intensity and latency depend on dimensions, kernels, hardware, and whether the operation is memory-bound."
+        },
+        {
+          "text": "Only when the recurrent state is removed entirely.",
+          "explanation": "Incorrect. MIMO preserves the dominant N-by-P recurrent-state shape; it changes the rank of input and output projections."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-3-part-3",
+        "section-4-part-3"
+      ],
+      "claimIds": [
+        "c7",
+        "c12"
+      ]
+    }
+  ],
+  "id": "mamba-3-improved-sequence-modeling-using",
+  "createdAt": "2026-10-02T00:14:54.088Z",
+  "pipelineVersion": "subjects-lessons-v1",
+  "sources": [
+    {
+      "id": "abstract",
+      "label": "Original paper · abstract",
+      "url": "https://arxiv.org/abs/2603.15569",
+      "digest": "79bbbfcc1e72b5d055380cd1cb16048477c6752e382e60a8cfcf768fc61a72a7",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:12:04.058Z"
+    },
+    {
+      "id": "section-1",
+      "label": "1 Introduction",
+      "url": "https://arxiv.org/html/2603.15569#S1",
+      "digest": "08054077b4f30b82828ed07aa9383f434b357e772a1351f89ac5cb599827e983",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:12:04.058Z"
+    },
+    {
+      "id": "section-2",
+      "label": "2 Preliminaries",
+      "url": "https://arxiv.org/html/2603.15569#S2",
+      "digest": "6ac58b1e072dd5105686cbf9e76fe6847611d6b5b308e4d9601f62e40731bfc5",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:12:04.058Z"
+    },
+    {
+      "id": "section-3",
+      "label": "3 Methodology",
+      "url": "https://arxiv.org/html/2603.15569#S3",
+      "digest": "2ec66d5cf25ee1333545170fc3e82ba26308fe63ffe74037c3b55ae50e2cf18e",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:12:04.058Z"
+    },
+    {
+      "id": "section-3-part-2",
+      "label": "3 Methodology · part 2",
+      "url": "https://arxiv.org/html/2603.15569#S3",
+      "digest": "4421f03fa73ed1da2b3bfe1ae11877f2b43da847bb975f9499ba3c44a5ac7011",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:12:04.058Z"
+    },
+    {
+      "id": "section-3-part-3",
+      "label": "3 Methodology · part 3",
+      "url": "https://arxiv.org/html/2603.15569#S3",
+      "digest": "ec93caf7c4e11595aaf00fc961a824766bc0d0423b1d5857846495115fea9a5a",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:12:04.058Z"
+    },
+    {
+      "id": "section-3-part-4",
+      "label": "3 Methodology · part 4",
+      "url": "https://arxiv.org/html/2603.15569#S3",
+      "digest": "56c1f58a199f8aa56cf877f0b44820c5bbbbf57b6bb79fd48bdeec0513c9e469",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:12:04.058Z"
+    },
+    {
+      "id": "section-4",
+      "label": "4 Empirical Validation",
+      "url": "https://arxiv.org/html/2603.15569#S4",
+      "digest": "8f229eb63f3bbd17d1eb455d58429ed4ac2abf07b7b59665a63e62e64f7cb61a",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:12:04.058Z"
+    },
+    {
+      "id": "section-4-part-2",
+      "label": "4 Empirical Validation · part 2",
+      "url": "https://arxiv.org/html/2603.15569#S4",
+      "digest": "4a15c2848540ad1689abc69fa6ac7757683e694a9341767f8fce2b7458c231b2",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:12:04.058Z"
+    },
+    {
+      "id": "section-4-part-3",
+      "label": "4 Empirical Validation · part 3",
+      "url": "https://arxiv.org/html/2603.15569#S4",
+      "digest": "de59ebcd88de9edf53189629879fdbce4e13b5972dd2a35522fc5d6abcafd3b3",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:12:04.058Z"
+    },
+    {
+      "id": "section-5",
+      "label": "5 Related Work",
+      "url": "https://arxiv.org/html/2603.15569#S5",
+      "digest": "7c280b43f4f7d5110ee4c160e52bc3c086140780c6b0fb15623517a4f5cb4259",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:12:04.058Z"
+    },
+    {
+      "id": "section-5-part-2",
+      "label": "5 Related Work · part 2",
+      "url": "https://arxiv.org/html/2603.15569#S5",
+      "digest": "e925cba4bcf340645303d99db6c7ef86e68043ce807b3b9327cad3224389e3ff",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:12:04.058Z"
+    },
+    {
+      "id": "section-6",
+      "label": "6 Conclusion And Future Work",
+      "url": "https://arxiv.org/html/2603.15569#S6",
+      "digest": "c84b263a90c0877cc361a4868fe394075b06f09514e79edd5f9ce2078323ecf5",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:12:04.058Z"
+    }
+  ],
+  "review": {
+    "status": "passed",
+    "reviewedAt": "2026-10-02T00:14:54.089Z",
+    "contentDigest": "3c529230f61180ead6b564beebe2b04dcfcb0709cb207d65f42881839c1fd6b8"
+  }
+}

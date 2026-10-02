@@ -1,0 +1,423 @@
+{
+  "title": "One Denoiser, Many Roads Back from Noise",
+  "summary": "DDIM keeps DDPM noise-level training but changes the joint process and sampling trajectory, enabling deterministic, shortened generation without retraining.",
+  "prerequisites": [
+    "Gaussian noise and conditional distributions",
+    "Latent-variable generative models",
+    "Mean-squared-error regression",
+    "Euler discretization of ordinary differential equations"
+  ],
+  "objectives": [
+    "Explain why fixed noisy-data marginals allow different joint processes.",
+    "Derive a clean-sample estimate from a predicted noise vector.",
+    "Distinguish stochasticity control from sampling-step selection.",
+    "Calculate one scalar deterministic DDIM update.",
+    "Interpret the paper's speed and quality evidence under tested conditions."
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "mechanism",
+      "statement": "A DDPM trains a denoiser at multiple noise levels and generates by sequentially reversing a corruption process.",
+      "conditions": "For the Markovian Gaussian forward process and its learned reverse approximation.",
+      "sourceIds": [
+        "section-1"
+      ]
+    },
+    {
+      "id": "c2",
+      "kind": "equation",
+      "statement": "At noise level t, a clean sample and independent standard Gaussian noise combine as x_t = sqrt(alpha_t)x_0 + sqrt(1-alpha_t)epsilon.",
+      "conditions": "For alpha_t in (0,1] and epsilon distributed as a standard multivariate Gaussian.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c3",
+      "kind": "mechanism",
+      "statement": "The usual noise-prediction loss depends on each noisy marginal conditioned on x_0, rather than directly on the full joint coupling among all noise levels.",
+      "conditions": "For the DDPM surrogate objective L_gamma discussed by the authors.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c4",
+      "kind": "mechanism",
+      "statement": "DDIM exploits that marginal-only dependence by constructing non-Markovian inference joints that preserve the same noisy marginals.",
+      "conditions": "For the q_sigma family whose conditional means are chosen to preserve every stated marginal.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c5",
+      "kind": "equation",
+      "statement": "The denoiser’s predicted noise can be algebraically converted into a prediction of the clean observation.",
+      "conditions": "For alpha_t greater than zero and a noise predictor epsilon_theta^(t)(x_t).",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c6",
+      "kind": "result",
+      "statement": "For strictly positive sigma, the generalized variational objective differs from a weighted denoising objective only by an additive constant.",
+      "conditions": "For all components of sigma strictly positive; the theorem does not directly include sigma equal to zero.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c7",
+      "kind": "mechanism",
+      "statement": "The same trained noise predictor supports different reverse processes by changing the per-step stochasticity parameters.",
+      "conditions": "When the model was trained with the shared denoising surrogate and the reverse update remains in the paper’s family.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c8",
+      "kind": "caveat",
+      "statement": "The deterministic DDIM endpoint sets every reverse-step noise scale to zero, but that exact endpoint lies outside the stated positive-sigma theorem.",
+      "conditions": "At sigma_t = 0 for all t; the paper motivates it as a limiting case.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c9",
+      "kind": "mechanism",
+      "statement": "Acceleration comes from selecting a shorter subsequence of trained noise levels and traversing it in reverse.",
+      "conditions": "For an increasing trajectory tau of length S chosen from the original T indices.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c10",
+      "kind": "result",
+      "statement": "The experiments varied trajectory length and stochasticity while holding the trained T=1000 model and unit-weight denoising objective fixed.",
+      "conditions": "For the datasets and trained models evaluated in Section 5.",
+      "sourceIds": [
+        "section-5"
+      ]
+    },
+    {
+      "id": "c11",
+      "kind": "result",
+      "statement": "Under the reported hardware and image-generation comparisons, 20–100 DDIM steps produced quality comparable to 1000-step models with a claimed 10–50× speedup.",
+      "conditions": "For the paper’s tested models, datasets, sampling schedules, and one Nvidia 2080 Ti GPU timing setup.",
+      "sourceIds": [
+        "section-5"
+      ]
+    },
+    {
+      "id": "c12",
+      "kind": "result",
+      "statement": "Increasing the DDIM encoding and decoding step count reduced the reported CIFAR-10 reconstruction error.",
+      "conditions": "For CIFAR-10 test images, the CIFAR-10 model, equal S for encoding and decoding, and per-dimension MSE scaled to [0,1].",
+      "sourceIds": [
+        "section-5"
+      ]
+    },
+    {
+      "id": "c13",
+      "kind": "caveat",
+      "statement": "The paper leaves more accurate ODE integration methods as a proposed research direction rather than an evaluated DDIM result.",
+      "conditions": "For methods intended to reduce discretization error at small sampling-step counts.",
+      "sourceIds": [
+        "section-7"
+      ]
+    },
+    {
+      "id": "c14",
+      "kind": "result",
+      "statement": "With a fixed initial latent, deterministic DDIM trajectories of different lengths tended to preserve high-level image features in the reported visual study.",
+      "conditions": "For the paper’s Figure 5 observations using the same initial x_T and different sampling trajectories.",
+      "sourceIds": [
+        "section-5"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "s1",
+      "title": "The bottleneck is sequential generation",
+      "markdown": "A diffusion model learns to undo controlled corruption. Let $\\bm{x}_0\\in\\mathcal{X}$ denote a clean data example, $\\bm{x}_t$ its noisy latent at index $t$, $T$ the largest index, and $\\theta$ the learned parameters. In a DDPM, generation starts from an approximately standard-Gaussian $\\bm{x}_T$ and applies learned reverse conditionals one after another until reaching $\\bm{x}_0$. The important cost is therefore not merely neural-network size: it is the number of sequential network evaluations.\n\nThe original setup makes a long chain statistically natural. Small forward transitions are Gaussian, and their learned reversals can also be modeled as Gaussian conditionals. But if $T=1000$, ordinary sampling invokes all 1000 reverse transitions. DDIM asks a sharper question: does the denoising objective force that particular joint chain, or does it constrain only what a sample looks like at each individual noise level?\n\nThis distinction is the paper’s opening. The contribution is not a new denoising network or a new adversarial objective. It is a family of alternative inference and generation processes compatible with the familiar noise-prediction training signal, including a deterministic member and shortened sampling trajectories.",
+      "sourceIds": [
+        "section-1",
+        "section-2",
+        "abstract"
+      ],
+      "claimIds": [
+        "c1"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s2",
+      "title": "Noise levels and the training target",
+      "markdown": "Choose a decreasing schedule $\\alpha_1,\\ldots,\\alpha_T\\in(0,1]$. At index $t$, $\\alpha_t$ is the retained signal proportion, $\\bm{I}$ is the identity covariance, and $\\boldsymbol\\epsilon\\sim\\mathcal{N}(\\bm{0},\\bm{I})$ is standard Gaussian noise. The noisy-data marginal is\n\n$$q(\\bm{x}_t\\mid\\bm{x}_0)=\\mathcal{N}\\!\\left(\\sqrt{\\alpha_t}\\bm{x}_0,(1-\\alpha_t)\\bm{I}\\right),$$\n\nwhich can be sampled directly as\n\n$$\\bm{x}_t=\\sqrt{\\alpha_t}\\bm{x}_0+\\sqrt{1-\\alpha_t}\\boldsymbol\\epsilon.$$\n\nThus the signal amplitude is scaled by $\\sqrt{\\alpha_t}$ and the noise standard deviation in each coordinate is $\\sqrt{1-\\alpha_t}$. As $\\alpha_t$ decreases, less of $\\bm{x}_0$ remains and the marginal approaches standard Gaussian noise; when $\\alpha_T$ is sufficiently close to zero, this motivates the prior $p_\\theta(\\bm{x}_T)=\\mathcal{N}(\\bm{0},\\bm{I})$.\n\nA predictor $\\boldsymbol\\epsilon_\\theta^{(t)}(\\bm{x}_t)$ receives the noisy point and its noise-level index and estimates the particular noise vector used to construct it. The weighted training objective is\n\n$$L_\\gamma(\\boldsymbol\\epsilon_\\theta)=\\sum_{t=1}^{T}\\gamma_t\\,\\mathbb{E}\\!\\left[\\left\\|\\boldsymbol\\epsilon_\\theta^{(t)}\\!\\left(\\sqrt{\\alpha_t}\\bm{x}_0+\\sqrt{1-\\alpha_t}\\boldsymbol\\epsilon_t\\right)-\\boldsymbol\\epsilon_t\\right\\|_2^2\\right].$$\n\nEach term requires only a clean example, a selected index, and an independent Gaussian draw. The full latent path $\\bm{x}_1,\\ldots,\\bm{x}_T$ need not be generated during training. This marginal construction is central to DDIM: it leaves freedom to change how different noise levels are coupled while retaining the noisy inputs on which the denoiser was trained.\n\nThe Gaussian-radius calculation illustrates the scale of the noise vector itself. For a $D$-dimensional vector with independent coordinates of standard deviation $\\sigma$, the squared norm has expectation $D\\sigma^2$, so its root-mean-square radius is\n\n$$r_{\\mathrm{RMS}}=\\sqrt{\\mathbb{E}\\|\\boldsymbol\\epsilon\\|_2^2}=\\sigma\\sqrt{D}.$$\n\nThe figure constructs seeded Gaussian vectors, measures their Euclidean norms, and compares the resulting histogram and mean radius with $\\sigma\\sqrt{D}$. Increasing $\\sigma$ multiplies the characteristic radius in the same units as each coordinate. Increasing $D$ raises the radius as $\\sqrt{D}$ while making its relative variation smaller. This explains why the diffusion prior and injected noise occupy a characteristic high-dimensional scale; the quantities are an illustrative calculation of Gaussian geometry rather than measurements from the trained image model.",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c2"
+      ],
+      "figureId": "fig-noise"
+    },
+    {
+      "id": "s3",
+      "title": "The hidden freedom in the joint process",
+      "markdown": "A collection of marginals does not uniquely determine a joint distribution. Two processes may give exactly the same $q(\\bm{x}_t\\mid\\bm{x}_0)$ for every $t$ while coupling adjacent latents differently. DDPM uses a Markovian forward factorization: conditioned on $\\bm{x}_{t-1}$, the next state does not require $\\bm{x}_0$. DDIM’s generalized inference family instead defines reverse-directed conditionals $q_\\sigma(\\bm{x}_{t-1}\\mid\\bm{x}_t,\\bm{x}_0)$, where $\\sigma=(\\sigma_1,\\ldots,\\sigma_T)$ controls conditional randomness. Dependence on $\\bm{x}_0$ makes the corresponding forward process non-Markovian.\n\nThe conditionals are engineered so every one-time marginal remains the same Gaussian used in training. That is the bridge: the noise-prediction loss sees those marginals, not the full coupling. The paper proves that, for strictly positive $\\sigma$, its variational objective $J_\\sigma$ equals a weighted denoising loss $L_\\gamma$ plus a constant $C$, for some positive weights $\\gamma=(\\gamma_1,\\ldots,\\gamma_T)$.\n\nThere is a qualification often lost in shorthand. The argument that the optimum ignores $\\gamma$ assumes parameters are not shared across $t$, allowing each term to be optimized independently. Real implementations commonly share parameters across noise levels, so the theorem supplies the variational construction, while use of the unit-weight surrogate with shared networks is a practical modeling step—not a universal statement that every weighting must train identically.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c3",
+        "c4",
+        "c6"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s4",
+      "title": "From predicted noise to a reverse step",
+      "markdown": "Given $\\bm{x}_t$, solve the corruption equation for the unknown clean sample, replacing true noise by predicted noise:\n\n$$\\widehat{\\bm{x}}_0=f_\\theta^{(t)}(\\bm{x}_t)=\\frac{\\bm{x}_t-\\sqrt{1-\\alpha_t}\\,\\boldsymbol\\epsilon_\\theta^{(t)}(\\bm{x}_t)}{\\sqrt{\\alpha_t}}.$$\n\nA generalized reverse update combines three pieces: $\\sqrt{\\alpha_{t-1}}\\widehat{\\bm{x}}_0$, a direction proportional to the predicted noise, and fresh independent noise $\\sigma_t\\boldsymbol\\epsilon_t$. Thus $\\sigma_t$ changes the reverse transition without changing the trained predictor. At the DDIM endpoint, $\\sigma_t=0$ for every step, eliminating fresh stepwise randomness. Once the initial $\\bm{x}_T$ and trajectory are fixed, the output is fixed too. This is what “implicit” means here; it does not mean that the denoiser is noiseless or that training omitted Gaussian corruption.\n\nIllustrative scalar calculation: take $\\alpha_t=0.25$, $\\alpha_{t-1}=0.64$, current $x_t=1.3$, predicted noise $\\epsilon_\\theta=0.6$, and $\\sigma_t=0$. First,\n\n$$\\widehat{x}_0=\\frac{1.3-\\sqrt{0.75}(0.6)}{0.5}\\approx1.5608.$$\n\nThen the deterministic update is\n\n$$x_{t-1}=0.8(1.5608)+\\sqrt{1-0.64}(0.6)=1.2486+0.36=1.6086.$$\n\nThis arithmetic is illustrative, not a reported parameter setting or measured paper result.",
+      "sourceIds": [
+        "section-3",
+        "section-4"
+      ],
+      "claimIds": [
+        "c5",
+        "c7",
+        "c8"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s5",
+      "title": "Skipping indices without retraining",
+      "markdown": "Stochasticity and step count are separate controls. Let $\\tau=(\\tau_1,\\ldots,\\tau_S)$ be an increasing subsequence of $[1,\\ldots,T]$, where $S$ is the number of retained indices. Sampling visits $\\operatorname{reversed}(\\tau)$. Because the trained predictor accepts a noise level, it can be evaluated only at those selected indices. Fewer retained indices mean fewer sequential evaluations; they do not mean that a smaller network was trained.\n\nFor example, $\\tau=(1,3,7,10)$ gives a four-step reverse trajectory $10\\to7\\to3\\to1$ within a model trained over ten indices. This example is illustrative. Each larger jump is a coarser numerical move, so speed comes with discretization error and potentially lower sample quality.\n\nThe ODE control visualizes precisely that trade-off using forward Euler on the fixed scalar equation $dx/dt=-x$, $x(0)=1$, over $t\\in[0,3]$. Changing the step size changes the numerical trajectory relative to $e^{-t}$. Predict which trace deviates more before moving the control. This toy supports the analogy between shortened deterministic DDIM trajectories and coarse integration. It is not DDIM’s learned vector field, uses no adaptive solver or adjoint, and cannot predict image FID.",
+      "sourceIds": [
+        "section-4"
+      ],
+      "claimIds": [
+        "c9"
+      ],
+      "figureId": "fig-ode"
+    },
+    {
+      "id": "s6",
+      "title": "What the experiments establish",
+      "markdown": "The paper held training fixed at $T=1000$ with the unit-weight objective and altered sampling through trajectory $\\tau$ and stochasticity. Its parameter $\\eta$ scales the prescribed reverse noise: $\\eta=0$ is deterministic DDIM and $\\eta=1$ recovers the stated DDPM choice. On CIFAR-10 and CelebA, reported FID generally improved as the sampling-step count $S=\\dim(\\tau)$ increased. At small $S$, the less stochastic settings performed better in the table; this supports DDIM as a sampler for a pretrained denoiser, not as evidence that determinism universally dominates stochastic sampling.\n\nThe runtime claim has concrete boundaries. On the tested models and one Nvidia 2080 Ti GPU, sampling time scaled linearly with trajectory length, and 20–100 DDIM steps gave quality described as comparable to 1000-step models, corresponding to 10–50× reported speedups. That does not establish the same wall-clock factor for modern hardware, other architectures, or every dataset.\n\nWith initial $\\bm{x}_T$ fixed, different deterministic trajectories preserved similar high-level features in the paper’s visual examples. The authors also interpolated initial latents and tested ODE-inspired encoding and decoding. On CIFAR-10, reconstruction MSE decreased with larger equal encoding and decoding step counts. Because $\\bm{x}_T$ and $\\bm{x}_0$ have the same dimension, this is not a compression result.",
+      "sourceIds": [
+        "section-5"
+      ],
+      "claimIds": [
+        "c10",
+        "c11",
+        "c12",
+        "c14"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s7",
+      "title": "Misconceptions, boundaries, and the durable idea",
+      "markdown": "A common misconception is that DDIM accelerates generation by training on fewer noise levels. In the reported experiments, the model was still trained with $T=1000$; acceleration came from evaluating that same noise-conditioned predictor along a shorter subsequence $\\tau$. The number of retained indices controls sequential computation, while $\\sigma$ controls how much fresh randomness enters each reverse transition. These are distinct choices.\n\nThe non-Markovian inference construction also does not require access to a clean training image during generation. The true $\\bm{x}_0$ appears when defining the inference joint and proving that its noisy marginals match those used by the denoising objective. In the generative process, $\\bm{x}_0$ is unavailable and is replaced by the model estimate $f_\\theta^{(t)}(\\bm{x}_t)$.\n\nThe deterministic endpoint requires a precise qualification. Setting every $\\sigma_t=0$ removes newly sampled reverse-step noise, so a fixed initial latent $\\bm{x}_T$ and fixed trajectory determine the output. It does not imply exact inversion or error-free generation. The theorem equating $J_\\sigma$ with a weighted denoising objective is stated only for strictly positive $\\sigma$; the paper motivates the zero-noise endpoint through arbitrarily small positive values. Prediction error and finite-step discretization error remain, consistent with the reported decrease in CIFAR-10 reconstruction MSE as the equal encoding and decoding step count increased.\n\nThe ODE interpretation clarifies both the opportunity and its limit. A shortened deterministic trajectory is a coarser numerical traversal of the learned dynamics, so fewer evaluations can increase discretization error. The paper proposes lower-error integration methods, including multistep methods such as Adams–Bashforth, as a possible route to better few-step samples, but does not report that improvement as an established result.\n\nThe durable idea is therefore conditional rather than universal: when denoising training is determined by fixed noisy-data marginals, those marginals can support more than one joint coupling and reverse process. DDIM uses that freedom to reuse a trained noise predictor while choosing the trajectory length and reverse stochasticity appropriate to the desired balance of computation, consistency, and sample quality.",
+      "sourceIds": [
+        "section-3",
+        "section-4",
+        "section-5",
+        "section-7"
+      ],
+      "claimIds": [
+        "c8",
+        "c10",
+        "c12",
+        "c13"
+      ],
+      "figureId": null
+    }
+  ],
+  "figures": [
+    {
+      "id": "fig-noise",
+      "kind": "noise",
+      "title": "Radius of a Gaussian latent",
+      "question": "If sigma stays fixed while dimension increases, how should the typical norm and its relative concentration change?",
+      "caption": "A seeded D-dimensional Gaussian sample is summarized by a norm histogram, the RMS radius sigma times sqrt(D), and the measured mean radius; controls change sigma and dimension.",
+      "limitation": "This illustrates Gaussian-vector geometry only. Dimension is not drawn as three physical axes, and the experiment does not simulate diffusion, denoising, images, or paper benchmarks.",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c2"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "fig-ode",
+      "kind": "ode",
+      "title": "Coarse steps, larger integration error",
+      "question": "As the Euler step size grows, how does the numerical path compare with the exact exponential decay?",
+      "caption": "Forward Euler advances the illustrative equation dx/dt = -x from x(0) = 1 to t = 3 and compares each chosen step size with exp(-t).",
+      "limitation": "This is a fixed scalar decay, not DDIM’s learned vector field, an adaptive solver, an adjoint implementation, or an empirical image-quality curve.",
+      "sourceIds": [
+        "section-4",
+        "section-7"
+      ],
+      "claimIds": [
+        "c9",
+        "c13"
+      ],
+      "illustrative": true
+    }
+  ],
+  "quiz": [
+    {
+      "question": "A model was trained over T noise levels. Under the DDIM construction, what directly reduces sequential sampling evaluations without retraining?",
+      "options": [
+        {
+          "text": "Choose a shorter index subsequence tau.",
+          "explanation": "Correct. Sampling follows reversed(tau), so its length S sets the number of retained reverse evaluations."
+        },
+        {
+          "text": "Increase sigma at every retained step.",
+          "explanation": "Incorrect. Sigma changes reverse stochasticity; it does not itself shorten the trajectory."
+        },
+        {
+          "text": "Resample the training data with lower-dimensional noise.",
+          "explanation": "Incorrect. That changes the training setup and is not the paper’s trajectory-shortening mechanism."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-4"
+      ],
+      "claimIds": [
+        "c7",
+        "c9"
+      ]
+    },
+    {
+      "question": "Assume sigma_t = 0, and fix both the initial latent x_T and the sampling trajectory. What follows?",
+      "options": [
+        {
+          "text": "The output is fixed by the learned updates.",
+          "explanation": "Correct. No fresh reverse-step noise is injected, so fixed inputs and trajectory determine the result."
+        },
+        {
+          "text": "Every intermediate latent is an independent Gaussian draw.",
+          "explanation": "Incorrect. That contradicts the zero coefficient on fresh random noise."
+        },
+        {
+          "text": "The output must exactly reconstruct a training image.",
+          "explanation": "Incorrect. Determinism does not imply perfect inversion or memorization."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-4",
+        "section-5"
+      ],
+      "claimIds": [
+        "c8",
+        "c14"
+      ]
+    },
+    {
+      "question": "Which conclusion is justified by the reported 10–50× speedup evidence?",
+      "options": [
+        {
+          "text": "It held for the tested models and stated GPU comparison.",
+          "explanation": "Correct. The claim is conditional on the paper’s trajectories, models, datasets, and timing hardware."
+        },
+        {
+          "text": "Every diffusion architecture will be exactly 10–50× faster.",
+          "explanation": "Incorrect. The experiments do not establish a hardware- and architecture-independent guarantee."
+        },
+        {
+          "text": "DDIM removes all quality loss at any step count.",
+          "explanation": "Incorrect. The paper reports a computation–quality trade-off, and coarser trajectories can reduce quality."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-5"
+      ],
+      "claimIds": [
+        "c10",
+        "c11"
+      ]
+    }
+  ],
+  "id": "denoising-diffusion-implicit-models",
+  "createdAt": "2026-10-01T23:28:41.065Z",
+  "pipelineVersion": "subjects-lessons-v1",
+  "sources": [
+    {
+      "id": "abstract",
+      "label": "Original paper · abstract",
+      "url": "https://arxiv.org/abs/2010.02502",
+      "digest": "6a175e159d1540d25a04e3ac7b9642f46c2c82aba58ff549cde9f1991bc5c104"
+    },
+    {
+      "id": "section-1",
+      "label": "1 Introduction",
+      "url": "https://arxiv.org/html/2010.02502#S1",
+      "digest": "ad13d15838143bd14dc818a03855f5479b59f8ef49a3b7b7d6075c36837d0878"
+    },
+    {
+      "id": "section-2",
+      "label": "2 Background",
+      "url": "https://arxiv.org/html/2010.02502#S2",
+      "digest": "0f5b0fffba3473c303b273d78eaa0c003d47dd2a8248cfea1bb2ff88942bc42e"
+    },
+    {
+      "id": "section-3",
+      "label": "3 Variational Inference for non-Markovian Forward Processes",
+      "url": "https://arxiv.org/html/2010.02502#S3",
+      "digest": "a03eeebd38b7430acd0aeb373549800f5a395022c2af96dd1e2425f2fa8794aa"
+    },
+    {
+      "id": "section-4",
+      "label": "4 Sampling from Generalized Generative Processes",
+      "url": "https://arxiv.org/html/2010.02502#S4",
+      "digest": "32581ee5f7d5c501c70f171e188867cf331eda7ed505c8b7fa974314535413bd"
+    },
+    {
+      "id": "section-5",
+      "label": "5 Experiments",
+      "url": "https://arxiv.org/html/2010.02502#S5",
+      "digest": "da999a0758028b02fba10e5a37e1ed64bfc692f27d5e1f23b941df600e238937"
+    },
+    {
+      "id": "section-6",
+      "label": "6 Related Work",
+      "url": "https://arxiv.org/html/2010.02502#S6",
+      "digest": "8aef5bb5638ea7cbbe6bcf863a12aa4f8173a96ce582ab949f859ad87d3ed24b"
+    },
+    {
+      "id": "section-7",
+      "label": "7 Discussion",
+      "url": "https://arxiv.org/html/2010.02502#S7",
+      "digest": "243e7ca91948fa61baf5ba89e49e7c759d860b7afc4c3e70582cd90b1c667b24"
+    },
+    {
+      "id": "section-8",
+      "label": "Acknowledgements",
+      "url": "https://arxiv.org/html/2010.02502#Sx1",
+      "digest": "52db59813bc7394f3edf0cd93f7c3d6f1723df84de33099f41c0a96c69387b7f"
+    }
+  ],
+  "review": {
+    "status": "passed",
+    "reviewedAt": "2026-10-02T01:53:37.918Z",
+    "contentDigest": "9bd9edb8711cc86a7d31c0c53ddfaab818085311fb0dd081de94aa2bbc172f0a"
+  }
+}

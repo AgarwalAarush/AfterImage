@@ -1,0 +1,476 @@
+{
+  "title": "Teaching a Language Model the Grammar of Tasks",
+  "summary": "FLAN shows that finetuning a large pretrained model across instruction-formatted task families can improve zero-shot transfer to carefully held-out task types.",
+  "prerequisites": [
+    "Language-model finetuning and conditional generation",
+    "Classification, task datasets, and train–test separation",
+    "Averages, probabilities, and gradient-based optimization"
+  ],
+  "objectives": [
+    "Explain how instruction tuning differs from single-task finetuning.",
+    "Reconstruct FLAN’s cluster-held-out evaluation protocol.",
+    "Interpret FLAN’s comparisons under their reported prompt conditions.",
+    "Explain the roles of task diversity, instructions, and model scale.",
+    "Identify limits involving contamination, efficiency, and deployment."
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "mechanism",
+      "statement": "Instruction tuning uses supervised examples from instructed tasks to teach a language model a transferable interface for following instructions on unseen task types.",
+      "conditions": "This is the paper’s motivating hypothesis, tested using held-out task clusters rather than arbitrary new examples.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c2",
+      "kind": "result",
+      "statement": "The FLAN mixture was assembled from 62 public text datasets organized into twelve task-type clusters.",
+      "conditions": "The datasets were drawn from Tensorflow Datasets and covered both understanding and generation.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c3",
+      "kind": "mechanism",
+      "statement": "Each dataset received ten manually authored templates, including up to three reverse formulations intended to increase task-format diversity.",
+      "conditions": "Templates were dataset-specific, and a template was randomly selected when formatting each training example.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c4",
+      "kind": "mechanism",
+      "statement": "An evaluation dataset counted as unseen only when every task cluster containing it was excluded from instruction tuning.",
+      "conditions": "This is stronger than merely withholding the evaluation dataset while retaining another dataset of the same type.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c5",
+      "kind": "mechanism",
+      "statement": "Evaluating c held-out clusters required c separately instruction-tuned models, each trained with a different cluster omitted.",
+      "conditions": "The statement applies to the paper’s cluster-wise zero-shot protocol, including its documented exclusions between closely related clusters.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c6",
+      "kind": "mechanism",
+      "statement": "For classification, an OPTIONS suffix exposed the permitted output labels to reduce ambiguity about the desired response forms.",
+      "conditions": "This concerns free-text decoding from the decoder-only model, not a separate discriminative classification head.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c7",
+      "kind": "mechanism",
+      "statement": "FLAN was produced from a 137-billion-parameter dense, left-to-right decoder-only LaMDA-PT model.",
+      "conditions": "LaMDA-PT had language-model pretraining but not the dialog finetuning of LaMDA.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c8",
+      "kind": "mechanism",
+      "statement": "Instruction tuning used Adafactor for 30,000 gradient steps, with batches measured as 8,192 tokens and a learning rate of 3e-5.",
+      "conditions": "These are the reported FLAN finetuning settings; the optimizer figure in this lesson uses ordinary scalar gradient descent only as an illustration.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c9",
+      "kind": "result",
+      "statement": "Using each dataset’s best development-set template, zero-shot FLAN beat zero-shot GPT-3 on 20 of 25 datasets and few-shot GPT-3 on 10 datasets.",
+      "conditions": "The comparison uses the best-dev-template reporting condition, not the mean-over-templates condition.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c10",
+      "kind": "caveat",
+      "statement": "Instruction tuning was less effective where the downstream format already resembled ordinary language-model continuation and instructions added little information.",
+      "conditions": "This observation concerned the evaluated commonsense-reasoning and coreference tasks formulated as sentence or paragraph completion.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c11",
+      "kind": "result",
+      "statement": "In the task-diversity ablation, average held-out performance generally rose as instruction-tuning clusters were added, with sentiment analysis as an exception.",
+      "conditions": "The ablation held out NLI, closed-book QA, and commonsense reasoning and added up to seven permitted training clusters in a fixed order.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c12",
+      "kind": "caveat",
+      "statement": "Instruction tuning harmed held-out-task performance for the tested models of 8B parameters and below, whereas it helped the two roughly 100B-scale models.",
+      "conditions": "This is an empirical result for the paper’s particular cluster split and model family, not a universal parameter threshold.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c13",
+      "kind": "result",
+      "statement": "Removing natural-language instructions during finetuning substantially weakened zero-shot performance relative to FLAN.",
+      "conditions": "The comparison covered four held-out clusters and included no-template and dataset-name-only finetuning variants.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c14",
+      "kind": "equation",
+      "statement": "Few-shot FLAN concatenates instructed exemplars and their outputs before the instructed query, with delimiters between components.",
+      "conditions": "The exemplars come only at inference for the unseen task, are capped at 16, and must fit the stated total-length restriction.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c15",
+      "kind": "caveat",
+      "statement": "The study’s boundaries include subjective cluster assignments, short instructions, possible pretraining overlap, and the serving cost of a 137B model.",
+      "conditions": "The authors report no substantial contamination effect in a post-hoc analysis, but do not claim that overlap is impossible.",
+      "sourceIds": [
+        "section-6"
+      ]
+    },
+    {
+      "id": "c16",
+      "kind": "caveat",
+      "statement": "Biases in labeled instruction-tuning datasets can propagate into downstream zero-shot applications.",
+      "conditions": "This is an identified risk, not a measured bias audit of FLAN in the supplied evidence.",
+      "sourceIds": [
+        "section-8"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "s1",
+      "title": "The gap FLAN targets",
+      "markdown": "A pretrained language model estimates a distribution over continuations. Give it text $x$, and it assigns probabilities to possible next strings $y$. That ability does not guarantee that the model will interpret a novel sentence such as “Decide whether the premise entails the hypothesis” as a task specification. The paper starts from this interface problem: large models were strong few-shot learners, yet could struggle when given only an instruction and no demonstrations.\n\nThree terms must be separated. **Pretraining** learns broad language regularities from large text collections. **Finetuning** updates model parameters using a more focused supervised objective. **Zero-shot evaluation** here means executing a held-out task type from an instruction without task demonstrations at inference. It does not mean that the model has never encountered related words, facts, or even possibly individual examples during pretraining.\n\nFLAN’s contribution is to turn supervised datasets into practice at reading task descriptions. Instead of specializing on one target task, it finetunes across many instructed task families, then tests whether this learned instruction-following interface transfers to a family omitted from finetuning.",
+      "sourceIds": [
+        "section-1",
+        "section-2",
+        "section-6"
+      ],
+      "claimIds": [
+        "c1",
+        "c7",
+        "c15"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s2",
+      "title": "From datasets to instructed examples",
+      "markdown": "The authors assembled 62 public text datasets spanning language understanding and generation, then grouped them into twelve task-type clusters. For each dataset, they manually wrote ten natural-language templates. Most templates described the original task, while up to three reversed its direction—for example, asking for a review with a specified sentiment rather than asking for the sentiment of a given review. Each training example was transformed using a randomly selected template from its dataset, exposing the model to varied instructions, input–target directions, and response forms.\n\nAbstractly, let $d$ identify a dataset, let $(x,y)\\sim\\mathcal{D}_d$ be an original input–target pair, and let $t\\sim T_d$ be a template selected from that dataset’s template set. Applying the template to the complete pair produces a template-dependent instructed input and target, $(u_t(x,y),v_t(x,y))$. For an ordinary template, $u_t$ may contain an instruction plus the original input $x$ while $v_t$ remains the original target $y$. For a reversed template, information from $y$, such as a specified sentiment label, may become part of $u_t$, while information derived from $x$, such as the review, becomes $v_t$. Finetuning increases the conditional likelihood of the transformed target text:\n\n$$\n\\mathcal{L}(\\theta)=-\\sum_{(x,y)}\\log p_{\\theta}\\!\\left(v_t(x,y)\\mid u_t(x,y)\\right).\n$$\n\nHere $\\theta$ denotes the model parameters, $p_\\theta$ its conditional token distribution, and $(u_t,v_t)$ the dataset- and template-specific transformation of the original example pair. The resulting target remains text even for classification templates. When the transformed task is classification, an appended OPTIONS suffix lists the permitted labels, narrowing the intended answer vocabulary without introducing a separate classification head.\n\nFLAN starts from the 137-billion-parameter dense, left-to-right, decoder-only LaMDA-PT model. Instruction tuning used Adafactor for 30,000 gradient steps, a learning rate of $3\\times10^{-5}$, and batches of 8,192 tokens. Inputs and targets were limited to 1,024 and 256 tokens, respectively, with multiple examples packed into sequences and separated using a special end-of-sequence token.\n\nThe optimizer figure isolates the meaning of an iterative parameter update with the constructed scalar objective $f(x)=x^2/2$. Its gradient is $\\nabla f(x)=x$, so ordinary gradient descent with learning rate $\\eta$ gives\n\n$$\nx_{j+1}=x_j-\\eta x_j=(1-\\eta)x_j.\n$$\n\nStarting from the declared value $x_0=3$, the control changes $\\eta$ and therefore the contraction factor applied across twelve updates; for example, $\\eta=0.2$ gives $x_1=2.4$ and $x_2=1.92$. Both $x$ and $f(x)$ are unitless constructed quantities. The control demonstrates how step size changes an optimization trajectory, while FLAN’s reported training procedure uses Adafactor on a transformer language-model objective rather than this one-parameter calculation.",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c2",
+        "c3",
+        "c6",
+        "c8"
+      ],
+      "figureId": "fig-optimizer"
+    },
+    {
+      "id": "s3",
+      "title": "A small worked mixture example",
+      "markdown": "Consider an **illustrative** mixture with three datasets containing 100, 400, and 900 examples. If examples were sampled strictly in proportion to dataset size, the total would be $100+400+900=1400$. The sampling probabilities would therefore be\n\n$$\np_1=\\frac{100}{1400}=\\frac{1}{14},\\qquad\np_2=\\frac{400}{1400}=\\frac{2}{7},\\qquad\np_3=\\frac{900}{1400}=\\frac{9}{14}.\n$$\n\nIn a hypothetical batch of 140 draws, the expected counts would be $140p_1=10$, $140p_2=40$, and $140p_3=90$. These numbers are invented to demonstrate mixture arithmetic; they are not FLAN dataset sizes or observed batch counts.\n\nFLAN used an examples-proportional scheme with a maximum mixing rate of 3,000 and capped each dataset at 30,000 training examples. That cap on sampling weight means “more datasets” is not synonymous with letting the single largest dataset dominate without bound. The actual run used 30,000 steps, 8,192-token batches, Adafactor, input length 1,024, target length 256, and packing. The toy optimizer attached here isolates the basic idea of iterative parameter updates: on $f(x)=x^2/2$, ordinary gradient descent gives $x_{j+1}=x_j-\\eta x_j=(1-\\eta)x_j$. From $x_0=3$ with illustrative $\\eta=0.2$, one update gives $x_1=2.4$ and two give $x_2=1.92$. It is useful for seeing how learning rate changes an update trajectory, but it is not Adafactor, a transformer loss, or evidence about FLAN’s convergence.",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c8"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s4",
+      "title": "What unseen really means",
+      "markdown": "The central experimental safeguard operates at the cluster level. Suppose NLI is the evaluation cluster. The corresponding FLAN checkpoint is instruction-tuned on the permitted non-NLI clusters, with every NLI dataset excluded. A second evaluation cluster requires a second checkpoint with a different omission. Thus, $c$ evaluated clusters require $c$ cluster-held-out models.\n\nThis distinction blocks an easy but misleading interpretation. Holding out one dataset while retaining another dataset with the same task structure tests dataset transfer; FLAN’s protocol aims at task-type transfer. The paper also excluded certain closely related clusters from one another, such as paraphrase when evaluating NLI, to make leakage through task similarity less direct.\n\nA tiny example clarifies the logic. Let the clusters be $C=\\{A,B,C,D\\}$. To test $C$, train on $A\\cup B\\cup D$; to test $D$, train on $A\\cup B\\cup C$. Training once on all four and merely choosing unseen test rows afterward would violate the protocol. This example is illustrative, but the one-checkpoint-per-held-out-cluster structure is paper-specific.",
+      "sourceIds": [
+        "section-1",
+        "section-2",
+        "section-3"
+      ],
+      "claimIds": [
+        "c4",
+        "c5"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s5",
+      "title": "Reading the reported comparisons correctly",
+      "markdown": "The evaluation covered NLI, reading comprehension, closed-book question answering, translation, commonsense reasoning, coreference resolution, and structure-to-text generation. For each dataset, the authors reported performance averaged across templates as a proxy for an ordinary instruction, and they also reported the template selected by development-set performance.\n\nUnder the **best development-template** condition, zero-shot FLAN surpassed zero-shot GPT-3 on 20 of 25 evaluated datasets and few-shot GPT-3 on 10. These counts should not be silently attributed to the template-average condition. Nor do they establish that instruction tuning wins on every task: the baselines, metrics, prompt forms, and available comparison datasets differ.\n\nThe pattern also depended on task formulation. Instructions helped especially when they converted an awkward continuation into an explicit request, as with NLI phrased as a question. Gains were weaker on tasks already posed as sentence completion, where the downstream interface closely matched pretraining. The right conclusion is conditional: instruction tuning improved transfer broadly in this evaluation, not uniformly across every language-modeling task.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c9",
+        "c10"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s6",
+      "title": "Three ablations that locate the effect",
+      "markdown": "First, the task-diversity ablation tested whether transfer to unseen task types changed as the instruction-tuning mixture became broader. NLI, closed-book QA, and commonsense reasoning remained held out for evaluation, while the authors added between one and seven permitted training clusters in decreasing order of their number of tasks. Paraphrase and reading comprehension with commonsense were excluded because they were too similar to held-out clusters. Average performance across the three evaluation clusters generally rose as more training clusters were included, with sentiment analysis as the exception. Because clusters were introduced in one fixed order, the experiment supports a relationship between mixture diversity and held-out performance but does not isolate the causal contribution of any individual cluster. Performance also had not visibly saturated after the seventh cluster in this experiment, suggesting—but not demonstrating—that additional task families could provide further gains.\n\nSecond, the scale ablation applied that same cluster split to models with 422 million, 2 billion, 8 billion, 68 billion, and 137 billion parameters. Instruction tuning improved held-out-task performance for the tested 68B and 137B models, whereas it reduced held-out performance for the 422M, 2B, and 8B models. The relevant mechanism is a competition between fitting the roughly forty instruction-tuning tasks and learning a task interface that transfers beyond them. The authors propose that the smaller models may devote their available capacity to the training mixture without acquiring a sufficiently general instruction-following behavior; the larger models can fit the mixture while retaining capacity for cross-task generalization. This capacity account is an interpretation of the observed results, not a separately measured decomposition of model parameters. The sampled sizes therefore establish scale dependence within this model family and experimental split, not a universal threshold at which instruction tuning must begin to help.\n\nThird, the instruction-removal ablation separated the effect of natural-language task descriptions from the effect of multitask supervision alone. One variant was finetuned on bare inputs and outputs. A second prefixed each input with its task and dataset name. FLAN instead expressed the operation as an instruction—for example, asking the model to translate a sentence into French. At zero-shot evaluation, the bare-input variant still received FLAN-style instructions so that the requested task was identifiable; the dataset-name variant was evaluated with both instructions and dataset-name prompts. Across four held-out clusters, both variants performed substantially worse than FLAN.\n\nTogether, these ablations locate the reported transfer effect in the interaction among three ingredients: a diverse mixture supplies varied supervised task transformations, natural-language templates make the requested transformation explicit in the same medium used at inference, and sufficient model scale allows training on that mixture to produce behavior that generalizes beyond it. None of the three experiments alone proves a complete causal theory, but their controls rule out the simpler explanation that any multitask finetuning procedure would yield the same zero-shot gains.",
+      "sourceIds": [
+        "section-4"
+      ],
+      "claimIds": [
+        "c11",
+        "c12",
+        "c13"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s7",
+      "title": "Zero-shot and few-shot are complementary",
+      "markdown": "A common misconception is that calling FLAN a zero-shot learner means demonstrations are forbidden or useless forever. Zero-shot is the focal evaluation mode, not an architectural restriction. The paper separately adds few-shot exemplars and finds improvements across all task clusters.\n\nLet $x_i$ be exemplar input $i$, $y_i$ its output, $x$ the new query, $k$ the number of exemplars, $\\operatorname{instruct}(x)$ the instructed form of an input, and $\\oplus$ string concatenation with a delimiter. The few-shot prompt is\n\n$$\n\\operatorname{instruct}(x_1)\\oplus y_1\\oplus\\cdots\\oplus\n\\operatorname{instruct}(x_k)\\oplus y_k\\oplus\n\\operatorname{instruct}(x).\n$$\n\nIn the reported setup, exemplars were randomly drawn, capped at 16, and constrained so the total sequence remained below 960 tokens. They were supplied at inference time for the unseen task; the cluster was still absent from instruction tuning. Few-shot evidence can therefore complement a model that has already learned the general convention of following instructions.",
+      "sourceIds": [
+        "section-4"
+      ],
+      "claimIds": [
+        "c14"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s8",
+      "title": "Boundaries of the conclusion",
+      "markdown": "The experiment supports a qualified conclusion rather than a universal recipe. Its definition of an unseen task depends on human judgments about cluster membership, and neighboring task families make that boundary imperfect. The study also focuses on relatively short instructions, typically a single sentence, rather than detailed operational specifications. Within the tested model family and cluster split, instruction tuning improved held-out-task performance for the 68B and 137B models but harmed it for models of 8B parameters and below. Those sampled sizes do not establish a universal parameter threshold, and serving the 137B model remains costly.\n\nCluster withholding controls supervised instruction-tuning exposure, not exposure during language-model pretraining. Because LaMDA-PT was pretrained on a large collection of web documents and other text, individual evaluation examples might have appeared there. The authors report that their post-hoc analysis found no evidence that overlap substantially affected the results, but this does not prove that overlap was absent.\n\nThe data used for instruction tuning introduce a separate boundary. Labeled datasets can contain undesirable social biases, and finetuning can propagate those biases into downstream zero-shot applications. Lowering the data and expertise required to apply a model may widen access while also widening the reach of harmful behavior; the study identifies this risk but does not present a bias audit establishing safe or unbiased performance.\n\nFLAN therefore supports a focused claim: for the sufficiently large models tested, training across diverse tasks expressed through natural-language instructions improved transfer to carefully held-out task clusters. It does not establish universal gains for smaller models, immunity to prompt or taxonomy choices, absence of pretraining contamination, unbiased behavior, or inexpensive deployment.",
+      "sourceIds": [
+        "section-4",
+        "section-6",
+        "section-8",
+        "section-9"
+      ],
+      "claimIds": [
+        "c12",
+        "c15",
+        "c16"
+      ],
+      "figureId": null
+    }
+  ],
+  "figures": [
+    {
+      "id": "fig-optimizer",
+      "kind": "optimizer",
+      "title": "Learning rate in a one-parameter update",
+      "question": "Starting from x=3, how does changing the learning rate alter the first 12 gradient-descent iterates?",
+      "caption": "An illustrative trajectory for ordinary gradient descent on f(x)=x²/2; the control changes the learning rate while the starting point and objective remain fixed.",
+      "limitation": "This is plain scalar gradient descent, not FLAN’s Adafactor optimizer, transformer objective, reported training curve, or measured convergence behavior.",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c8"
+      ],
+      "illustrative": true
+    }
+  ],
+  "quiz": [
+    {
+      "question": "A new entailment dataset was withheld, but another entailment dataset remained in instruction tuning. Under FLAN’s definition, is the new dataset unseen?",
+      "options": [
+        {
+          "text": "Yes, because its dataset rows were withheld.",
+          "explanation": "Incorrect. Withholding only the dataset is insufficient when another dataset from the same task cluster remains."
+        },
+        {
+          "text": "No, because its task cluster was not fully withheld.",
+          "explanation": "Correct. The paper requires exclusion of every instruction-tuning dataset in any cluster to which the evaluation dataset belongs."
+        },
+        {
+          "text": "Yes, if the evaluation prompt uses new wording.",
+          "explanation": "Incorrect. A novel template does not replace the cluster-level exclusion requirement."
+        }
+      ],
+      "answer": 1,
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c4",
+        "c5"
+      ]
+    },
+    {
+      "question": "What does the no-instruction ablation most directly test?",
+      "options": [
+        {
+          "text": "Whether multitask finetuning alone explains the gains.",
+          "explanation": "Correct. Bare input–output and dataset-name variants retain finetuning while removing natural task instructions."
+        },
+        {
+          "text": "Whether FLAN memorized every evaluation example.",
+          "explanation": "Incorrect. That comparison does not directly test pretraining or evaluation-example contamination."
+        },
+        {
+          "text": "Whether Adafactor is better than gradient descent.",
+          "explanation": "Incorrect. The ablation changes instructional formatting, not the optimizer."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-4"
+      ],
+      "claimIds": [
+        "c13"
+      ]
+    },
+    {
+      "question": "Which inference is justified by the reported scale ablation?",
+      "options": [
+        {
+          "text": "Instruction tuning helps every model once enough templates are written.",
+          "explanation": "Incorrect. It hurt held-out performance for the tested 8B-and-smaller models."
+        },
+        {
+          "text": "Exactly 68B parameters is a universal threshold for instruction following.",
+          "explanation": "Incorrect. The experiment sampled particular model sizes and does not establish a universal cutoff."
+        },
+        {
+          "text": "The benefit depended on scale in the tested family and cluster split.",
+          "explanation": "Correct. This preserves the empirical condition without turning sampled sizes into a universal law."
+        }
+      ],
+      "answer": 2,
+      "sourceIds": [
+        "section-4"
+      ],
+      "claimIds": [
+        "c12"
+      ]
+    }
+  ],
+  "id": "finetuned-language-models-are-zero-shot",
+  "createdAt": "2026-10-01T23:52:36.306Z",
+  "pipelineVersion": "subjects-lessons-v1",
+  "sources": [
+    {
+      "id": "abstract",
+      "label": "Original paper · abstract",
+      "url": "https://arxiv.org/abs/2109.01652",
+      "digest": "1455a14abf4e3b1b7128c15c30ba71c4f7273550c23700a34730d44803473b47",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:50:26.177Z"
+    },
+    {
+      "id": "main-text",
+      "label": "Original paper · unsectioned main text",
+      "url": "https://arxiv.org/html/2109.01652",
+      "digest": "c588b25e962bff6405f915cec031c5194e31477c1f64ddc6381bbb5e3f2b3f94",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:50:26.177Z"
+    },
+    {
+      "id": "section-1",
+      "label": "1 Introduction",
+      "url": "https://arxiv.org/html/2109.01652#S1",
+      "digest": "fea08eb8f286fa33c1b120c53810e653a6c01a6d1b79678250a5392578f1245a",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:50:26.177Z"
+    },
+    {
+      "id": "section-2",
+      "label": "2 FLAN: Instruction Tuning Improves Zero-Shot Learning",
+      "url": "https://arxiv.org/html/2109.01652#S2",
+      "digest": "973b7aea8f0a7ed4d265c748ee8d0e8ac2fba063489d1d1c2fd4912de44010eb",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:50:26.177Z"
+    },
+    {
+      "id": "section-3",
+      "label": "3 Results",
+      "url": "https://arxiv.org/html/2109.01652#S3",
+      "digest": "5f3ac8aa270fe36a402ef4103d9d1c70495e76ce05f8d6c66174634fe9224ec5",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:50:26.177Z"
+    },
+    {
+      "id": "section-4",
+      "label": "4 Ablation Studies & Further Analysis",
+      "url": "https://arxiv.org/html/2109.01652#S4",
+      "digest": "a194e885c96b50a61faed09df0d01aeb77a9a5e0fccc3841ada298525b1c937f",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:50:26.177Z"
+    },
+    {
+      "id": "section-5",
+      "label": "5 Related Work",
+      "url": "https://arxiv.org/html/2109.01652#S5",
+      "digest": "7c821e8640cfbc561a9c11c13d41319618b09cb8ffe41b1a80e0ff6829183456",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:50:26.177Z"
+    },
+    {
+      "id": "section-6",
+      "label": "6 Discussion",
+      "url": "https://arxiv.org/html/2109.01652#S6",
+      "digest": "50d8eb6f3a9be17c25ac4648a7b2038ce36dbce1890e1a0fcf438234cdec5ffb",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:50:26.177Z"
+    },
+    {
+      "id": "section-7",
+      "label": "7 Conclusions",
+      "url": "https://arxiv.org/html/2109.01652#S7",
+      "digest": "812fdc0b95a915ebc0ab573e16cb6e95caca18c558e34844b4be1c84c2483038",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:50:26.177Z"
+    },
+    {
+      "id": "section-8",
+      "label": "Ethical Considerations",
+      "url": "https://arxiv.org/html/2109.01652#Sx1",
+      "digest": "b0624067e62a9417fefe552f94ee0c69f72410a290be7652cf20539dafa65201",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:50:26.177Z"
+    },
+    {
+      "id": "section-9",
+      "label": "Environmental Considerations",
+      "url": "https://arxiv.org/html/2109.01652#Sx2",
+      "digest": "a07a2eeafc789c4bc8750457dd7b4289a5efcf1191c4be726a9319e53fedc7d9",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:50:26.177Z"
+    },
+    {
+      "id": "section-10",
+      "label": "Author Contributions",
+      "url": "https://arxiv.org/html/2109.01652#Sx3",
+      "digest": "d6356e4c65806e5b70cf2e85000c453cc9c0657eeffa91645674fcfc763933bc",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:50:26.177Z"
+    }
+  ],
+  "review": {
+    "status": "passed",
+    "reviewedAt": "2026-10-02T02:19:52.024Z",
+    "contentDigest": "e3a8a37288c26fcdb376904bfe8544b5c4fe81bc1cb28c2c869cdeb53826ab48"
+  }
+}

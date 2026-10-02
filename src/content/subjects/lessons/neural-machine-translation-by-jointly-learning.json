@@ -1,0 +1,453 @@
+{
+  "title": "A Moving Lens Over the Source Sentence",
+  "summary": "Bahdanau et al. replace one fixed source summary with a learned, differentiable soft alignment that constructs a new source context for every generated word.",
+  "prerequisites": [
+    "Conditional probability and chain-rule factorization",
+    "Recurrent neural network hidden states",
+    "Vectors, weighted sums, and softmax normalization",
+    "Joint training with gradient-based optimization"
+  ],
+  "objectives": [
+    "Explain why a fixed source context can become an information bottleneck.",
+    "Derive each target-step context from alignment scores and source annotations.",
+    "Explain how bidirectional encoding makes each annotation locally focused and contextual.",
+    "Distinguish soft alignment from hard alignment and beam-search decoding.",
+    "Interpret the results within the reported dataset and vocabulary conditions."
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "equation",
+      "statement": "Translation is posed as choosing the target sentence with the greatest conditional probability given the source sentence.",
+      "conditions": "For a learned conditional translation model and a given source sentence.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c2",
+      "kind": "caveat",
+      "statement": "A basic encoder–decoder must compress the source information into one fixed-length vector, which the authors identify as a potential difficulty for long inputs.",
+      "conditions": "For the fixed-context encoder–decoder architecture discussed in the paper, especially beyond training-corpus sentence lengths.",
+      "sourceIds": [
+        "section-1"
+      ]
+    },
+    {
+      "id": "c3",
+      "kind": "mechanism",
+      "statement": "RNNsearch uses a separate context vector for each target position rather than reusing one source context throughout decoding.",
+      "conditions": "At target step i in the proposed conditional model.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c4",
+      "kind": "equation",
+      "statement": "The context at target step i is the attention-weighted sum of all source annotations.",
+      "conditions": "With source annotations h_j and normalized weights alpha_ij over all T_x source positions.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c5",
+      "kind": "equation",
+      "statement": "The alignment weights are obtained by applying a softmax over the alignment energies for the current target step.",
+      "conditions": "For fixed target position i, normalizing across every source position j.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c6",
+      "kind": "mechanism",
+      "statement": "The alignment scorer is a feedforward network trained jointly with the translation system.",
+      "conditions": "In the proposed RNNsearch architecture during end-to-end gradient training.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c7",
+      "kind": "mechanism",
+      "statement": "Soft alignment remains differentiable, allowing translation loss gradients to train both alignment and translation components.",
+      "conditions": "Because alignment is computed directly as continuous normalized weights rather than sampled as a discrete latent choice.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c8",
+      "kind": "mechanism",
+      "statement": "Each source annotation concatenates forward and backward recurrent states at the same source position.",
+      "conditions": "For the bidirectional recurrent encoder used by RNNsearch.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c9",
+      "kind": "result",
+      "statement": "The controlled comparisons trained RNNsearch and the conventional encoder–decoder on the same dataset with the same training procedures.",
+      "conditions": "English-to-French experiments using the selected WMT 2014 parallel data.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c10",
+      "kind": "result",
+      "statement": "In the reported test table, RNNsearch-50 scored 26.75 BLEU on all sentences, compared with 17.82 for RNNencdec-50.",
+      "conditions": "WMT 2014 news-test-2014; models trained on sentences up to 50 words; the 'All' column includes sentences with unknown words.",
+      "sourceIds": [
+        "section-5"
+      ]
+    },
+    {
+      "id": "c11",
+      "kind": "result",
+      "statement": "The paper reports that RNNsearch was more robust than the basic encoder–decoder as sentence length increased.",
+      "conditions": "The paper's length-binned BLEU analysis on the full test set, including sentences containing unknown words.",
+      "sourceIds": [
+        "section-5"
+      ]
+    },
+    {
+      "id": "c12",
+      "kind": "caveat",
+      "statement": "The proposed attention computes a weight for every source word at every generated target word, potentially limiting its use on other tasks.",
+      "conditions": "For this dense source-by-target alignment computation; the authors note translation sentences were usually 15–40 words.",
+      "sourceIds": [
+        "section-6"
+      ]
+    },
+    {
+      "id": "c13",
+      "kind": "caveat",
+      "statement": "Unknown and rare words remained an explicitly identified open problem.",
+      "conditions": "For broader use and matching then-current systems across contexts, under the paper's 30,000-word shortlists.",
+      "sourceIds": [
+        "section-7"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "s1",
+      "title": "The translation objective and its old bottleneck",
+      "markdown": "Let the source sentence be $\\mathbf{x}=(x_1,\\ldots,x_{T_x})$, where $x_j$ is source token $j$ and $T_x$ is the source length. Let $\\mathbf{y}=(y_1,\\ldots,y_{T_y})$ be a candidate target sentence. Translation seeks\n\n$$\\mathbf{y}^*=\\arg\\max_{\\mathbf{y}}p(\\mathbf{y}\\mid\\mathbf{x}).$$\n\nThe chain rule turns this sentence probability into next-token decisions:\n\n$$p(\\mathbf{y}\\mid\\mathbf{x})=\\prod_{i=1}^{T_y}p(y_i\\mid y_1,\\ldots,y_{i-1},\\mathbf{x}).$$\n\nA conventional recurrent encoder processes source tokens into hidden states and then compresses them into a single vector $c$. A recurrent decoder uses that same $c$ at every target step. Here, a hidden state is simply a learned vector carrying information forward through a sequence.\n\nThe paper's diagnosis is architectural: one fixed-size vector must preserve every source detail that any later target decision might need. Its dimension does not grow with sentence length. That does not prove fixed vectors are mathematically incapable of representing long sentences; rather, it creates a learned information bottleneck that the reported baseline handled poorly as inputs grew longer. The proposed remedy is to keep a sequence of source representations available and construct a target-step-specific summary from them.",
+      "sourceIds": [
+        "section-1",
+        "section-2"
+      ],
+      "claimIds": [
+        "c1",
+        "c2"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s2",
+      "title": "A bidirectional annotation at every source position",
+      "markdown": "RNNsearch first replaces the lone source summary with annotations $h_1,\\ldots,h_{T_x}$. A forward RNN reads $x_1$ through $x_{T_x}$ and produces $\\overrightarrow{h}_j$. A backward RNN reads in reverse and produces $\\overleftarrow{h}_j$. The annotation is\n\n$$h_j=\\begin{bmatrix}\\overrightarrow{h}_j\\\\\\overleftarrow{h}_j\\end{bmatrix}.$$\n\nThus $h_j$ represents position $j$ using evidence from both directions. It is not merely the embedding of $x_j$: the two recurrent states summarize preceding and following context, while their strongest focus tends to remain near $x_j$.\n\nA scalar recurrence offers a small prerequisite model for understanding recurrent state. In the illustrative control, $h_t=a h_{t-1}+u_t$, with $u_0=1$ and later inputs zero. Increasing retention $a$ slows the decay over 12 steps. Real encoder states are learned vectors with gated nonlinear updates, not this scalar impulse response. The toy therefore explains how past input can persist, but it does not simulate the paper's bidirectional gated encoder, learned annotations, or translation behavior.",
+      "sourceIds": [
+        "section-2",
+        "section-3"
+      ],
+      "claimIds": [
+        "c8"
+      ],
+      "figureId": "fig-state"
+    },
+    {
+      "id": "s3",
+      "title": "From alignment energies to a moving context",
+      "markdown": "## From alignment energies to a moving context\n\nAt target position $i$, let $s_{i-1}$ be the decoder state immediately before the next state and word are produced. For every source position $j$, the jointly trained feedforward alignment model computes\n\n$$e_{ij}=a(s_{i-1},h_j),$$\n\nwhere $e_{ij}$ is a dimensionless, unnormalized compatibility score between the decoder’s current needs and the contextual source annotation $h_j$. A softmax across all $T_x$ source positions converts these scores into normalized weights:\n\n$$\\alpha_{ij}=\\frac{\\exp(e_{ij})}{\\sum_{k=1}^{T_x}\\exp(e_{ik})},\\qquad \\sum_{j=1}^{T_x}\\alpha_{ij}=1.$$\n\nThe target-step context is then\n\n$$c_i=\\sum_{j=1}^{T_x}\\alpha_{ij}h_j.$$\n\nThus $c_i$ has the same units and vector dimension as an annotation. It is a convex weighted mixture of the source annotations, with larger compatibility scores producing larger contributions. Because the scores depend on $s_{i-1}$, the mixture can move across the source sentence as target generation proceeds. The paper also interprets $c_i$ as an expected annotation under the alignment probabilities $\\alpha_{ij}$; this remains a soft computation rather than a sampled choice of one source position.\n\nThe figure makes the normalization concrete with four explicitly constructed scores $[2,1,0,-1]$. Its positive temperature control applies softmax to $e_j/\\tau$. At $\\tau=1$, subtracting the largest score, which leaves softmax unchanged, gives exponential terms\n\n$$[1,e^{-1},e^{-2},e^{-3}],$$\n\nwith a sum of approximately $1.553$. The normalized weights are therefore approximately\n\n$$[0.644,0.237,0.087,0.032].$$\n\nThey sum to $1.000$ after rounding, so the first annotation supplies about $64.4\\%$ of this constructed context while all four annotations still participate. Decreasing the positive temperature enlarges score differences before normalization and concentrates more weight on the highest-scoring annotation; increasing it flattens the distribution toward a more even mixture. Temperature is only a teaching control in this figure, not an additional component claimed for RNNsearch. The calculation illustrates the actual role of Eq. (6): converting relative alignment energies into differentiable contribution weights that Eq. (5) uses to retrieve source information for the current target step.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c4",
+        "c5"
+      ],
+      "figureId": "fig-attention"
+    },
+    {
+      "id": "s4",
+      "title": "How alignment and translation learn together",
+      "markdown": "The decoder defines\n\n$$p(y_i\\mid y_{<i},\\mathbf{x})=g(y_{i-1},s_i,c_i),$$\n\nwith\n\n$$s_i=f(s_{i-1},y_{i-1},c_i).$$\n\nHere $y_{<i}$ denotes all target tokens before position $i$; $f$ is the recurrent state update; and $g$ maps the previous target token, current decoder state, and current context to a probability distribution over the next token. Because $c_i$ is a weighted sum and $\\alpha_{ij}$ is a softmax of differentiable scores, the translation objective can send gradients through $g$, $f$, $c_i$, the alignment network $a$, and the encoder annotations.\n\nThis clarifies a common misconception: soft alignment does not select exactly one source word. Every annotation participates unless its weight is numerically negligible. The weights can be interpreted as a distribution and $c_i$ as an expected annotation, but the network consumes the weighted vector, not a sampled discrete alignment. Nor is attention the same as beam search. Attention chooses source information inside one next-token computation; beam search approximately compares alternative target sequences after the model has assigned conditional probabilities.\n\nThe optimizer control shows ordinary gradient descent on the illustrative quadratic $F(z)=z^2/2$, starting at $z=3$. With learning rate $\\eta$, $z_{t+1}=z_t-\\eta z_t=(1-\\eta)z_t$. It demonstrates how step size changes 12 iterates. It is not the paper's minibatch SGD-with-Adadelta procedure and makes no claim about RNNsearch convergence.",
+      "sourceIds": [
+        "section-3",
+        "section-4"
+      ],
+      "claimIds": [
+        "c3",
+        "c6",
+        "c7"
+      ],
+      "figureId": "fig-optimizer"
+    },
+    {
+      "id": "s5",
+      "title": "What the experiment actually compared",
+      "markdown": "## What the experiment actually compared\n\nThe evaluation used English-to-French parallel data from WMT 2014. After the stated data-selection procedure, the training corpus contained 348 million words. News-test-2012 and news-test-2013 were combined as the development set, while news-test-2014 provided 3,003 test sentences that were absent from training. The text was tokenized with the Moses tokenizer, and each language used a 30,000-word shortlist; every word outside its language’s shortlist was represented by $[\\mathrm{UNK}]$.\n\nThe controlled comparison placed the conventional fixed-context RNNencdec against the proposed RNNsearch. Both model types were trained on the same selected parallel data with the same training procedure, once using sentences of at most 30 words and once using sentences of at most 50 words. RNNencdec used a 1,000-unit encoder and a 1,000-unit decoder. RNNsearch used separate 1,000-unit forward and backward encoder RNNs together with a 1,000-unit decoder. Both systems computed target-word probabilities with a multilayer network containing one maxout hidden layer.\n\nTraining used minibatch stochastic gradient descent with Adadelta, with 80 sentences contributing to each update; each ordinary model was trained for approximately five days. At evaluation time, beam search approximately maximized the learned conditional probability. Beam search is therefore part of the decoding procedure, not the alignment mechanism: RNNsearch first uses its target-step context $c_i$ to assign next-word probabilities, and beam search then retains promising partial target sequences under those probabilities.\n\nThis design makes the central comparison scientifically meaningful within its stated scope. The dataset and optimization procedure were held constant while the source representation changed from one fixed context to target-dependent contexts over bidirectional annotations. Training on maximum lengths of 30 and 50 words additionally tests whether the advantage persists when both architectures receive longer training examples. The conclusions remain specific to these recurrent architectures, this English-to-French dataset construction, the 30,000-word shortlists, and approximate beam-search decoding. In particular, mapping out-of-shortlist words to $[\\mathrm{UNK}]$ leaves rare-word handling unresolved and motivates reporting results both on the full test set and on the subset without unknown words.",
+      "sourceIds": [
+        "section-4"
+      ],
+      "claimIds": [
+        "c9",
+        "c13"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s6",
+      "title": "Reading the evidence without erasing its conditions",
+      "markdown": "On the full test set, RNNencdec-50 scored 17.82 BLEU and RNNsearch-50 scored 26.75. In the no-unknown subset, their reported scores were 26.71 and 34.16. The longer-trained RNNsearch-50 star variant reached 28.45 on all sentences and 36.15 on the no-unknown subset, while Moses scored 33.30 and 35.63 respectively. The star variant is not directly identical in training duration to the ordinary models, and the no-unknown evaluation disallowed generation of $[\\mathrm{UNK}]$.\n\nThe paper also reports that RNNsearch degraded less with sentence length than RNNencdec. This supports the proposed bottleneck diagnosis under the experiment's conditions, especially because RNNsearch-30 exceeded RNNencdec-50 in the table. It does not establish that attention makes length irrelevant in every architecture or domain.\n\nThe displayed alignment matrices offered qualitative evidence: rows represented target words, columns represented source positions, and intensity represented $\\alpha_{ij}$. They showed largely monotonic patterns alongside reorderings and distributed attention. Such visualizations reveal which annotations received weight, but they are not proofs that the weights are unique linguistic explanations or causal word alignments.",
+      "sourceIds": [
+        "section-4",
+        "section-5"
+      ],
+      "claimIds": [
+        "c10",
+        "c11"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s7",
+      "title": "What the moving lens solves and leaves open",
+      "markdown": "The contribution is a differentiable moving lens over contextual source annotations. Instead of demanding one globally sufficient source vector, the decoder recomputes $c_i$ for each target step. Bidirectionality makes each candidate annotation contextual; the alignment network scores its relevance; softmax makes the scores comparable; and the weighted sum keeps the complete path trainable with the translation objective.\n\nThree limitations bound the claim. First, dense alignment scores every source position for every target position, so its computation grows with the source–target grid; the authors explicitly note possible limits beyond the relatively short translation sequences considered. Second, a 30,000-word shortlist leaves rare and unknown words unresolved, and the all-sentence BLEU results expose that difficulty more directly than the no-unknown subset. Third, the experiments cover English-to-French translation on one data construction with the stated recurrent models; they do not by themselves establish results for other language pairs, domains, or modern tokenizations.\n\nFinally, learned soft alignment should not be romanticized as human reasoning. It is a task-trained weighting mechanism. Its importance is more precise: it lets target generation retrieve a different differentiable mixture of source annotations at every step, and the paper connects that mechanism to stronger translation results—particularly on longer sentences—under its reported evaluation.",
+      "sourceIds": [
+        "section-3",
+        "section-5",
+        "section-6",
+        "section-7"
+      ],
+      "claimIds": [
+        "c3",
+        "c7",
+        "c11",
+        "c12",
+        "c13"
+      ],
+      "figureId": null
+    }
+  ],
+  "figures": [
+    {
+      "id": "fig-state",
+      "kind": "state",
+      "title": "How recurrent retention carries an impulse",
+      "question": "As retention a increases, how does the single initial impulse persist across the next 12 scalar states?",
+      "caption": "Illustrative scalar recurrence $h_t=a h_{t-1}+u_t$ with one initial impulse $u_0=1$; the retention control changes the decay rate.",
+      "limitation": "This is a scalar impulse response, not the paper's learned, vector-valued, bidirectional gated encoder or a translation rollout.",
+      "sourceIds": [
+        "section-2",
+        "section-3"
+      ],
+      "claimIds": [
+        "c8"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "fig-attention",
+      "kind": "attention",
+      "title": "Score scale changes soft alignment concentration",
+      "question": "When positive temperature decreases, how do the normalized weights over the four fixed scores change?",
+      "caption": "Four illustrative scores $[2,1,0,-1]$ are divided by a positive temperature and normalized with softmax, exposing how concentration changes.",
+      "limitation": "The scores are fixed teaching values, not measured energies, learned token similarities, or an alignment extracted from RNNsearch.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c4",
+        "c5"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "fig-optimizer",
+      "kind": "optimizer",
+      "title": "Step size in a differentiable update",
+      "question": "For the same starting point, how does the learning rate change the 12 gradient-descent iterates on the quadratic?",
+      "caption": "Illustrative plain gradient descent minimizes $F(z)=z^2/2$ from $z=3$, making the effect of learning rate visible.",
+      "limitation": "This is ordinary scalar gradient descent, not minibatch SGD with Adadelta, an RNN training simulation, or evidence about convergence time.",
+      "sourceIds": [
+        "section-3",
+        "section-4"
+      ],
+      "claimIds": [
+        "c6",
+        "c7"
+      ],
+      "illustrative": true
+    }
+  ],
+  "quiz": [
+    {
+      "question": "At one target step, suppose two source annotations are scalars $h_1=2$ and $h_2=8$, with alignment weights $0.75$ and $0.25$. Under Eq. 5, what is the context?",
+      "options": [
+        {
+          "text": "3.5",
+          "explanation": "Correct: $0.75(2)+0.25(8)=1.5+2=3.5$."
+        },
+        {
+          "text": "5.0",
+          "explanation": "Incorrect: this is the unweighted arithmetic mean, which would require equal weights."
+        },
+        {
+          "text": "7.5",
+          "explanation": "Incorrect: this does not apply the stated normalized weighted-sum computation."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c4"
+      ]
+    },
+    {
+      "question": "Which distinction between soft alignment and beam search is correct in this paper's setup?",
+      "options": [
+        {
+          "text": "Soft alignment mixes source annotations; beam search compares target-sequence candidates.",
+          "explanation": "Correct: they operate at different levels of generation."
+        },
+        {
+          "text": "Soft alignment chooses one target sequence; beam search chooses one source word.",
+          "explanation": "Incorrect: this reverses their roles and falsely makes the alignment a single hard choice."
+        },
+        {
+          "text": "They are two names for the same normalized source weighting.",
+          "explanation": "Incorrect: beam search is an approximate output-decoding procedure, not the attention normalization."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-3",
+        "section-4"
+      ],
+      "claimIds": [
+        "c3",
+        "c5"
+      ]
+    },
+    {
+      "question": "Which conclusion is best supported by the reported evidence without overgeneralizing?",
+      "options": [
+        {
+          "text": "Under the reported WMT English-to-French setup, RNNsearch outperformed the matched RNNencdec baselines and was more robust to length.",
+          "explanation": "Correct: this preserves the comparison, dataset, and length-analysis conditions."
+        },
+        {
+          "text": "Soft attention guarantees no deterioration for arbitrarily long sentences in every language.",
+          "explanation": "Incorrect: the experiments do not establish a universal or unlimited-length guarantee."
+        },
+        {
+          "text": "The model solved rare-word translation because its no-unknown BLEU exceeded Moses.",
+          "explanation": "Incorrect: the no-unknown subset excludes the central rare-word difficulty, which the paper leaves open."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-4",
+        "section-5",
+        "section-7"
+      ],
+      "claimIds": [
+        "c9",
+        "c10",
+        "c11",
+        "c13"
+      ]
+    }
+  ],
+  "id": "neural-machine-translation-by-jointly-learning",
+  "createdAt": "2026-10-01T23:44:08.663Z",
+  "pipelineVersion": "subjects-lessons-v1",
+  "sources": [
+    {
+      "id": "abstract",
+      "label": "Original paper · abstract",
+      "url": "https://arxiv.org/abs/1409.0473",
+      "digest": "b526d5f57deb625299a67e35685083f1d3f04473f42722a268de7850ed41021d",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:42:16.562Z"
+    },
+    {
+      "id": "main-text",
+      "label": "Original paper · unsectioned main text",
+      "url": "https://arxiv.org/html/1409.0473",
+      "digest": "1826acef46c3017ffd187bf8d570fd479106840256c56ef4d48667b9ca0c8d27",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:42:16.562Z"
+    },
+    {
+      "id": "section-1",
+      "label": "1 Introduction",
+      "url": "https://arxiv.org/html/1409.0473#S1",
+      "digest": "8c59537d2ae0df9ac6fbfb2b2dab15c9c2beae38edbd72c11fb50661b8285712",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:42:16.562Z"
+    },
+    {
+      "id": "section-2",
+      "label": "2 Background: Neural Machine Translation",
+      "url": "https://arxiv.org/html/1409.0473#S2",
+      "digest": "ddf6ba7e3a0329bab46021a4ccd92c135decdbdae0e1d1367a821468ba07213d",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:42:16.562Z"
+    },
+    {
+      "id": "section-3",
+      "label": "3 Learning to Align and Translate",
+      "url": "https://arxiv.org/html/1409.0473#S3",
+      "digest": "a881c977a5da7ae926e6f0ce8008fbddcdd22600a81baf697bc10829b69e0497",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:42:16.562Z"
+    },
+    {
+      "id": "section-4",
+      "label": "4 Experiment Settings",
+      "url": "https://arxiv.org/html/1409.0473#S4",
+      "digest": "5b15270c948753fe3aaa50d596c007e59a5d3f64ebdf32ebdc0b89b00ae4067e",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:42:16.562Z"
+    },
+    {
+      "id": "section-5",
+      "label": "5 Results",
+      "url": "https://arxiv.org/html/1409.0473#S5",
+      "digest": "ce1529d5eaaa489a857306492abbe71048901aeb56aad03b61f1af37023746d6",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:42:16.562Z"
+    },
+    {
+      "id": "section-6",
+      "label": "6 Related Work",
+      "url": "https://arxiv.org/html/1409.0473#S6",
+      "digest": "9e09d132dc4d58323ff89a5f577c531e4d9270386e356d10865ecc855bb7aab1",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:42:16.562Z"
+    },
+    {
+      "id": "section-7",
+      "label": "7 Conclusion",
+      "url": "https://arxiv.org/html/1409.0473#S7",
+      "digest": "a993b0c874a419fb910eb1bdfe34c68e5baa299464e0994dc1a0432e4384422f",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:42:16.562Z"
+    }
+  ],
+  "review": {
+    "status": "passed",
+    "reviewedAt": "2026-10-02T02:01:45.390Z",
+    "contentDigest": "20ed21b5902cbb1ac9b030f05341789e75a73fa738350db7274dd37557ccb47d"
+  }
+}

@@ -1,0 +1,460 @@
+{
+  "title": "From Corruption to Creation: The Logic of Diffusion Imaging",
+  "summary": "Chan’s tutorial derives diffusion imaging as a tractable Gaussian corruption chain paired with a learned, stepwise reverse process rather than a single latent-to-image leap.",
+  "prerequisites": [
+    "Basic probability and Gaussian random variables",
+    "Vector algebra and Euclidean norms",
+    "Neural networks and gradient-based training",
+    "The distinction between training and sampling"
+  ],
+  "objectives": [
+    "Explain why diffusion uses many local transitions instead of one large generative step.",
+    "Derive the one-step and closed-form forward corruption distributions.",
+    "Calculate signal and noise coefficients for an illustrative schedule.",
+    "Distinguish the fixed forward process from the learned reverse process.",
+    "Interpret reconstruction, prior-matching, and consistency terms in the diffusion ELBO."
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "mechanism",
+      "statement": "The tutorial presents DDPM as a chain of incremental conversions rather than a one-step latent-to-image mapping.",
+      "conditions": "Comparison with the VAE framing used to introduce DDPM.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c2",
+      "kind": "equation",
+      "statement": "Both forward and reverse trajectories are modeled as Markov chains whose transitions depend only on the adjacent state.",
+      "conditions": "For the variational diffusion construction with states from time 0 through T.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c3",
+      "kind": "mechanism",
+      "statement": "The same reverse network can be reused across diffusion times, so a T-step chain does not inherently require T separate networks.",
+      "conditions": "When time-dependent reverse transitions are implemented by a shared network.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c4",
+      "kind": "mechanism",
+      "statement": "The clean endpoint is the image; generation uses the chosen prior $p(\\mathbf{x}_T)=\\mathcal N(\\mathbf 0,\\mathbf I)$, while the finite forward terminal marginal is $q(\\mathbf{x}_T\\mid\\mathbf{x}_0)=\\mathcal N(\\sqrt{\\bar\\alpha_T}\\mathbf{x}_0,(1-\\bar\\alpha_T)\\mathbf I)$ and is only close to that prior when $\\bar\\alpha_T$ is small; intermediate states are latent variables.",
+      "conditions": "For the tutorial’s variational diffusion construction with a finite prescribed schedule; closeness to the standard Gaussian prior requires sufficiently small $\\bar\\alpha_T$.",
+      "sourceIds": [
+        "section-2",
+        "section-2-part-2"
+      ]
+    },
+    {
+      "id": "c5",
+      "kind": "equation",
+      "statement": "A forward transition scales the preceding state by the square root of alpha and adds isotropic Gaussian variance one minus alpha.",
+      "conditions": "For a forward step with schedule value alpha_t.",
+      "sourceIds": [
+        "section-2-part-2"
+      ]
+    },
+    {
+      "id": "c6",
+      "kind": "result",
+      "statement": "The paired coefficients preserve a unit stationary variance when the incoming state and injected noise both have unit variance.",
+      "conditions": "For independent unit-variance inputs and a schedule value between zero and one.",
+      "sourceIds": [
+        "section-2-part-2"
+      ]
+    },
+    {
+      "id": "c7",
+      "kind": "equation",
+      "statement": "Any forward state can be sampled directly from the clean image using cumulative alpha, without simulating every preceding state.",
+      "conditions": "For Gaussian forward transitions with cumulative product over the schedule.",
+      "sourceIds": [
+        "section-2-part-2"
+      ]
+    },
+    {
+      "id": "c8",
+      "kind": "mechanism",
+      "statement": "The closed-form forward marginal is chiefly useful for constructing training pairs for the learned reverse denoising chain.",
+      "conditions": "Within the DDPM forward/reverse construction described by the tutorial.",
+      "sourceIds": [
+        "section-2-part-3"
+      ]
+    },
+    {
+      "id": "c9",
+      "kind": "result",
+      "statement": "The diffusion variational objective separates into reconstruction, terminal prior matching, and transition consistency contributions.",
+      "conditions": "For the variational diffusion ELBO derived over the full latent trajectory.",
+      "sourceIds": [
+        "section-2-part-4"
+      ]
+    },
+    {
+      "id": "c10",
+      "kind": "mechanism",
+      "statement": "Bayes’ rule supplies a tractable forward posterior whose direction matches that of the learned reverse transition.",
+      "conditions": "After conditioning the forward posterior on both the noisy state and the clean image.",
+      "sourceIds": [
+        "section-2-part-4"
+      ]
+    },
+    {
+      "id": "c11",
+      "kind": "result",
+      "statement": "The tractable forward posterior remains Gaussian and its mean combines information from the current noisy state and the clean image.",
+      "conditions": "For the tutorial’s linear Gaussian forward chain.",
+      "sourceIds": [
+        "section-2-part-5"
+      ]
+    },
+    {
+      "id": "c12",
+      "kind": "caveat",
+      "statement": "A variational lower bound need not equal the true data log-likelihood unless the proxy posterior exactly matches the true posterior.",
+      "conditions": "For ELBO-based latent-variable training, including the variational foundation used for diffusion.",
+      "sourceIds": [
+        "section-1-part-3"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "s1",
+      "title": "The generative problem becomes a path",
+      "markdown": "A generator must turn an easy-to-sample distribution into the complicated distribution of images. A VAE attempts a comparatively direct jump: sample a latent vector and ask a decoder to produce an image. Chan’s tutorial motivates diffusion by replacing that large jump with a path of small conversions.\n\nWrite the clean image as $\\mathbf{x}_0\\in\\mathbb{R}^D$ and introduce states $\\mathbf{x}_1,\\ldots,\\mathbf{x}_T$ of the same dimension. Here $D$ is the number of scalar image coordinates, $t$ is a time index, and $T$ is the final time. The forward path gradually corrupts $\\mathbf{x}_0$ into a simple terminal distribution. The reverse path begins from that terminal distribution and repeatedly predicts a slightly cleaner state.\n\nBoth paths are Markov chains: the next transition is expressed using an adjacent state rather than the entire history. Their factorizations are\n\n$$q(\\mathbf{x}_{0:T})=q(\\mathbf{x}_0)\\prod_{t=1}^{T}q(\\mathbf{x}_t\\mid\\mathbf{x}_{t-1}),$$\n\n$$p_{\\boldsymbol\\theta}(\\mathbf{x}_{0:T})=p(\\mathbf{x}_T)\\prod_{t=1}^{T}p_{\\boldsymbol\\theta}(\\mathbf{x}_{t-1}\\mid\\mathbf{x}_t).$$\n\nThe notation $\\mathbf{x}_{0:T}$ denotes the whole trajectory; $q$ denotes the prescribed forward process; $p_{\\boldsymbol\\theta}$ denotes the learned reverse model; and $\\boldsymbol\\theta$ collects its neural-network parameters. A shared network may be reused at every reverse time, normally receiving $t$ or an equivalent noise-level representation. Thus, “many steps” does not mean “many unrelated networks.”",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c1",
+        "c2",
+        "c3"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s2",
+      "title": "A variational compass before diffusion",
+      "markdown": "The training logic comes from variational inference. Suppose an inaccessible posterior $p(\\mathbf{z}\\mid\\mathbf{x})$ is approximated by $q_{\\boldsymbol\\phi}(\\mathbf{z}\\mid\\mathbf{x})$, where $\\mathbf{x}$ is observed data, $\\mathbf{z}$ is latent, and $\\boldsymbol\\phi$ parameterizes the approximation. The evidence lower bound satisfies\n\n$$\\log p(\\mathbf{x})=\\operatorname{ELBO}(\\mathbf{x})+D_{\\mathrm{KL}}\\!\\left(q_{\\boldsymbol\\phi}(\\mathbf{z}\\mid\\mathbf{x})\\,\\|\\,p(\\mathbf{z}\\mid\\mathbf{x})\\right).$$\n\nHere $D_{\\mathrm{KL}}(q\\|p)$ is Kullback–Leibler divergence. Because it is nonnegative, the ELBO cannot exceed $\\log p(\\mathbf{x})$. Equality requires the approximate and true posteriors to match. This is an important misconception check: maximizing an ELBO is not automatically identical to maximizing the exact likelihood.\n\nThe latent experiment depicts the restricted illustrative case $q=\\mathcal N(\\mu,1)$ and $p=\\mathcal N(0,1)$. Its control changes the scalar mean $\\mu$ while both variances remain one, so the displayed divergence is exactly $\\mu^2/2$. Predict what happens before moving the control: doubling $|\\mu|$ quadruples this KL. This toy isolates distribution mismatch; it contains neither a learned encoder nor the reconstruction term of a VAE or diffusion model.",
+      "sourceIds": [
+        "section-1-part-2",
+        "section-1-part-3"
+      ],
+      "claimIds": [
+        "c12"
+      ],
+      "figureId": "fig-latent"
+    },
+    {
+      "id": "s3",
+      "title": "The forward kernel: dilute signal, inject noise",
+      "markdown": "For DDPM’s forward step, choose a schedule value $0<\\alpha_t<1$ and define\n\n$$q(\\mathbf{x}_t\\mid\\mathbf{x}_{t-1})=\\mathcal N\\!\\left(\\mathbf{x}_t;\\sqrt{\\alpha_t}\\mathbf{x}_{t-1},(1-\\alpha_t)\\mathbf I\\right).$$\n\nIn this expression, $\\mathcal N(\\mathbf{x};\\boldsymbol\\mu,\\boldsymbol\\Sigma)$ is a Gaussian density with mean $\\boldsymbol\\mu$ and covariance $\\boldsymbol\\Sigma$, while $\\mathbf I$ is the $D\\times D$ identity matrix. Reparameterization gives the equivalent sampling rule\n\n$$\\mathbf{x}_t=\\sqrt{\\alpha_t}\\mathbf{x}_{t-1}+\\sqrt{1-\\alpha_t}\\boldsymbol\\epsilon_t,\\qquad \\boldsymbol\\epsilon_t\\sim\\mathcal N(\\mathbf 0,\\mathbf I).$$\n\nThe two square-root coefficients are paired. If a scalar coordinate of $\\mathbf{x}_{t-1}$ has variance one and is independent of the unit-variance noise, then\n\n$$\\operatorname{Var}(x_t)=\\alpha_t+(1-\\alpha_t)=1.$$\n\nSo the schedule trades signal variance for noise variance rather than allowing scale to explode. This does not say that every real image coordinate initially has unit variance; it explains the stationary-variance design under the stated normalization assumption.\n\nThe noise experiment samples Gaussian vectors and plots their norms. Its controls change $D$ and the noise scale $\\sigma$, while the reference RMS radius is $\\sigma\\sqrt D$. It helps distinguish componentwise variance from total vector magnitude. It is not a plot of image-space trajectories, and $D$ is dimensionality rather than three-dimensional physical space.",
+      "sourceIds": [
+        "section-2-part-2"
+      ],
+      "claimIds": [
+        "c5",
+        "c6"
+      ],
+      "figureId": "fig-noise"
+    },
+    {
+      "id": "s4",
+      "title": "Jump directly to any corruption level",
+      "markdown": "A crucial convenience is that training need not simulate all earlier corruptions. Define the cumulative product\n\n$$\\bar\\alpha_t=\\prod_{i=1}^{t}\\alpha_i.$$\n\nRepeated substitution and addition of independent Gaussian noises yield\n\n$$q(\\mathbf{x}_t\\mid\\mathbf{x}_0)=\\mathcal N\\!\\left(\\mathbf{x}_t;\\sqrt{\\bar\\alpha_t}\\mathbf{x}_0,(1-\\bar\\alpha_t)\\mathbf I\\right),$$\n\nor, equivalently,\n\n$$\\mathbf{x}_t=\\sqrt{\\bar\\alpha_t}\\mathbf{x}_0+\\sqrt{1-\\bar\\alpha_t}\\boldsymbol\\epsilon,\n\\qquad \\boldsymbol\\epsilon\\sim\\mathcal N(\\mathbf 0,\\mathbf I).$$\n\nA small illustrative calculation makes the coefficients concrete. Let $D=1$, $\\mathbf{x}_0=2$, $\\alpha_1=0.9$, $\\alpha_2=0.8$, and select the illustrative noise realization $\\epsilon=-0.5$. Then $\\bar\\alpha_2=0.9\\times0.8=0.72$. Therefore\n\n$$x_2=\\sqrt{0.72}(2)+\\sqrt{0.28}(-0.5)\n\\approx1.6971-0.2646=1.4325.$$\n\nThe conditional mean is $\\sqrt{0.72}(2)\\approx1.6971$, and the conditional variance is $1-0.72=0.28$. The value $1.4325$ is one illustrative draw, not a reported measurement. The direct formula produces the correct marginal at time 2; it does not reconstruct the particular intermediate noise history that another two-step draw would have used.",
+      "sourceIds": [
+        "section-2-part-2"
+      ],
+      "claimIds": [
+        "c7"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s5",
+      "title": "What the network actually learns",
+      "markdown": "The forward corruption law is chosen and analytically sampleable. The difficult object is the reverse conditional $p(\\mathbf{x}_{t-1}\\mid\\mathbf{x}_t)$ under the unknown data distribution. DDPM introduces a parameterized approximation $p_{\\boldsymbol\\theta}(\\mathbf{x}_{t-1}\\mid\\mathbf{x}_t)$ and learns it from corrupted clean examples.\n\nTraining can select a clean image $\\mathbf{x}_0$, choose a time $t$, draw $\\boldsymbol\\epsilon$, and construct $\\mathbf{x}_t$ in one shot. The pair supplies information about what was present before corruption. At generation time, however, the clean $\\mathbf{x}_0$ is unavailable: sampling starts from $\\mathbf{x}_T\\sim\\mathcal N(\\mathbf 0,\\mathbf I)$ and repeatedly applies learned reverse transitions.\n\nThis resolves a common misconception. Forward diffusion is not itself the image generator, nor does generation first corrupt a hidden clean image. The forward process creates tractable training distributions. The learned reverse chain is the generator. Likewise, a single denoising prediction is not the complete sampling process; it supplies one local transition in a trajectory.",
+      "sourceIds": [
+        "section-2",
+        "section-2-part-3"
+      ],
+      "claimIds": [
+        "c4",
+        "c8"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s6",
+      "title": "Why the reverse target is tractable",
+      "markdown": "Directly comparing oppositely directed transitions is awkward. Conditioning on the original image and applying Bayes’ rule produces the forward posterior\n\n$$q(\\mathbf{x}_{t-1}\\mid\\mathbf{x}_t,\\mathbf{x}_0),$$\n\nwhich points in the same temporal direction as $p_{\\boldsymbol\\theta}(\\mathbf{x}_{t-1}\\mid\\mathbf{x}_t)$. Under the linear Gaussian forward chain, this posterior is also Gaussian:\n\n$$q(\\mathbf{x}_{t-1}\\mid\\mathbf{x}_t,\\mathbf{x}_0)\n=\\mathcal N\\!\\left(\\mathbf{x}_{t-1};\\boldsymbol\\mu_q(\\mathbf{x}_t,\\mathbf{x}_0),\\boldsymbol\\Sigma_q(t)\\right).$$\n\nHere $\\boldsymbol\\mu_q$ is the posterior mean and $\\boldsymbol\\Sigma_q(t)$ its covariance. The tutorial shows that the mean is a schedule-dependent linear combination of the current noisy state $\\mathbf{x}_t$ and clean state $\\mathbf{x}_0$. During training both are known, so this conditional gives a computable target for a reverse transition. During generation $\\mathbf{x}_0$ is unknown, so the learned model must infer the needed reverse information from $\\mathbf{x}_t$ and time.\n\nThe conceptual payoff is precise: Gaussian corruption is not merely convenient noise. Closure of linear Gaussian operations makes the forward marginals and training posteriors analytically manageable, while a neural network handles the missing data-distribution knowledge.",
+      "sourceIds": [
+        "section-2-part-4",
+        "section-2-part-5"
+      ],
+      "claimIds": [
+        "c10",
+        "c11"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s7",
+      "title": "Objective, boundaries, and what remains unspecified",
+      "markdown": "The trajectory ELBO becomes interpretable after Bayes’ rule rewrites each interior target in the same temporal direction as the learned reverse transition:\n\n$$\\operatorname{ELBO}(\\mathbf{x}_0)=\\underbrace{\\mathbb E_{q(\\mathbf{x}_1\\mid\\mathbf{x}_0)}[\\log p_{\\boldsymbol\\theta}(\\mathbf{x}_0\\mid\\mathbf{x}_1)]}_{\\text{reconstruction}}-\\underbrace{D_{\\mathrm{KL}}\\!\\left(q(\\mathbf{x}_T\\mid\\mathbf{x}_0)\\,\\|\\,p(\\mathbf{x}_T)\\right)}_{\\text{prior matching}}-\\underbrace{\\sum_{t=2}^{T}\\mathbb E_{q(\\mathbf{x}_t\\mid\\mathbf{x}_0)}\\!\\left[D_{\\mathrm{KL}}\\!\\left(q(\\mathbf{x}_{t-1}\\mid\\mathbf{x}_t,\\mathbf{x}_0)\\,\\|\\,p_{\\boldsymbol\\theta}(\\mathbf{x}_{t-1}\\mid\\mathbf{x}_t)\\right)\\right]}_{\\text{consistency}}.$$\n\nThe reconstruction term governs the boundary nearest the data. A forward draw produces a slightly corrupted state $\\mathbf{x}_1$, and $\\log p_{\\boldsymbol\\theta}(\\mathbf{x}_0\\mid\\mathbf{x}_1)$ measures the conditional likelihood that the reverse model assigns to the clean image. Averaging over $q(\\mathbf{x}_1\\mid\\mathbf{x}_0)$ accounts for the different noise realizations that can produce the first corrupted state. Increasing this term trains the model to complete the final reverse step back to data.\n\nAt the other boundary, the prior-matching term compares the terminal forward marginal with the distribution used to initialize generation. With the usual choice $p(\\mathbf{x}_T)=\\mathcal N(\\mathbf 0,\\mathbf I)$, the schedule and horizon should make\n\n$$q(\\mathbf{x}_T\\mid\\mathbf{x}_0)=\\mathcal N\\!\\left(\\mathbf{x}_T;\\sqrt{\\bar\\alpha_T}\\mathbf{x}_0,(1-\\bar\\alpha_T)\\mathbf I\\right)$$\n\nclose to standard Gaussian. As $\\bar\\alpha_T$ becomes small, the coefficient of the clean image decreases while the covariance approaches $\\mathbf I$. This is a statement about conditional distributions: it does not require a finite-chain sample to equal any particular noise vector. When the forward schedule is prescribed, this KL contains no reverse-network parameter $\\boldsymbol\\theta$; it records the compatibility of the chosen terminal corruption with the sampling prior rather than directly training the reverse network.\n\nThe consistency terms train the interior transitions. For a noisy state $\\mathbf{x}_t$, the linear Gaussian forward process supplies the tractable posterior $q(\\mathbf{x}_{t-1}\\mid\\mathbf{x}_t,\\mathbf{x}_0)$. The learned transition $p_{\\boldsymbol\\theta}(\\mathbf{x}_{t-1}\\mid\\mathbf{x}_t)$ must approximate that reverse-directed target without receiving $\\mathbf{x}_0$ at generation time. Each KL therefore measures a local discrepancy between the analytically determined training posterior and the model’s denoising distribution, while the outer expectation averages that discrepancy over states drawn from $q(\\mathbf{x}_t\\mid\\mathbf{x}_0)$. Summing from $t=2$ through $T$ couples the shared reverse model to every interior noise level.\n\nThe signs express the optimization directly. Reconstruction enters positively because larger conditional log-likelihood improves the bound. Prior matching and transition consistency enter negatively because smaller KL divergences improve it. The three contributions consequently cover the entire path: reconstruct the data at the first boundary, connect the terminal forward distribution to the generation prior, and align every intervening reverse transition with its tractable posterior target.\n\nThis objective remains variational. For the full latent trajectory,\n\n$$\\log p_{\\boldsymbol\\theta}(\\mathbf{x}_0)=\\operatorname{ELBO}(\\mathbf{x}_0)+D_{\\mathrm{KL}}\\!\\left(q(\\mathbf{x}_{1:T}\\mid\\mathbf{x}_0)\\,\\|\\,p_{\\boldsymbol\\theta}(\\mathbf{x}_{1:T}\\mid\\mathbf{x}_0)\\right).$$\n\nThe bound equals the data log-likelihood only when the forward trajectory distribution used as the variational posterior matches the model’s true posterior trajectory. Thus, improving the reconstruction and consistency terms improves the lower bound under the stated construction, but it does not turn the learned reverse conditionals into exact inverses. The scientific role of the objective is narrower and more useful: tractable Gaussian corruption supplies computable targets, and optimization teaches one time-conditioned reverse model to convert a simple terminal distribution into data through a sequence of local denoising steps.",
+      "sourceIds": [
+        "section-2-part-3",
+        "section-2-part-4",
+        "section-1-part-3"
+      ],
+      "claimIds": [
+        "c9",
+        "c10",
+        "c12"
+      ],
+      "figureId": null
+    }
+  ],
+  "figures": [
+    {
+      "id": "fig-latent",
+      "kind": "latent",
+      "title": "Posterior displacement and KL cost",
+      "question": "If the illustrative posterior mean moves twice as far from zero, how should its KL divergence change?",
+      "caption": "An illustrative scalar comparison of $q=\\mathcal N(\\mu,1)$ with $p=\\mathcal N(0,1)$; the control changes $\\mu$ and displays $D_{\\mathrm{KL}}=\\mu^2/2$.",
+      "limitation": "This is not a learned posterior and does not simulate reconstruction likelihood, a VAE, or a diffusion trajectory.",
+      "sourceIds": [
+        "section-1-part-2",
+        "section-1-part-3"
+      ],
+      "claimIds": [
+        "c12"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "fig-noise",
+      "kind": "noise",
+      "title": "Gaussian norm versus dimension and scale",
+      "question": "Holding dimension fixed, how does increasing $\\sigma$ change sampled vector norms and the RMS radius $\\sigma\\sqrt D$?",
+      "caption": "Seeded Gaussian vectors show a norm histogram, measured mean norm, and the reference RMS radius while $D$ and $\\sigma$ vary.",
+      "limitation": "The display is an illustrative Gaussian norm experiment, not image diffusion, a physical 3D plot, or a reported empirical result.",
+      "sourceIds": [
+        "section-2-part-2"
+      ],
+      "claimIds": [
+        "c5",
+        "c6"
+      ],
+      "illustrative": true
+    }
+  ],
+  "quiz": [
+    {
+      "question": "Assume independent unit-variance $x_{t-1}$ and $\\epsilon$. For $x_t=\\sqrt{\\alpha_t}x_{t-1}+\\sqrt{1-\\alpha_t}\\epsilon$, what is $\\operatorname{Var}(x_t)$?",
+      "options": [
+        {
+          "text": "1",
+          "explanation": "Correct. Independence makes variances add: $\\alpha_t+(1-\\alpha_t)=1$."
+        },
+        {
+          "text": "$\\alpha_t$",
+          "explanation": "This counts only the retained signal variance and omits the injected noise variance."
+        },
+        {
+          "text": "$2-\\alpha_t$",
+          "explanation": "This results from failing to scale the incoming signal variance and then adding the noise variance: $1+(1-\\alpha_t)=2-\\alpha_t$."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-2-part-2"
+      ],
+      "claimIds": [
+        "c5",
+        "c6"
+      ]
+    },
+    {
+      "question": "Why is the closed form $q(\\mathbf{x}_t\\mid\\mathbf{x}_0)$ especially useful during training?",
+      "options": [
+        {
+          "text": "It samples a chosen corruption level directly from a clean image.",
+          "explanation": "Correct. Cumulative alpha gives the marginal at time $t$ without simulating every earlier state."
+        },
+        {
+          "text": "It makes the reverse model unnecessary.",
+          "explanation": "Incorrect. The reverse conditional under the data distribution remains the learned part used for generation."
+        },
+        {
+          "text": "It recovers the unique noise history leading to $\\mathbf{x}_t$.",
+          "explanation": "Incorrect. It samples the correct marginal but does not identify a unique sequence of earlier noise draws."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-2-part-2",
+        "section-2-part-3"
+      ],
+      "claimIds": [
+        "c7",
+        "c8"
+      ]
+    },
+    {
+      "question": "Which conclusion is justified when the ELBO increased during variational optimization?",
+      "options": [
+        {
+          "text": "The lower bound improved, but exact likelihood equality still requires posterior matching.",
+          "explanation": "Correct. The gap is a KL divergence and need not be zero."
+        },
+        {
+          "text": "The generated images are guaranteed to be perceptually optimal.",
+          "explanation": "Incorrect. The bound provides no such perceptual guarantee."
+        },
+        {
+          "text": "The forward and learned reverse transitions must now be exact inverses.",
+          "explanation": "Incorrect. Learned reverse transitions remain approximations, and an improved bound does not prove exact inversion."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-1-part-2",
+        "section-1-part-3"
+      ],
+      "claimIds": [
+        "c12"
+      ]
+    }
+  ],
+  "id": "tutorial-on-diffusion-models-for-imaging",
+  "createdAt": "2026-10-01T23:48:42.978Z",
+  "pipelineVersion": "subjects-lessons-v1",
+  "sources": [
+    {
+      "id": "abstract",
+      "label": "Original paper · abstract",
+      "url": "https://arxiv.org/abs/2403.18103",
+      "digest": "717927671f1de6624bb5f98b155b89ebd37c6b51ab031571bce1b7dc3972d600",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:44:57.097Z"
+    },
+    {
+      "id": "main-text",
+      "label": "Original paper · unsectioned main text",
+      "url": "https://arxiv.org/html/2403.18103",
+      "digest": "7cad8daac4821b09604045b3c7a37d4d48119b60a1b454a90c4557c4c0580437",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:44:57.097Z"
+    },
+    {
+      "id": "section-1",
+      "label": "1 Variational Auto-Encoder (VAE)",
+      "url": "https://arxiv.org/html/2403.18103#S1",
+      "digest": "f42565dee054802a23672a17aa137864c7b268198229f212686624b573ee34b7",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:44:57.097Z"
+    },
+    {
+      "id": "section-1-part-2",
+      "label": "1 Variational Auto-Encoder (VAE) · part 2",
+      "url": "https://arxiv.org/html/2403.18103#S1",
+      "digest": "388c8789da5c7fdb6e0fce01b88de6b0161b3d796fa850e8a174adb3e954d872",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:44:57.097Z"
+    },
+    {
+      "id": "section-1-part-3",
+      "label": "1 Variational Auto-Encoder (VAE) · part 3",
+      "url": "https://arxiv.org/html/2403.18103#S1",
+      "digest": "de2c4dfc8908c3211b109926139b949036116a6dcc8f3b34a30105258d3bbf0c",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:44:57.097Z"
+    },
+    {
+      "id": "section-1-part-4",
+      "label": "1 Variational Auto-Encoder (VAE) · part 4",
+      "url": "https://arxiv.org/html/2403.18103#S1",
+      "digest": "9b99fce5b2f5910dfbf445f7d1bd29abe573a2021d9089ad44cbf3925eacb37b",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:44:57.097Z"
+    },
+    {
+      "id": "section-1-part-5",
+      "label": "1 Variational Auto-Encoder (VAE) · part 5",
+      "url": "https://arxiv.org/html/2403.18103#S1",
+      "digest": "c53700d78bef9371e32c9094548bec0d02212ea130ddaf33343e767759f62530",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:44:57.097Z"
+    },
+    {
+      "id": "section-1-part-6",
+      "label": "1 Variational Auto-Encoder (VAE) · part 6",
+      "url": "https://arxiv.org/html/2403.18103#S1",
+      "digest": "d062a13f9f22cc0484710716a75da842081c259651b7bba759be8db60f6721ac",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:44:57.097Z"
+    },
+    {
+      "id": "section-1-part-7",
+      "label": "1 Variational Auto-Encoder (VAE) · part 7",
+      "url": "https://arxiv.org/html/2403.18103#S1",
+      "digest": "01640e42dcc39df6658e810151048f82aab4332f65611fc8f58ca9b8c0ba4abb",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:44:57.097Z"
+    },
+    {
+      "id": "section-2",
+      "label": "2 Denoising Diffusion Probabilistic Model (DDPM)",
+      "url": "https://arxiv.org/html/2403.18103#S2",
+      "digest": "5a41549c796e7be7ec21ce109d68c2cde6a7abd7ab4ce98ea4e7ecf7e1614b1e",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:44:57.097Z"
+    },
+    {
+      "id": "section-2-part-2",
+      "label": "2 Denoising Diffusion Probabilistic Model (DDPM) · part 2",
+      "url": "https://arxiv.org/html/2403.18103#S2",
+      "digest": "fe5fded98e07d42aafc6eb52535027b7c70daf48ab63a28cb7308b461996f513",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:44:57.097Z"
+    },
+    {
+      "id": "section-2-part-3",
+      "label": "2 Denoising Diffusion Probabilistic Model (DDPM) · part 3",
+      "url": "https://arxiv.org/html/2403.18103#S2",
+      "digest": "a3c5efadf1304177ad5b65ca86c0a32db9c2e5d47609fd81cf218a7134050273",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:44:57.097Z"
+    },
+    {
+      "id": "section-2-part-4",
+      "label": "2 Denoising Diffusion Probabilistic Model (DDPM) · part 4",
+      "url": "https://arxiv.org/html/2403.18103#S2",
+      "digest": "c93ba75ad57aedf8b95667f478733f57b76f4de029445b15b05eadf1467fdf11",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:44:57.097Z"
+    },
+    {
+      "id": "section-2-part-5",
+      "label": "2 Denoising Diffusion Probabilistic Model (DDPM) · part 5",
+      "url": "https://arxiv.org/html/2403.18103#S2",
+      "digest": "a9796bc29de9d2a92f607f2de1f3302c7331cd9883629e8d5fed84c5a647285c",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:44:57.097Z"
+    }
+  ],
+  "review": {
+    "status": "passed",
+    "reviewedAt": "2026-10-02T02:19:52.855Z",
+    "contentDigest": "20e8ebf49d50cdcb7ffa8a2443a21b5e519d2066992192d78c603c60ce3ca557"
+  }
+}

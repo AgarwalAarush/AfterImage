@@ -1,0 +1,574 @@
+{
+  "version": 1,
+  "sectionId": "s2",
+  "title": "One Full Image to Class-Specific Box Scores",
+  "introduction": "Let IMG contain an object OBJ whose center CTR lies in cell CELL. YOLO evaluates the full image once, predicts box data and one shared conditional class distribution per cell, then forms each class-specific box score as $\\Pr(\\mathrm{Class}_i\\mid\\mathrm{Object})C_b$.",
+  "entities": [
+    {
+      "id": "img",
+      "label": "IMG",
+      "meaning": "The complete input image evaluated by the unified network."
+    },
+    {
+      "id": "obj",
+      "label": "OBJ",
+      "meaning": "A symbolic object present in IMG."
+    },
+    {
+      "id": "ctr",
+      "label": "CTR",
+      "meaning": "OBJ's center, which determines its responsible grid cell."
+    },
+    {
+      "id": "cell",
+      "label": "CELL",
+      "meaning": "The grid cell containing CTR and therefore assigned to detect OBJ."
+    },
+    {
+      "id": "box1",
+      "label": "BOX1",
+      "meaning": "One box prediction from CELL, containing x, y, w, h, and confidence."
+    },
+    {
+      "id": "box2",
+      "label": "BOX2",
+      "meaning": "Another box prediction emitted by the same cell."
+    },
+    {
+      "id": "conf1",
+      "label": "C1",
+      "meaning": "BOX1's confidence output, with object-presence and localization-fit semantics."
+    },
+    {
+      "id": "classi",
+      "label": "CLSi",
+      "meaning": "CELL's conditional probability for symbolic class i given an object."
+    },
+    {
+      "id": "scorei",
+      "label": "SCOREi",
+      "meaning": "BOX1's class-specific score obtained by multiplying CLSi by C1."
+    }
+  ],
+  "objects": [
+    {
+      "id": "image",
+      "form": "vector",
+      "label": "Full image",
+      "detail": "Complete image-wide input",
+      "sourceIds": [
+        "abstract",
+        "section-2"
+      ],
+      "claimIds": [
+        "c1"
+      ]
+    },
+    {
+      "id": "grid",
+      "form": "bank",
+      "label": "Grid assignment",
+      "detail": "Center-assigned image cells",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c2"
+      ]
+    },
+    {
+      "id": "network",
+      "form": "module",
+      "label": "Unified network",
+      "detail": "Single image-wide predictor",
+      "sourceIds": [
+        "abstract",
+        "section-2"
+      ],
+      "claimIds": [
+        "c1"
+      ]
+    },
+    {
+      "id": "boxes",
+      "form": "vector",
+      "label": "Cell box outputs",
+      "detail": "Per-cell box predictions",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c4"
+      ]
+    },
+    {
+      "id": "classes",
+      "form": "vector",
+      "label": "Cell class outputs",
+      "detail": "Shared conditional class scores",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c5"
+      ]
+    },
+    {
+      "id": "scoring",
+      "form": "module",
+      "label": "Class-specific scoring",
+      "detail": "Class and confidence product",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c3",
+        "c5"
+      ]
+    },
+    {
+      "id": "results",
+      "form": "bank",
+      "label": "Scored boxes",
+      "detail": "Class-specific box results",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c3"
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "id": "r-assign",
+      "from": "image",
+      "to": "grid",
+      "label": "assign center to cell",
+      "dashed": false,
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c2"
+      ]
+    },
+    {
+      "id": "r-evaluate",
+      "from": "image",
+      "to": "network",
+      "label": "evaluate full image once",
+      "dashed": false,
+      "sourceIds": [
+        "abstract",
+        "section-2"
+      ],
+      "claimIds": [
+        "c1"
+      ]
+    },
+    {
+      "id": "r-boxes",
+      "from": "network",
+      "to": "boxes",
+      "label": "predict boxes jointly",
+      "dashed": false,
+      "sourceIds": [
+        "abstract",
+        "section-2"
+      ],
+      "claimIds": [
+        "c1",
+        "c4"
+      ]
+    },
+    {
+      "id": "r-classes",
+      "from": "network",
+      "to": "classes",
+      "label": "predict cell classes jointly",
+      "dashed": false,
+      "sourceIds": [
+        "abstract",
+        "section-2"
+      ],
+      "claimIds": [
+        "c1",
+        "c5"
+      ]
+    },
+    {
+      "id": "r-box-score",
+      "from": "boxes",
+      "to": "scoring",
+      "label": "supply box confidence",
+      "dashed": false,
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c3",
+        "c4"
+      ]
+    },
+    {
+      "id": "r-class-score",
+      "from": "classes",
+      "to": "scoring",
+      "label": "supply conditional class score",
+      "dashed": false,
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c3",
+        "c5"
+      ]
+    },
+    {
+      "id": "r-emit",
+      "from": "scoring",
+      "to": "results",
+      "label": "emit class-specific box score",
+      "dashed": false,
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c3"
+      ]
+    }
+  ],
+  "beats": [
+    {
+      "title": "Begin with one complete image",
+      "explanation": "IMG, OBJ, and CTR are available together. Nothing has yet been assigned or predicted. Keeping the full image intact matters because YOLO's contribution is image-wide regression rather than separately classifying proposed regions.",
+      "sourceIds": [
+        "abstract",
+        "section-2"
+      ],
+      "claimIds": [
+        "c1"
+      ],
+      "objects": [
+        {
+          "objectId": "image",
+          "status": "active",
+          "entityIds": [
+            "img",
+            "obj",
+            "ctr"
+          ]
+        },
+        {
+          "objectId": "grid",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "network",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "boxes",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "classes",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "scoring",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "results",
+          "status": "pending",
+          "entityIds": []
+        }
+      ],
+      "relationships": []
+    },
+    {
+      "title": "Assign the object and evaluate globally",
+      "explanation": "CTR places OBJ in CELL, making that cell responsible for detecting the object. At the same time, the unified network receives the complete IMG; the assignment does not crop away the rest of the image or restrict the network to local evidence.",
+      "sourceIds": [
+        "abstract",
+        "section-2"
+      ],
+      "claimIds": [
+        "c1",
+        "c2"
+      ],
+      "objects": [
+        {
+          "objectId": "image",
+          "status": "retained",
+          "entityIds": [
+            "img",
+            "obj",
+            "ctr"
+          ]
+        },
+        {
+          "objectId": "grid",
+          "status": "active",
+          "entityIds": [
+            "img",
+            "obj",
+            "ctr",
+            "cell"
+          ]
+        },
+        {
+          "objectId": "network",
+          "status": "active",
+          "entityIds": [
+            "img"
+          ]
+        },
+        {
+          "objectId": "boxes",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "classes",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "scoring",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "results",
+          "status": "pending",
+          "entityIds": []
+        }
+      ],
+      "relationships": [
+        {
+          "relationshipId": "r-assign",
+          "entityIds": [
+            "img",
+            "obj",
+            "ctr"
+          ]
+        },
+        {
+          "relationshipId": "r-evaluate",
+          "entityIds": [
+            "img"
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Produce both output families together",
+      "explanation": "The network simultaneously emits BOX1 and BOX2 for CELL and the cell-level CLSi. Each box contains $(x,y,w,h,C_b)$, while CLSi belongs to the single conditional class distribution shared across the cell's box predictors. Neither output family waits for the other.",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c4",
+        "c5"
+      ],
+      "objects": [
+        {
+          "objectId": "image",
+          "status": "retained",
+          "entityIds": [
+            "img",
+            "obj",
+            "ctr"
+          ]
+        },
+        {
+          "objectId": "grid",
+          "status": "retained",
+          "entityIds": [
+            "img",
+            "obj",
+            "ctr",
+            "cell"
+          ]
+        },
+        {
+          "objectId": "network",
+          "status": "active",
+          "entityIds": [
+            "img",
+            "cell"
+          ]
+        },
+        {
+          "objectId": "boxes",
+          "status": "active",
+          "entityIds": [
+            "cell",
+            "box1",
+            "box2",
+            "conf1"
+          ]
+        },
+        {
+          "objectId": "classes",
+          "status": "active",
+          "entityIds": [
+            "cell",
+            "classi"
+          ]
+        },
+        {
+          "objectId": "scoring",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "results",
+          "status": "pending",
+          "entityIds": []
+        }
+      ],
+      "relationships": [
+        {
+          "relationshipId": "r-boxes",
+          "entityIds": [
+            "cell"
+          ]
+        },
+        {
+          "relationshipId": "r-classes",
+          "entityIds": [
+            "cell"
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Form a class-specific box score",
+      "explanation": "BOX1 contributes C1 and the shared cell distribution contributes CLSi. The scoring operation computes $\\Pr(\\mathrm{Class}_i\\mid\\mathrm{Object})C_1$, yielding SCOREi for BOX1. Because $C_1$ carries object-presence and localization-fit semantics, SCOREi combines class belief with the predicted box's confidence.",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c3",
+        "c5"
+      ],
+      "objects": [
+        {
+          "objectId": "image",
+          "status": "retained",
+          "entityIds": [
+            "img",
+            "obj",
+            "ctr"
+          ]
+        },
+        {
+          "objectId": "grid",
+          "status": "retained",
+          "entityIds": [
+            "img",
+            "obj",
+            "ctr",
+            "cell"
+          ]
+        },
+        {
+          "objectId": "network",
+          "status": "retained",
+          "entityIds": [
+            "img",
+            "cell"
+          ]
+        },
+        {
+          "objectId": "boxes",
+          "status": "retained",
+          "entityIds": [
+            "cell",
+            "box1",
+            "box2",
+            "conf1"
+          ]
+        },
+        {
+          "objectId": "classes",
+          "status": "retained",
+          "entityIds": [
+            "cell",
+            "classi"
+          ]
+        },
+        {
+          "objectId": "scoring",
+          "status": "active",
+          "entityIds": [
+            "box1",
+            "conf1",
+            "classi",
+            "scorei"
+          ]
+        },
+        {
+          "objectId": "results",
+          "status": "active",
+          "entityIds": [
+            "box1",
+            "scorei"
+          ]
+        }
+      ],
+      "relationships": [
+        {
+          "relationshipId": "r-box-score",
+          "entityIds": [
+            "box1",
+            "conf1"
+          ]
+        },
+        {
+          "relationshipId": "r-class-score",
+          "entityIds": [
+            "classi"
+          ]
+        },
+        {
+          "relationshipId": "r-emit",
+          "entityIds": [
+            "box1",
+            "scorei"
+          ]
+        }
+      ]
+    }
+  ],
+  "takeaway": "One full-image network jointly produces cell-shared class probabilities and per-box confidence, whose product yields each class-specific box score.",
+  "sourceIds": [
+    "abstract",
+    "section-2"
+  ],
+  "claimIds": [
+    "c1",
+    "c2",
+    "c3",
+    "c4",
+    "c5"
+  ],
+  "lessonId": "you-only-look-once-unified-real",
+  "parentContentDigest": "7923d670a45bc99adb0714cdeb258819007040cee2f2c826c0b91dd56bef0a91",
+  "review": {
+    "status": "source-passed",
+    "reviewedAt": "2026-10-02T00:18:00.706Z",
+    "contentDigest": "d170ab102a17dfc2ae659f4d9f631c7c4af58dfb5c13dcea1f3376f7226658ea",
+    "rendererDigest": "2cc690a7105c5faca75e22053e83674a2cf2e227ae22afe88cc4662d09c98bb4",
+    "visualReviewedAt": null
+  }
+}

@@ -1,0 +1,402 @@
+{
+  "title": "The Search That Teaches Its Guide",
+  "summary": "AlphaZero turns self-play outcomes into a stronger policy and value network, while Monte Carlo tree search repeatedly converts that network into improved move targets.",
+  "prerequisites": [
+    "Probability distributions and conditional expectations",
+    "Cross-entropy, squared error, and gradient descent",
+    "Differences among training, search, and evaluation",
+    "Basic tree-search concepts and terminology"
+  ],
+  "objectives": [
+    "Explain how policy, value, search, and self-play form a learning loop.",
+    "Interpret each term in AlphaZero's training objective.",
+    "Distinguish the network policy from the search-improved move distribution.",
+    "Relate the reported match results to hardware and time controls.",
+    "Explain what tabula rasa means and what game knowledge remains."
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "mechanism",
+      "statement": "AlphaZero replaces handcrafted evaluation and move-ordering knowledge with one neural network that predicts both a move distribution and an expected outcome.",
+      "conditions": "For a board position encoded according to the rules of chess, shogi, or Go.",
+      "sourceIds": [
+        "main-text"
+      ]
+    },
+    {
+      "id": "c2",
+      "kind": "equation",
+      "statement": "The network maps state $s$ to policy $\\mathbf{p}$ and value $v$, with $p_a=\\Pr(a\\mid s)$ and $v$ approximating the conditional expected game outcome.",
+      "conditions": "The outcome convention permits loss, draw, and win values, rather than only a binary win indicator.",
+      "sourceIds": [
+        "main-text"
+      ]
+    },
+    {
+      "id": "c3",
+      "kind": "mechanism",
+      "statement": "MCTS uses network priors and values to allocate simulations, then returns a move distribution derived from root visit counts.",
+      "conditions": "For each search rooted at the current position; the returned distribution may be proportional to or greedy in visit counts.",
+      "sourceIds": [
+        "main-text"
+      ]
+    },
+    {
+      "id": "c4",
+      "kind": "equation",
+      "statement": "Training combines outcome regression, imitation of the search distribution, and $L_2$ parameter regularization.",
+      "conditions": "For self-play examples containing a state, search distribution, and terminal outcome.",
+      "sourceIds": [
+        "main-text"
+      ]
+    },
+    {
+      "id": "c5",
+      "kind": "mechanism",
+      "statement": "Self-play supplies both the actions used to generate trajectories and the terminal labels used to train the value output.",
+      "conditions": "Moves for both players are selected by MCTS; terminal scoring follows the game rules.",
+      "sourceIds": [
+        "main-text"
+      ]
+    },
+    {
+      "id": "c6",
+      "kind": "mechanism",
+      "statement": "Unlike the earlier gated best-player scheme, AlphaZero continually updates one network and generates new games with its latest parameters.",
+      "conditions": "This comparison concerns the training-loop difference between AlphaZero and the described AlphaGo Zero procedure.",
+      "sourceIds": [
+        "main-text"
+      ]
+    },
+    {
+      "id": "c7",
+      "kind": "caveat",
+      "statement": "The system is not ignorant of the games: it receives exact rules for transitions, termination, scoring, and rule-derived representations.",
+      "conditions": "This specifies the boundary of the paper's claim that no domain knowledge beyond the rules was supplied.",
+      "sourceIds": [
+        "section-1"
+      ]
+    },
+    {
+      "id": "c8",
+      "kind": "mechanism",
+      "statement": "Illegal actions are removed from the policy and the remaining legal-action probabilities are normalized again.",
+      "conditions": "For the chess and shogi action representations described in the Methods.",
+      "sourceIds": [
+        "section-1-part-2"
+      ]
+    },
+    {
+      "id": "c9",
+      "kind": "result",
+      "statement": "The reported fully trained tournament used 100-game matches, one minute per move, and different compute configurations for AlphaZero and its opponents.",
+      "conditions": "Against Stockfish, Elmo, and the earlier three-day AlphaGo Zero instance under the paper's tournament evaluation.",
+      "sourceIds": [
+        "main-text-part-2"
+      ]
+    },
+    {
+      "id": "c10",
+      "kind": "result",
+      "statement": "In the chess match table, AlphaZero recorded 28 wins, 72 draws, and no losses across both color assignments.",
+      "conditions": "The two 50-game chess rows against Stockfish, with one minute of thinking time per move; totals are arithmetic derived from the displayed rows.",
+      "sourceIds": [
+        "main-text-part-2"
+      ]
+    },
+    {
+      "id": "c11",
+      "kind": "result",
+      "statement": "AlphaZero evaluated far fewer positions per second than the named chess and shogi engines, so its result cannot be explained as simply searching more nodes.",
+      "conditions": "At the evaluation speeds and hardware reported for the compared programs.",
+      "sourceIds": [
+        "main-text-part-2"
+      ]
+    },
+    {
+      "id": "c12",
+      "kind": "caveat",
+      "statement": "The cross-game claim concerns a shared algorithmic setup, not one universal network trained simultaneously on all three games.",
+      "conditions": "For the experiments on chess, shogi, and Go reported in this paper.",
+      "sourceIds": [
+        "main-text-part-2"
+      ]
+    },
+    {
+      "id": "c13",
+      "kind": "caveat",
+      "statement": "The training study used very large specialized compute and 700,000 optimization steps, which limits what the reported learning times imply for ordinary hardware.",
+      "conditions": "For each separately trained game instance in the reported main experiment.",
+      "sourceIds": [
+        "main-text-part-2"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "s1",
+      "title": "The problem AlphaZero rearranges",
+      "markdown": "Traditional elite chess engines did not merely apply a generic search routine. Their evaluations, pruning rules, move ordering, opening knowledge, and endgame machinery incorporated substantial chess-specific engineering. AlphaZero asks whether a tighter reusable loop can replace much of that machinery: learn a position evaluator from self-play, use it to guide a general tree search, and make the search results supervise the next evaluator.\n\nThree prerequisites keep the story precise. A **policy** is a probability distribution over actions. A **value** is a prediction of future outcome from a state. A **tree search** temporarily examines possible continuations before choosing the real move. AlphaZero assigns these jobs to different objects: $\\mathbf{p}$ is the neural-network policy, $v$ is its value estimate, and $\\boldsymbol{\\pi}$ is the distribution produced by search.\n\nThe cross-game contribution is therefore not a single omniscient player. Separate networks were trained for chess, shogi, and Go. What was reused was the algorithmic recipe and, with stated exceptions, its settings and architecture. This distinction matters: demonstrating a common learning procedure across games is different from demonstrating one model that transfers learned knowledge between them.",
+      "sourceIds": [
+        "main-text",
+        "main-text-part-2",
+        "section-1"
+      ],
+      "claimIds": [
+        "c1",
+        "c12"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s2",
+      "title": "One network, two questions",
+      "markdown": "For a position $s$, the network with parameters $\\theta$ computes\n\n$$(\\mathbf{p},v)=f_{\\theta}(s).$$\n\nHere $f_{\\theta}$ denotes the neural network; $\\theta$ is the collection of learned weights; $\\mathbf{p}$ is a vector whose component $p_a=\\Pr(a\\mid s)$ is the prior probability assigned to action $a$; and $v$ is a scalar approximating $\\mathbb{E}[z\\mid s]$, the expected terminal outcome $z$ conditional on $s$. The outcome is $-1$ for a loss, $0$ for a draw, and $+1$ for a win from the relevant player perspective.\n\nThe policy output does not itself prove which move is best. It supplies a structured prior that helps search decide where simulations may be useful. The value output supplies a learned evaluation when search reaches a nonterminal leaf. Rules still determine which actions are legal, how an action changes the board, whether play has terminated, and how a terminal position scores.\n\nThe illustrative attention control makes one narrow idea tangible: fixed scores $[2,1,0,-1]$ are divided by a positive temperature and passed through softmax. Lower temperature sharpens the normalized distribution; higher temperature flattens it. Predict which action gains probability as temperature falls, then inspect the weights. This is useful for understanding normalization of action preferences, but it is not an AlphaZero head, learned similarity, legal-move mask, visit-count rule, or reported experiment.",
+      "sourceIds": [
+        "main-text",
+        "section-1",
+        "section-1-part-2"
+      ],
+      "claimIds": [
+        "c2",
+        "c7",
+        "c8"
+      ],
+      "figureId": "fig-attention"
+    },
+    {
+      "id": "s3",
+      "title": "Search improves a policy locally",
+      "markdown": "At each actual turn, AlphaZero runs MCTS from root state $s_{\\mathrm{root}}$. Repeated simulations descend through the current tree. The selection rule favors a mixture of low visit count, high network prior, and high backed-up value. On reaching a leaf, the system evaluates or expands it, then propagates information back through the traversed path. After many simulations, root-edge visit counts define $\\boldsymbol{\\pi}$.\n\nThis creates an important asymmetry. The network performs a single general prediction, whereas search spends computation adapting that prediction to the current position. If an initially underrated move leads to favorable evaluated continuations, repeated search can give it more visits. Thus $\\boldsymbol{\\pi}$ can be a better-informed target than the original $\\mathbf{p}$, even though the same network helped generate it.",
+      "sourceIds": [
+        "main-text"
+      ],
+      "claimIds": [
+        "c3"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s4",
+      "title": "A target assembled at the end of play",
+      "markdown": "Self-play closes the loop. At time $t$, MCTS produces $\\boldsymbol{\\pi}_t$, and the played action is sampled as $a_t\\sim\\boldsymbol{\\pi}_t$ during training. Once the terminal state $s_T$ is reached, the rules provide outcome $z$. Earlier positions can then be paired with both a search target and a final outcome: $(s_t,\\boldsymbol{\\pi}_t,z)$.\n\nThe loss is\n\n$$l=(z-v)^2-\\boldsymbol{\\pi}^{\\top}\\log\\mathbf{p}+c\\lVert\\theta\\rVert^2.$$\n\nThe first term trains value accuracy. The second is cross-entropy because $-\\boldsymbol{\\pi}^{\\top}\\log\\mathbf{p}=-\\sum_a\\pi_a\\log p_a$; it trains the network policy to resemble the search distribution. The last term is $L_2$ regularization, where $c$ controls its strength and $\\lVert\\theta\\rVert$ is the Euclidean norm of the parameters.\n\nConsider an **illustrative** two-action example, not a reported paper measurement. Let $z=1$, $v=0.4$, $\\boldsymbol{\\pi}=(0.75,0.25)$, $\\mathbf{p}=(0.60,0.40)$, and temporarily omit regularization by setting $c=0$. The value error is $(1-0.4)^2=0.36$. The policy term is\n\n$$-[0.75\\ln(0.60)+0.25\\ln(0.40)]\\approx0.612.$$\n\nTherefore $l\\approx0.36+0.612=0.972$. If $p_1$ moves toward $0.75$ while normalization is preserved, the policy term decreases. If $v$ moves toward $1$, the value term decreases.",
+      "sourceIds": [
+        "main-text"
+      ],
+      "claimIds": [
+        "c4",
+        "c5"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s5",
+      "title": "Learning is continual, not a tournament of snapshots",
+      "markdown": "After gradient updates change $\\theta$, subsequent self-play uses the updated network. This creates a repeating cycle:\n\n$$\\text{latest network}\\rightarrow\\text{MCTS}\\rightarrow\\text{self-play data}\\rightarrow\\text{loss update}\\rightarrow\\text{latest network}.$$\n\nThe paper contrasts this with the earlier AlphaGo Zero procedure that evaluated a new player against the best prior player and promoted it only after passing a threshold. AlphaZero instead maintains one continually updated network and omits that promotion gate.\n\nThe optimizer control gives a scalar example of repeated parameter updates. Its illustrative objective is $f(x)=x^2/2$, starting at $x=3$ for 12 ordinary gradient-descent steps. The control varies $\\eta$ from $0.05$ to $1.8$. Since $f'(x)=x$, the update is $x_{k+1}=(1-\\eta)x_k$, so $x_k=3(1-\\eta)^k$. Each step multiplies the distance from zero by $|1-\\eta|$. For $0<\\eta<1$, the iterates stay positive and approach zero; at $\\eta=1$, one step reaches zero; for $1<\\eta<2$, they alternate signs while their magnitudes decrease. Increasing the learning rate therefore speeds this example only when it makes $|1-\\eta|$ smaller. Predict the sign and distance of the next point before moving the control. In AlphaZero, actual updates minimize the joint policy/value objective over self-play minibatches; the repeating self-play loop supplies the changing training data.",
+      "sourceIds": [
+        "main-text",
+        "main-text-part-2"
+      ],
+      "claimIds": [
+        "c4",
+        "c6",
+        "c13"
+      ],
+      "figureId": "fig-optimizer"
+    },
+    {
+      "id": "s6",
+      "title": "What tabula rasa leaves in place",
+      "markdown": "A common misconception is that “no domain knowledge except the rules” means AlphaZero observes an uninterpreted board and independently discovers legality. It does not. The system has perfect rule knowledge for state transitions, terminal detection, and scoring. Rule knowledge also shapes inputs and outputs: the representation includes piece planes and special-rule information, while action encodings describe movement patterns, promotions, and shogi drops. Illegal moves are explicitly masked and the surviving probabilities renormalized.\n\nThe actual reduction is in handcrafted strategic evaluation and domain-specialized search machinery. AlphaZero does not receive a grandmaster-authored material formula, opening book, or chess-specific pruning scheme of the kind described for conventional engines. Yet “generic” is not “representation-free”: board-grid structure and rule-derived planes remain engineered interfaces.\n\nDraws also motivate a substantive generalization. Instead of optimizing only a binary win probability, the value represents expected outcome, allowing $-1$, $0$, and $+1$. That formulation accommodates chess and shogi draws without pretending that every completed game has a winner.",
+      "sourceIds": [
+        "main-text",
+        "section-1",
+        "section-1-part-2"
+      ],
+      "claimIds": [
+        "c2",
+        "c7",
+        "c8"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s7",
+      "title": "Reading the evidence without outrunning it",
+      "markdown": "The fully trained systems were tested in 100-game matches at one minute per move. From the two chess rows, AlphaZero's results sum to 28 wins, 72 draws, and 0 losses against Stockfish: $25+3=28$ wins and $25+47=72$ draws. That arithmetic is tied to this match protocol; it is not a universal win probability against every Stockfish configuration.\n\nThe search-speed comparison is especially instructive. The paper reports 80 thousand chess positions per second for AlphaZero versus 70 million for Stockfish, and 40 thousand shogi positions per second versus 35 million for Elmo. AlphaZero's advantage under the reported evaluation therefore coexisted with drastically fewer evaluated positions. This supports the paper's mechanism-level interpretation that learned guidance can make search more selective, but node counts alone do not establish a general law that MCTS is always superior.\n\nSeveral boundaries remain. Training used 700,000 steps, minibatches of 4,096, 5,000 first-generation TPUs for self-play, and 64 second-generation TPUs for network training. Hardware and evaluation conditions were not symmetric, so the results should be read as specified system comparisons, not controlled component ablations. Each game had a separately trained instance. Finally, successful play in three deterministic board games does not by itself establish transfer to partially observed, stochastic, continuous-action, or real-world tasks.",
+      "sourceIds": [
+        "main-text-part-2",
+        "section-1-part-2"
+      ],
+      "claimIds": [
+        "c9",
+        "c10",
+        "c11",
+        "c12",
+        "c13"
+      ],
+      "figureId": null
+    }
+  ],
+  "figures": [
+    {
+      "id": "fig-attention",
+      "kind": "attention",
+      "title": "Temperature and a normalized action prior",
+      "question": "As the positive temperature decreases, which of the four fixed-score actions receives more of the normalized weight?",
+      "caption": "Illustrative softmax of fixed scores $[2,1,0,-1]$ divided by temperature, showing how normalized preferences sharpen or flatten.",
+      "limitation": "This is not a measured or learned AlphaZero policy, legal-move mask, MCTS visit distribution, or token-similarity head.",
+      "sourceIds": [
+        "main-text",
+        "section-1-part-2"
+      ],
+      "claimIds": [
+        "c2",
+        "c8"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "fig-optimizer",
+      "kind": "optimizer",
+      "title": "Learning rate in a one-dimensional update",
+      "question": "For the displayed range, how does changing the learning rate alter the 12-step approach from $x=3$ toward the quadratic minimum?",
+      "caption": "Illustrative plain gradient descent on $f(x)=x^2/2$, using $x_{k+1}=(1-\\eta)x_k$ for 12 updates from $x=3$.",
+      "limitation": "This scalar quadratic is not AlphaZero's network optimizer, combined loss surface, minibatch training, or a reported convergence result.",
+      "sourceIds": [
+        "main-text"
+      ],
+      "claimIds": [
+        "c4",
+        "c6"
+      ],
+      "illustrative": true
+    }
+  ],
+  "quiz": [
+    {
+      "question": "Suppose MCTS changes a root distribution from network prior $\\mathbf{p}=(0.8,0.2)$ to visit target $\\boldsymbol{\\pi}=(0.5,0.5)$. Holding the value and regularization terms fixed, what does the policy loss train the network toward?",
+      "options": [
+        {
+          "text": "Toward $(0.5,0.5)$",
+          "explanation": "Correct. The cross-entropy term uses $\\boldsymbol{\\pi}$ as its target, so it encourages $\\mathbf{p}$ to resemble the search distribution."
+        },
+        {
+          "text": "Toward $(0.8,0.2)$",
+          "explanation": "This is the network's current prior, not the improved target supplied by the current search."
+        },
+        {
+          "text": "Toward the single action with probability $0.8$",
+          "explanation": "That would discard the visit distribution; the stated loss compares full distributions."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "main-text"
+      ],
+      "claimIds": [
+        "c3",
+        "c4"
+      ]
+    },
+    {
+      "question": "Which statement correctly separates the network policy from the search policy in AlphaZero?",
+      "options": [
+        {
+          "text": "$\\mathbf{p}$ is the network prior; $\\boldsymbol{\\pi}$ comes from root visits.",
+          "explanation": "Correct. The network predicts $\\mathbf{p}$, while MCTS returns $\\boldsymbol{\\pi}$ from root visit counts."
+        },
+        {
+          "text": "$\\boldsymbol{\\pi}$ is the raw network output; $\\mathbf{p}$ is the terminal score.",
+          "explanation": "The symbols are reversed, and the terminal score is $z$, not $\\mathbf{p}$."
+        },
+        {
+          "text": "They are required to be identical before every search begins.",
+          "explanation": "Search can alter the distribution by examining continuations; their difference supplies the policy-learning signal."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "main-text"
+      ],
+      "claimIds": [
+        "c2",
+        "c3",
+        "c4"
+      ]
+    },
+    {
+      "question": "What is the strongest warranted interpretation of the reported 28–72–0 chess total?",
+      "options": [
+        {
+          "text": "It describes the specified 100-game, one-minute-per-move match against Stockfish.",
+          "explanation": "Correct. The total is obtained from the two reported color assignments under that evaluation protocol."
+        },
+        {
+          "text": "It proves AlphaZero can never lose to any version of Stockfish.",
+          "explanation": "Zero losses in a finite match does not establish impossibility under other games, versions, hardware, or settings."
+        },
+        {
+          "text": "It is a controlled test in which both systems used identical algorithms and hardware.",
+          "explanation": "The systems used different algorithms and compute configurations, so this is not a component-isolated comparison."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "main-text-part-2"
+      ],
+      "claimIds": [
+        "c9",
+        "c10",
+        "c11"
+      ]
+    }
+  ],
+  "id": "mastering-chess-and-shogi-by-self",
+  "createdAt": "2026-10-01T23:27:03.408Z",
+  "pipelineVersion": "subjects-lessons-v1",
+  "sources": [
+    {
+      "id": "abstract",
+      "label": "Original paper · abstract",
+      "url": "https://arxiv.org/abs/1712.01815",
+      "digest": "c41532a307ffdfea44f2509bb4b4d935bfc7d3421e63109672974d148c9679e8"
+    },
+    {
+      "id": "main-text",
+      "label": "Original paper · unsectioned main text",
+      "url": "https://arxiv.org/html/1712.01815",
+      "digest": "bffffefd3271fd62918bbde61734da48df42dbdfa1395328a3065cdc7e129cce"
+    },
+    {
+      "id": "main-text-part-2",
+      "label": "Original paper · unsectioned main text · part 2",
+      "url": "https://arxiv.org/html/1712.01815",
+      "digest": "fe9e0c81cbd68747108044529ec96ea3c3b0a4ee9729caa89aea0be304c1e35c"
+    },
+    {
+      "id": "section-1",
+      "label": "Methods",
+      "url": "https://arxiv.org/html/1712.01815#Sx1",
+      "digest": "5d5d81f9f91144ed34e287224fc6004cbab79a4502a29fc0b431e49890799fe0"
+    },
+    {
+      "id": "section-1-part-2",
+      "label": "Methods · part 2",
+      "url": "https://arxiv.org/html/1712.01815#Sx1",
+      "digest": "15074f2706536e041388b2f64e6c49438fef773d9848459b03c570fedc68afa8"
+    },
+    {
+      "id": "section-1-part-3",
+      "label": "Methods · part 3",
+      "url": "https://arxiv.org/html/1712.01815#Sx1",
+      "digest": "c7aae20e9309e7d323d0f8ee785ca859bd08ab94997cbb252cd99d63c4f65836"
+    }
+  ],
+  "review": {
+    "status": "passed",
+    "reviewedAt": "2026-10-02T02:08:26.875Z",
+    "contentDigest": "0170ab67835a272d7a4ea16b1b6ed34ea63574668aebbcaaabfb9267aa86dff2"
+  }
+}

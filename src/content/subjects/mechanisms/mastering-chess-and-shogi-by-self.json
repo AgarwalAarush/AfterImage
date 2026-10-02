@@ -1,0 +1,669 @@
+{
+  "version": 1,
+  "sectionId": "s3",
+  "title": "From Network Guidance to a Search Policy",
+  "introduction": "At root $s_t$, the network supplies move prior $\\mathbf p_R$. During MCTS, each action has a visit count and a value averaged over leaves reached by simulations selecting that action. One nonterminal leaf illustrates where network values enter. Completed root visits then define the self-play distribution $\\boldsymbol\\pi_t$ used to sample a move.",
+  "entities": [
+    {
+      "id": "st",
+      "label": "s_t",
+      "meaning": "The current board state at the search root."
+    },
+    {
+      "id": "theta",
+      "label": "θ",
+      "meaning": "The learned policy-value network parameters."
+    },
+    {
+      "id": "pr",
+      "label": "pR",
+      "meaning": "The network move-prior vector evaluated at the root state."
+    },
+    {
+      "id": "sl",
+      "label": "sL",
+      "meaning": "One illustrative nonterminal leaf reached during a simulation."
+    },
+    {
+      "id": "vl",
+      "label": "vL",
+      "meaning": "The network value estimate for the displayed nonterminal leaf."
+    },
+    {
+      "id": "ncur",
+      "label": "Ncur",
+      "meaning": "The per-action root visit counts at an intermediate point during search."
+    },
+    {
+      "id": "qcur",
+      "label": "Qcur",
+      "meaning": "Per-action values averaged over leaves reached by simulations selecting that action at the root."
+    },
+    {
+      "id": "nfin",
+      "label": "Nfin",
+      "meaning": "The completed per-action root visit counts after the full simulation series."
+    },
+    {
+      "id": "qfin",
+      "label": "Qfin",
+      "meaning": "The completed per-action averages over the corresponding evaluated leaf states."
+    },
+    {
+      "id": "pi",
+      "label": "π",
+      "meaning": "The self-play move distribution proportional to completed root visits."
+    },
+    {
+      "id": "action",
+      "label": "a_t",
+      "meaning": "The next self-play action sampled from the search distribution."
+    }
+  ],
+  "objects": [
+    {
+      "id": "root",
+      "form": "tokens",
+      "label": "Root board state",
+      "detail": "Current root state",
+      "sourceIds": [
+        "main-text",
+        "section-1-part-2"
+      ],
+      "claimIds": [
+        "c2",
+        "c3",
+        "c5"
+      ]
+    },
+    {
+      "id": "network",
+      "form": "module",
+      "label": "Policy-value network",
+      "detail": "Move priors and state values",
+      "sourceIds": [
+        "main-text",
+        "section-1-part-2"
+      ],
+      "claimIds": [
+        "c2",
+        "c3",
+        "c5"
+      ]
+    },
+    {
+      "id": "search",
+      "form": "vector",
+      "label": "MCTS inputs and results",
+      "detail": "Current search information",
+      "sourceIds": [
+        "main-text",
+        "section-1-part-2"
+      ],
+      "claimIds": [
+        "c2",
+        "c3",
+        "c5"
+      ]
+    },
+    {
+      "id": "stats",
+      "form": "vector",
+      "label": "Per-action statistics",
+      "detail": "Root visits and mean values",
+      "sourceIds": [
+        "main-text",
+        "section-1-part-2"
+      ],
+      "claimIds": [
+        "c2",
+        "c3",
+        "c5"
+      ]
+    },
+    {
+      "id": "policy",
+      "form": "vector",
+      "label": "Search move distribution",
+      "detail": "Probability from root visits",
+      "sourceIds": [
+        "main-text",
+        "section-1-part-2"
+      ],
+      "claimIds": [
+        "c2",
+        "c3",
+        "c5"
+      ]
+    },
+    {
+      "id": "choice",
+      "form": "tokens",
+      "label": "Self-play move",
+      "detail": "Action sampled from search",
+      "sourceIds": [
+        "main-text",
+        "section-1-part-2"
+      ],
+      "claimIds": [
+        "c2",
+        "c3",
+        "c5"
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "id": "root-net",
+      "from": "root",
+      "to": "network",
+      "label": "evaluate root state",
+      "dashed": false,
+      "sourceIds": [
+        "main-text",
+        "section-1-part-2"
+      ],
+      "claimIds": [
+        "c2",
+        "c3",
+        "c5"
+      ]
+    },
+    {
+      "id": "root-search",
+      "from": "root",
+      "to": "search",
+      "label": "anchor search at root",
+      "dashed": false,
+      "sourceIds": [
+        "main-text",
+        "section-1-part-2"
+      ],
+      "claimIds": [
+        "c2",
+        "c3",
+        "c5"
+      ]
+    },
+    {
+      "id": "net-search",
+      "from": "network",
+      "to": "search",
+      "label": "supply prior or leaf value",
+      "dashed": false,
+      "sourceIds": [
+        "main-text",
+        "section-1-part-2"
+      ],
+      "claimIds": [
+        "c2",
+        "c3",
+        "c5"
+      ]
+    },
+    {
+      "id": "search-net",
+      "from": "search",
+      "to": "network",
+      "label": "evaluate reached leaf",
+      "dashed": false,
+      "sourceIds": [
+        "main-text",
+        "section-1-part-2"
+      ],
+      "claimIds": [
+        "c2",
+        "c3",
+        "c5"
+      ]
+    },
+    {
+      "id": "stats-search",
+      "from": "stats",
+      "to": "search",
+      "label": "guide action selection",
+      "dashed": false,
+      "sourceIds": [
+        "main-text",
+        "section-1-part-2"
+      ],
+      "claimIds": [
+        "c2",
+        "c3",
+        "c5"
+      ]
+    },
+    {
+      "id": "search-stats",
+      "from": "search",
+      "to": "stats",
+      "label": "expose completed statistics",
+      "dashed": false,
+      "sourceIds": [
+        "main-text",
+        "section-1-part-2"
+      ],
+      "claimIds": [
+        "c2",
+        "c3",
+        "c5"
+      ]
+    },
+    {
+      "id": "stats-policy",
+      "from": "stats",
+      "to": "policy",
+      "label": "form root-visit distribution",
+      "dashed": false,
+      "sourceIds": [
+        "main-text",
+        "section-1-part-2"
+      ],
+      "claimIds": [
+        "c2",
+        "c3",
+        "c5"
+      ]
+    },
+    {
+      "id": "policy-choice",
+      "from": "policy",
+      "to": "choice",
+      "label": "sample self-play action",
+      "dashed": false,
+      "sourceIds": [
+        "main-text",
+        "section-1-part-2"
+      ],
+      "claimIds": [
+        "c2",
+        "c3",
+        "c5"
+      ]
+    }
+  ],
+  "beats": [
+    {
+      "title": "Compute the root move prior",
+      "explanation": "The current root $s_t$ is available to the network and MCTS. Parameters $\\theta$ produce move prior $\\mathbf p_R$, which supplies learned guidance for action selection. This first view establishes the root and prior; later views show information available during the search series.",
+      "sourceIds": [
+        "main-text",
+        "section-1-part-2"
+      ],
+      "claimIds": [
+        "c2",
+        "c3",
+        "c5"
+      ],
+      "objects": [
+        {
+          "objectId": "root",
+          "status": "active",
+          "entityIds": [
+            "st"
+          ]
+        },
+        {
+          "objectId": "network",
+          "status": "active",
+          "entityIds": [
+            "theta",
+            "st",
+            "pr"
+          ]
+        },
+        {
+          "objectId": "search",
+          "status": "active",
+          "entityIds": [
+            "st",
+            "pr"
+          ]
+        },
+        {
+          "objectId": "stats",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "policy",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "choice",
+          "status": "pending",
+          "entityIds": []
+        }
+      ],
+      "relationships": [
+        {
+          "relationshipId": "root-net",
+          "entityIds": [
+            "st"
+          ]
+        },
+        {
+          "relationshipId": "root-search",
+          "entityIds": [
+            "st"
+          ]
+        },
+        {
+          "relationshipId": "net-search",
+          "entityIds": [
+            "pr"
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Combine prior, visits and per-action values",
+      "explanation": "At an intermediate point during search, each root action has a current visit count and an averaged value. We denote these vectors by $N_{\\mathrm{cur}}$ and $Q_{\\mathrm{cur}}$. For action $a$, the value averages leaf states from simulations that selected $a$ at $s_t$. Selection considers low visit count together with high prior and high averaged value, so previous search results influence which alternatives are explored next.",
+      "sourceIds": [
+        "main-text",
+        "section-1-part-2"
+      ],
+      "claimIds": [
+        "c2",
+        "c3",
+        "c5"
+      ],
+      "objects": [
+        {
+          "objectId": "root",
+          "status": "retained",
+          "entityIds": [
+            "st"
+          ]
+        },
+        {
+          "objectId": "network",
+          "status": "retained",
+          "entityIds": [
+            "theta",
+            "pr"
+          ]
+        },
+        {
+          "objectId": "search",
+          "status": "active",
+          "entityIds": [
+            "st",
+            "pr",
+            "ncur",
+            "qcur"
+          ]
+        },
+        {
+          "objectId": "stats",
+          "status": "active",
+          "entityIds": [
+            "ncur",
+            "qcur"
+          ]
+        },
+        {
+          "objectId": "policy",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "choice",
+          "status": "pending",
+          "entityIds": []
+        }
+      ],
+      "relationships": [
+        {
+          "relationshipId": "net-search",
+          "entityIds": [
+            "pr"
+          ]
+        },
+        {
+          "relationshipId": "stats-search",
+          "entityIds": [
+            "ncur",
+            "qcur"
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Evaluate a nonterminal reached leaf",
+      "explanation": "A simulation reaches the illustrative nonterminal leaf $s_L$. The network evaluates that state and supplies value $v_L$ to search. At a terminal state, the game rules instead determine the outcome directly. Network values provide the evaluations whose action-conditioned averages guide selection; the earlier root statistics remain available during this computation.",
+      "sourceIds": [
+        "main-text",
+        "section-1-part-2"
+      ],
+      "claimIds": [
+        "c2",
+        "c3",
+        "c5"
+      ],
+      "objects": [
+        {
+          "objectId": "root",
+          "status": "retained",
+          "entityIds": [
+            "st"
+          ]
+        },
+        {
+          "objectId": "network",
+          "status": "active",
+          "entityIds": [
+            "theta",
+            "pr",
+            "sl",
+            "vl"
+          ]
+        },
+        {
+          "objectId": "search",
+          "status": "active",
+          "entityIds": [
+            "sl",
+            "vl"
+          ]
+        },
+        {
+          "objectId": "stats",
+          "status": "retained",
+          "entityIds": [
+            "ncur",
+            "qcur"
+          ]
+        },
+        {
+          "objectId": "policy",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "choice",
+          "status": "pending",
+          "entityIds": []
+        }
+      ],
+      "relationships": [
+        {
+          "relationshipId": "search-net",
+          "entityIds": [
+            "sl"
+          ]
+        },
+        {
+          "relationshipId": "net-search",
+          "entityIds": [
+            "vl"
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Convert completed visits into a policy",
+      "explanation": "After the full simulation series, $N_{\\mathrm{fin}}$ and $Q_{\\mathrm{fin}}$ denote the completed per-action statistics, replacing the intermediate snapshot. For training self-play, the distribution $\\boldsymbol\\pi_t$ is proportional to root visit counts: $\\pi_t(a)\\propto N_{\\mathrm{fin}}(s_t,a)$. The learned prior guides the search; its resulting visits determine the move distribution.",
+      "sourceIds": [
+        "main-text",
+        "section-1-part-2"
+      ],
+      "claimIds": [
+        "c2",
+        "c3",
+        "c5"
+      ],
+      "objects": [
+        {
+          "objectId": "root",
+          "status": "retained",
+          "entityIds": [
+            "st"
+          ]
+        },
+        {
+          "objectId": "network",
+          "status": "retained",
+          "entityIds": [
+            "theta",
+            "pr"
+          ]
+        },
+        {
+          "objectId": "search",
+          "status": "active",
+          "entityIds": [
+            "nfin",
+            "qfin"
+          ]
+        },
+        {
+          "objectId": "stats",
+          "status": "active",
+          "entityIds": [
+            "nfin",
+            "qfin"
+          ]
+        },
+        {
+          "objectId": "policy",
+          "status": "active",
+          "entityIds": [
+            "nfin",
+            "pi"
+          ]
+        },
+        {
+          "objectId": "choice",
+          "status": "pending",
+          "entityIds": []
+        }
+      ],
+      "relationships": [
+        {
+          "relationshipId": "search-stats",
+          "entityIds": [
+            "nfin",
+            "qfin"
+          ]
+        },
+        {
+          "relationshipId": "stats-policy",
+          "entityIds": [
+            "nfin"
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Sample the next self-play move",
+      "explanation": "Self-play samples $a_t\\sim\\boldsymbol\\pi_t$. The same distribution identity passes from the policy to the action choice. The completed statistics remain available while the action is selected. Search has converted network guidance into a decision through accumulated root visits, and self-play uses those search-produced decisions to generate training experience.",
+      "sourceIds": [
+        "main-text",
+        "section-1-part-2"
+      ],
+      "claimIds": [
+        "c2",
+        "c3",
+        "c5"
+      ],
+      "objects": [
+        {
+          "objectId": "root",
+          "status": "retained",
+          "entityIds": [
+            "st"
+          ]
+        },
+        {
+          "objectId": "network",
+          "status": "retained",
+          "entityIds": [
+            "theta",
+            "pr"
+          ]
+        },
+        {
+          "objectId": "search",
+          "status": "retained",
+          "entityIds": [
+            "nfin",
+            "qfin"
+          ]
+        },
+        {
+          "objectId": "stats",
+          "status": "retained",
+          "entityIds": [
+            "nfin",
+            "qfin"
+          ]
+        },
+        {
+          "objectId": "policy",
+          "status": "retained",
+          "entityIds": [
+            "nfin",
+            "pi"
+          ]
+        },
+        {
+          "objectId": "choice",
+          "status": "active",
+          "entityIds": [
+            "pi",
+            "action"
+          ]
+        }
+      ],
+      "relationships": [
+        {
+          "relationshipId": "policy-choice",
+          "entityIds": [
+            "pi"
+          ]
+        }
+      ]
+    }
+  ],
+  "takeaway": "Learned priors and action-conditioned value averages guide MCTS; completed root visits define the distribution used to select the self-play move.",
+  "sourceIds": [
+    "main-text",
+    "section-1-part-2"
+  ],
+  "claimIds": [
+    "c2",
+    "c3",
+    "c5"
+  ],
+  "lessonId": "mastering-chess-and-shogi-by-self",
+  "parentContentDigest": "0170ab67835a272d7a4ea16b1b6ed34ea63574668aebbcaaabfb9267aa86dff2",
+  "review": {
+    "status": "source-passed",
+    "reviewedAt": "2026-10-02T02:15:46.771Z",
+    "contentDigest": "ef217481fbdc9779d2aa1c6dad064f252ec4b195b128d01be3225a40c88f2d26",
+    "rendererDigest": "2cc690a7105c5faca75e22053e83674a2cf2e227ae22afe88cc4662d09c98bb4",
+    "visualReviewedAt": null
+  }
+}

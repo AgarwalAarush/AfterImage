@@ -1,0 +1,807 @@
+{
+  "version": 1,
+  "checkedAt": "2026-10-01T22:33:45.791984+00:00",
+  "reference": "https://intuitivepapers.ai/library/",
+  "entries": [
+    {
+      "id": "diffusionblocks",
+      "title": "DiffusionBlocks",
+      "topic": "Diffusion",
+      "referenceUrl": "https://intuitivepapers.ai/diffusionblocks/",
+      "arxivId": "2506.14202",
+      "primaryUrl": "https://arxiv.org/abs/2506.14202"
+    },
+    {
+      "id": "mastering-chess-and-shogi-by-self",
+      "title": "AlphaZero",
+      "topic": "RL & alignment",
+      "referenceUrl": "https://intuitivepapers.ai/mastering-chess-and-shogi-by-self/",
+      "arxivId": "1712.01815",
+      "primaryUrl": "https://arxiv.org/abs/1712.01815"
+    },
+    {
+      "id": "flashattention-fast-and-memory-efficient-exact",
+      "title": "FlashAttention",
+      "topic": "Architecture",
+      "referenceUrl": "https://intuitivepapers.ai/flashattention-fast-and-memory-efficient-exact/",
+      "arxivId": "2205.14135",
+      "primaryUrl": "https://arxiv.org/abs/2205.14135"
+    },
+    {
+      "id": "mastering-atari-go-chess-and-shogi",
+      "title": "MuZero",
+      "topic": "RL & alignment",
+      "referenceUrl": "https://intuitivepapers.ai/mastering-atari-go-chess-and-shogi/",
+      "arxivId": "1911.08265",
+      "primaryUrl": "https://arxiv.org/abs/1911.08265"
+    },
+    {
+      "id": "nerf-representing-scenes-as-neural-radiance",
+      "title": "NeRF",
+      "topic": "Vision",
+      "referenceUrl": "https://intuitivepapers.ai/nerf-representing-scenes-as-neural-radiance/",
+      "arxivId": "2003.08934",
+      "primaryUrl": "https://arxiv.org/abs/2003.08934"
+    },
+    {
+      "id": "playing-atari-with-deep-reinforcement-learning",
+      "title": "Playing Atari with Deep RL (DQN)",
+      "topic": "RL & alignment",
+      "referenceUrl": "https://intuitivepapers.ai/playing-atari-with-deep-reinforcement-learning/",
+      "arxivId": "1312.5602",
+      "primaryUrl": "https://arxiv.org/abs/1312.5602"
+    },
+    {
+      "id": "3d-gaussian-splatting-for-real-time",
+      "title": "3D Gaussian Splatting",
+      "topic": "Vision",
+      "referenceUrl": "https://intuitivepapers.ai/3d-gaussian-splatting-for-real-time/",
+      "arxivId": "2308.04079",
+      "primaryUrl": "https://arxiv.org/abs/2308.04079"
+    },
+    {
+      "id": "batch-normalization-accelerating-deep-network-training",
+      "title": "Batch Normalization",
+      "topic": "Training",
+      "referenceUrl": "https://intuitivepapers.ai/batch-normalization-accelerating-deep-network-training/",
+      "arxivId": "1502.03167",
+      "primaryUrl": "https://arxiv.org/abs/1502.03167"
+    },
+    {
+      "id": "classifier-free-diffusion-guidance",
+      "title": "Classifier-Free Diffusion Guidance",
+      "topic": "Diffusion",
+      "referenceUrl": "https://intuitivepapers.ai/classifier-free-diffusion-guidance/",
+      "arxivId": "2207.12598",
+      "primaryUrl": "https://arxiv.org/abs/2207.12598"
+    },
+    {
+      "id": "diffusion-models-beat-gans-on-image",
+      "title": "Diffusion Models Beat GANs",
+      "topic": "Diffusion",
+      "referenceUrl": "https://intuitivepapers.ai/diffusion-models-beat-gans-on-image/",
+      "arxivId": "2105.05233",
+      "primaryUrl": "https://arxiv.org/abs/2105.05233"
+    },
+    {
+      "id": "latent-diffusion",
+      "title": "Latent Diffusion (Stable Diffusion)",
+      "topic": "Diffusion",
+      "referenceUrl": "https://intuitivepapers.ai/latent-diffusion/",
+      "arxivId": "2112.10752",
+      "primaryUrl": "https://arxiv.org/abs/2112.10752"
+    },
+    {
+      "id": "t5",
+      "title": "T5",
+      "topic": "LLMs",
+      "referenceUrl": "https://intuitivepapers.ai/t5/",
+      "arxivId": "1910.10683",
+      "primaryUrl": "https://arxiv.org/abs/1910.10683"
+    },
+    {
+      "id": "whisper",
+      "title": "Whisper",
+      "topic": "Multimodal",
+      "referenceUrl": "https://intuitivepapers.ai/whisper/",
+      "arxivId": "2212.04356",
+      "primaryUrl": "https://arxiv.org/abs/2212.04356"
+    },
+    {
+      "id": "asynchronous-methods-for-deep-reinforcement-learning",
+      "title": "A3C (Asynchronous Advantage Actor-Critic)",
+      "topic": "RL & alignment",
+      "referenceUrl": "https://intuitivepapers.ai/asynchronous-methods-for-deep-reinforcement-learning/",
+      "arxivId": "1602.01783",
+      "primaryUrl": "https://arxiv.org/abs/1602.01783"
+    },
+    {
+      "id": "attention-is-all-you-need",
+      "title": "Attention Is All You Need",
+      "topic": "Architecture",
+      "referenceUrl": "https://intuitivepapers.ai/attention-is-all-you-need/",
+      "arxivId": "1706.03762",
+      "primaryUrl": "https://arxiv.org/abs/1706.03762"
+    },
+    {
+      "id": "deep-reinforcement-learning-from-human-preferences",
+      "title": "Deep RL from Human Preferences",
+      "topic": "RL & alignment",
+      "referenceUrl": "https://intuitivepapers.ai/deep-reinforcement-learning-from-human-preferences/",
+      "arxivId": "1706.03741",
+      "primaryUrl": "https://arxiv.org/abs/1706.03741"
+    },
+    {
+      "id": "deep-unsupervised-learning-using-nonequilibrium-thermodynamics",
+      "title": "Diffusion (the original)",
+      "topic": "Diffusion",
+      "referenceUrl": "https://intuitivepapers.ai/deep-unsupervised-learning-using-nonequilibrium-thermodynamics/",
+      "arxivId": "1503.03585",
+      "primaryUrl": "https://arxiv.org/abs/1503.03585"
+    },
+    {
+      "id": "semi-supervised-classification-with-graph-convolutional",
+      "title": "Graph Convolutional Networks",
+      "topic": "Architecture",
+      "referenceUrl": "https://intuitivepapers.ai/semi-supervised-classification-with-graph-convolutional/",
+      "arxivId": "1609.02907",
+      "primaryUrl": "https://arxiv.org/abs/1609.02907"
+    },
+    {
+      "id": "distilling-the-knowledge-in-a-neural",
+      "title": "Knowledge Distillation",
+      "topic": "Training",
+      "referenceUrl": "https://intuitivepapers.ai/distilling-the-knowledge-in-a-neural/",
+      "arxivId": "1503.02531",
+      "primaryUrl": "https://arxiv.org/abs/1503.02531"
+    },
+    {
+      "id": "llama",
+      "title": "LLaMA",
+      "topic": "LLMs",
+      "referenceUrl": "https://intuitivepapers.ai/llama/",
+      "arxivId": "2302.13971",
+      "primaryUrl": "https://arxiv.org/abs/2302.13971"
+    },
+    {
+      "id": "masked-autoencoders-are-scalable-vision-learners",
+      "title": "Masked Autoencoders (MAE)",
+      "topic": "Vision",
+      "referenceUrl": "https://intuitivepapers.ai/masked-autoencoders-are-scalable-vision-learners/",
+      "arxivId": "2111.06377",
+      "primaryUrl": "https://arxiv.org/abs/2111.06377"
+    },
+    {
+      "id": "scaling-laws",
+      "title": "Scaling Laws for Neural Language Models",
+      "topic": "Training",
+      "referenceUrl": "https://intuitivepapers.ai/scaling-laws/",
+      "arxivId": "2001.08361",
+      "primaryUrl": "https://arxiv.org/abs/2001.08361"
+    },
+    {
+      "id": "score-based-generative-modeling-through-stochastic",
+      "title": "Score-Based Generative Modeling through SDEs",
+      "topic": "Diffusion",
+      "referenceUrl": "https://intuitivepapers.ai/score-based-generative-modeling-through-stochastic/",
+      "arxivId": "2011.13456",
+      "primaryUrl": "https://arxiv.org/abs/2011.13456"
+    },
+    {
+      "id": "sam",
+      "title": "Segment Anything (SAM)",
+      "topic": "Vision",
+      "referenceUrl": "https://intuitivepapers.ai/sam/",
+      "arxivId": "2304.02643",
+      "primaryUrl": "https://arxiv.org/abs/2304.02643"
+    },
+    {
+      "id": "very-deep-convolutional-networks-for-large",
+      "title": "VGG",
+      "topic": "Vision",
+      "referenceUrl": "https://intuitivepapers.ai/very-deep-convolutional-networks-for-large/",
+      "arxivId": "1409.1556",
+      "primaryUrl": "https://arxiv.org/abs/1409.1556"
+    },
+    {
+      "id": "denoising-diffusion-implicit-models",
+      "title": "DDIM",
+      "topic": "Diffusion",
+      "referenceUrl": "https://intuitivepapers.ai/denoising-diffusion-implicit-models/",
+      "arxivId": "2010.02502",
+      "primaryUrl": "https://arxiv.org/abs/2010.02502"
+    },
+    {
+      "id": "diffusion-policy",
+      "title": "Diffusion Policy",
+      "topic": "RL & alignment",
+      "referenceUrl": "https://intuitivepapers.ai/diffusion-policy/",
+      "arxivId": "2303.04137",
+      "primaryUrl": "https://arxiv.org/abs/2303.04137"
+    },
+    {
+      "id": "scalable-diffusion-models-with-transformers",
+      "title": "DiT (Diffusion Transformers)",
+      "topic": "Diffusion",
+      "referenceUrl": "https://intuitivepapers.ai/scalable-diffusion-models-with-transformers/",
+      "arxivId": "2212.09748",
+      "primaryUrl": "https://arxiv.org/abs/2212.09748"
+    },
+    {
+      "id": "flamingo-a-visual-language-model-for",
+      "title": "Flamingo",
+      "topic": "Multimodal",
+      "referenceUrl": "https://intuitivepapers.ai/flamingo-a-visual-language-model-for/",
+      "arxivId": "2204.14198",
+      "primaryUrl": "https://arxiv.org/abs/2204.14198"
+    },
+    {
+      "id": "instructgpt",
+      "title": "InstructGPT",
+      "topic": "RL & alignment",
+      "referenceUrl": "https://intuitivepapers.ai/instructgpt/",
+      "arxivId": "2203.02155",
+      "primaryUrl": "https://arxiv.org/abs/2203.02155"
+    },
+    {
+      "id": "layer-normalization",
+      "title": "Layer Normalization",
+      "topic": "Training",
+      "referenceUrl": "https://intuitivepapers.ai/layer-normalization/",
+      "arxivId": "1607.06450",
+      "primaryUrl": "https://arxiv.org/abs/1607.06450"
+    },
+    {
+      "id": "megatron-lm",
+      "title": "Megatron-LM",
+      "topic": "Training",
+      "referenceUrl": "https://intuitivepapers.ai/megatron-lm/",
+      "arxivId": "1909.08053",
+      "primaryUrl": "https://arxiv.org/abs/1909.08053"
+    },
+    {
+      "id": "qlora-efficient-finetuning-of-quantized-llms",
+      "title": "QLoRA",
+      "topic": "Training",
+      "referenceUrl": "https://intuitivepapers.ai/qlora-efficient-finetuning-of-quantized-llms/",
+      "arxivId": "2305.14314",
+      "primaryUrl": "https://arxiv.org/abs/2305.14314"
+    },
+    {
+      "id": "resnet",
+      "title": "ResNet",
+      "topic": "Vision",
+      "referenceUrl": "https://intuitivepapers.ai/resnet/",
+      "arxivId": "1512.03385",
+      "primaryUrl": "https://arxiv.org/abs/1512.03385"
+    },
+    {
+      "id": "understanding-deep-learning-requires-rethinking-generalization",
+      "title": "Rethinking Generalization",
+      "topic": "Theory",
+      "referenceUrl": "https://intuitivepapers.ai/understanding-deep-learning-requires-rethinking-generalization/",
+      "arxivId": "1611.03530",
+      "primaryUrl": "https://arxiv.org/abs/1611.03530"
+    },
+    {
+      "id": "sequence-to-sequence-learning-with-neural",
+      "title": "Seq2Seq",
+      "topic": "Architecture",
+      "referenceUrl": "https://intuitivepapers.ai/sequence-to-sequence-learning-with-neural/",
+      "arxivId": "1409.3215",
+      "primaryUrl": "https://arxiv.org/abs/1409.3215"
+    },
+    {
+      "id": "soft-actor-critic-off-policy-maximum",
+      "title": "Soft Actor-Critic",
+      "topic": "RL & alignment",
+      "referenceUrl": "https://intuitivepapers.ai/soft-actor-critic-off-policy-maximum/",
+      "arxivId": "1801.01290",
+      "primaryUrl": "https://arxiv.org/abs/1801.01290"
+    },
+    {
+      "id": "you-only-look-once-unified-real",
+      "title": "YOLO (You Only Look Once)",
+      "topic": "Vision",
+      "referenceUrl": "https://intuitivepapers.ai/you-only-look-once-unified-real/",
+      "arxivId": "1506.02640",
+      "primaryUrl": "https://arxiv.org/abs/1506.02640"
+    },
+    {
+      "id": "pi-zero",
+      "title": "π₀ (pi-zero)",
+      "topic": "RL & alignment",
+      "referenceUrl": "https://intuitivepapers.ai/pi-zero/",
+      "arxivId": "2410.24164",
+      "primaryUrl": "https://arxiv.org/abs/2410.24164"
+    },
+    {
+      "id": "decoupled-weight-decay-regularization",
+      "title": "AdamW (Decoupled Weight Decay)",
+      "topic": "Training",
+      "referenceUrl": "https://intuitivepapers.ai/decoupled-weight-decay-regularization/",
+      "arxivId": "1711.05101",
+      "primaryUrl": "https://arxiv.org/abs/1711.05101"
+    },
+    {
+      "id": "neural-machine-translation-by-jointly-learning",
+      "title": "Bahdanau Attention (NMT)",
+      "topic": "Architecture",
+      "referenceUrl": "https://intuitivepapers.ai/neural-machine-translation-by-jointly-learning/",
+      "arxivId": "1409.0473",
+      "primaryUrl": "https://arxiv.org/abs/1409.0473"
+    },
+    {
+      "id": "bert",
+      "title": "BERT",
+      "topic": "LLMs",
+      "referenceUrl": "https://intuitivepapers.ai/bert/",
+      "arxivId": "1810.04805",
+      "primaryUrl": "https://arxiv.org/abs/1810.04805"
+    },
+    {
+      "id": "decision-transformer-reinforcement-learning-via-sequence",
+      "title": "Decision Transformer",
+      "topic": "RL & alignment",
+      "referenceUrl": "https://intuitivepapers.ai/decision-transformer-reinforcement-learning-via-sequence/",
+      "arxivId": "2106.01345",
+      "primaryUrl": "https://arxiv.org/abs/2106.01345"
+    },
+    {
+      "id": "tutorial-on-diffusion-models-for-imaging",
+      "title": "Diffusion Models: A Tutorial",
+      "topic": "Diffusion",
+      "referenceUrl": "https://intuitivepapers.ai/tutorial-on-diffusion-models-for-imaging/",
+      "arxivId": "2403.18103",
+      "primaryUrl": "https://arxiv.org/abs/2403.18103"
+    },
+    {
+      "id": "the-lottery-ticket-hypothesis-finding-sparse",
+      "title": "Lottery Ticket Hypothesis",
+      "topic": "Training",
+      "referenceUrl": "https://intuitivepapers.ai/the-lottery-ticket-hypothesis-finding-sparse/",
+      "arxivId": "1803.03635",
+      "primaryUrl": "https://arxiv.org/abs/1803.03635"
+    },
+    {
+      "id": "paged-attention",
+      "title": "PagedAttention (vLLM)",
+      "topic": "LLMs",
+      "referenceUrl": "https://intuitivepapers.ai/paged-attention/",
+      "arxivId": "2309.06180",
+      "primaryUrl": "https://arxiv.org/abs/2309.06180"
+    },
+    {
+      "id": "trust-region-policy-optimization",
+      "title": "Trust Region Policy Optimization",
+      "topic": "RL & alignment",
+      "referenceUrl": "https://intuitivepapers.ai/trust-region-policy-optimization/",
+      "arxivId": "1502.05477",
+      "primaryUrl": "https://arxiv.org/abs/1502.05477"
+    },
+    {
+      "id": "unet",
+      "title": "U-Net",
+      "topic": "Vision",
+      "referenceUrl": "https://intuitivepapers.ai/unet/",
+      "arxivId": "1505.04597",
+      "primaryUrl": "https://arxiv.org/abs/1505.04597"
+    },
+    {
+      "id": "zero-memory-optimizations-toward-training-trillion",
+      "title": "ZeRO",
+      "topic": "Training",
+      "referenceUrl": "https://intuitivepapers.ai/zero-memory-optimizations-toward-training-trillion/",
+      "arxivId": "1910.02054",
+      "primaryUrl": "https://arxiv.org/abs/1910.02054"
+    },
+    {
+      "id": "finetuned-language-models-are-zero-shot",
+      "title": "FLAN (Instruction Tuning)",
+      "topic": "LLMs",
+      "referenceUrl": "https://intuitivepapers.ai/finetuned-language-models-are-zero-shot/",
+      "arxivId": "2109.01652",
+      "primaryUrl": "https://arxiv.org/abs/2109.01652"
+    },
+    {
+      "id": "gan",
+      "title": "Generative Adversarial Networks",
+      "topic": "Theory",
+      "referenceUrl": "https://intuitivepapers.ai/gan/",
+      "arxivId": "1406.2661",
+      "primaryUrl": "https://arxiv.org/abs/1406.2661"
+    },
+    {
+      "id": "visual-instruction-tuning",
+      "title": "LLaVA (Visual Instruction Tuning)",
+      "topic": "Multimodal",
+      "referenceUrl": "https://intuitivepapers.ai/visual-instruction-tuning/",
+      "arxivId": "2304.08485",
+      "primaryUrl": "https://arxiv.org/abs/2304.08485"
+    },
+    {
+      "id": "mooncake",
+      "title": "Mooncake",
+      "topic": "LLMs",
+      "referenceUrl": "https://intuitivepapers.ai/mooncake/",
+      "arxivId": "2407.00079",
+      "primaryUrl": "https://arxiv.org/abs/2407.00079"
+    },
+    {
+      "id": "generative-modeling-by-estimating-gradients-of",
+      "title": "NCSN (Score Matching + Langevin)",
+      "topic": "Diffusion",
+      "referenceUrl": "https://intuitivepapers.ai/generative-modeling-by-estimating-gradients-of/",
+      "arxivId": "1907.05600",
+      "primaryUrl": "https://arxiv.org/abs/1907.05600"
+    },
+    {
+      "id": "neural-ode",
+      "title": "Neural Ordinary Differential Equations",
+      "topic": "Theory",
+      "referenceUrl": "https://intuitivepapers.ai/neural-ode/",
+      "arxivId": "1806.07366",
+      "primaryUrl": "https://arxiv.org/abs/1806.07366"
+    },
+    {
+      "id": "switch-transformers-scaling-to-trillion-parameter",
+      "title": "Switch Transformers",
+      "topic": "Architecture",
+      "referenceUrl": "https://intuitivepapers.ai/switch-transformers-scaling-to-trillion-parameter/",
+      "arxivId": "2101.03961",
+      "primaryUrl": "https://arxiv.org/abs/2101.03961"
+    },
+    {
+      "id": "vit",
+      "title": "Vision Transformer (ViT)",
+      "topic": "Vision",
+      "referenceUrl": "https://intuitivepapers.ai/vit/",
+      "arxivId": "2010.11929",
+      "primaryUrl": "https://arxiv.org/abs/2010.11929"
+    },
+    {
+      "id": "adam",
+      "title": "Adam",
+      "topic": "Training",
+      "referenceUrl": "https://intuitivepapers.ai/adam/",
+      "arxivId": "1412.6980",
+      "primaryUrl": "https://arxiv.org/abs/1412.6980"
+    },
+    {
+      "id": "blip-2-bootstrapping-language-image-pre",
+      "title": "BLIP-2",
+      "topic": "Multimodal",
+      "referenceUrl": "https://intuitivepapers.ai/blip-2-bootstrapping-language-image-pre/",
+      "arxivId": "2301.12597",
+      "primaryUrl": "https://arxiv.org/abs/2301.12597"
+    },
+    {
+      "id": "openvla",
+      "title": "OpenVLA",
+      "topic": "RL & alignment",
+      "referenceUrl": "https://intuitivepapers.ai/openvla/",
+      "arxivId": "2406.09246",
+      "primaryUrl": "https://arxiv.org/abs/2406.09246"
+    },
+    {
+      "id": "ppo",
+      "title": "Proximal Policy Optimization",
+      "topic": "RL & alignment",
+      "referenceUrl": "https://intuitivepapers.ai/ppo/",
+      "arxivId": "1707.06347",
+      "primaryUrl": "https://arxiv.org/abs/1707.06347"
+    },
+    {
+      "id": "rope",
+      "title": "RoFormer (RoPE)",
+      "topic": "Architecture",
+      "referenceUrl": "https://intuitivepapers.ai/rope/",
+      "arxivId": "2104.09864",
+      "primaryUrl": "https://arxiv.org/abs/2104.09864"
+    },
+    {
+      "id": "efficiently-modeling-long-sequences-with-structured",
+      "title": "S4 (Structured State Spaces)",
+      "topic": "Architecture",
+      "referenceUrl": "https://intuitivepapers.ai/efficiently-modeling-long-sequences-with-structured/",
+      "arxivId": "2111.00396",
+      "primaryUrl": "https://arxiv.org/abs/2111.00396"
+    },
+    {
+      "id": "smoothquant",
+      "title": "SmoothQuant",
+      "topic": "LLMs",
+      "referenceUrl": "https://intuitivepapers.ai/smoothquant/",
+      "arxivId": "2211.10438",
+      "primaryUrl": "https://arxiv.org/abs/2211.10438"
+    },
+    {
+      "id": "mistral",
+      "title": "Mistral 7B",
+      "topic": "LLMs",
+      "referenceUrl": "https://intuitivepapers.ai/mistral/",
+      "arxivId": "2310.06825",
+      "primaryUrl": "https://arxiv.org/abs/2310.06825"
+    },
+    {
+      "id": "next-latent-prediction-transformers-learn-compact",
+      "title": "NextLat",
+      "topic": "Architecture",
+      "referenceUrl": "https://intuitivepapers.ai/next-latent-prediction-transformers-learn-compact/",
+      "arxivId": "2511.05963",
+      "primaryUrl": "https://arxiv.org/abs/2511.05963"
+    },
+    {
+      "id": "rt-2",
+      "title": "RT-2",
+      "topic": "RL & alignment",
+      "referenceUrl": "https://intuitivepapers.ai/rt-2/",
+      "arxivId": "2307.15818",
+      "primaryUrl": "https://arxiv.org/abs/2307.15818"
+    },
+    {
+      "id": "v-jepa-2",
+      "title": "V-JEPA 2",
+      "topic": "Vision",
+      "referenceUrl": "https://intuitivepapers.ai/v-jepa-2/",
+      "arxivId": "2506.09985",
+      "primaryUrl": "https://arxiv.org/abs/2506.09985"
+    },
+    {
+      "id": "chain-of-thought",
+      "title": "Chain-of-Thought Prompting",
+      "topic": "LLMs",
+      "referenceUrl": "https://intuitivepapers.ai/chain-of-thought/",
+      "arxivId": "2201.11903",
+      "primaryUrl": "https://arxiv.org/abs/2201.11903"
+    },
+    {
+      "id": "constitutional-ai-harmlessness-from-ai-feedback",
+      "title": "Constitutional AI",
+      "topic": "RL & alignment",
+      "referenceUrl": "https://intuitivepapers.ai/constitutional-ai-harmlessness-from-ai-feedback/",
+      "arxivId": "2212.08073",
+      "primaryUrl": "https://arxiv.org/abs/2212.08073"
+    },
+    {
+      "id": "emerging-properties-in-self-supervised-vision",
+      "title": "DINO (Self-Supervised ViT)",
+      "topic": "Vision",
+      "referenceUrl": "https://intuitivepapers.ai/emerging-properties-in-self-supervised-vision/",
+      "arxivId": "2104.14294",
+      "primaryUrl": "https://arxiv.org/abs/2104.14294"
+    },
+    {
+      "id": "mamba-3-improved-sequence-modeling-using",
+      "title": "Mamba-3",
+      "topic": "Architecture",
+      "referenceUrl": "https://intuitivepapers.ai/mamba-3-improved-sequence-modeling-using/",
+      "arxivId": "2603.15569",
+      "primaryUrl": "https://arxiv.org/abs/2603.15569"
+    },
+    {
+      "id": "geometry-of-noise",
+      "title": "The Geometry of Noise",
+      "topic": "Diffusion",
+      "referenceUrl": "https://intuitivepapers.ai/geometry-of-noise/",
+      "arxivId": "2602.18428",
+      "primaryUrl": "https://arxiv.org/abs/2602.18428"
+    },
+    {
+      "id": "native-and-compact-structured-latents-for-3d-generation",
+      "title": "TRELLIS.2 (O-Voxel)",
+      "topic": "Vision",
+      "referenceUrl": "https://intuitivepapers.ai/native-and-compact-structured-latents-for-3d-generation/",
+      "arxivId": "2512.14692",
+      "primaryUrl": "https://arxiv.org/abs/2512.14692"
+    },
+    {
+      "id": "tensor-programs-v-tuning-large-neural",
+      "title": "μP (Tensor Programs V)",
+      "topic": "Training",
+      "referenceUrl": "https://intuitivepapers.ai/tensor-programs-v-tuning-large-neural/",
+      "arxivId": "2203.03466",
+      "primaryUrl": "https://arxiv.org/abs/2203.03466"
+    },
+    {
+      "id": "dbmsolver-a-training-free-diffusion-bridge",
+      "title": "DBMSolver",
+      "topic": "Diffusion",
+      "referenceUrl": "https://intuitivepapers.ai/dbmsolver-a-training-free-diffusion-bridge/",
+      "arxivId": "2605.05889",
+      "primaryUrl": "https://arxiv.org/abs/2605.05889"
+    },
+    {
+      "id": "gradient-checkpointing",
+      "title": "Gradient Checkpointing",
+      "topic": "Training",
+      "referenceUrl": "https://intuitivepapers.ai/gradient-checkpointing/",
+      "arxivId": "1604.06174",
+      "primaryUrl": "https://arxiv.org/abs/1604.06174"
+    },
+    {
+      "id": "i-jepa",
+      "title": "I-JEPA",
+      "topic": "Vision",
+      "referenceUrl": "https://intuitivepapers.ai/i-jepa/",
+      "arxivId": "2301.08243",
+      "primaryUrl": "https://arxiv.org/abs/2301.08243"
+    },
+    {
+      "id": "mqa",
+      "title": "Multi-Query Attention",
+      "topic": "Architecture",
+      "referenceUrl": "https://intuitivepapers.ai/mqa/",
+      "arxivId": "1911.02150",
+      "primaryUrl": "https://arxiv.org/abs/1911.02150"
+    },
+    {
+      "id": "rag",
+      "title": "Retrieval-Augmented Generation",
+      "topic": "LLMs",
+      "referenceUrl": "https://intuitivepapers.ai/rag/",
+      "arxivId": "2005.11401",
+      "primaryUrl": "https://arxiv.org/abs/2005.11401"
+    },
+    {
+      "id": "lora",
+      "title": "LoRA",
+      "topic": "Training",
+      "referenceUrl": "https://intuitivepapers.ai/lora/",
+      "arxivId": "2106.09685",
+      "primaryUrl": "https://arxiv.org/abs/2106.09685"
+    },
+    {
+      "id": "large-scale-diffusion-distillation-via-score",
+      "title": "rCM (Score-Regularized Consistency)",
+      "topic": "Diffusion",
+      "referenceUrl": "https://intuitivepapers.ai/large-scale-diffusion-distillation-via-score/",
+      "arxivId": "2510.08431",
+      "primaryUrl": "https://arxiv.org/abs/2510.08431"
+    },
+    {
+      "id": "activation-recomputation",
+      "title": "Reducing Activation Recomputation",
+      "topic": "Training",
+      "referenceUrl": "https://intuitivepapers.ai/activation-recomputation/",
+      "arxivId": "2205.05198",
+      "primaryUrl": "https://arxiv.org/abs/2205.05198"
+    },
+    {
+      "id": "v-jepa",
+      "title": "V-JEPA",
+      "topic": "Vision",
+      "referenceUrl": "https://intuitivepapers.ai/v-jepa/",
+      "arxivId": "2404.08471",
+      "primaryUrl": "https://arxiv.org/abs/2404.08471"
+    },
+    {
+      "id": "d4rt",
+      "title": "D4RT",
+      "topic": "Vision",
+      "referenceUrl": "https://intuitivepapers.ai/d4rt/",
+      "arxivId": "2512.08924",
+      "primaryUrl": "https://arxiv.org/abs/2512.08924"
+    },
+    {
+      "id": "mamba-2",
+      "title": "Mamba-2 (SSD)",
+      "topic": "Architecture",
+      "referenceUrl": "https://intuitivepapers.ai/mamba-2/",
+      "arxivId": "2405.21060",
+      "primaryUrl": "https://arxiv.org/abs/2405.21060"
+    },
+    {
+      "id": "knowledge-distillation-of-black-box-large",
+      "title": "Proxy-KD",
+      "topic": "LLMs",
+      "referenceUrl": "https://intuitivepapers.ai/knowledge-distillation-of-black-box-large/",
+      "arxivId": "2401.07013",
+      "primaryUrl": "https://arxiv.org/abs/2401.07013"
+    },
+    {
+      "id": "curiosity-critic-cumulative-prediction-error-improvement",
+      "title": "Curiosity-Critic",
+      "topic": "RL & alignment",
+      "referenceUrl": "https://intuitivepapers.ai/curiosity-critic-cumulative-prediction-error-improvement/",
+      "arxivId": "2604.18701",
+      "primaryUrl": "https://arxiv.org/abs/2604.18701"
+    },
+    {
+      "id": "leann",
+      "title": "LEANN",
+      "topic": "LLMs",
+      "referenceUrl": "https://intuitivepapers.ai/leann/",
+      "arxivId": "2506.08276",
+      "primaryUrl": "https://arxiv.org/abs/2506.08276"
+    },
+    {
+      "id": "turboquant",
+      "title": "TurboQuant",
+      "topic": "Theory",
+      "referenceUrl": "https://intuitivepapers.ai/turboquant/",
+      "arxivId": "2504.19874",
+      "primaryUrl": "https://arxiv.org/abs/2504.19874"
+    },
+    {
+      "id": "dpo",
+      "title": "Direct Preference Optimization",
+      "topic": "RL & alignment",
+      "referenceUrl": "https://intuitivepapers.ai/dpo/",
+      "arxivId": "2305.18290",
+      "primaryUrl": "https://arxiv.org/abs/2305.18290"
+    },
+    {
+      "id": "trade-offs-in-medical-llm-adaptation",
+      "title": "Trade-offs in Medical LLM Adaptation",
+      "topic": "LLMs",
+      "referenceUrl": "https://intuitivepapers.ai/trade-offs-in-medical-llm-adaptation/",
+      "arxivId": "2606.19266",
+      "primaryUrl": "https://arxiv.org/abs/2606.19266"
+    },
+    {
+      "id": "world-models",
+      "title": "World Models",
+      "topic": "RL & alignment",
+      "referenceUrl": "https://intuitivepapers.ai/world-models/",
+      "arxivId": "1803.10122",
+      "primaryUrl": "https://arxiv.org/abs/1803.10122"
+    },
+    {
+      "id": "mamba",
+      "title": "Mamba",
+      "topic": "Architecture",
+      "referenceUrl": "https://intuitivepapers.ai/mamba/",
+      "arxivId": "2312.00752",
+      "primaryUrl": "https://arxiv.org/abs/2312.00752"
+    },
+    {
+      "id": "vae",
+      "title": "Auto-Encoding Variational Bayes",
+      "topic": "Theory",
+      "referenceUrl": "https://intuitivepapers.ai/vae/",
+      "arxivId": "1312.6114",
+      "primaryUrl": "https://arxiv.org/abs/1312.6114"
+    },
+    {
+      "id": "ddpm",
+      "title": "Denoising Diffusion Probabilistic Models",
+      "topic": "Diffusion",
+      "referenceUrl": "https://intuitivepapers.ai/ddpm/",
+      "arxivId": "2006.11239",
+      "primaryUrl": "https://arxiv.org/abs/2006.11239"
+    },
+    {
+      "id": "gpt-3",
+      "title": "Language Models are Few-Shot Learners",
+      "topic": "LLMs",
+      "referenceUrl": "https://intuitivepapers.ai/gpt-3/",
+      "arxivId": "2005.14165",
+      "primaryUrl": "https://arxiv.org/abs/2005.14165"
+    },
+    {
+      "id": "chinchilla",
+      "title": "Chinchilla",
+      "topic": "Training",
+      "referenceUrl": "https://intuitivepapers.ai/chinchilla/",
+      "arxivId": "2203.15556",
+      "primaryUrl": "https://arxiv.org/abs/2203.15556"
+    },
+    {
+      "id": "clip",
+      "title": "CLIP",
+      "topic": "Multimodal",
+      "referenceUrl": "https://intuitivepapers.ai/clip/",
+      "arxivId": "2103.00020",
+      "primaryUrl": "https://arxiv.org/abs/2103.00020"
+    },
+    {
+      "id": "flow-matching",
+      "title": "Flow Matching",
+      "topic": "Diffusion",
+      "referenceUrl": "https://intuitivepapers.ai/flow-matching/",
+      "arxivId": "2210.02747",
+      "primaryUrl": "https://arxiv.org/abs/2210.02747"
+    }
+  ]
+}

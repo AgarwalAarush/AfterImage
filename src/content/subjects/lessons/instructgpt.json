@@ -1,0 +1,429 @@
+{
+  "title": "Teaching a Language Model What “Better” Means",
+  "summary": "InstructGPT turns demonstrations and ranked responses into a learned preference signal, then optimizes an instruction-following policy while limiting drift from supervised behavior.",
+  "prerequisites": [
+    "Basic probability and conditional language models",
+    "Supervised learning and gradient-based optimization",
+    "Learned rewards as proxies for real goals"
+  ],
+  "objectives": [
+    "Explain why next-token prediction differs from following user intent.",
+    "Reconstruct the demonstration, reward-model, and PPO stages.",
+    "Interpret the pairwise reward loss and the PPO-ptx objective.",
+    "Relate reported gains to their prompt and evaluator conditions.",
+    "Identify whose preferences were represented and where the method failed."
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "mechanism",
+      "statement": "The paper treats next-token prediction and helpful, safe instruction-following as different objectives.",
+      "conditions": "For language models pretrained by predicting internet text and then deployed as assistants.",
+      "sourceIds": [
+        "section-1"
+      ]
+    },
+    {
+      "id": "c2",
+      "kind": "mechanism",
+      "statement": "The method begins by supervised fine-tuning GPT-3 on labeler-written demonstrations.",
+      "conditions": "On the paper’s distribution of API and labeler-written prompts.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c3",
+      "kind": "mechanism",
+      "statement": "A reward model converts prompt-response pairs into scalar scores learned from human rankings.",
+      "conditions": "The comparisons rank multiple model responses to the same prompt.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c4",
+      "kind": "mechanism",
+      "statement": "The final policy starts from the supervised model and is optimized against the learned reward using PPO.",
+      "conditions": "In a one-response bandit environment whose episode ends after scoring the response.",
+      "sourceIds": [
+        "section-3",
+        "section-3-part-2"
+      ]
+    },
+    {
+      "id": "c5",
+      "kind": "equation",
+      "statement": "Reward-model training applies a logistic pairwise loss to the score difference between the preferred and dispreferred completions.",
+      "conditions": "For ranked groups of K responses, with all pairwise comparisons from one prompt handled together.",
+      "sourceIds": [
+        "section-3-part-2"
+      ]
+    },
+    {
+      "id": "c6",
+      "kind": "result",
+      "statement": "The 1.3B InstructGPT model was preferred to the much larger 175B GPT-3 baseline on the authors’ prompt distribution.",
+      "conditions": "Human evaluations on the paper’s held-out API prompt test distribution.",
+      "sourceIds": [
+        "abstract"
+      ]
+    },
+    {
+      "id": "c7",
+      "kind": "result",
+      "statement": "For equal-size 175B models, human raters strongly preferred InstructGPT to both default and few-shot-prompted GPT-3.",
+      "conditions": "Direct comparisons on the authors’ test prompts, with uncertainty reported by the paper.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c8",
+      "kind": "result",
+      "statement": "Pretraining-gradient mixing reduced, but did not eliminate, the alignment tax on public NLP tasks.",
+      "conditions": "Comparisons among PPO, PPO-ptx, and GPT-3 on the evaluated public datasets.",
+      "sourceIds": [
+        "section-4-part-2"
+      ]
+    },
+    {
+      "id": "c9",
+      "kind": "caveat",
+      "statement": "Reduced toxicity depended on explicitly requesting respectful behavior.",
+      "conditions": "RealToxicityPrompts evaluations comparing models with and without a respectful instruction.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c10",
+      "kind": "caveat",
+      "statement": "The learned notion of good behavior reflects a particular group and process, not universal human values.",
+      "conditions": "Approximately 40 selected contractors, researcher-written instructions, and the sampled customer prompt distribution.",
+      "sourceIds": [
+        "section-1"
+      ]
+    },
+    {
+      "id": "c11",
+      "kind": "caveat",
+      "statement": "Most comparison judgments were not independently replicated by several annotators.",
+      "conditions": "The paper’s cost-constrained comparison-data collection setup.",
+      "sourceIds": [
+        "section-5-part-2"
+      ]
+    },
+    {
+      "id": "c12",
+      "kind": "caveat",
+      "statement": "Instruction-following improved without making the models fully aligned or safe.",
+      "conditions": "Across the evaluated and qualitatively inspected InstructGPT models.",
+      "sourceIds": [
+        "section-5-part-2"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "s1",
+      "title": "The objective mismatch comes first",
+      "markdown": "A pretrained language model assigns probabilities to token sequences. If $x$ is a prompt and $y=(y_1,\\ldots,y_T)$ is a completion, ordinary language modeling factorizes\n\n$$\n\\pi(y\\mid x)=\\prod_{t=1}^{T}\\pi(y_t\\mid x,y_{<t}).\n$$\n\nHere $\\pi$ is the model’s conditional distribution, $t$ indexes generated tokens, and $y_{<t}$ denotes earlier completion tokens. Maximizing likelihood teaches continuation of patterns in training text. It does not, by itself, specify that an assistant should obey constraints, admit uncertainty, or avoid harmful content. That is the paper’s starting mismatch.\n\nThe target is therefore behavioral: helpfulness, honesty or truthfulness, and harmlessness as judged in context. These goals can conflict, and none is directly observable as a perfect numeric target. InstructGPT’s contribution is a practical pipeline for translating examples and comparative judgments into training signals. It is not a proof that the resulting signal equals user intent.",
+      "sourceIds": [
+        "section-1",
+        "section-3-part-2"
+      ],
+      "claimIds": [
+        "c1",
+        "c10"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s2",
+      "title": "Stage one: imitate demonstrations",
+      "markdown": "The first stage is supervised fine-tuning, or SFT. A labeler receives a prompt $x$ and writes a desired completion $y^*$. Starting from pretrained GPT-3 parameters, training minimizes the negative log-likelihood\n\n$$\n\\mathcal{L}_{\\mathrm{SFT}}=-\\sum_{t=1}^{T}\\log \\pi_{\\phi}(y_t^*\\mid x,y_{<t}^*),\n$$\n\nwhere $\\phi$ denotes policy parameters. This is behavior cloning: it increases the probability of demonstrated tokens. The paper reports about 13,000 SFT training prompts, drawn from API and labeler-written prompts; its broader data was over 96% English.\n\nSFT supplies an instruction-following starting point, but demonstrations are expensive and specify only one acceptable response at a time. They also cannot easily express that response A is somewhat better than B while both remain plausible. That motivates comparative feedback. Importantly, the labels encode inferred intent: labelers sometimes had to decide what an ambiguous user probably wanted, while also considering truthfulness and possible harm.",
+      "sourceIds": [
+        "section-3",
+        "section-3-part-2"
+      ],
+      "claimIds": [
+        "c2",
+        "c10"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s3",
+      "title": "Stage two: learn preference differences",
+      "markdown": "For a prompt $x$, labelers rank several sampled completions. The reward model $r_{\\theta}(x,y)$, with parameters $\\theta$, maps a prompt-completion pair to one scalar. For a preferred completion $y_w$ and a less-preferred completion $y_l$, the paper trains it with\n\n$$\n\\mathcal{L}_{\\mathrm{RM}}(\\theta)=-\\frac{1}{{K\\choose 2}}\\,\\mathbb{E}_{(x,y_w,y_l)\\sim D}\\!\\left[\\log \\sigma\\!\\left(r_{\\theta}(x,y_w)-r_{\\theta}(x,y_l)\\right)\\right].\n$$\n\nHere $K$ is the number of ranked responses for a prompt, ${K\\choose 2}$ is the number of response pairs, $D$ is the comparison dataset, $\\sigma(z)=1/(1+e^{-z})$ is the logistic function, and $\\mathbb{E}$ denotes an average over comparisons. Only the score difference matters.\n\nIllustrative worked example: suppose the model scores two responses $2.0$ and $0.5$. Their difference is $1.5$, so the predicted preference probability is $\\sigma(1.5)\\approx0.818$. The pair’s loss is $-\\log(0.818)\\approx0.201$. Reversing the scores gives $\\sigma(-1.5)\\approx0.182$ and loss $-\\log(0.182)\\approx1.701$. This arithmetic illustrates Equation 1; these scores are invented, not measured results.\n\nBecause adding the same constant to every reward leaves all differences unchanged, absolute reward has no intrinsic origin. The authors therefore shifted the learned reward so demonstrations had mean score zero before reinforcement learning.",
+      "sourceIds": [
+        "section-3-part-2"
+      ],
+      "claimIds": [
+        "c3",
+        "c5"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s4",
+      "title": "Stage three: optimize reward without drifting freely",
+      "markdown": "The SFT policy becomes the initial reinforcement-learning policy. A prompt is sampled, one completion is generated, the reward model scores it, and the episode ends. The paper uses PPO and adds a per-token KL penalty discouraging movement too far from SFT. Its combined PPO-ptx objective is\n\n$$\nJ(\\phi)=\\mathbb{E}_{(x,y)\\sim D_{\\pi_{\\phi}^{\\mathrm{RL}}}}\\!\\left[r_{\\theta}(x,y)-\\beta\\log\\frac{\\pi_{\\phi}^{\\mathrm{RL}}(y\\mid x)}{\\pi^{\\mathrm{SFT}}(y\\mid x)}\\right]+\\gamma\\,\\mathbb{E}_{x\\sim D_{\\mathrm{pretrain}}}\\!\\left[\\log \\pi_{\\phi}^{\\mathrm{RL}}(x)\\right].\n$$\n\n$\\pi_{\\phi}^{\\mathrm{RL}}$ is the updated policy; $D_{\\pi_{\\phi}^{\\mathrm{RL}}}$ is its prompt-completion distribution; $r_{\\theta}$ is learned reward; $\\pi^{\\mathrm{SFT}}$ is the reference policy; $\\beta$ controls the KL-style penalty; $D_{\\mathrm{pretrain}}$ is the pretraining distribution; and $\\gamma$ controls the auxiliary pretraining term. Plain PPO sets $\\gamma=0$; the paper generally uses “InstructGPT” for PPO-ptx.\n\nThe figure isolates PPO’s clipping intuition. It plots the illustrative positive-advantage surrogate $\\min(r,\\operatorname{clip}(r,1-\\epsilon,1+\\epsilon))$ with $A=1$ and $\\epsilon=0.2$. Predict what happens as the probability ratio $r$ rises beyond $1.2$: the displayed objective stops increasing. This helps explain conservative policy updates, but it omits sequences, learned rewards, value estimation, the paper’s KL term, and the pretraining mix.",
+      "sourceIds": [
+        "section-3-part-2"
+      ],
+      "claimIds": [
+        "c4",
+        "c8"
+      ],
+      "figureId": "fig-policy"
+    },
+    {
+      "id": "s5",
+      "title": "What the evaluations actually establish",
+      "markdown": "The central result is not merely that a larger model scored better. On held-out prompts from the relevant API distribution, the 1.3B InstructGPT model was preferred to the 175B GPT-3 model despite having over 100 times fewer parameters. At 175B parameters, InstructGPT was preferred to default GPT-3 $85\\pm3\\%$ of the time and to few-shot-prompted GPT-3 $71\\pm4\\%$ of the time. Because architecture and size can be held fixed in the latter comparison, the evidence supports a fine-tuning effect under those evaluation conditions.\n\nThe scaling figure makes the associated misconception concrete. It uses the invented teaching law $L(N)=1+4N^{-0.3}$, where $N$ is a resource multiplier and $L$ an illustrative loss. Increasing $N$ lowers the excess term but never changes what the objective means. Predict whether multiplying resources can, in this toy law, turn next-token likelihood into preference alignment: it cannot. The plot is neither fitted to GPT-3 nor evidence for a reported scaling curve.\n\nOther findings were conditional. Closed-domain hallucination rates were reported as 21% versus 41% for InstructGPT and GPT-3. Toxicity improved when a respectful instruction was present, but the advantage disappeared without it. PPO also reduced performance on some public NLP datasets; mixing pretraining updates mitigated much of this alignment tax but left deficits on DROP, SQuADv2, and translation.",
+      "sourceIds": [
+        "abstract",
+        "section-1",
+        "section-4",
+        "section-4-part-2"
+      ],
+      "claimIds": [
+        "c6",
+        "c7",
+        "c8",
+        "c9"
+      ],
+      "figureId": "fig-scaling"
+    },
+    {
+      "id": "s6",
+      "title": "Alignment to whom, and measured how?",
+      "markdown": "“Human feedback” can sound universal, but the data came from a particular sociotechnical process. The project used about 40 contractors selected through screening, researcher-authored labeling instructions, and prompts shaped by early API Playground users. Most comparison examples were judged by only one contractor. The learned reward therefore approximates preferences expressed under that setup—not an objective moral function and not every affected person’s considered preferences.\n\nA second misconception is that reward-model optimization directly maximizes truth or harmlessness. It actually maximizes a predictor of rankings, alongside regularization. The evaluation proxies were narrower: labeler preference, closed-domain fabrication judgments, TruthfulQA, toxicity measures, and bias benchmarks. The paper explicitly notes that truthfulness captures only part of honesty and that real-world harm depends on deployment context.\n\nHeld-out labelers from the same vendors showed similar preferences, and cross-validation across labeler groups showed only a modest accuracy decrease. That is useful evidence against simple memorization of individual training labelers. It does not establish agreement across cultures, stakeholders, domains, or people affected by deployment.",
+      "sourceIds": [
+        "section-3",
+        "section-3-part-2",
+        "section-4",
+        "section-5"
+      ],
+      "claimIds": [
+        "c10",
+        "c11"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s7",
+      "title": "Failure modes define the boundary",
+      "markdown": "InstructGPT’s failures show why better instruction-following is not equivalent to full alignment. The models could still fabricate facts, produce biased or toxic text, accept false premises, hedge excessively, and miss instructions containing several explicit constraints. These behaviors are consistent with gaps in the feedback distribution: the paper suggests that false-premise errors may persist because such prompts were rare in training, while over-hedging may partly reflect labelers rewarding epistemic humility.\n\nThe most consequential limitation is that the training process prioritized helpfulness to the user when helpfulness conflicted with harmlessness. As a result, the model generally followed instructions even when compliance could cause harm. On RealToxicityPrompts, a respectful instruction reduced toxicity relative to GPT-3, but that advantage disappeared without the instruction; when explicitly asked for toxic output, InstructGPT was more toxic than an equivalently sized GPT-3 model. Improved steerability therefore strengthened both useful assistance and the ability to elicit harmful behavior.\n\nThese conclusions are bounded by the study’s data and evaluations. The fine-tuning distribution was almost entirely English and was shaped by a nonrepresentative population of API Playground users. Code-related and multilingual behavior appeared in qualitative probes rather than comprehensive quantitative evaluations. Most preference comparisons were labeled by one contractor, so disagreement was usually not measured at the example level. PPO-ptx reduced the performance regressions caused by PPO on public NLP tasks, but remained behind GPT-3 on DROP, SQuADv2, and translation.\n\nThe scientific lesson is that every stage introduces a distinct approximation. Demonstrations cover only some desired behavior; rankings reflect a particular group’s judgments; the reward model imperfectly predicts those judgments; policy optimization can exploit or amplify defects in that proxy; and evaluations sample only selected behaviors and populations. RLHF substantially improved instruction-following under the paper’s conditions, but the resulting models were neither fully aligned nor fully safe.",
+      "sourceIds": [
+        "section-4-part-3",
+        "section-5-part-2"
+      ],
+      "claimIds": [
+        "c8",
+        "c9",
+        "c11",
+        "c12"
+      ],
+      "figureId": null
+    }
+  ],
+  "figures": [
+    {
+      "id": "fig-policy",
+      "kind": "policy",
+      "title": "Where PPO clipping stops rewarding a larger ratio",
+      "question": "With positive illustrative advantage and epsilon fixed at 0.2, how does the surrogate change when the ratio rises from 1.1 to 1.4?",
+      "caption": "The control varies the policy probability ratio in the illustrative surrogate min(r, clip(r, 0.8, 1.2)); it rises to 1.2 and then plateaus.",
+      "limitation": "This is one clipped PPO surrogate with A=1, not the full RL algorithm, a language-model rollout, the paper’s KL penalty, or a bound on actual KL divergence.",
+      "sourceIds": [
+        "section-3-part-2"
+      ],
+      "claimIds": [
+        "c4"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "fig-scaling",
+      "kind": "scaling",
+      "title": "More scale does not redefine the training objective",
+      "question": "As the illustrative resource multiplier increases, does the plotted loss fall, and does the objective itself become instruction alignment?",
+      "caption": "The control changes N in the invented law L(N)=1+4N^(-0.3), reducing only its excess-loss term while leaving the objective’s meaning unchanged.",
+      "limitation": "The coefficients are illustrative, not fitted to GPT-3 or InstructGPT, and the figure makes no empirical compute-optimality or benchmark claim.",
+      "sourceIds": [
+        "section-1",
+        "abstract"
+      ],
+      "claimIds": [
+        "c1",
+        "c6"
+      ],
+      "illustrative": true
+    }
+  ],
+  "quiz": [
+    {
+      "question": "Assume two reward-model scores for the same prompt are 1.2 for A and 0.2 for B. Under the paper’s logistic pairwise model, what is the predicted probability that A is preferred?",
+      "options": [
+        {
+          "text": "About 0.73",
+          "explanation": "Correct. The score difference is 1.0, and sigma(1.0)=1/(1+e^(-1)) is about 0.73."
+        },
+        {
+          "text": "Exactly 1.00",
+          "explanation": "Incorrect. A positive score difference raises the probability but does not make it certain."
+        },
+        {
+          "text": "About 0.27",
+          "explanation": "Incorrect. That is sigma(-1.0), corresponding to reversing which response is treated as preferred."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-3-part-2"
+      ],
+      "claimIds": [
+        "c5"
+      ]
+    },
+    {
+      "question": "What most clearly distinguishes reward-model training from the later policy-training stage?",
+      "options": [
+        {
+          "text": "The reward model learns to predict pairwise human preferences; the policy is optimized using its scalar reward.",
+          "explanation": "Correct. Rankings supervise the reward model, whose output then supplies the PPO reward signal."
+        },
+        {
+          "text": "The reward model generates demonstrations; the policy labels them.",
+          "explanation": "Incorrect. Human labelers provide demonstrations and rankings; these roles are not reversed."
+        },
+        {
+          "text": "Both stages only maximize likelihood of labeler-written demonstrations.",
+          "explanation": "Incorrect. That describes SFT, not comparison-based reward learning and PPO."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-3",
+        "section-3-part-2"
+      ],
+      "claimIds": [
+        "c2",
+        "c3",
+        "c4"
+      ]
+    },
+    {
+      "question": "Which conclusion is justified by the reported toxicity evidence?",
+      "options": [
+        {
+          "text": "InstructGPT was less toxic under a respectful prompt, but that advantage did not persist without it.",
+          "explanation": "Correct. The paper explicitly reports dependence on the respectful-instruction condition."
+        },
+        {
+          "text": "RLHF made InstructGPT harmless under every tested instruction.",
+          "explanation": "Incorrect. Toxic output remained possible, and explicitly toxic instructions could worsen it."
+        },
+        {
+          "text": "The toxicity result proves alignment to universal human values.",
+          "explanation": "Incorrect. The feedback represented a particular labeler and researcher process, and toxicity is only one proxy."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-4",
+        "section-5-part-2"
+      ],
+      "claimIds": [
+        "c9",
+        "c10",
+        "c12"
+      ]
+    }
+  ],
+  "id": "instructgpt",
+  "createdAt": "2026-10-01T23:32:33.999Z",
+  "pipelineVersion": "subjects-lessons-v1",
+  "sources": [
+    {
+      "id": "abstract",
+      "label": "Original paper · abstract",
+      "url": "https://arxiv.org/abs/2203.02155",
+      "digest": "dbcc67d80c15bda582d165a0999157c0a975cc1fd173669e756ed8b3c381aa35"
+    },
+    {
+      "id": "section-1",
+      "label": "1 Introduction",
+      "url": "https://arxiv.org/html/2203.02155#S1",
+      "digest": "baa93287f72ff2e0e215e81c0f73e88fc58dd5dc05eb984928143f96259d6e05"
+    },
+    {
+      "id": "section-2",
+      "label": "2 Related work",
+      "url": "https://arxiv.org/html/2203.02155#S2",
+      "digest": "f5d187fe5c980775aa1334becb65153eb9629ec46070cb392d65fe3857d066d7"
+    },
+    {
+      "id": "section-3",
+      "label": "3 Methods and experimental details",
+      "url": "https://arxiv.org/html/2203.02155#S3",
+      "digest": "0a7c8bb16eba41dd79298604302240df1c2acea8751d115b51a2d0458348bccf"
+    },
+    {
+      "id": "section-3-part-2",
+      "label": "3 Methods and experimental details · part 2",
+      "url": "https://arxiv.org/html/2203.02155#S3",
+      "digest": "079837f02bb4a22a6e8f1dbeaa4b59b8168306767be18f344c816bef0807678a"
+    },
+    {
+      "id": "section-3-part-3",
+      "label": "3 Methods and experimental details · part 3",
+      "url": "https://arxiv.org/html/2203.02155#S3",
+      "digest": "457d1a48bffe98b82c111e2ef75b9b3fb18b7daa4a641eb0ceb30e2b176810b9"
+    },
+    {
+      "id": "section-4",
+      "label": "4 Results",
+      "url": "https://arxiv.org/html/2203.02155#S4",
+      "digest": "c606564eb4f8c22eef921cf7ca205dff1968ab6b6482c693e4cbe7dee6162f27"
+    },
+    {
+      "id": "section-4-part-2",
+      "label": "4 Results · part 2",
+      "url": "https://arxiv.org/html/2203.02155#S4",
+      "digest": "76dfc450e4041f7bfe93939fb4afb201f2aa8f76a8d37e9ef35c91c69e18e0e7"
+    },
+    {
+      "id": "section-4-part-3",
+      "label": "4 Results · part 3",
+      "url": "https://arxiv.org/html/2203.02155#S4",
+      "digest": "32181ffd9abb91b730249905067f8daa4c182a7e24f1d7797a61c19403d21f00"
+    },
+    {
+      "id": "section-5",
+      "label": "5 Discussion",
+      "url": "https://arxiv.org/html/2203.02155#S5",
+      "digest": "0306025815ed947204d6a78211942959fc2cd82d16a6848bccd2ae3106b929d6"
+    },
+    {
+      "id": "section-5-part-2",
+      "label": "5 Discussion · part 2",
+      "url": "https://arxiv.org/html/2203.02155#S5",
+      "digest": "c29166d086e4c4410271340641dd60fa14a041a2ea9694fc76d7441550c1a104"
+    },
+    {
+      "id": "section-5-part-3",
+      "label": "5 Discussion · part 3",
+      "url": "https://arxiv.org/html/2203.02155#S5",
+      "digest": "366467d01199c1cd5e55dbebecc431a4871dbe9d331ab15a2c9dcef9224c9725"
+    }
+  ],
+  "review": {
+    "status": "passed",
+    "reviewedAt": "2026-10-02T01:57:16.294Z",
+    "contentDigest": "e41feb68a522380d9af681f5bfd679f0203859aa484621e173bce8ba6b25de7b"
+  }
+}

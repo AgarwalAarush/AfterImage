@@ -1,0 +1,460 @@
+{
+  "title": "When Robot Motion Becomes a Sentence",
+  "summary": "RT-2 turns discretized robot actions into tokens, then co-fine-tunes one vision-language model on web and robot data to transfer semantic knowledge into closed-loop control.",
+  "prerequisites": [
+    "Next-token prediction with softmax probabilities",
+    "Behavior cloning from robot demonstrations",
+    "Continuous and discretized robot actions",
+    "Closed-loop robot control"
+  ],
+  "objectives": [
+    "Explain how RT-2 encodes robot actions as token sequences.",
+    "Distinguish co-fine-tuning from robot-only fine-tuning.",
+    "Trace observations and instructions to valid executable actions.",
+    "Interpret the reported generalization results within their test conditions.",
+    "Identify how web knowledge can and cannot extend a robot policy."
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "mechanism",
+      "statement": "RT-2 adapts generative vision-language models into vision-language-action models that directly predict low-level robot actions.",
+      "conditions": "For image and language inputs formatted as robot-action tasks and models fine-tuned on robot trajectories.",
+      "sourceIds": [
+        "abstract",
+        "section-1",
+        "section-3"
+      ]
+    },
+    {
+      "id": "c2",
+      "kind": "equation",
+      "statement": "An RT-2 action comprises termination, three positional displacements, three rotational displacements, and gripper extension, with each continuous dimension uniformly discretized into 256 bins.",
+      "conditions": "For the real-robot action encoding derived from RT-1; termination remains a discrete command.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c3",
+      "kind": "mechanism",
+      "statement": "The discretized action components are emitted through tokens from the underlying model's existing tokenizer rather than through a separate action-only output head.",
+      "conditions": "PaLI-X uses integer tokens, while PaLM-E repurposes its 256 least-frequently used tokens.",
+      "sourceIds": [
+        "section-1",
+        "section-2",
+        "section-3"
+      ]
+    },
+    {
+      "id": "c4",
+      "kind": "mechanism",
+      "statement": "Robot examples pair a camera image and textual task description with an action-token target formatted like a visual question-answering example.",
+      "conditions": "During conversion of robot demonstrations into VLM fine-tuning examples.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c5",
+      "kind": "mechanism",
+      "statement": "Co-fine-tuning mixes robot demonstrations with the original web vision-language tasks and increases the robot dataset's sampling weight to balance batches.",
+      "conditions": "During RT-2 training rather than robot-only fine-tuning.",
+      "sourceIds": [
+        "abstract",
+        "section-3",
+        "section-4"
+      ]
+    },
+    {
+      "id": "c6",
+      "kind": "mechanism",
+      "statement": "At robot-action prompts, decoding is restricted to valid action tokens, while ordinary vision-language tasks retain the full language vocabulary.",
+      "conditions": "During task-dependent output decoding.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c7",
+      "kind": "result",
+      "statement": "RT-2 and RT-1 performed similarly on seen tasks, while RT-2's advantage was most pronounced in evaluations involving unseen objects, backgrounds, and environments.",
+      "conditions": "Real-world comparisons using the same robotic data, with seen-task and more than 280 primarily pick-and-place generalization tasks.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c8",
+      "kind": "result",
+      "statement": "Across the reported generalization experiments, the two RT-2 instantiations averaged about twice the performance of the next two baselines.",
+      "conditions": "Aggregate evaluation over the paper's unseen-object, unseen-background, and unseen-environment settings; this is not a universal robotics ratio.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c9",
+      "kind": "result",
+      "statement": "The best RT-2-PaLI-X model achieved more than three times the average success rate of the next-best baseline on the paper's emergent-capability evaluation.",
+      "conditions": "A/B tests covering the specified symbol understanding, reasoning, and human recognition tasks.",
+      "sourceIds": [
+        "section-4-part-2"
+      ]
+    },
+    {
+      "id": "c10",
+      "kind": "result",
+      "statement": "Co-fine-tuned models generalized better than corresponding models fine-tuned only on robot actions, and larger PaLI-X-based models generalized better in the reported ablation.",
+      "conditions": "RT-2-PaLI-X ablations comparing 5B and 55B sizes and the paper's three training routines, with seen tasks excluded.",
+      "sourceIds": [
+        "section-4-part-2"
+      ]
+    },
+    {
+      "id": "c11",
+      "kind": "result",
+      "statement": "A chain-of-thought variant generated a natural-language plan before action tokens and qualitatively handled more sophisticated commands.",
+      "conditions": "A PaLM-E-based variant fine-tuned for a few hundred additional gradient steps; the evidence reported here is qualitative.",
+      "sourceIds": [
+        "section-4-part-2"
+      ]
+    },
+    {
+      "id": "c12",
+      "kind": "caveat",
+      "statement": "Web-scale pretraining did not give RT-2 new physical motions; its physical skills remained bounded by the skill distribution in the robot demonstrations.",
+      "conditions": "For the RT-2 models and datasets evaluated in the paper.",
+      "sourceIds": [
+        "section-1",
+        "section-4",
+        "section-5"
+      ]
+    },
+    {
+      "id": "c13",
+      "kind": "caveat",
+      "statement": "Large RT-2 models required cloud TPU serving, and their control frequency decreased with model size.",
+      "conditions": "The reported 55B model ran at 1–3 Hz, while the 5B version ran at about 5 Hz in the authors' deployment.",
+      "sourceIds": [
+        "section-3",
+        "section-5"
+      ]
+    },
+    {
+      "id": "c14",
+      "kind": "result",
+      "statement": "The study evaluated RT-2 and baselines in about 6,000 trajectories, using a 7-DoF mobile manipulator unless otherwise specified.",
+      "conditions": "Across the experimental program, including multiple evaluation categories and model comparisons.",
+      "sourceIds": [
+        "abstract",
+        "section-1",
+        "section-4"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "s1",
+      "title": "The gap between naming and moving",
+      "markdown": "A web-trained vision-language model can associate images with words and answer questions, but a robot ultimately needs grounded motor commands. Earlier combinations often placed a language or vision-language model above a separate controller: the semantic model selected a primitive such as “pick,” and another system executed it. RT-2 asks whether the same pretrained model can instead participate directly in low-level, closed-loop control.\n\nThat distinction matters. In closed loop, the policy repeatedly observes the current camera image, reads the instruction, predicts an action, and receives a new observation after the world changes. RT-2 therefore does not merely produce a one-time textual plan. It turns a generative vision-language model into a policy whose output can be decoded as motion.\n\nThe central wager is that two kinds of experience can meet inside shared model weights. Robot demonstrations teach how available motions affect the physical platform. Web vision-language data supplies broader visual and semantic concepts. If both tasks can use a common token interface, knowledge learned for visual question answering or captioning may help the policy decide *where and why* to deploy motions learned from demonstrations.",
+      "sourceIds": [
+        "section-1",
+        "section-2",
+        "section-3"
+      ],
+      "claimIds": [
+        "c1",
+        "c3",
+        "c12"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s2",
+      "title": "A probability distribution over the next token",
+      "markdown": "A generative vision-language model represents its image and instruction context as tokens, uses that context to predict an output token, and then appends the output to the context for the next prediction. Transformer attention helps each position combine information from other eligible context positions. For one query and four constructed keys, the displayed attention scores are $[2,1,0,-1]$. At positive temperature $\\tau$, their normalized attention weights are\n\n$$a_i=\\frac{\\exp(s_i/\\tau)}{\\sum_{j=1}^{4}\\exp(s_j/\\tau)},\\qquad o=\\sum_{i=1}^{4}a_i v_i.$$\n\nHere $s_i$ is the query–key score for key $i$, $v_i$ is its value, and $o$ is the value mixture. At $\\tau=1$, the exponentials are approximately $[7.389,2.718,1,0.368]$, giving weights $[0.644,0.237,0.087,0.032]$. They sum to one. Increasing the temperature flattens those fixed attention weights, so lower-scoring context positions contribute more to the mixture; decreasing it concentrates the mixture toward the highest-scoring key. The four keys retain their identities throughout the experiment.\n\nThe output vocabulary is a separate set of choices. If the model's output logits are $z_i$, a next-token distribution has the softmax form\n\n$$p(i\\mid C)=\\frac{\\exp(z_i/\\tau)}{\\sum_{j\\in\\mathcal V}\\exp(z_j/\\tau)},$$\n\nwith context $C$ and eligible vocabulary $\\mathcal V$. The same normalization operation appears here, but its index now refers to candidate output tokens rather than keys inside an attention row. Changing which tokens are eligible changes the denominator and the possible emitted symbols. RT-2 constrains this set to valid action tokens for a robot-action request, whereas an ordinary language request can use its full language vocabulary. Temperature redistributes mass within the chosen set; it does not decide which physical action each symbol represents. The following action-token construction supplies that mapping, allowing a model trained on image-and-language tasks to produce the discrete symbols consumed by the robot controller.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c1",
+        "c6"
+      ],
+      "figureId": "fig-attention"
+    },
+    {
+      "id": "s3",
+      "title": "Writing motion with discrete symbols",
+      "markdown": "RT-2's key interface is an action written as a sequence of tokenized integers. Let\n\n$$a_t=(e_t,\\Delta p_x,\\Delta p_y,\\Delta p_z,\\Delta r_x,\\Delta r_y,\\Delta r_z,g_t),$$\n\nwhere $t$ is the control step, $e_t$ is the discrete termination command, $\\Delta p_x,\\Delta p_y,\\Delta p_z$ are end-effector position displacements, $\\Delta r_x,\\Delta r_y,\\Delta r_z$ are rotational displacements, and $g_t$ is gripper extension. Each continuous coordinate is uniformly divided into 256 bins. The resulting ordinals, together with termination, form the action-token sequence.\n\nHere is a deliberately illustrative calculation. Suppose one coordinate has an invented allowed range $[-1,1]$ and value $x=0.2$. A simple nearest-bin rule would be\n\n$$q=\\operatorname{round}\\!\\left(255\\frac{x-(-1)}{1-(-1)}\\right)=\\operatorname{round}(153)=153.$$\n\nThe corresponding bin representative is\n\n$$\\hat{x}=-1+2\\frac{153}{255}=0.2.$$\n\nThe arithmetic demonstrates uniform scalar quantization; the $[-1,1]$ range is not a reported RT-2 bound. The figure similarly rounds a fixed four-number vector using a selectable bit depth. RT-2 specifically uses 256 bins, equivalent to eight bits of bin identity, but its tokenizer determines how those identities are represented. PaLI-X already has unique integer tokens for the needed values. PaLM-E instead assigns its 256 least-frequently used tokens to the action vocabulary.\n\nNo separate action head is required. The same sequence model that learns language-token prediction is fine-tuned to predict action tokens. Quantization inevitably limits coordinate precision, and the toy figure measures only reconstruction error for its fixed vector—not robot success, tokenizer behavior, or learned control quality.",
+      "sourceIds": [
+        "section-2",
+        "section-3"
+      ],
+      "claimIds": [
+        "c2",
+        "c3"
+      ],
+      "figureId": "fig-quantization"
+    },
+    {
+      "id": "s4",
+      "title": "One model, two streams of supervision",
+      "markdown": "For a robot example, the input contains a camera image and a textual prompt asking what action should accomplish the task instruction. The target is the action-token string. During deployment, those tokens are converted back into a robot action and the process repeats after the next observation.\n\nTraining only on these robot targets risks narrowing the pretrained model toward the much smaller robot-data distribution. RT-2 instead uses **co-fine-tuning**: batches contain both robot examples and original web vision-language examples, with increased sampling weight for the robot dataset to balance their presence. The web examples continue to exercise visual and linguistic concepts, while robot trajectories connect observations and commands to executable actions.\n\nThis is full weight sharing across the two task families, not a pipeline in which a frozen semantic system hands a symbolic plan to an unrelated controller. It also clarifies why formatting matters: both natural-language answers and robot actions become token-prediction problems, even though their meanings and allowed outputs differ.\n\nA common misconception is that action tokens turn motion into ordinary natural language. They do not. A token that denotes an action bin has an externally defined control meaning. The shared format permits shared computation and learning, but execution still requires deterministic de-tokenization into the robot's action coordinates.",
+      "sourceIds": [
+        "abstract",
+        "section-1",
+        "section-2",
+        "section-3"
+      ],
+      "claimIds": [
+        "c1",
+        "c3",
+        "c4",
+        "c5",
+        "c6"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s5",
+      "title": "What transferred in the experiments",
+      "markdown": "The robot demonstrations came from 13 robots operating over 17 months in an office-kitchen environment. Instructions paired a skill verb with object nouns. The experimental program then used about 6,000 evaluation trajectories; unless noted otherwise, the platform was a 7-DoF mobile manipulator.\n\nOn more than 200 seen tasks, RT-2 and RT-1 had similar performance. Even these trials varied object placement, time of day, and robot position. The larger distinction appeared in over 280 primarily pick-and-place tasks involving unseen objects, backgrounds, or environments, subdivided into easier and harder cases. Across those generalization settings, the two RT-2 instantiations averaged roughly twice the performance of the next two baselines, RT-1 and MOO. That ratio belongs to this evaluation design and should not be read as a universal doubling of robotic ability.\n\nThe emergent-capability tests were more targeted. Symbol tasks used cues such as numbers or icons absent from robot training. Reasoning tasks included visual relations, simple arithmetic, and multilingual instructions. Human-recognition tasks referred to visible person attributes. Under an A/B framework that evaluated models sequentially in the same conditions, the best RT-2-PaLI-X model attained more than three times the average success rate of the next-best baseline, RT-1.\n\nThese results support semantic transfer: pretrained concepts helped choose objects, targets, or relations for already learned manipulation skills. They do not demonstrate acquisition of an unseen motor repertoire.",
+      "sourceIds": [
+        "section-4",
+        "section-4-part-2"
+      ],
+      "claimIds": [
+        "c7",
+        "c8",
+        "c9",
+        "c12",
+        "c14"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s6",
+      "title": "Ablations separate scale from the recipe",
+      "markdown": "## Ablations separate scale from the training recipe\n\nThe PaLI-X ablation asks three related questions: what VLM pretraining contributes before robot learning begins, whether web vision-language tasks should remain in the mixture during fine-tuning, and whether the tested increase in parameter count improves generalization. The authors compared 5B and 55B RT-2-PaLI-X models using three training routines: training from scratch without VLM-pretrained weights, fine-tuning a pretrained model only on robot-action data, and co-fine-tuning a pretrained model on both robot examples and the original vision-language tasks. Seen-task evaluations were excluded because this experiment focused on generalization.\n\nThe first comparison isolates the value of pretrained initialization at the evaluated 5B scale. The 5B model trained from scratch performed very poorly. Giving a model billions of parameters and an action-token interface was therefore not enough for the available robot demonstrations to reproduce the useful visual and linguistic representations acquired through VLM pretraining. After observing that result, the authors did not evaluate a scratch-trained 55B model. The direct evidence consequently supports pretrained initialization over training from scratch for the 5B condition; it does not provide a scratch-trained comparison at 55B.\n\nThe second comparison tests what happens after pretrained weights have been supplied. Robot-only fine-tuning presents camera observations and task instructions whose targets are executable action-token sequences. Co-fine-tuning presents those same robot examples while continuing to train on the original web vision-language tasks, with the robot dataset given increased sampling weight to balance the mixture. Both forms of training adapt shared model weights to robot control, but only co-fine-tuning continues to exercise the broader visual and linguistic concepts learned during pretraining.\n\nAt both evaluated model sizes, co-fine-tuning produced better generalization than fine-tuning the pretrained model only on robot actions. The authors attribute this advantage to retaining previously learned concepts rather than forgetting them during adaptation to the narrower robot-data distribution. Mechanistically, the shared token-prediction model remains responsible for both task families: vision-language examples preserve semantic and visual competence, while robot trajectories teach how an observed scene and instruction map to the action-token sequence executed by the robot. The improvement therefore depends on the training mixture, not merely on beginning from pretrained weights.\n\nThe third comparison examines parameter count within RT-2-PaLI-X. Under the evaluated pretrained training routines, the 55B model generalized better than the 5B model. This establishes a size benefit for the two tested PaLI-X scales under those conditions. It does not determine the shape of performance between or beyond them: only 5B and 55B were compared, and no power law was fitted. Because the 55B scratch condition was skipped, the experiment also cannot compare the effect of size across all three training routines.\n\nTaken together, the ablation supports a three-part account of the reported generalization gains. VLM pretraining supplied representations that the 5B scratch-trained condition did not recover effectively from robot demonstrations. Continuing to include vision-language supervision during robot adaptation preserved those representations better than robot-only fine-tuning at both tested sizes. Within the pretrained RT-2-PaLI-X conditions, increasing the model from 5B to 55B further improved generalization.\n\nThese ingredients affect how the policy interprets new objects, symbols, relations, and instructions, but they do not expand the demonstrated motor repertoire by themselves. The robot’s physical skills remain bounded by the skill distribution in its robot data. Better retained semantic knowledge and greater model capacity can help the policy select and deploy those learned motions in unfamiliar visual or linguistic situations; they do not supply a new motion that was absent from the robot demonstrations.",
+      "sourceIds": [
+        "section-4-part-2"
+      ],
+      "claimIds": [
+        "c5",
+        "c10"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s7",
+      "title": "Planning text does not erase control limits",
+      "markdown": "The authors also adapted a PaLM-E-based RT-2 variant for a few hundred gradient steps so that its output contained a natural-language **Plan** followed by **Action** tokens. Qualitative rollouts suggested that giving the model an explicit place to state an intermediate purpose helped with more sophisticated semantic commands. Because this evidence was qualitative, it should be treated as an initial demonstration rather than a measured general advantage.\n\nMore importantly, semantic novelty is not mechanical novelty. Web pretraining could help recognize that a rock is suitable as an improvised hammer or connect tiredness with an energy drink, but the resulting action still had to be assembled from physical skills represented in robot demonstrations. RT-2 did not learn a genuinely new motion merely from images and text on the web.\n\nComputation also constrained deployment. The 55B model was served from a multi-TPU cloud service and operated at 1–3 Hz; the 5B version ran at about 5 Hz. Networked inference and low control frequency may be acceptable for some tabletop actions but become limiting for faster dynamics. The authors identify quantization and distillation as future directions, not evaluated remedies.\n\nRT-2's contribution is therefore precise: it unifies semantic prediction and low-level action prediction in one token model, transferring concepts into the selection and deployment of demonstrated skills. It does not establish unrestricted reasoning, new-motor-skill learning from web data, or universally real-time control.",
+      "sourceIds": [
+        "section-3",
+        "section-4-part-2",
+        "section-5",
+        "section-6"
+      ],
+      "claimIds": [
+        "c11",
+        "c12",
+        "c13"
+      ],
+      "figureId": null
+    }
+  ],
+  "figures": [
+    {
+      "id": "fig-attention",
+      "kind": "attention",
+      "title": "Temperature and attention context",
+      "question": "With four query–key scores fixed, how does increasing temperature redistribute their normalized attention weights?",
+      "caption": "Four constructed query–key scores $[2,1,0,-1]$ are divided by a positive temperature and normalized with softmax. The weights combine the corresponding values for one query.",
+      "limitation": "The scores are a constructed attention row; RT-2 action-token eligibility is defined separately by its output-vocabulary constraint.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c1",
+        "c6"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "fig-quantization",
+      "kind": "quantization",
+      "title": "From continuous values to discrete levels",
+      "question": "How does increasing the number of uniform quantization bits affect reconstruction error for the fixed vector?",
+      "caption": "The fixed vector $[-0.8,-0.3,0.1,0.7]$ is rounded to uniformly spaced levels on $[-1,1]$, and the resulting mean squared reconstruction error is displayed.",
+      "limitation": "This is uniform scalar quantization of an illustrative vector, not RT-2's reported coordinate ranges, tokenizer, learned policy, or robot performance.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c2",
+        "c3"
+      ],
+      "illustrative": true
+    }
+  ],
+  "quiz": [
+    {
+      "question": "Assume a robot-action prompt has been detected correctly. Which intervention directly prevents the decoder from emitting an ordinary word instead of an executable action token?",
+      "options": [
+        {
+          "text": "Restrict decoding to valid action tokens.",
+          "explanation": "Correct. RT-2 constrains the eligible output vocabulary for robot-action prompts."
+        },
+        {
+          "text": "Increase the softmax temperature.",
+          "explanation": "Incorrect. Temperature redistributes probability among eligible choices but does not define which tokens are valid actions."
+        },
+        {
+          "text": "Use a larger pretrained model.",
+          "explanation": "Incorrect. Greater capacity does not itself guarantee that every decoded token belongs to the action vocabulary."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c6"
+      ]
+    },
+    {
+      "question": "Under the paper's mechanism, what is the most defensible prediction for a novel instruction that requires a familiar pick-and-place motion but refers to a web-learned visual symbol?",
+      "options": [
+        {
+          "text": "RT-2 may map the symbol to a target and reuse the familiar motion.",
+          "explanation": "Correct. The reported transfer concerns deploying demonstrated physical skills using broader semantic and visual concepts."
+        },
+        {
+          "text": "RT-2 must invent a new motor primitive from the symbol alone.",
+          "explanation": "Incorrect. The paper explicitly limits physical skills to the distribution represented in robot data."
+        },
+        {
+          "text": "RT-2 cannot use symbols absent from robot demonstrations.",
+          "explanation": "Incorrect. Symbol-understanding evaluations were designed to test precisely this kind of semantic transfer."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-1",
+        "section-4-part-2",
+        "section-5"
+      ],
+      "claimIds": [
+        "c9",
+        "c12"
+      ]
+    },
+    {
+      "question": "Which conclusion best respects the conditions of the reported size and training ablation?",
+      "options": [
+        {
+          "text": "Co-fine-tuning and greater size both improved generalization in the tested PaLI-X settings.",
+          "explanation": "Correct. The ablation separately reported benefits from retaining web data and from increasing model size."
+        },
+        {
+          "text": "Any 55B robot model will outperform every 5B robot model.",
+          "explanation": "Incorrect. The experiment supports a comparison within specified RT-2-PaLI-X routines, not a universal ordering."
+        },
+        {
+          "text": "The ablation proved an exact power law for robot success.",
+          "explanation": "Incorrect. No power law was fitted or reported; only the 5B and 55B PaLI-X conditions were compared."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-4-part-2"
+      ],
+      "claimIds": [
+        "c10"
+      ]
+    }
+  ],
+  "id": "rt-2",
+  "createdAt": "2026-10-02T00:10:25.255Z",
+  "pipelineVersion": "subjects-lessons-v1",
+  "sources": [
+    {
+      "id": "abstract",
+      "label": "Original paper · abstract",
+      "url": "https://arxiv.org/abs/2307.15818",
+      "digest": "3f251bcb180b7707d03ef5103c8613acc59679e78eeea609d2dac19bbf4b1d75",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:08:20.659Z"
+    },
+    {
+      "id": "main-text",
+      "label": "Original paper · unsectioned main text",
+      "url": "https://arxiv.org/html/2307.15818",
+      "digest": "a05184542fe63d5c04636a0320a382dc824909d9da3d4ceaa8cc7549afecfd47",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:08:20.659Z"
+    },
+    {
+      "id": "section-1",
+      "label": "1 Introduction",
+      "url": "https://arxiv.org/html/2307.15818#S1",
+      "digest": "7396ccc9e7586a84d76cc48a7a9a316c62a9e45576605b6e8b4edd6d488495c7",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:08:20.659Z"
+    },
+    {
+      "id": "section-2",
+      "label": "2 Related Work",
+      "url": "https://arxiv.org/html/2307.15818#S2",
+      "digest": "5b94ccc625291cea8e38ad38f8dbb783bd22b54019a0768b5043f03a24a847dc",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:08:20.659Z"
+    },
+    {
+      "id": "section-3",
+      "label": "3 Vision-Language-Action Models",
+      "url": "https://arxiv.org/html/2307.15818#S3",
+      "digest": "b0ab63a1072edf8fbbdf55d17f0e702fd86d71b17290ab39422c2a72a75e5954",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:08:20.659Z"
+    },
+    {
+      "id": "section-4",
+      "label": "4 Experiments",
+      "url": "https://arxiv.org/html/2307.15818#S4",
+      "digest": "caa7c18b256121eafd3caf8e84c9edcf622b53aac00a1273ff39265f9a020414",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:08:20.659Z"
+    },
+    {
+      "id": "section-4-part-2",
+      "label": "4 Experiments · part 2",
+      "url": "https://arxiv.org/html/2307.15818#S4",
+      "digest": "f8ceb999317fcca2d697b8e478a0f9439b7a8fba16972eb612a223b847c4f24a",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:08:20.659Z"
+    },
+    {
+      "id": "section-5",
+      "label": "5 Limitations",
+      "url": "https://arxiv.org/html/2307.15818#S5",
+      "digest": "8598165767ff3d96f576ed6b939a9c3cadb7c144ef260a5824c78d8f9d1c247a",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:08:20.659Z"
+    },
+    {
+      "id": "section-6",
+      "label": "6 Conclusions",
+      "url": "https://arxiv.org/html/2307.15818#S6",
+      "digest": "e61aaf4860caba4b359f4ccdc3fae630132aa90aab9dedbf7117fbe18ab70b8c",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:08:20.659Z"
+    }
+  ],
+  "review": {
+    "status": "passed",
+    "reviewedAt": "2026-10-02T02:25:04.719Z",
+    "contentDigest": "44b7161b890492f0082258bc600da7af2c48a63dd5238f614dd11c8137550842"
+  }
+}

@@ -1,0 +1,459 @@
+{
+  "title": "Learning the Current That Carries Noise Back to Data",
+  "summary": "The paper turns discrete noise-scale models into a continuous SDE framework whose learned time-dependent score drives stochastic, deterministic, and conditional generation.",
+  "prerequisites": [
+    "Gradients of log probability densities",
+    "Gaussian noise and conditional distributions",
+    "Ordinary and stochastic differential equations",
+    "Basic numerical integration"
+  ],
+  "objectives": [
+    "Define the score and explain why it points toward higher density.",
+    "Derive how the score changes the reverse-time SDE.",
+    "Connect denoising score matching to continuous-time training.",
+    "Distinguish reverse-time SDE sampling from probability-flow ODE sampling.",
+    "Explain predictor-corrector sampling and its computational tradeoff."
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "mechanism",
+      "statement": "Earlier score-based and diffusion models both learn information equivalent to scores across prescribed noise levels.",
+      "conditions": "For the SMLD and DDPM formulations discussed in the paper.",
+      "sourceIds": [
+        "section-1"
+      ]
+    },
+    {
+      "id": "c2",
+      "kind": "mechanism",
+      "statement": "The proposed forward process replaces a finite ladder of corruptions with continuously evolving noisy marginals.",
+      "conditions": "For the paper's continuous-time diffusion formulation.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c3",
+      "kind": "equation",
+      "statement": "The forward Itô SDE combines deterministic drift with Brownian diffusion.",
+      "conditions": "The displayed formulation assumes scalar, state-independent diffusion coefficient $g(t)$.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c4",
+      "kind": "caveat",
+      "statement": "The paper's simplified presentation does not exhaust matrix-valued or state-dependent diffusion.",
+      "conditions": "This qualification applies to Eq. 5 as presented in the main text.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c5",
+      "kind": "equation",
+      "statement": "Running the diffusion backward changes the drift by a score-dependent term while retaining stochastic noise.",
+      "conditions": "For backward time from $T$ to $0$, with the marginal score available and $\\mathrm{d}t<0$.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c6",
+      "kind": "result",
+      "statement": "Under ideal data and capacity assumptions, continuous denoising score matching recovers the marginal score almost everywhere.",
+      "conditions": "With sufficient data and model capacity for the objective in Eq. 7.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c7",
+      "kind": "mechanism",
+      "statement": "The SMLD and DDPM corruption chains arise as discretizations of different continuous SDEs.",
+      "conditions": "In the continuum limit of increasingly many noise scales.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c8",
+      "kind": "mechanism",
+      "statement": "Predictor-corrector sampling alternates a numerical reverse-SDE step with score-based marginal correction.",
+      "conditions": "At each discretized reverse-time step, using a numerical predictor and score-based MCMC corrector.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c9",
+      "kind": "result",
+      "statement": "In the reported CIFAR-10 comparison, one corrector per predictor improved quality over predictor-only sampling but doubled computation.",
+      "conditions": "For the SMLD and DDPM models, samplers, step counts, and score-evaluation accounting of Table 1.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c10",
+      "kind": "equation",
+      "statement": "The probability-flow ODE removes stochastic increments and uses half the score correction in its velocity field.",
+      "conditions": "For the deterministic process associated with the same forward diffusion and exact marginal score.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c11",
+      "kind": "mechanism",
+      "statement": "The probability-flow ODE and SDE can have identical one-time marginal densities without sharing individual trajectories.",
+      "conditions": "For the associated deterministic process constructed from the diffusion and its exact scores.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c12",
+      "kind": "result",
+      "statement": "The paper reports its best unconditional CIFAR-10 sample-quality model at FID 2.20 and Inception score 9.89.",
+      "conditions": "For NCSN++ cont. (deep, VE) under the Table 3 checkpoint and PC-sampling protocol.",
+      "sourceIds": [
+        "section-4",
+        "section-4-part-2"
+      ]
+    },
+    {
+      "id": "c13",
+      "kind": "mechanism",
+      "statement": "Conditional reverse dynamics add a likelihood-gradient term to the unconditional marginal score.",
+      "conditions": "When $p_t(\\mathbf{y}\\mid\\mathbf{x})$ or a usable estimate of its gradient is available.",
+      "sourceIds": [
+        "section-5"
+      ]
+    },
+    {
+      "id": "c14",
+      "kind": "caveat",
+      "statement": "Despite improved samplers, generation remained slower than GAN sampling on the same datasets.",
+      "conditions": "For the sampling approaches and dataset comparisons available in this paper.",
+      "sourceIds": [
+        "section-6"
+      ]
+    },
+    {
+      "id": "c15",
+      "kind": "caveat",
+      "statement": "Sampler flexibility creates a hyperparameter-selection burden rather than a universally automatic procedure.",
+      "conditions": "When selecting and tuning among the score-enabled samplers considered by the framework.",
+      "sourceIds": [
+        "section-6"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "s1",
+      "title": "The local compass hidden in a density",
+      "markdown": "A **score** is not a sample-quality metric. For a differentiable density $p_t(\\mathbf{x})$, it is the vector\n\n$$\n\\nabla_{\\mathbf{x}}\\log p_t(\\mathbf{x}),\n$$\n\nwhich points in the direction where log density rises fastest. Here $\\mathbf{x}\\in\\mathbb{R}^d$ is a data vector, $d$ is its dimension, $t$ is noise time, $p_t$ is the marginal density at that time, and $\\nabla_{\\mathbf{x}}$ differentiates with respect to the data coordinates. The score need not reveal the normalized density value; it supplies a local direction field.\n\nWhy introduce noise at all? Real data can concentrate near complicated, thin regions. Gaussian corruption smooths those regions, making scores at positive noise levels easier to learn. Earlier SMLD and DDPM systems used finite noise ladders, though their procedures looked different. The paper identifies their common object—the score at each corruption level—and makes noise level continuous.\n\nThe toy control below isolates one prerequisite: in a $D$-dimensional isotropic Gaussian with coordinate scale $\\sigma$, the root-mean-square radius is $\\sigma\\sqrt{D}$. Increasing $\\sigma$ stretches lengths; increasing $D$ concentrates norms relative to their typical radius. The histogram contains seeded illustrative Gaussian samples, not paper data or a picture of three spatial axes.",
+      "sourceIds": [
+        "section-1",
+        "section-2",
+        "section-3"
+      ],
+      "claimIds": [
+        "c1",
+        "c2"
+      ],
+      "figureId": "fig-noise"
+    },
+    {
+      "id": "s2",
+      "title": "One forward river instead of a noise ladder",
+      "markdown": "The forward process is the Itô SDE\n\n$$\n\\mathrm{d}\\mathbf{x}=\\mathbf{f}(\\mathbf{x},t)\\,\\mathrm{d}t+g(t)\\,\\mathrm{d}\\mathbf{w}.\n$$\n\nHere $\\mathbf{x}(t)$ is the random state; $t\\in[0,T]$ is continuous time; $T$ is the terminal time; $\\mathbf{f}:\\mathbb{R}^d\\times[0,T]\\to\\mathbb{R}^d$ is drift; $g:[0,T]\\to\\mathbb{R}$ is diffusion magnitude; and $\\mathbf{w}$ is standard Brownian motion. The infinitesimal $\\mathrm{d}\\mathbf{w}$ contributes random variation of scale $\\sqrt{|\\mathrm{d}t|}$, rather than an ordinary derivative.\n\nThe design goal is $\\mathbf{x}(0)\\sim p_0$, the data distribution, and $\\mathbf{x}(T)\\sim p_T$, a tractable prior such as a fixed Gaussian. The prescribed forward SDE has no learned parameters: it deliberately forgets structure as noise accumulates. In the main presentation, $g$ is scalar and independent of state; the paper points to an appendix for broader diffusion forms.\n\nTwo limiting constructions clarify the unification. The variance-exploding SDE is the continuum limit of SMLD-style additive perturbations. The variance-preserving SDE is the limit of DDPM-style shrink-and-noise transitions. They belong to one calculus, but they are not the same stochastic process: their drift and variance behavior differ.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c2",
+        "c3",
+        "c4",
+        "c7"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s3",
+      "title": "Turning the river around",
+      "markdown": "The central mechanism is the reverse-time SDE\n\n$$\n\\mathrm{d}\\mathbf{x}=\\left[\\mathbf{f}(\\mathbf{x},t)-g(t)^2\\nabla_{\\mathbf{x}}\\log p_t(\\mathbf{x})\\right]\\mathrm{d}t+g(t)\\mathrm{d}\\bar{\\mathbf{w}},\n$$\n\nintegrated from $T$ toward $0$. Here $\\bar{\\mathbf{w}}$ is Brownian motion under backward-running time and $\\mathrm{d}t$ is negative. Starting with $\\mathbf{x}(T)\\sim p_T$, this process can recover $p_0$ if the marginal score is known.\n\nA sign misconception is easy to make: reading the bracket alone suggests that subtracting the score moves away from density. But the update also multiplies the bracket by negative $\\mathrm{d}t$. In the simplest case $\\mathbf{f}=0$, the score contribution to the actual backward increment is therefore aligned with increasing density. The stochastic term remains; reversal does not mean replaying a particular forward noise realization.\n\nA second misconception is that the neural network directly predicts a clean example. In this framework it estimates the time-indexed vector field $\\mathbf{s}_{\\boldsymbol{\\theta}}(\\mathbf{x},t)\\approx\\nabla_{\\mathbf{x}}\\log p_t(\\mathbf{x})$. A numerical solver then converts that local field into a trajectory. Approximate scores and finite steps mean the implemented sampler is an approximation even when the reverse-time identity is exact.",
+      "sourceIds": [
+        "section-3",
+        "section-4"
+      ],
+      "claimIds": [
+        "c5",
+        "c6"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s4",
+      "title": "Learning scores without observing scores",
+      "markdown": "Training uses conditional perturbations whose score is tractable. The continuous denoising objective is\n\n$$\n\\boldsymbol{\\theta}^{*}=\\arg\\min_{\\boldsymbol{\\theta}}\\mathbb{E}_{t}\\!\\left[\\lambda(t)\\,\\mathbb{E}_{\\mathbf{x}(0)}\\mathbb{E}_{\\mathbf{x}(t)\\mid\\mathbf{x}(0)}\\left\\|\\mathbf{s}_{\\boldsymbol{\\theta}}(\\mathbf{x}(t),t)-\\nabla_{\\mathbf{x}(t)}\\log p_{0t}(\\mathbf{x}(t)\\mid\\mathbf{x}(0))\\right\\|_2^2\\right].\n$$\n\nThe symbols are: parameters $\\boldsymbol{\\theta}$; positive weighting $\\lambda(t)$; uniformly sampled $t$; clean sample $\\mathbf{x}(0)\\sim p_0$; perturbed sample $\\mathbf{x}(t)$; transition density $p_{0t}(\\mathbf{x}(t)\\mid\\mathbf{x}(0))$; and Euclidean norm $\\|\\cdot\\|_2$. Although the target is the conditional perturbation score, denoising score matching makes the population optimum equal the marginal score almost everywhere under sufficient data and capacity.\n\nFor affine drift, the paper notes that transition kernels are Gaussian with closed-form means and variances, making this objective efficient for its VE, VP, and sub-VP families. More general SDEs may require solving a forward equation or simulating transitions and changing the score-matching objective. Thus, choosing an SDE affects not only sampling behavior but also how easily training targets can be computed.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c6",
+        "c7"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s5",
+      "title": "Predict, then repair the marginal",
+      "markdown": "Discretization introduces error because a solver advances through finite time steps. A predictor-corrector sampler uses two distinct operations. First, a numerical SDE method predicts the next state along the reverse dynamics. Second, score-based MCMC, such as Langevin MCMC, adjusts samples toward the intended marginal $p_t$. The correction is not supervised denoising and does not guarantee that an individual trajectory matches a hidden clean ancestor.\n\nA small illustrative Langevin calculation makes the roles concrete. Suppose at one time the learned one-dimensional score is $s(x,t)=-x$, the step size is $\\epsilon=0.1$, the current value is $x=2$, and—for this arithmetic example only—the sampled noise is $z=0.5$. A correction\n\n$$\nx' = x+\\epsilon s(x,t)+\\sqrt{2\\epsilon}\\,z\n$$\n\ngives $x'=2+0.1(-2)+\\sqrt{0.2}(0.5)\\approx2-0.2+0.2236=2.0236$. The deterministic score term pulls toward zero, while this particular random draw pushes outward more strongly. MCMC correction is distributional, not a promise that every step moves uphill.\n\nIn Table 1's CIFAR-10 setup, adding one corrector per predictor improved reported quality against predictor-only sampling with the same predictor count, while doubling score-evaluation computation. That evidence is conditional on those models, discretizations, and budgets—not a theorem that more correction always helps.",
+      "sourceIds": [
+        "section-2",
+        "section-4"
+      ],
+      "claimIds": [
+        "c8",
+        "c9"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s6",
+      "title": "A deterministic road with the same stations",
+      "markdown": "The associated probability-flow ODE is\n\n$$\n\\mathrm{d}\\mathbf{x}=\\left[\\mathbf{f}(\\mathbf{x},t)-\\frac{1}{2}g(t)^2\\nabla_{\\mathbf{x}}\\log p_t(\\mathbf{x})\\right]\\mathrm{d}t.\n$$\n\nIt has no Brownian increment. With exact scores, its marginal density at every time matches that of the SDE, even though its individual paths are deterministic and generally differ from stochastic paths. “Same distribution” therefore does not mean “same trajectory.” The ODE connection permits continuous-change-of-variables likelihood computation and invertible encoding, subject to numerical integration and score approximation.\n\nThe control below demonstrates only numerical error: forward Euler integrates the invented scalar equation $\\mathrm{d}x/\\mathrm{d}t=-x$ from $x(0)=1$ and compares it with $e^{-t}$. Changing step size changes the approximation. This is useful because the paper also relies on numerical integration, but the control is not adaptive, contains no learned score, and does not simulate the paper's probability-flow field.",
+      "sourceIds": [
+        "section-4",
+        "section-4-part-2"
+      ],
+      "claimIds": [
+        "c10",
+        "c11"
+      ],
+      "figureId": "fig-ode"
+    },
+    {
+      "id": "s7",
+      "title": "Conditioning bends the reverse field",
+      "markdown": "For side information $\\mathbf{y}$, Bayes' rule decomposes the conditional score into\n\n$$\n\\nabla_{\\mathbf{x}}\\log p_t(\\mathbf{x}\\mid\\mathbf{y})=\\nabla_{\\mathbf{x}}\\log p_t(\\mathbf{x})+\\nabla_{\\mathbf{x}}\\log p_t(\\mathbf{y}\\mid\\mathbf{x}).\n$$\n\nThe first term is supplied by the unconditional score model; the second steers generation toward observations or labels. Substitution into the reverse-time SDE yields the paper's conditional dynamics. For class conditioning, the added gradient may come from a time-dependent classifier. For inverse problems, it may require an auxiliary model, a tractable observation process, or a heuristic estimate.\n\nThe illustrative control visualizes two scalar velocity fields, $v_{\\mathrm{uncond}}=-x$ and $v_{\\mathrm{cond}}=-(x-1)$, combined as $v=v_{\\mathrm{uncond}}+w(v_{\\mathrm{cond}}-v_{\\mathrm{uncond}})$. Increasing $w$ moves the toy equilibrium to $x=w$. This makes field steering tangible, but it is linear extrapolation—not the paper's likelihood-gradient derivation, an image sampler, or evidence for a quality–diversity curve. The paper's actual conditional claim depends on having an estimate of $\\nabla_{\\mathbf{x}}\\log p_t(\\mathbf{y}\\mid\\mathbf{x})$.",
+      "sourceIds": [
+        "section-5"
+      ],
+      "claimIds": [
+        "c13"
+      ],
+      "figureId": "fig-guidance"
+    },
+    {
+      "id": "s8",
+      "title": "What the evidence establishes—and what it does not",
+      "markdown": "The framework unifies several operations around one learned object: the time-dependent score. The forward SDE continuously carries the data distribution toward a tractable prior; the score supplies the correction needed to reverse that diffusion; and numerical integration turns the resulting stochastic or deterministic field into samples. SMLD and DDPM appear as discretizations of different continuous processes rather than as identical algorithms: the VE SDE inherits additive, variance-growing corruption, whereas the VP SDE combines linear shrinkage with noise and preserves unit variance when initialized at unit variance.\n\nThe stochastic and deterministic sampling routes express the same marginal evolution in different ways. The reverse-time SDE retains Brownian noise and uses the full correction $-g(t)^2\\nabla_{\\mathbf{x}}\\log p_t(\\mathbf{x})$. The probability-flow ODE removes the stochastic increment and uses half that correction,\n\n$$\n\\mathrm{d}\\mathbf{x}=\\left[\\mathbf{f}(\\mathbf{x},t)-\\frac{1}{2}g(t)^2\\nabla_{\\mathbf{x}}\\log p_t(\\mathbf{x})\\right]\\mathrm{d}t.\n$$\n\nWith the exact score, the two processes share each time-indexed marginal density, although they do not share individual trajectories. Predictor-corrector sampling instead alternates a discretized reverse-SDE update with score-based MCMC correction of the current marginal. In the paper's Table 1 CIFAR-10 experiments, one corrector step per predictor step improved sample quality relative to predictor-only sampling with the same predictor count, while doubling the number of score evaluations. This is a result for the reported models, discretizations, and compute accounting, not a universal monotonic benefit from adding correction steps.\n\nThe headline sample-quality result is likewise protocol-specific. The reported FID of $2.20$ and Inception score of $9.89$ belong to the unconditional NCSN++ cont. (deep, VE) model on CIFAR-10 in Table 3. That model used the continuous training objective, doubled network depth, the checkpoint with the lowest FID during training, and predictor-corrector sampling. The likelihood result answers a different question: DDPM++ cont. (deep, sub-VP) achieved $2.99$ bits/dim on uniformly dequantized CIFAR-10, with Table 2 using the last training checkpoint and probability-flow ODE evaluation. These sample-quality and likelihood measurements therefore should not be treated as interchangeable or attributed to every SDE and solver combination.\n\nThe method's flexibility introduces practical tradeoffs. Sampling in the reported comparisons remained slower than GAN sampling on the same datasets, and choosing among SDEs, solvers, step counts, correctors, and numerical tolerances adds hyperparameters. Exact recovery of the data distribution describes the ideal process with the true marginal score; a trained network only approximates that field, and finite-step numerical solvers add integration error. The training objective recovers the marginal score almost everywhere only under the stated sufficient-data and sufficient-capacity assumptions. Efficient denoising-score targets are especially direct for the affine VE, VP, and sub-VP SDEs because their transition kernels are Gaussian with computable means and variances; more general stochastic dynamics can require a different way to obtain transition information or a different score-matching objective.",
+      "sourceIds": [
+        "section-3",
+        "section-4",
+        "section-4-part-2",
+        "section-6"
+      ],
+      "claimIds": [
+        "c7",
+        "c9",
+        "c11",
+        "c12",
+        "c14",
+        "c15"
+      ],
+      "figureId": null
+    }
+  ],
+  "figures": [
+    {
+      "id": "fig-noise",
+      "kind": "noise",
+      "title": "Radius under Gaussian corruption",
+      "question": "How do the norm histogram and RMS radius change when you increase sigma or dimension?",
+      "caption": "A seeded Gaussian sample in $D$ dimensions compares measured radii with the illustrative RMS radius $\\sigma\\sqrt{D}$.",
+      "limitation": "This shows Gaussian norm geometry only; it is not paper data, a learned score, or a plot of $D$ physical axes.",
+      "sourceIds": [
+        "section-2",
+        "section-3"
+      ],
+      "claimIds": [
+        "c2",
+        "c3"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "fig-ode",
+      "kind": "ode",
+      "title": "Step size and deterministic integration error",
+      "question": "Which step size keeps forward Euler closest to $e^{-t}$ over the displayed interval?",
+      "caption": "Forward Euler approximates the illustrative scalar decay $\\mathrm{d}x/\\mathrm{d}t=-x$ from $x(0)=1$ on $[0,3]$ and compares it with the exact curve.",
+      "limitation": "This is not an adaptive solver, adjoint method, learned vector field, or simulation of the paper's probability-flow ODE.",
+      "sourceIds": [
+        "section-4",
+        "section-4-part-2"
+      ],
+      "claimIds": [
+        "c10",
+        "c11"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "fig-guidance",
+      "kind": "guidance",
+      "title": "Steering a scalar velocity field",
+      "question": "As guidance weight $w$ increases, where does the equilibrium of the combined toy field move?",
+      "caption": "The illustrative fields $-x$ and $-(x-1)$ are linearly extrapolated, moving the combined field's equilibrium to $x=w$.",
+      "limitation": "This is a toy scalar field, not the paper's likelihood-gradient computation, actual image sampling, or an empirical quality–diversity result.",
+      "sourceIds": [
+        "section-5"
+      ],
+      "claimIds": [
+        "c13"
+      ],
+      "illustrative": true
+    }
+  ],
+  "quiz": [
+    {
+      "question": "Assume the forward drift is zero and reverse integration uses a negative timestep. Ignoring Brownian noise, what direction does the score term move the state?",
+      "options": [
+        {
+          "text": "Toward increasing marginal log density.",
+          "explanation": "Correct. The reverse drift contains $-g(t)^2\\nabla_{\\mathbf{x}}\\log p_t$, but multiplication by negative $\\mathrm{d}t$ makes its increment align with the score."
+        },
+        {
+          "text": "Toward decreasing marginal log density.",
+          "explanation": "This overlooks that reverse-time integration uses $\\mathrm{d}t<0$."
+        },
+        {
+          "text": "It produces no motion because the forward drift is zero.",
+          "explanation": "Zero forward drift does not remove the score-dependent reverse drift."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c5"
+      ]
+    },
+    {
+      "question": "With exact scores, what is shared by the reverse-time SDE and its probability-flow ODE?",
+      "options": [
+        {
+          "text": "Every sample follows the same path.",
+          "explanation": "The ODE path is deterministic while the SDE retains Brownian noise, so individual trajectories need not coincide."
+        },
+        {
+          "text": "Their marginal density at each time.",
+          "explanation": "Correct. The probability-flow ODE is constructed to share the SDE's time-indexed marginal densities."
+        },
+        {
+          "text": "Both require a Brownian increment.",
+          "explanation": "The probability-flow ODE has no stochastic increment."
+        }
+      ],
+      "answer": 1,
+      "sourceIds": [
+        "section-4"
+      ],
+      "claimIds": [
+        "c10",
+        "c11"
+      ]
+    },
+    {
+      "question": "Which conclusion is justified by the paper's predictor-corrector comparison?",
+      "options": [
+        {
+          "text": "A corrector guarantees that every individual step moves toward higher density.",
+          "explanation": "No. Stochastic correction targets a distribution, and individual random updates can move in other directions."
+        },
+        {
+          "text": "Correctors improve every score-based model under every compute budget.",
+          "explanation": "The reported result is conditional on particular CIFAR-10 models, samplers, and evaluation budgets."
+        },
+        {
+          "text": "In Table 1's setup, one corrector per predictor improved quality over P1000 while doubling computation.",
+          "explanation": "Correct. This preserves both the reported comparison and its computational condition."
+        }
+      ],
+      "answer": 2,
+      "sourceIds": [
+        "section-4"
+      ],
+      "claimIds": [
+        "c8",
+        "c9"
+      ]
+    }
+  ],
+  "id": "score-based-generative-modeling-through-stochastic",
+  "createdAt": "2026-10-01T23:25:53.269Z",
+  "pipelineVersion": "subjects-lessons-v1",
+  "sources": [
+    {
+      "id": "abstract",
+      "label": "Original paper · abstract",
+      "url": "https://arxiv.org/abs/2011.13456",
+      "digest": "5efc36a634a45a0ac5e67c6a2063cb49a3a04ef8df4a5085fc33cbb6c3ef3dca"
+    },
+    {
+      "id": "section-1",
+      "label": "1 Introduction",
+      "url": "https://arxiv.org/html/2011.13456#S1",
+      "digest": "b44225dd9dbf1367975f3f0d377428d0309c9793f5ca36951f6c0f07bc790959"
+    },
+    {
+      "id": "section-2",
+      "label": "2 Background",
+      "url": "https://arxiv.org/html/2011.13456#S2",
+      "digest": "0d20f661b177499b458b46e0114492c845df93d4a9b641c8ea33464b42046dd1"
+    },
+    {
+      "id": "section-3",
+      "label": "3 Score-based generative modeling with SDEs",
+      "url": "https://arxiv.org/html/2011.13456#S3",
+      "digest": "f344a66a1a32511680c3958e19783a6afee04ce7caea777bd746aaec129051da"
+    },
+    {
+      "id": "section-4",
+      "label": "4 Solving the reverse SDE",
+      "url": "https://arxiv.org/html/2011.13456#S4",
+      "digest": "5eda35fd0142715eadfe34cdd5cbef3bd8fa9c361d10c2f44a81142d91f49d73"
+    },
+    {
+      "id": "section-4-part-2",
+      "label": "4 Solving the reverse SDE · part 2",
+      "url": "https://arxiv.org/html/2011.13456#S4",
+      "digest": "087bc75359d1f702bea6146e6dd8ef92d232b07aa5e113ec0f3c43840fd0f073"
+    },
+    {
+      "id": "section-5",
+      "label": "5 Controllable generation",
+      "url": "https://arxiv.org/html/2011.13456#S5",
+      "digest": "32fc34e9de07aa2acc2d657c6f374beca9ee3fef513e8c32f4554e44bec16397"
+    },
+    {
+      "id": "section-6",
+      "label": "6 Conclusion",
+      "url": "https://arxiv.org/html/2011.13456#S6",
+      "digest": "810ed76f93a7c22d15ff6e22a6d3a5fe407fe50b53f75456523e70c5dc100669"
+    }
+  ],
+  "review": {
+    "status": "passed",
+    "reviewedAt": "2026-10-02T02:06:45.480Z",
+    "contentDigest": "e7e750c9057f4da5b9ef0e39844c51ea7066843c60cb5c67a2d431bffb09be14"
+  }
+}

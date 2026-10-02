@@ -1,0 +1,431 @@
+{
+  "title": "Depth by Design: Why VGG Built Large Vision Models from Tiny Filters",
+  "summary": "VGG isolates network depth as a design variable, showing how repeated 3×3 convolutions add nonlinear transformations, expand receptive fields, and improve ImageNet accuracy.",
+  "prerequisites": [
+    "Image tensors and feature channels",
+    "Convolution, padding, stride, and pooling",
+    "ReLU, softmax, and gradient descent"
+  ],
+  "objectives": [
+    "Explain how stacked 3×3 convolutions expand the effective receptive field.",
+    "Compare parameter counts for stacked small filters and a single large filter.",
+    "Reconstruct the controlled progression from VGG configuration A through E.",
+    "Interpret reported accuracy under the stated training and evaluation conditions.",
+    "Distinguish mean subtraction, LRN, and illustrative standardization."
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "mechanism",
+      "statement": "The paper studies depth while holding the broad architectural design principles fixed and adding convolutional layers.",
+      "conditions": "Comparison of the paper's A–E configurations under the shared design described in Section 2.",
+      "sourceIds": [
+        "section-1"
+      ]
+    },
+    {
+      "id": "c2",
+      "kind": "mechanism",
+      "statement": "A 3×3 convolution uses stride 1 and one-pixel padding so that it preserves spatial resolution before pooling.",
+      "conditions": "The generic VGG convolutional layout for 3×3 layers.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c3",
+      "kind": "mechanism",
+      "statement": "Spatial downsampling is performed by five 2×2 max-pooling layers with stride 2, placed after selected convolutional layers.",
+      "conditions": "The generic configurations in Section 2.1; pooling does not follow every convolution.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c4",
+      "kind": "mechanism",
+      "statement": "The evaluated family ranges from 11 to 19 weight layers while retaining the same three-layer classifier pattern.",
+      "conditions": "Configurations A through E in Table 1; weight layers count convolutional and fully connected layers.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c5",
+      "kind": "equation",
+      "statement": "Without intervening pooling, two stride-1 3×3 convolutions have a 5×5 effective receptive field, and three have a 7×7 field.",
+      "conditions": "Unit stride, ordinary contiguous convolutions, and no spatial pooling between the layers.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c6",
+      "kind": "equation",
+      "statement": "With C input and output channels at every layer, three 3×3 convolutions use 27C² weights versus 49C² for one 7×7 convolution.",
+      "conditions": "Biases excluded; all three intermediate representations also have C channels.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c7",
+      "kind": "mechanism",
+      "statement": "A 1×1 convolution can add a ReLU transformation without enlarging the spatial receptive field.",
+      "conditions": "Configuration C, with equal input and output channel dimensionality and ReLU after the projection.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c8",
+      "kind": "mechanism",
+      "statement": "Training used minibatch gradient descent with back-propagation and momentum on a multinomial logistic regression objective.",
+      "conditions": "The classification training procedure described in Section 3.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c9",
+      "kind": "mechanism",
+      "statement": "Scale jittering samples the resized image's smallest side and then extracts a fixed 224×224 crop, exposing one model to varied object scales.",
+      "conditions": "Multi-scale training with S sampled from 256 through 512.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c10",
+      "kind": "result",
+      "statement": "At single-scale evaluation, error generally fell as depth increased from configuration A to E, but the improvement saturated at 19 layers in this tested family.",
+      "conditions": "ILSVRC-2012 validation experiments in Table 3 using the paper's specified matching single test scale.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c11",
+      "kind": "result",
+      "statement": "Configuration D outperformed equally deep configuration C, supporting the value of added spatial context rather than extra nonlinearities alone.",
+      "conditions": "Single-test-scale ILSVRC validation comparison of configurations C and D in Table 3.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c12",
+      "kind": "result",
+      "statement": "The best reported single-network validation result under multi-scale testing was 24.8% top-1 error and 7.5% top-5 error.",
+      "conditions": "ILSVRC validation set; configuration D or E trained with scale jittering and evaluated at test scales 256, 384, and 512 in Table 4.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c13",
+      "kind": "result",
+      "statement": "Combining two scale-jittered models with dense and multi-crop evaluation produced 6.8% top-5 test error.",
+      "conditions": "Post-submission ensemble of configurations D and E on the ILSVRC test set, using combined dense and multi-crop evaluation.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c14",
+      "kind": "caveat",
+      "statement": "LRN was not retained in the deeper models because the tested A-LRN variant did not improve over A and required more resources.",
+      "conditions": "ILSVRC comparison of A and A-LRN under the paper's evaluation framework.",
+      "sourceIds": [
+        "section-2",
+        "section-4"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "s1",
+      "title": "The Question VGG Tried to Isolate",
+      "markdown": "The paper's central question is narrower than “how should a vision system be designed?” It asks what happens when a conventional convolutional network becomes deeper while its overall design remains unusually uniform. That framing matters: if filter size, stride, pooling strategy, and classifier structure all changed unpredictably, an accuracy gain could not be attributed cleanly to depth.\n\nThe authors therefore constructed configurations A–E from common rules and progressively inserted convolutional layers. Configuration A has convolution counts of 1, 1, 2, 2, and 2 across its five blocks, for eight convolutional layers total. B adds a second $3\\times3$ layer to each of the first two blocks, producing counts of 2, 2, 2, 2, and 2. C keeps those additions and inserts one $1\\times1$ convolution into each of the final three blocks, while D replaces those three $1\\times1$ layers with corresponding $3\\times3$ layers. E then adds a fourth $3\\times3$ convolution to each of the final three blocks. This controlled progression yields 11 weight layers in A, 13 in B, 16 in C and D, and 19 in E. Here, a **weight layer** is a convolutional or fully connected layer with learned parameters; ReLU and pooling operations are not counted as weight layers.\n\nAn input image is represented as a tensor with spatial coordinates and color channels. A convolutional filter applies the same learned local transformation at every position. A **channel** is one feature map; later channels need not resemble colors, because they encode learned responses. A ReLU applies $\\operatorname{ReLU}(z)=\\max(0,z)$ elementwise. These basics let the architecture gain expressive depth while keeping each local operation simple.",
+      "sourceIds": [
+        "abstract",
+        "section-1",
+        "section-2"
+      ],
+      "claimIds": [
+        "c1",
+        "c4"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s2",
+      "title": "The Repeating Architectural Grammar",
+      "markdown": "Every model receives a $224\\times224$ RGB crop. The paper subtracts the training-set mean RGB value from each pixel, then passes the centered image through five convolutional blocks. Most filters are $3\\times3$, with stride $s=1$ and padding $p=1$. For an input width $n$, kernel width $k$, and dilation one, the output width is\n\n$$n'=\\left\\lfloor\\frac{n+2p-k}{s}\\right\\rfloor+1.$$\n\nWith $k=3$, $p=1$, and $s=1$, this gives $n'=n$. Thus each convolution combines information from a local neighborhood without changing the feature map's height or width. A ReLU follows every hidden layer, so placing several convolutions in one block composes several learned transformations at the same spatial resolution. The deeper configurations primarily add such transformations inside blocks rather than downsampling more often.\n\nDownsampling occurs at five designated boundaries. Each boundary applies max pooling over a $2\\times2$ window with stride 2, retaining the largest response in each window while halving each spatial dimension. Pooling follows selected groups of convolutions, not every convolution. Starting from a $224\\times224$ crop, the five pooling operations reduce the spatial side lengths through $224,112,56,28,14,$ and $7$. Meanwhile, the number of feature channels begins at 64 and doubles after pooling until it reaches 512. This trades spatial detail for a wider learned representation as the network progresses.\n\nAfter the final pool, the $7\\times7\\times512$ representation enters the shared classifier: two fully connected layers with 4096 units each, followed by a 1000-unit layer for the ImageNet classes and a softmax. Because this three-layer classifier and the five pooling locations remain fixed across configurations A–E, the controlled architectural change is the number and type of convolutional layers inserted into the blocks. Configuration C also uses $1\\times1$ convolutions at three positions; these mix channels and add ReLU stages while leaving both spatial dimensions and the spatial receptive field unchanged. Configurations D and E instead use $3\\times3$ filters at those positions, allowing the added layers to gather information from neighboring locations.",
+      "sourceIds": [
+        "section-2",
+        "section-3"
+      ],
+      "claimIds": [
+        "c2",
+        "c3",
+        "c4"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s3",
+      "title": "How Tiny Filters See a Larger Neighborhood",
+      "markdown": "The key geometric fact is that receptive fields accumulate. Let $r_\\ell$ be the effective receptive-field width after layer $\\ell$, and let $j_\\ell$ be the spacing, measured in input pixels, between neighboring outputs at that layer. For kernel width $k_\\ell$ and stride $s_\\ell$,\n\n$$r_\\ell=r_{\\ell-1}+(k_\\ell-1)j_{\\ell-1},\\qquad j_\\ell=j_{\\ell-1}s_\\ell.$$\n\nStart with $r_0=j_0=1$. For stride-1 $3\\times3$ convolutions without intervening pooling, each layer adds two pixels to the receptive-field width. One layer sees $3\\times3$, two see $5\\times5$, and three see $7\\times7$.\n\nNow compare parameters. Suppose every input, intermediate, and output tensor has $C$ channels, and omit biases. One $3\\times3$ layer has $3^2C^2=9C^2$ weights, so three have $27C^2$. One $7\\times7$ layer has $49C^2$. The large layer therefore has\n\n$$\\frac{49C^2-27C^2}{27C^2}=\\frac{22}{27}\\approx81.5\\%$$\n\nmore weights than the stack. For an **illustrative** $C=4$, the stack uses $27(4^2)=432$ weights, while the large filter uses $49(4^2)=784$, a difference of 352. More importantly, the stack inserts three ReLUs rather than one. Thus equal receptive-field extent does not imply equal computation: the deeper route composes several nonlinear functions while imposing a factorized structure on the effective large filter.",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c5",
+        "c6"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s4",
+      "title": "Depth Is Not the Same as More Nonlinearity",
+      "markdown": "Configurations C and D form a particularly informative comparison within the full A–E progression. A begins with 1, 1, 2, 2, and 2 convolutions across its five blocks. B adds a second $3\\times3$ convolution to each of the first two blocks. C then adds one $1\\times1$ convolution to each of the final three blocks, whereas D places a $3\\times3$ convolution at each of those same positions. E extends D by adding a fourth $3\\times3$ convolution to each of the final three blocks.\n\nC and D therefore both have 16 weight layers, but the three added layers serve different spatial roles. A $1\\times1$ filter mixes channels at each location, and its following ReLU adds a nonlinear transformation, but it does not combine neighboring spatial positions. A $3\\times3$ filter does both.\n\nThis separates two benefits often bundled together under “depth”: adding nonlinear stages and accumulating spatial context. In the reported single-scale validation results, C improves over the shallower B, yet D improves over C. Under the tested configurations, extra nonlinearity helped, but spatially nontrivial filters helped further.\n\nThis also corrects the misconception that VGG proves depth alone always improves accuracy. The evidence is conditional on this architecture family, training recipe, dataset, and depth range. Configuration E's improvement saturated around 19 weight layers, and the paper only suggests that still deeper models might benefit from larger datasets. It does not establish an unlimited monotonic law, nor does it compare modern residual connections, normalization systems, or contemporary optimizers.",
+      "sourceIds": [
+        "section-2",
+        "section-4"
+      ],
+      "claimIds": [
+        "c7",
+        "c10",
+        "c11"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s5",
+      "title": "Optimization, Initialization, and Scale",
+      "markdown": "Training minimizes a multinomial logistic-regression objective using minibatch gradient descent, back-propagation, and momentum. If $y$ is the true class, $z_c$ is the score for class $c$, and there are $K$ classes, softmax gives\n\n$$p_c=\\frac{e^{z_c}}{\\sum_{j=1}^{K}e^{z_j}},\\qquad \\mathcal{L}=-\\log p_y.$$\n\nThe reported recipe used minibatches of 256 and momentum 0.9. Weight decay applied an $L_2$ penalty multiplier of $5\\cdot10^{-4}$, while dropout with ratio 0.5 regularized the first two fully connected layers. The learning rate began at $10^{-2}$ and was divided by 10 whenever validation accuracy stopped improving. It was reduced three times, and training ended after 370,000 iterations, corresponding to 74 epochs.\n\nThe learning-rate experiment isolates one elementary part of optimization. For the illustrative scalar objective\n\n$$f(x)=\\frac{x^2}{2},\\qquad \\nabla f(x)=x,$$\n\nplain gradient descent with learning rate $\\eta$ performs\n\n$$x_{t+1}=x_t-\\eta x_t=(1-\\eta)x_t.$$\n\nStarting from $x_0=3$, the figure displays 12 updates, and its learning-rate control alone changes those iterates. The closed form is $x_t=3(1-\\eta)^t$. When $0<\\eta\\leq1$, the iterates approach zero without alternating signs; at $\\eta=1$, the first update reaches zero exactly. When $1<\\eta<2$, the factor $1-\\eta$ is negative but has magnitude below one, so successive iterates alternate around zero while shrinking. At $\\eta=2$, they alternate between $3$ and $-3$, and for $\\eta>2$ their magnitudes grow, so they fail to approach zero. This scalar calculation explains why step size controls stability, but VGG's actual training used momentum on a high-dimensional minibatch objective, so its parameter trajectory does not follow this one-variable recurrence.\n\nInitialization was a practical difficulty because poorly scaled weights can make gradients unstable in a deep stack. The authors first trained configuration A from a random initialization. For the deeper configurations, they copied A's first four convolutional layers and its last three fully connected layers, then randomly initialized the intervening layers. The copied layers remained trainable at the ordinary learning rate. Randomly initialized weights were sampled from a zero-mean normal distribution with variance $10^{-2}$, and biases began at zero. After submission, the authors found that the Glorot–Bengio initialization procedure could train the networks without this layer transfer, so reuse of A was a training solution rather than an architectural requirement.\n\nScale augmentation changes how much of an object can occupy the fixed input crop. Let $S$ be the length of the smallest side after an image is resized isotropically. Training then samples one random $224\\times224$ crop per image per SGD iteration, followed by random horizontal flipping and an RGB color shift. With $S=224$, a crop spans the resized image's entire shorter dimension; as $S$ grows, the same crop covers a smaller portion of the image and may contain an object part rather than the whole object.\n\nThe fixed-scale models used $S=256$ or $S=384$. For the latter, training was accelerated by initializing from the corresponding $S=256$ model and using an initial learning rate of $10^{-3}$. In multi-scale training, each image independently sampled $S\\in[256,512]$ before cropping. Those models were fine-tuned in all layers from a model trained at fixed $S=384$. Consequently, a single set of learned weights encountered objects at a wider range of apparent scales. This condition produced lower single-test-scale validation error than fixed-scale training in the reported comparisons, but the conclusion is tied to the paper's crop augmentation, ImageNet data, and evaluation recipe.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c8",
+        "c9"
+      ],
+      "figureId": "fig-optimizer"
+    },
+    {
+      "id": "s6",
+      "title": "Reading the Evidence Without Mixing Conditions",
+      "markdown": "The ImageNet experiments used 1000 classes, with 1.3 million training images, 50,000 validation images, and 100,000 test images whose labels were held out. **Top-1 error** counts examples whose highest-scored class is wrong. **Top-5 error** counts examples whose true class is absent from the five highest-scored classes.\n\nAt a single test scale, Table 3 reports a broad reduction in error as the family deepens. For scale-jittered training and test scale $Q=384$, D records 25.6% top-1 and 8.1% top-5 validation error, while E records 25.5% and 8.0%. These nearby values motivate the paper's saturation statement. They should not be confused with the better multi-test-scale results.\n\nFor multi-scale testing, the scale-jittered D and E models were each evaluated at $Q\\in\\{256,384,512\\}$ and their outputs combined across scales. Both reached 24.8% top-1 and 7.5% top-5 validation error. A separate post-submission result combined two models, D and E, and combined dense with multi-crop evaluation, yielding 6.8% top-5 test error. This is an ensemble-and-evaluation result, not the performance of one ordinary forward pass.\n\nDense evaluation converts fully connected layers into convolutions and spatially averages a class-score map. Multi-crop evaluation applies the network repeatedly to explicit crops. Their differing boundary context can make them complementary, but that does not turn their average into evidence about depth alone.",
+      "sourceIds": [
+        "section-3",
+        "section-4"
+      ],
+      "claimIds": [
+        "c10",
+        "c12",
+        "c13"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s7",
+      "title": "Normalization Is Not One Operation",
+      "markdown": "The paper's input preprocessing and its Local Response Normalisation experiment act at different points and perform different computations. Before the image enters the network, the authors subtract the training-set mean RGB value from every pixel. This centers the input according to a statistic computed over the training data; it is the only preprocessing operation identified in the architecture description.\n\nLocal Response Normalisation, or LRN, is instead a layer applied to neural activations. The paper tested it by placing an LRN layer after the first convolution of configuration A, producing the A-LRN variant while leaving the model at 11 weight layers and 133 million parameters. Under single-scale evaluation with training and test smallest-side scales $S=Q=256$, configuration A recorded 29.6% top-1 and 10.4% top-5 validation error. A-LRN recorded 29.7% and 10.5%, respectively. Since the normalized variant did not improve the measured error and required additional memory and computation, the authors omitted LRN from configurations B–E.\n\nThe figure illustrates population standardization with the fixed activation vector\n\n$$x=[-2,-1,0,2,6].$$\n\nIts control adds one common offset $b$ to all five values, producing $x_i'=x_i+b$, before the vector is standardized. For values $x_1,\\ldots,x_n$, population standardization computes\n\n$$\\mu=\\frac{1}{n}\\sum_{i=1}^{n}x_i,\\qquad\n\\sigma=\\sqrt{\\frac{1}{n}\\sum_{i=1}^{n}(x_i-\\mu)^2},\\qquad\n\\hat{x}_i=\\frac{x_i-\\mu}{\\sigma}.$$\n\nFor the fixed vector, $\\mu=1$, the population variance is $8$, and $\\sigma=\\sqrt{8}$. Its standardized values are therefore\n\n$$\\left[-\\frac{3}{\\sqrt{8}},-\\frac{2}{\\sqrt{8}},-\\frac{1}{\\sqrt{8}},\\frac{1}{\\sqrt{8}},\\frac{5}{\\sqrt{8}}\\right].$$\n\nAfter adding the same offset to every activation, the mean becomes $\\mu'=1+b$. Uniform translation does not change deviations from the mean or the population standard deviation:\n\n$$x_i'-\\mu'=(x_i+b)-(1+b)=x_i-1,$$\n\nand hence\n\n$$\\frac{x_i'-\\mu'}{\\sigma}=\\frac{(x_i+b)-(\\mu+b)}{\\sigma}=\\frac{x_i-\\mu}{\\sigma}.$$\n\nThus the offset moves all five raw activations but leaves their standardized values unchanged. This invariance depends on applying one identical additive offset before subtracting the vector's own population mean; different per-value shifts would generally alter both the centered values and their standard deviation.\n\nThe pictured calculation is distinct from both operations tested in VGG. Mean RGB subtraction centers image inputs using a training-set statistic but does not divide this five-value activation vector by its population standard deviation. LRN acts inside the network on responses and is not the whole-vector transformation above. Accordingly, the A-LRN comparison supports omitting that particular layer under the reported ImageNet conditions; it does not show that input centering is unnecessary or that all normalization procedures have the same computation or empirical effect.",
+      "sourceIds": [
+        "section-2",
+        "section-4"
+      ],
+      "claimIds": [
+        "c14"
+      ],
+      "figureId": "fig-normalization"
+    },
+    {
+      "id": "s8",
+      "title": "What the Paper Establishes—and What It Leaves Open",
+      "markdown": "## What the Paper Establishes—and What It Leaves Open\n\nWithin the A–E configuration family, VGG provides evidence that increasing convolutional depth with repeated small filters improved ImageNet classification. The architectural comparison supplies a mechanism for that result. With unit stride and no intervening pooling, each $3\\times3$ convolution increases receptive-field width by two, so three layers span an effective $7\\times7$ neighborhood. If every layer has $C$ input and output channels, those three layers contain $27C^2$ weights, compared with $49C^2$ for one $7\\times7$ convolution, while also placing a ReLU after each learned transformation. Configuration C sharpens the interpretation: replacing its added $1\\times1$ layers with $3\\times3$ layers produces configuration D at the same weight-layer depth, and D performs better under the reported single-scale validation conditions. In this comparison, gathering additional spatial context contributes beyond merely inserting more channel-mixing nonlinearities.\n\nThe result remains conditional on the rest of the experimental design. Across configurations A–E, the channel schedule, five pooling boundaries, three-layer classifier, input crop size, optimization framework, and evaluation definitions are broadly shared, but these choices were not varied factorially. The experiment therefore supports depth within this deliberately homogeneous family rather than identifying an architecture-independent effect of layer count. The observed improvement also saturates at 19 weight layers in the tested range: at a single test scale of $Q=384$ after scale-jittered training, D reports 25.6% top-1 and 8.1% top-5 validation error, while E reports 25.5% and 8.0%. Those results do not determine what would happen at arbitrary depth or under a different optimization method, dataset, pooling schedule, or classifier.\n\nThe lesson’s scalar optimization calculation explains one important control in that training recipe. For $f(x)=x^2/2$, plain gradient descent gives $x_{t+1}=(1-\\eta)x_t$, so changing the learning rate $\\eta$ changes whether the displayed iterates shrink directly, alternate while shrinking, remain in a two-point oscillation, or diverge. VGG training is more complex—minibatch gradients, momentum 0.9, weight decay, dropout, and a scheduled learning rate act on a high-dimensional network—but the calculation identifies the same basic consequence of step size: it governs how strongly each gradient update changes the parameters and whether a simple descent process is stable. The paper’s actual schedule began at $10^{-2}$ and reduced the rate by a factor of ten when validation accuracy stopped improving.\n\nThe standardization calculation likewise clarifies why normalization must be identified by its operation rather than by a generic label. Adding a common offset $b$ to the illustrative vector $[-2,-1,0,2,6]$ changes its mean from $1$ to $1+b$, but subtracting that new mean cancels the offset, leaving the standardized values unchanged. VGG’s input preprocessing instead subtracts a training-set mean RGB value from each pixel, while its tested LRN layer transforms internal responses. The A-LRN comparison found no improvement over A under the stated ImageNet condition and incurred additional memory and computation, so LRN was omitted from the deeper configurations. That empirical finding applies to the tested LRN variant; it neither supplies the standardization invariance shown by the illustrative vector nor removes the role of input mean subtraction.\n\nReported accuracy must also remain attached to its evaluation procedure. A scale-jittered D or E model evaluated at $Q\\in\\{256,384,512\\}$ reaches 24.8% top-1 and 7.5% top-5 validation error as a single network. The 6.8% top-5 test error comes from averaging configurations D and E and combining dense with multi-crop evaluation. Because rescaling, repeated crops, dense score maps, horizontal flips, and model ensembling change which predictions are computed and averaged, these numbers describe different experimental conditions rather than interchangeable measures of one forward pass.\n\nThe durable conclusion is therefore precise: on the paper’s ImageNet classification setup, a conventional ConvNet built from homogeneous stacks of small convolutions could be deepened to 16–19 weight layers and achieve substantially better accuracy than the shallower configurations tested. The paper also reports localization and transfer results, but evaluating those claims requires their corresponding experimental settings and measurements. For the evidence developed here, VGG’s contribution is the controlled connection among small filters, accumulated receptive field, repeated nonlinear transformation, and improved classification accuracy—not a universal theorem that increasing depth alone must improve every vision system.",
+      "sourceIds": [
+        "abstract",
+        "section-2",
+        "section-3",
+        "section-4",
+        "section-5"
+      ],
+      "claimIds": [
+        "c1",
+        "c5",
+        "c6",
+        "c10",
+        "c11",
+        "c12",
+        "c13"
+      ],
+      "figureId": null
+    }
+  ],
+  "figures": [
+    {
+      "id": "fig-optimizer",
+      "kind": "optimizer",
+      "title": "Learning Rate on a Scalar Quadratic",
+      "question": "Which learning rates make the 12 iterates approach zero smoothly, alternate around zero, or move away from zero?",
+      "caption": "Plain gradient descent takes 12 illustrative updates on $f(x)=x^2/2$ from $x=3$ while the learning rate changes.",
+      "limitation": "The control omits momentum, minibatches, schedules, regularization, and VGG's high-dimensional neural-network objective.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c8"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "fig-normalization",
+      "kind": "normalization",
+      "title": "Offset Before Standardization",
+      "question": "If the same offset is added to all five activations, will their standardized values change?",
+      "caption": "A fixed five-value vector is offset and then standardized using its population mean and population standard deviation.",
+      "limitation": "This single-vector computation is not RGB mean subtraction, LRN, BatchNorm, LayerNorm, or a training implementation.",
+      "sourceIds": [
+        "section-2",
+        "section-4"
+      ],
+      "claimIds": [
+        "c14"
+      ],
+      "illustrative": true
+    }
+  ],
+  "quiz": [
+    {
+      "question": "Assume stride 1, dilation 1, and no pooling between layers. What receptive field results from four consecutive 3×3 convolutions?",
+      "options": [
+        {
+          "text": "7×7",
+          "explanation": "Incorrect. Three such layers have a 7×7 effective receptive field."
+        },
+        {
+          "text": "9×9",
+          "explanation": "Correct. Starting at width 1, each 3×3 layer adds 2: $1+4\\cdot2=9$."
+        },
+        {
+          "text": "12×12",
+          "explanation": "Incorrect. Kernel widths are not added directly because adjacent layers' receptive fields overlap."
+        }
+      ],
+      "answer": 1,
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c5"
+      ]
+    },
+    {
+      "question": "Why is the comparison between configurations C and D more informative than merely comparing their layer counts?",
+      "options": [
+        {
+          "text": "They have the same depth but differ in whether added layers gather spatial context.",
+          "explanation": "Correct. C uses 1×1 layers at selected positions, while D uses 3×3 layers, separating nonlinearity from spatial mixing."
+        },
+        {
+          "text": "D uses LRN while C does not.",
+          "explanation": "Incorrect. The deeper configurations did not retain LRN; A-LRN is the explicit normalization variant."
+        },
+        {
+          "text": "C is evaluated on a different number of ImageNet classes.",
+          "explanation": "Incorrect. Both belong to the same 1000-class experimental framework."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-2",
+        "section-4"
+      ],
+      "claimIds": [
+        "c7",
+        "c11",
+        "c14"
+      ]
+    },
+    {
+      "question": "Which conclusion is justified by the reported 6.8% top-5 test error?",
+      "options": [
+        {
+          "text": "Every single VGG forward pass achieves 6.8% top-5 test error.",
+          "explanation": "Incorrect. The value depends on combining two models and two evaluation techniques."
+        },
+        {
+          "text": "A 19-layer model alone proves that arbitrary additional depth always improves accuracy.",
+          "explanation": "Incorrect. The tested family saturated near 19 layers, and the result is not a universal depth law."
+        },
+        {
+          "text": "A two-model D/E ensemble with combined dense and multi-crop evaluation achieved that result.",
+          "explanation": "Correct. Those are the specific post-submission conditions attached to the 6.8% figure."
+        }
+      ],
+      "answer": 2,
+      "sourceIds": [
+        "section-4"
+      ],
+      "claimIds": [
+        "c10",
+        "c13"
+      ]
+    }
+  ],
+  "id": "very-deep-convolutional-networks-for-large",
+  "createdAt": "2026-10-01T23:29:35.730Z",
+  "pipelineVersion": "subjects-lessons-v1",
+  "sources": [
+    {
+      "id": "abstract",
+      "label": "Original paper · abstract",
+      "url": "https://arxiv.org/abs/1409.1556",
+      "digest": "56ed2af653a1aa2bb60441e642d65294e0e1b53ad8105504c0d1fb47aab0a447"
+    },
+    {
+      "id": "section-1",
+      "label": "1 Introduction",
+      "url": "https://arxiv.org/html/1409.1556#S1",
+      "digest": "5ca9d71db34a7d04a25500580b4de9e52424e53ceb8dd66e34ad1deef68a6266"
+    },
+    {
+      "id": "section-2",
+      "label": "2 ConvNet Configurations",
+      "url": "https://arxiv.org/html/1409.1556#S2",
+      "digest": "e8e992e164c500c199ca812dc393ee805d92224b919c46ccb69b9e05756a373f"
+    },
+    {
+      "id": "section-3",
+      "label": "3 Classification Framework",
+      "url": "https://arxiv.org/html/1409.1556#S3",
+      "digest": "8d2c801be1a684e9ac8c60a166011ca37d19170609e90258982eb0bfade46f83"
+    },
+    {
+      "id": "section-4",
+      "label": "4 Classification Experiments",
+      "url": "https://arxiv.org/html/1409.1556#S4",
+      "digest": "70d448f8969ae34848e6b062fb3eb2af7b62e3b810a855833b69569b357fe37e"
+    },
+    {
+      "id": "section-4-part-2",
+      "label": "4 Classification Experiments · part 2",
+      "url": "https://arxiv.org/html/1409.1556#S4",
+      "digest": "6281c03906f5bc16825e006500bf22b1ff863ed0d1027f69e7e7cbafb86dfd89"
+    },
+    {
+      "id": "section-5",
+      "label": "5 Conclusion",
+      "url": "https://arxiv.org/html/1409.1556#S5",
+      "digest": "a9c8c93928aa301f274e0f2e177863fb11eabf404350e75ffeffa8c4af8d3da2"
+    }
+  ],
+  "review": {
+    "status": "passed",
+    "reviewedAt": "2026-10-02T00:27:23.573Z",
+    "contentDigest": "f3238f6eab4877b9dec580a882521cdba556acf8f41c189cb7992b1914de2d46"
+  }
+}

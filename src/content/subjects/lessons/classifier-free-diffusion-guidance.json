@@ -1,0 +1,418 @@
+{
+  "title": "The Negative Score That Steers: Reconstructing Classifier-Free Diffusion Guidance",
+  "summary": "Classifier-free guidance jointly learns conditional and unconditional denoising, then extrapolates their predictions to exchange sample diversity for fidelity.",
+  "prerequisites": [
+    "Gaussian noise and the multivariate normal distribution",
+    "Conditional probability and Bayes’ rule",
+    "Gradients of log densities, often called scores",
+    "The forward-noising and reverse-denoising views of diffusion models",
+    "Linear combinations of vectors"
+  ],
+  "objectives": [
+    "Explain how continuous-time diffusion represents noise level using log signal-to-noise ratio.",
+    "Reconstruct how random condition dropout trains one network to make both conditional and unconditional predictions.",
+    "Derive and calculate the classifier-free guidance combination.",
+    "Distinguish classifier-free guidance from guidance by an external classifier.",
+    "Interpret the reported ImageNet evidence under its actual resolutions, sampling budgets, and metrics limitations."
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "equation",
+      "statement": "At log-SNR level $\\lambda$, the paper’s variance-preserving forward marginal is Gaussian with mean $\\alpha_\\lambda\\mathbf{x}$ and isotropic variance $\\sigma_\\lambda^2\\mathbf I$, where $\\alpha_\\lambda^2+\\sigma_\\lambda^2=1$.",
+      "conditions": "For the paper’s continuous-time, variance-preserving forward process.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c2",
+      "kind": "mechanism",
+      "statement": "The noise coordinate $\\lambda$ is the log signal-to-noise ratio, and forward corruption proceeds toward smaller $\\lambda$.",
+      "conditions": "Under the paper’s definitions of $\\alpha_\\lambda$ and $\\sigma_\\lambda$.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c3",
+      "kind": "equation",
+      "statement": "Training minimizes squared error between the network’s predicted noise and the Gaussian noise actually used to corrupt the example.",
+      "conditions": "For $\\boldsymbol\\epsilon\\sim\\mathcal N(\\mathbf0,\\mathbf I)$ and $\\mathbf z_\\lambda=\\alpha_\\lambda\\mathbf x+\\sigma_\\lambda\\boldsymbol\\epsilon$.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c4",
+      "kind": "mechanism",
+      "statement": "A single network learns both branches: ordinary conditions request conditional predictions, while a null condition requests the unconditional prediction.",
+      "conditions": "When the class identifier is randomly replaced by $\\varnothing$ during joint training.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c5",
+      "kind": "equation",
+      "statement": "Classifier-free guidance uses $\\tilde{\\boldsymbol\\epsilon}_\\theta=(1+w)\\boldsymbol\\epsilon_\\theta(\\mathbf z_\\lambda,\\mathbf c)-w\\boldsymbol\\epsilon_\\theta(\\mathbf z_\\lambda)$, equivalently the conditional estimate plus $w$ times its difference from the unconditional estimate.",
+      "conditions": "During sampling at a fixed noisy state $\\mathbf z_\\lambda$, condition $\\mathbf c$, and guidance weight $w$.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c6",
+      "kind": "caveat",
+      "statement": "With learned unconstrained neural fields, the conditional-minus-unconditional direction need not be the gradient of any classifier likelihood.",
+      "conditions": "For the learned estimates rather than ideal exact conservative score fields.",
+      "sourceIds": [
+        "section-3-part-2"
+      ]
+    },
+    {
+      "id": "c7",
+      "kind": "result",
+      "statement": "The experiments sweep guidance on class-conditional ImageNet at both $64\\times64$ and $128\\times128$ resolution.",
+      "conditions": "In the paper’s proof-of-concept evaluation of FID and Inception Score.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c8",
+      "kind": "result",
+      "statement": "The main sweep evaluates $w$ from 0 through 4 in increments of 0.1, using 50,000 generated samples per setting.",
+      "conditions": "For the reported ImageNet FID and Inception Score procedures.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c9",
+      "kind": "result",
+      "statement": "In the reported experiments, weak guidance gave the best FID while strong guidance gave the best Inception Score, demonstrating that one weight did not optimize both metrics.",
+      "conditions": "For the paper’s evaluated datasets, architectures, training schedules, and guidance sweep.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c10",
+      "kind": "result",
+      "statement": "For the $64\\times64$ study, allocating half of training to unconditional examples performed worse than using unconditional probabilities 0.1 or 0.2.",
+      "conditions": "Across the reported IS/FID frontier after 400 thousand training steps.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c11",
+      "kind": "caveat",
+      "statement": "Each classifier-free guided sampling step requires two denoiser evaluations, complicating speed comparisons based only on the number of diffusion steps.",
+      "conditions": "For the paper’s implementation, which separately evaluates conditional and unconditional predictions.",
+      "sourceIds": [
+        "section-4",
+        "section-5"
+      ]
+    },
+    {
+      "id": "c12",
+      "kind": "caveat",
+      "statement": "The authors frame the evaluation as a proof of concept rather than an architecture and hyperparameter search optimized specifically for classifier-free guidance.",
+      "conditions": "For the reported ImageNet experiments reusing settings from classifier-guided diffusion apart from continuous-time training.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c13",
+      "kind": "caveat",
+      "statement": "Increasing fidelity by guidance can reduce representation of already underrepresented parts of the data distribution.",
+      "conditions": "For deployments where coverage of different parts of the data distribution matters.",
+      "sourceIds": [
+        "section-5"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "s1",
+      "title": "1. The problem is steering, not merely denoising",
+      "markdown": "A conditional diffusion model already knows how to denoise toward examples associated with a condition $\\mathbf c$, such as an image class. The paper asks a narrower question: can sampling be pushed toward especially condition-characteristic outputs without training a second classifier?\n\nEarlier classifier guidance combined a diffusion score with the input gradient of a noisy-image classifier. That could improve classifier-oriented sample-quality metrics, but the classifier had to be separately trained on corrupted inputs. Classifier-free guidance replaces that auxiliary system with two predictions from a pure generative model: one made with the condition and one made without it.\n\nThe contribution is therefore not condition dropout alone and not a new diffusion forward process. It is the training-and-sampling pair: jointly learn conditional and unconditional denoising in one network, then extrapolate from the unconditional prediction through the conditional prediction at sampling time. The resulting scalar control $w$ exposes a fidelity–diversity trade-off. The paper tests that claim on class-conditional ImageNet at two resolutions, explicitly presenting the experiments as proof of concept rather than a fully retuned state-of-the-art campaign.",
+      "sourceIds": [
+        "abstract",
+        "section-1",
+        "section-4"
+      ],
+      "claimIds": [
+        "c7",
+        "c12"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s2",
+      "title": "2. Noise level as a coordinate",
+      "markdown": "Let $\\mathbf x\\sim p(\\mathbf x)$ be a clean data vector. The forward process constructs a noisy variable\n\n$$\n\\mathbf z_\\lambda=\\alpha_\\lambda\\mathbf x+\\sigma_\\lambda\\boldsymbol\\epsilon,\n\\qquad \\boldsymbol\\epsilon\\sim\\mathcal N(\\mathbf0,\\mathbf I),\n$$\n\nwhere $\\mathbf I$ is the identity matrix, $\\alpha_\\lambda$ scales signal, and $\\sigma_\\lambda$ scales noise. The paper sets $\\alpha_\\lambda^2=1/(1+e^{-\\lambda})$ and $\\sigma_\\lambda^2=1-\\alpha_\\lambda^2$. Thus $\\lambda=\\log(\\alpha_\\lambda^2/\\sigma_\\lambda^2)$ is log signal-to-noise ratio, or log-SNR. Larger $\\lambda$ means relatively more signal; forward noising runs toward decreasing $\\lambda$.\n\nThe noise experiment below isolates one prerequisite: isotropic Gaussian vectors have random lengths. Increasing $\\sigma$ scales those lengths, while increasing dimension $D$ concentrates their relative spread around the RMS radius $\\sigma\\sqrt D$. Predict how the norm histogram changes before moving either control. This matters because diffusion noise is a vector, not a single fixed-radius shell.\n\nThe experiment does not reproduce the paper’s time schedule, images, denoiser, or reverse sampler. In particular, $D$ is abstract vector dimension rather than three-dimensional physical space, and a norm histogram says nothing about sample fidelity.",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c1",
+        "c2"
+      ],
+      "figureId": "fig-noise"
+    },
+    {
+      "id": "s3",
+      "title": "3. What the denoiser learns",
+      "markdown": "The model $\\boldsymbol\\epsilon_\\theta(\\mathbf z_\\lambda,\\mathbf c)$, with parameters $\\theta$, receives a noisy state, its noise level (suppressed in the paper’s compact notation), and condition $\\mathbf c$. It predicts the particular Gaussian noise $\\boldsymbol\\epsilon$ used to form that state. Training minimizes\n\n$$\n\\mathbb E_{\\boldsymbol\\epsilon,\\lambda}\n\\left[\\left\\|\\boldsymbol\\epsilon_\\theta(\\mathbf z_\\lambda,\\mathbf c)-\\boldsymbol\\epsilon\\right\\|_2^2\\right].\n$$\n\nHere $\\mathbb E$ denotes expectation over sampled noise and noise levels, and $\\|\\cdot\\|_2^2$ is squared Euclidean distance. Noise prediction can be converted into a clean-data estimate:\n\n$$\n\\mathbf x_\\theta(\\mathbf z_\\lambda)=\n\\frac{\\mathbf z_\\lambda-\\sigma_\\lambda\\boldsymbol\\epsilon_\\theta(\\mathbf z_\\lambda)}{\\alpha_\\lambda}.\n$$\n\nThe reverse sampler repeatedly uses such estimates while moving through an increasing sequence $\\lambda_1<\\cdots<\\lambda_T$. Here $T$ is the number of discrete sampling steps. The learned noise predictor also corresponds, up to the factor $-\\sigma_\\lambda$, to a noisy-data log-density score. This connection makes linear combinations of noise predictions interpretable as combinations of estimated score directions, while not guaranteeing that a neural vector field is the gradient of one globally consistent scalar density.",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c3"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s4",
+      "title": "4. One network, two roles",
+      "markdown": "During joint training, the ordinary condition $\\mathbf c$ is randomly replaced by a null identifier $\\varnothing$ with probability $p_{\\mathrm{uncond}}$. The same parameterized network therefore learns two queries:\n\n$$\n\\boldsymbol\\epsilon_c=\\boldsymbol\\epsilon_\\theta(\\mathbf z_\\lambda,\\mathbf c),\n\\qquad\n\\boldsymbol\\epsilon_u=\\boldsymbol\\epsilon_\\theta(\\mathbf z_\\lambda,\\varnothing).\n$$\n\n$\\boldsymbol\\epsilon_c$ is the conditional estimate and $\\boldsymbol\\epsilon_u$ the unconditional estimate. This does not mean the condition is ignored everywhere or that two separately parameterized diffusion models must be stored. It means one model is trained to respond coherently to both input forms.\n\nA useful intuition is that $\\boldsymbol\\epsilon_c-\\boldsymbol\\epsilon_u$ identifies how the denoising direction changes when the condition is supplied. Training must reserve enough experience for the null branch to estimate that difference. Yet more unconditional training is not automatically better: in the reported $64\\times64$ ImageNet comparison, $p_{\\mathrm{uncond}}=0.5$ was worse across the measured frontier than 0.1 or 0.2. That result is conditional on those models and 400 thousand training steps; it is not a universal optimum for other datasets, architectures, or conditioning types.",
+      "sourceIds": [
+        "section-3",
+        "section-4"
+      ],
+      "claimIds": [
+        "c4",
+        "c10"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s5",
+      "title": "5. Guidance is extrapolation beyond the conditional branch",
+      "markdown": "At each sampling step, classifier-free guidance forms\n\n$$\n\\tilde{\\boldsymbol\\epsilon}_\\theta\n=(1+w)\\boldsymbol\\epsilon_c-w\\boldsymbol\\epsilon_u\n=\\boldsymbol\\epsilon_c+w(\\boldsymbol\\epsilon_c-\\boldsymbol\\epsilon_u),\n$$\n\nwhere $w$ is the paper’s guidance strength and $\\tilde{\\boldsymbol\\epsilon}_\\theta$ replaces the ordinary conditional estimate in the reverse transition. When $w=0$, the result is $\\boldsymbol\\epsilon_c$. Positive $w$ therefore moves beyond the conditional prediction, away from the unconditional prediction.\n\nWorked example (illustrative arithmetic, not a reported model output): suppose one scalar component has $\\epsilon_c=0.6$, $\\epsilon_u=1.0$, and $w=2$. Then\n\n$$\n\\tilde\\epsilon=(1+2)(0.6)-2(1.0)=1.8-2.0=-0.2.\n$$\n\nEquivalently, $0.6+2(0.6-1.0)=0.6-0.8=-0.2$. The guided value lies beyond $0.6$ away from $1.0$; it is not an average. A common misconception is that $w$ means “percent conditioning.” It instead scales a learned vector difference at every noisy state.\n\nThe guidance experiment uses a related but differently parameterized toy combination,\n\n$$\nv=v_{\\mathrm{uncond}}+g(v_{\\mathrm{cond}}-v_{\\mathrm{uncond}}),\n$$\n\nwith $v_{\\mathrm{uncond}}=-x$ and $v_{\\mathrm{cond}}=-(x-1)$. Its contracted control is denoted $g$ here to avoid confusing it with the paper’s $w$. For $0<g<1$, the toy interpolates between the two fields; $g=1$ reaches the conditional field; only $g>1$ extrapolates beyond it. Its equilibrium is $x=g$.\n\nThe paper’s equation can be written in the toy convention by setting $g=1+w$. Thus the paper’s $w=0$ corresponds to the toy’s $g=1$, and its analogue would have equilibrium $x=1+w$. Predict the toy equilibrium and classify the regime before changing $g$. This experiment clarifies linear mixing only: it is not image diffusion, learned denoising, or an empirical fidelity–diversity curve.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c5"
+      ],
+      "figureId": "fig-guidance"
+    },
+    {
+      "id": "s6",
+      "title": "6. Why “classifier-free” is a substantive distinction",
+      "markdown": "With exact conditional and unconditional scores, Bayes’ rule suggests an implicit classifier because\n\n$$\np^i(\\mathbf c\\mid\\mathbf z_\\lambda)\\propto\n\\frac{p(\\mathbf z_\\lambda\\mid\\mathbf c)}{p(\\mathbf z_\\lambda)}.\n$$\n\nIts log-gradient is proportional to the difference between exact conditional and unconditional score estimates. This motivates the guidance equation. But motivation is not identity in the learned system. The actual predictors are outputs of unconstrained neural networks, so their difference need not be a conservative vector field—the gradient of any scalar classifier log-likelihood.\n\nConsequently, classifier-free guidance should not be described as secretly evaluating an ordinary image classifier. It uses no separately trained classifier gradient, and the learned guidance direction generally cannot be interpreted as a gradient-based adversarial attack on one. The careful statement is: exact-score algebra provides an implicit-classifier analogy, while the implemented learned fields may not possess the mathematical integrability needed for a literal classifier potential.\n\nThis distinction also limits claims about probability distributions. The linear combination is operationally well-defined for sampling even when no single normalized density has it as an exact score. The paper demonstrates usefulness empirically; it does not prove that arbitrary learned guided fields correspond to exact distributions.",
+      "sourceIds": [
+        "section-3",
+        "section-3-part-2",
+        "section-5"
+      ],
+      "claimIds": [
+        "c6"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s7",
+      "title": "7. Reading the evidence without flattening the trade-off",
+      "markdown": "The principal experiments use area-downsampled, class-conditional ImageNet at $64\\times64$ and $128\\times128$. At each resolution, the authors sweep\n\n$$\nw\\in\\{0,0.1,0.2,\\ldots,4\\}\n$$\n\nand compute FID and Inception Score from 50,000 generated samples for every setting. All models use log-SNR endpoints $\\lambda_{\\min}=-20$ and $\\lambda_{\\max}=20$. The $64\\times64$ models use sampler variance-interpolation coefficient $v=0.3$ and 400 thousand training steps; the $128\\times128$ model uses $v=0.2$ and 2.7 million training steps. These conditions matter because the sweep measures the behavior of particular trained models and samplers, not a universal response curve for classifier-free guidance.\n\nThe two metrics favor different regions of that curve. The best reported FID occurs with weak guidance—$w=0.1$ or $w=0.3$, depending on the evaluated model—whereas the best reported Inception Score occurs at $w\\geq4$. Increasing $w$ strengthens the extrapolation\n\n$$\n\\tilde{\\boldsymbol\\epsilon}_\\theta\n=\\boldsymbol\\epsilon_c+w(\\boldsymbol\\epsilon_c-\\boldsymbol\\epsilon_u),\n$$\n\nso the sampler moves farther from the unconditional estimate in the condition-specific direction. In the reported samples, that control increased individual fidelity while reducing variety; strong guidance could also produce saturated colors. The scientific conclusion is therefore a fidelity–diversity trade-off, not that a larger guidance weight improves every notion of quality. FID and Inception Score are classifier-based summary statistics and do not by themselves measure human preference or complete coverage of the data distribution.\n\nSampling-step counts also require a compute-aware interpretation. Each classifier-free guided step evaluates the full denoiser twice: once with $\\mathbf c$ and once with the null condition. For the $128\\times128$ model, the authors compare $T\\in\\{128,256,1024\\}$ and find that more steps improve sample quality, with $T=256$ offering their stated balance between quality and speed. Although $T=256$ is close to ADM-G's step count, equal step counts are not equal computational work. Because the model architecture matches ADM-G and classifier-free guidance performs two denoiser passes per step, the authors identify $T=128$ as the fairer speed comparison; at that setting their model has worse FID than ADM-G.\n\nThe evaluation is explicitly a proof of concept. Its architectures and most hyperparameters were inherited from classifier-guided diffusion rather than optimized specifically for classifier-free guidance, so the reported optima should not be promoted to defaults for other datasets, resolutions, conditioning modalities, architectures, or schedules. The result supported by these experiments is narrower: under the stated ImageNet conditions, one jointly trained generative model can reproduce a classifier-guidance-like FID/IS trade-off without an auxiliary classifier. Choosing an operating point remains application-dependent, especially when reduced diversity could further suppress parts of the data distribution that are already underrepresented.",
+      "sourceIds": [
+        "section-4",
+        "section-5",
+        "section-6"
+      ],
+      "claimIds": [
+        "c7",
+        "c8",
+        "c9",
+        "c11",
+        "c12",
+        "c13"
+      ],
+      "figureId": null
+    }
+  ],
+  "figures": [
+    {
+      "id": "fig-noise",
+      "kind": "noise",
+      "title": "Gaussian radius across scale and dimension",
+      "question": "If $\\sigma$ doubles while $D$ stays fixed, how should the norm histogram and RMS radius change; and what changes when only $D$ grows?",
+      "caption": "A seeded illustrative Gaussian sample in $D$ dimensions compares measured norm histograms and mean radius with the RMS radius $\\sigma\\sqrt D$; $\\sigma$ rescales lengths and dimension changes concentration.",
+      "limitation": "This is not the paper’s diffusion schedule, reverse process, or an image generator, and $D$ is not plotted as three physical dimensions.",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c1",
+        "c2"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "fig-guidance",
+      "kind": "guidance",
+      "title": "From unconditional field to conditional field and beyond",
+      "question": "For the toy weight $g$, where is the equilibrium, and is $0<g<1$ interpolation, $g=1$ the conditional field, or $g>1$ extrapolation? How does $g=1+w$ translate to the paper’s weight?",
+      "caption": "Two illustrative scalar fields, $v_{\\mathrm{uncond}}=-x$ and $v_{\\mathrm{cond}}=-(x-1)$, combine as $v=v_{\\mathrm{uncond}}+g(v_{\\mathrm{cond}}-v_{\\mathrm{uncond}})$, placing the equilibrium at $x=g$. The paper’s Eq. 6 uses the shifted parameterization $g=1+w$.",
+      "limitation": "The fields are authored scalar examples, not actual image sampling, learned denoiser outputs, or an empirical quality–diversity curve; their displayed weight has its unconditional baseline at zero, unlike Eq. 6.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c5"
+      ],
+      "illustrative": true
+    }
+  ],
+  "quiz": [
+    {
+      "question": "At one sampling state, suppose $\\epsilon_c=0.4$, $\\epsilon_u=0.7$, and $w=2$. Under Eq. 6, what guided scalar prediction is used?",
+      "options": [
+        {
+          "text": "$-0.2$",
+          "explanation": "Correct: $(1+2)(0.4)-2(0.7)=1.2-1.4=-0.2$."
+        },
+        {
+          "text": "$0.5$",
+          "explanation": "Incorrect: this treats the predictions like an average, but Eq. 6 extrapolates from the conditional estimate away from the unconditional estimate."
+        },
+        {
+          "text": "$1.2$",
+          "explanation": "Incorrect: this is $(1+w)\\epsilon_c$ and omits the required term $-w\\epsilon_u=-1.4$."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c5"
+      ]
+    },
+    {
+      "question": "Which statement most accurately distinguishes the implemented classifier-free method from ordinary classifier guidance?",
+      "options": [
+        {
+          "text": "It obtains conditional and unconditional predictions from a jointly trained diffusion network and combines them without an auxiliary classifier gradient.",
+          "explanation": "Correct: condition dropout trains the two modes, and Eq. 6 combines their estimates during sampling."
+        },
+        {
+          "text": "It trains a standard clean-image classifier and hides that classifier inside the null token.",
+          "explanation": "Incorrect: the null token requests unconditional denoising; it is not a disguised external classifier."
+        },
+        {
+          "text": "It merely reduces the Gaussian variance in every reverse step.",
+          "explanation": "Incorrect: the paper says straightforward reverse-noise reduction is ineffective; the proposed mechanism combines score estimates."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-1",
+        "section-3",
+        "section-3-part-2"
+      ],
+      "claimIds": [
+        "c4",
+        "c5",
+        "c6"
+      ]
+    },
+    {
+      "question": "What conclusion is defensible from the reported ImageNet sweep, without generalizing beyond its conditions?",
+      "options": [
+        {
+          "text": "The largest tested $w$ simultaneously optimized FID, Inception Score, diversity, and sampling speed.",
+          "explanation": "Incorrect: weak guidance gave the best FID, strong guidance gave the best IS, diversity decreased, and two denoiser passes impose a cost."
+        },
+        {
+          "text": "Within the evaluated settings, guidance exposed a trade-off: weak guidance produced the best FID while stronger guidance produced the best IS.",
+          "explanation": "Correct: this matches the reported 50,000-sample sweeps at the two studied ImageNet resolutions."
+        },
+        {
+          "text": "The experiments prove that $p_{\\mathrm{uncond}}=0.1$ is optimal for every dataset and conditioning modality.",
+          "explanation": "Incorrect: the comparison was limited to specific $64\\times64$ ImageNet models and training conditions."
+        }
+      ],
+      "answer": 1,
+      "sourceIds": [
+        "section-4",
+        "section-5"
+      ],
+      "claimIds": [
+        "c8",
+        "c9",
+        "c10",
+        "c11"
+      ]
+    }
+  ],
+  "id": "classifier-free-diffusion-guidance",
+  "createdAt": "2026-10-01T23:11:19.637Z",
+  "pipelineVersion": "subjects-lessons-v1",
+  "sources": [
+    {
+      "id": "abstract",
+      "label": "Original paper · abstract",
+      "url": "https://arxiv.org/abs/2207.12598",
+      "digest": "e9c8d605798d0fd306017590ded90a5b80ba9e08dc4a607aaf75c7864f278d56"
+    },
+    {
+      "id": "section-1",
+      "label": "1 Introduction",
+      "url": "https://arxiv.org/html/2207.12598#S1",
+      "digest": "d06343342fd64684c1918f0b0adad040c4aa196d7ab4179287d6b927e8deec56"
+    },
+    {
+      "id": "section-2",
+      "label": "2 Background",
+      "url": "https://arxiv.org/html/2207.12598#S2",
+      "digest": "5334ec972d41ecd410dcd76249e414f55a4491235de02bb6cc8db7589de6e7de"
+    },
+    {
+      "id": "section-3",
+      "label": "3 Guidance",
+      "url": "https://arxiv.org/html/2207.12598#S3",
+      "digest": "b2318736835272014f3afe5623c57ca8a8c469fcb53df1693f79eaee37567066"
+    },
+    {
+      "id": "section-3-part-2",
+      "label": "3 Guidance · part 2",
+      "url": "https://arxiv.org/html/2207.12598#S3",
+      "digest": "b1bac9ddbdbb20f850dfd0ed7e62026b166d0dd37c2be7c478a5ca6b2d8a5fab"
+    },
+    {
+      "id": "section-4",
+      "label": "4 Experiments",
+      "url": "https://arxiv.org/html/2207.12598#S4",
+      "digest": "36f04f8734bbc94c6124ee95c6ab8959ef10df4a7f88b02d4ecaa53eaf4fb418"
+    },
+    {
+      "id": "section-5",
+      "label": "5 Discussion",
+      "url": "https://arxiv.org/html/2207.12598#S5",
+      "digest": "fd6f672b09d213eb0aff56c7aeaad8372ea1fd133077e6ed1c6ef3ffc9395978"
+    },
+    {
+      "id": "section-6",
+      "label": "6 Conclusion",
+      "url": "https://arxiv.org/html/2207.12598#S6",
+      "digest": "84c81bfdba400137a8926a13615cdb388a3cf19c028964b3fe9a0335d65a53d3"
+    },
+    {
+      "id": "section-7",
+      "label": "7 Acknowledgements",
+      "url": "https://arxiv.org/html/2207.12598#S7",
+      "digest": "602b53001e64d0e821a9cb8d96916c799b25d55d56d1a45ccc39461aada2cdf1"
+    }
+  ],
+  "review": {
+    "status": "passed",
+    "reviewedAt": "2026-10-02T01:51:36.963Z",
+    "contentDigest": "7160cf2f8b7f6d5728b747cb4447f5807357f03c1a7bd894fe1e7f9bce26aebc"
+  }
+}

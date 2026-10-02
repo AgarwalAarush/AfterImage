@@ -1,0 +1,459 @@
+{
+  "title": "Learning by Predicting What a Video Means",
+  "summary": "V-JEPA learns video representations by predicting masked regions in feature space, coupling a context encoder, position-aware predictor, and slowly updated target encoder.",
+  "prerequisites": [
+    "Spatio-temporal patch tokens in video",
+    "Neural encoders that map tokens to feature vectors",
+    "Frozen-backbone evaluation with a trained task head"
+  ],
+  "objectives": [
+    "Explain how V-JEPA constructs context and target regions from a video.",
+    "Write and interpret V-JEPA's feature-prediction objective.",
+    "Distinguish feature prediction from pixel reconstruction.",
+    "Relate masking and pooling ablations to their evaluation settings.",
+    "Interpret V-JEPA's reported strengths without overstating their scope."
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "mechanism",
+      "statement": "V-JEPA is pretrained solely with self-supervised feature prediction, without pretrained image encoders, text, negative examples, human annotations, or pixel reconstruction.",
+      "conditions": "This describes the paper’s V-JEPA pretraining objective and supervision sources.",
+      "sourceIds": [
+        "abstract",
+        "section-1",
+        "section-7"
+      ]
+    },
+    {
+      "id": "c2",
+      "kind": "mechanism",
+      "statement": "The architecture predicts the representation of a target video region from the representation of a visible context region and the target region’s spatio-temporal positions.",
+      "conditions": "The context is denoted by x, the target by y, and target-position information by Delta_y.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c3",
+      "kind": "equation",
+      "statement": "Training minimizes an L1 distance between predictor outputs and stop-gradient targets produced by an exponential-moving-average encoder.",
+      "conditions": "The online encoder and predictor receive gradients; the target branch is stop-gradient and its encoder is updated by exponential moving average.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c4",
+      "kind": "mechanism",
+      "statement": "V-JEPA converts a video into tokens representing 16 by 16 pixel regions spanning two consecutive frames.",
+      "conditions": "This is the tokenization used by the reported video Vision Transformer backbone.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c5",
+      "kind": "mechanism",
+      "statement": "Multi-block masking uses two distinct constructions: a short-range mask formed by the union of eight spatially continuous target blocks covering 15 percent of each frame, or a long-range mask formed by the union of two such blocks covering 70 percent of each frame; in either construction, blocks repeat across the full temporal extent and the visible context is the complement.",
+      "conditions": "The blocks within each mask construction may overlap, their aspect ratios are sampled from 0.75 to 1.5, and both the short-range and long-range constructions average about 90 percent masking.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c6",
+      "kind": "result",
+      "statement": "In a controlled ViT-L/16 ablation, feature targets outperformed pixel targets on all four reported frozen or fine-tuned scores.",
+      "conditions": "Both approaches used VideoMix2M, 90,000 iterations, batch size 3,072, multi-block masking, and a hyperparameter sweep; frozen results used attentive probing and one center view.",
+      "sourceIds": [
+        "section-3",
+        "section-4"
+      ]
+    },
+    {
+      "id": "c7",
+      "kind": "result",
+      "statement": "Multi-block masking produced higher K400, SSv2, and ImageNet-1K frozen-evaluation scores than the tested random-tube and causal multi-block alternatives.",
+      "conditions": "ViT-L/16 models were pretrained on K710 plus SSv2 and evaluated with an attentive probe using one center view.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c8",
+      "kind": "result",
+      "statement": "Attentive pooling raised the reported frozen ViT-L/16 score from 56.7 to 73.7 on K400 and from 50.1 to 66.2 on SSv2.",
+      "conditions": "The backbone was frozen, a single center view was used, and average pooling was compared with a learned cross-attention probe.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c9",
+      "kind": "result",
+      "statement": "The largest reported V-JEPA model obtained 81.9 percent on K400, 72.2 percent on SSv2, and 77.9 percent on ImageNet-1K.",
+      "conditions": "The model was ViT-H/16 at resolution 384, pretrained only on video; the ImageNet figure used a two-layer attentive probe, while evaluation protocols differ by task.",
+      "sourceIds": [
+        "abstract",
+        "section-4-part-2",
+        "section-5"
+      ]
+    },
+    {
+      "id": "c10",
+      "kind": "result",
+      "statement": "Under frozen attentive-probe evaluation, V-JEPA showed its clearest advantage over large image-pretrained models on the motion-sensitive SSv2 task.",
+      "conditions": "The comparison used the models and multi-view evaluation settings reported in the state-of-the-art comparison table.",
+      "sourceIds": [
+        "section-4-part-2",
+        "section-5"
+      ]
+    },
+    {
+      "id": "c11",
+      "kind": "result",
+      "statement": "When fewer labeled examples trained the attentive probe, the reported performance gap between V-JEPA and the compared self-supervised video models increased.",
+      "conditions": "K400 and SSv2 experiments used frozen backbones, 5, 10, or 50 percent of labeled training data, and three random splits per setting.",
+      "sourceIds": [
+        "section-5",
+        "section-5-part-2"
+      ]
+    },
+    {
+      "id": "c12",
+      "kind": "caveat",
+      "statement": "Decoder visualizations are an offline qualitative probe of predicted features, not evidence that V-JEPA itself is a pixel-generative model.",
+      "conditions": "The encoder and predictor were frozen; a separately trained conditional diffusion decoder received only predicted missing-region representations.",
+      "sourceIds": [
+        "section-6"
+      ]
+    },
+    {
+      "id": "c13",
+      "kind": "caveat",
+      "statement": "The paper attributes remaining image-task gaps partly to the limited visual diversity of available video pretraining data.",
+      "conditions": "This is presented as a hypothesis about dataset diversity, not a controlled causal finding.",
+      "sourceIds": [
+        "section-5"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "s1",
+      "title": "The wager: predict meaning, not every pixel",
+      "markdown": "A video contains both useful structure and stubborn detail. Object identity, pose, and motion may matter downstream; exact texture, sensor noise, or the precise pixels behind an occlusion may be difficult or irrelevant to predict. V-JEPA tests a focused wager: learn by predicting a missing region’s **representation** rather than reconstructing its pixels.\n\nThis is a stand-alone self-supervised objective. Pretraining uses videos but no text, human labels, negative examples, pretrained image encoder, or pixel-reconstruction loss. “Self-supervised” means the training signal is constructed from the video itself: one region supplies context and another supplies the target.\n\nThat distinction matters. Pixel reconstruction asks for a particular visible outcome, even when several outcomes would be plausible. Feature prediction can, in principle, represent shared high-level structure while declining to encode every unpredictable pixel. It does not guarantee semantic abstraction by definition; the paper tests whether the resulting frozen features transfer to image and video tasks.",
+      "sourceIds": [
+        "abstract",
+        "section-1",
+        "section-2"
+      ],
+      "claimIds": [
+        "c1"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s2",
+      "title": "From a clip to a masked prediction problem",
+      "markdown": "Let a clip contain $T$ frames of height $H$ and width $W$. V-JEPA partitions it into a three-dimensional grid of $L$ tokens. Each token covers a $16\\\\times16$ spatial patch across two consecutive frames. The symbol $L$ is the resulting token count, not the loss.\n\nV-JEPA uses two multi-block mask constructions. A short-range mask is the union of eight randomly sampled spatially continuous target blocks, each covering 15 percent of a frame. A long-range mask is instead the union of two randomly sampled target blocks, each covering 70 percent of a frame. In both constructions, the sampled spatial blocks are repeated through the clip’s full temporal dimension, may overlap, and have aspect ratios sampled from 0.75 to 1.5. Their unions produce about 90 percent masking on average. The target positions $y$ are the masked positions, while the context $x$ is their complement. Repeating hidden spatial blocks through time reduces an easy leakage route in which almost identical neighboring frames reveal the missing content.\n\nThe patch control below isolates only the counting intuition. Its fixed $8\\\\times8$ grid contains 64 illustrative cells, and changing the hidden fraction deterministically changes visible and masked counts. For example, hiding 48 cells leaves $64-48=16$ visible cells. This toy does not reproduce V-JEPA’s continuous block geometry, temporal repetition, overlapping targets, or encoder behavior; it clarifies how aggressive masking restricts available evidence.",
+      "sourceIds": [
+        "section-3",
+        "section-4"
+      ],
+      "claimIds": [
+        "c4",
+        "c5",
+        "c7"
+      ],
+      "figureId": "f1"
+    },
+    {
+      "id": "s3",
+      "title": "Three cooperating networks",
+      "markdown": "The online encoder $E_{\\\\theta}$ maps the visible context $x$ to feature vectors; $\\\\theta$ denotes its trainable parameters. Learnable mask tokens are then inserted for target locations, with positional information $\\\\Delta_y$ identifying where and when the hidden tokens belong. The predictor $P_{\\\\phi}$, parameterized by $\\\\phi$, consumes the context features and these position-bearing mask tokens and predicts one feature vector per target token.\n\nA second encoder $\\\\overline{E}_{\\\\theta}$ supplies the targets. Unlike the online branch, it processes the unmasked, full video clip so that every output is contextualized by the surrounding video; masking is applied only afterward, at the encoder’s output, to select the representations at the target positions $y$. The predictor is therefore trained to match contextualized target-position features, not features computed from isolated target patches. The target encoder’s weights are an exponential moving average of the online encoder’s weights, so it changes more slowly, and a stop-gradient operator prevents its outputs from receiving ordinary backpropagated gradients. Thus, training does not compare a prediction with a fixed human label: it compares one learned branch with a slowly evolving learned target branch.\n\nThis division of labor is essential. The context encoder describes what remains visible; the position-conditioned predictor proposes features for particular missing locations; and the target encoder supplies contextualized feature-space destinations selected from its full-clip output. The predictor used in the paper is a narrow 12-block transformer with embedding dimension 384, while the backbone is a video Vision Transformer.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c2",
+        "c3"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s4",
+      "title": "The objective and the collapse problem",
+      "markdown": "For one training example, the objective is\n\n$$\n\\\\min_{\\\\theta,\\\\phi}\\;\\\\left\\\\lVert P_{\\\\phi}\\\\!\\\\left(E_{\\\\theta}(x),\\\\Delta_y\\\\right)-\\\\operatorname{sg}\\\\!\\\\left(\\\\overline{E}_{\\\\theta}(y)\\\\right)\\\\right\\\\rVert_1.\n$$\n\nHere $x$ is visible context, $y$ is the target region, $E_{\\\\theta}$ is the online encoder, $P_{\\\\phi}$ is the predictor, $\\\\Delta_y$ describes target positions, $\\\\overline{E}_{\\\\theta}$ is the moving-average target encoder, $\\\\operatorname{sg}$ stops gradients, and $\\\\lVert\\\\cdot\\\\rVert_1$ sums absolute coordinate differences.\n\nA small illustrative calculation makes the loss concrete. If a predicted target feature is $[1,3]$ and its stopped target is $[2,1]$, then\n\n$$\n\\\\lVert[1,3]-[2,1]\\\\rVert_1=|1-2|+|3-1|=1+2=3.\n$$\n\nThese invented vectors are arithmetic examples, not paper measurements.\n\nWhy not train the same encoder on both sides directly? A constant encoder would make every input share one representation, allowing perfect prediction without learning video content. The paper’s practical recipe combines an asymmetric predictor, stop-gradient, and moving-average target encoder. Its one-dimensional analysis notes that the optimal predictor under $L_1$ loss is the conditional median $\\\\operatorname{median}(Y\\\\mid E_{\\\\theta}(x))$, where $Y=\\\\overline{E}_{\\\\theta}(y)$. The associated conditional median absolute deviation motivates capturing context that reduces target uncertainty. This is a motivation for the design, not a universal proof that collapse is impossible.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c2",
+        "c3"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s5",
+      "title": "What the controlled ablations establish",
+      "markdown": "The most direct feature-versus-pixel comparison held several major factors fixed: ViT-L/16 architecture, VideoMix2M data, 90,000 updates, batch size 3,072, multi-block masking, and hyperparameter sweeps. With a frozen backbone and attentive probing, feature prediction scored 73.7 versus 68.6 on K400, 66.2 versus 66.0 on SSv2, and 74.8 versus 73.3 on ImageNet-1K. After K400 fine-tuning, the scores were 85.6 and 85.4. The direction is consistent, but the magnitude depends on task and protocol.\n\nMask construction also mattered. Under the stated ViT-L/16 frozen-evaluation setting, multi-block masking reached 72.9 on K400, 67.4 on SSv2, and 72.8 on ImageNet-1K. Each exceeded the tested random-tube and causal alternatives. This supports the chosen prediction task among those variants; it does not show that every continuous mask is superior in every model.\n\nFinally, evaluation was not merely global averaging. A learned attentive probe improved K400 from 56.7 to 73.7 and SSv2 from 50.1 to 66.2. The attention control below uses fixed scores $[2,1,0,-1]$: dividing them by a positive temperature $\\\\tau$ and applying $w_i=\\\\exp(s_i/\\\\tau)/\\\\sum_j\\\\exp(s_j/\\\\tau)$ shows how a query can weight tokens unequally. It is not the trained probe, but it explains why learned selection can preserve task-relevant tokens that averaging dilutes.",
+      "sourceIds": [
+        "section-3",
+        "section-4"
+      ],
+      "claimIds": [
+        "c6",
+        "c7",
+        "c8"
+      ],
+      "figureId": "f2"
+    },
+    {
+      "id": "s6",
+      "title": "Reading the downstream evidence precisely",
+      "markdown": "V-JEPA’s frozen-backbone results are evidence about reusable representations: the backbone weights remain fixed while a supervised attentive probe learns the downstream task. The largest reported model, ViT-H/16 at 384 resolution, reached 81.9 percent on K400 and 72.2 percent on SSv2; its ImageNet-1K result reached 77.9 percent with a two-layer attentive probe. These values should not be merged into a single universal score because tasks and view protocols differ.\n\nThe contrast between K400 and SSv2 is informative. K400 labels can often be inferred from objects and appearance, while SSv2 more strongly tests fine-grained temporal understanding. Large image-pretrained models remained strong on K400 and image classification, whereas V-JEPA’s clearest relative advantage appeared on SSv2. The sound conclusion is that video feature prediction transferred especially well to the reported motion-sensitive task—not that appearance ceased to matter.\n\nLow-shot evaluation adds another result. With frozen encoders and probes trained on 5, 10, or 50 percent of labels, V-JEPA’s advantage over the compared video models grew as labels decreased. For the 384-resolution model on K400, reducing labels from about 287 to 29 examples per class changed accuracy from 80.6 to 68.2. This measures label efficiency of a particular representation-plus-probe pipeline, not label-free recognition.",
+      "sourceIds": [
+        "section-3-part-2",
+        "section-4-part-2",
+        "section-5",
+        "section-5-part-2"
+      ],
+      "claimIds": [
+        "c9",
+        "c10",
+        "c11"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s7",
+      "title": "Misconceptions, boundaries, and the right takeaway",
+      "markdown": "A common misconception is that predicting missing video content makes V-JEPA a video generator. During pretraining it predicts feature vectors, not RGB frames. The paper’s images were produced later by freezing V-JEPA and training a separate conditional diffusion decoder. That decoder received predicted missing-region features and no unmasked pixels. Similarities across its stochastic samples qualitatively suggested which spatial and motion information the features retained, but those visualizations neither turn the backbone into a generator nor establish reconstruction fidelity.\n\nA second boundary concerns causal forecasting. Because standard multi-block targets can occupy locations throughout the clip and the context is their complement, the main task is not simply “past frames predict future frames.” Indeed, the reported causal variants performed worse than multi-block masking in their tested setting.\n\nThe evidence is also conditional on chosen datasets, architectures, probes, masks, schedules, and downstream protocols. The authors hypothesize that video datasets lacked the visual diversity of internet-scale image collections, helping explain remaining image-task gaps; this was not isolated as a causal variable. The central contribution is therefore specific but substantial: masked, position-conditioned prediction against slowly moving feature targets can learn a versatile video backbone, with particularly strong reported transfer to motion-sensitive recognition and favorable low-label behavior.",
+      "sourceIds": [
+        "section-4",
+        "section-5",
+        "section-6",
+        "section-7"
+      ],
+      "claimIds": [
+        "c7",
+        "c10",
+        "c11",
+        "c12",
+        "c13"
+      ],
+      "figureId": null
+    }
+  ],
+  "figures": [
+    {
+      "id": "f1",
+      "kind": "patches",
+      "title": "How much context survives a mask?",
+      "question": "As the hidden fraction rises, how quickly does the visible evidence shrink on the fixed grid?",
+      "caption": "A deterministic mask on an illustrative 8 by 8 image grid shows visible and hidden patch counts as the controlled fraction changes.",
+      "limitation": "This is a spatial counting model only; it does not implement V-JEPA’s continuous multi-block sampling, temporal tubes, overlapping targets, or representation learning.",
+      "sourceIds": [
+        "section-3",
+        "section-4"
+      ],
+      "claimIds": [
+        "c5",
+        "c7"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "f2",
+      "kind": "attention",
+      "title": "Uniform averaging versus selective weighting",
+      "question": "How does lowering temperature redistribute weight toward the highest of the four fixed scores?",
+      "caption": "Four fixed illustrative scores are divided by a positive temperature and normalized with softmax, revealing how selective weighting differs from equal averaging.",
+      "limitation": "The scores are invented and fixed; this is neither a measured V-JEPA attention head nor the paper’s trained cross-attention probe.",
+      "sourceIds": [
+        "section-4"
+      ],
+      "claimIds": [
+        "c8"
+      ],
+      "illustrative": true
+    }
+  ],
+  "quiz": [
+    {
+      "question": "Suppose two otherwise matched pretraining runs differ only in whether they regress masked pixels or masked target features. What conclusion is supported by the paper’s controlled ablation?",
+      "options": [
+        {
+          "text": "Feature prediction had higher scores in all four reported comparisons.",
+          "explanation": "Correct. Under the matched 90,000-iteration ViT-L/16 setup, its three frozen scores and K400 fine-tuned score were each higher."
+        },
+        {
+          "text": "Feature prediction was dramatically better on every reported task.",
+          "explanation": "Incorrect. The direction was consistent, but SSv2 frozen evaluation and K400 fine-tuning differed by only 0.2 points."
+        },
+        {
+          "text": "Pixel prediction used fewer updates and therefore was more efficient.",
+          "explanation": "Incorrect. The controlled pair used the same stated iteration count; this ablation does not support that claim."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-3",
+        "section-4"
+      ],
+      "claimIds": [
+        "c6"
+      ]
+    },
+    {
+      "question": "What information lets V-JEPA request different predictions for different missing locations while using the same visible context?",
+      "options": [
+        {
+          "text": "The target-position variable Delta_y supplied to the predictor.",
+          "explanation": "Correct. It identifies the spatio-temporal positions whose representations should be predicted."
+        },
+        {
+          "text": "A text description of the hidden action.",
+          "explanation": "Incorrect. V-JEPA pretraining does not use text supervision."
+        },
+        {
+          "text": "The downstream class label supplied to the target encoder.",
+          "explanation": "Incorrect. Pretraining is self-supervised and does not use downstream labels."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-1",
+        "section-3"
+      ],
+      "claimIds": [
+        "c1",
+        "c2"
+      ]
+    },
+    {
+      "question": "Which interpretation of the diffusion-decoder visualization is defensible?",
+      "options": [
+        {
+          "text": "It qualitatively probes information in predicted features using a separately trained decoder.",
+          "explanation": "Correct. V-JEPA was frozen, and the decoder mapped predicted missing-region features into interpretable pixel samples."
+        },
+        {
+          "text": "It proves that V-JEPA itself reconstructs the exact missing pixels.",
+          "explanation": "Incorrect. V-JEPA predicts features, and the paper explicitly does not expect decoded samples to exactly match the input."
+        },
+        {
+          "text": "It measures downstream classification accuracy without labels.",
+          "explanation": "Incorrect. The visualization is qualitative and separate from the supervised downstream evaluation protocols."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-6"
+      ],
+      "claimIds": [
+        "c12"
+      ]
+    }
+  ],
+  "id": "v-jepa",
+  "createdAt": "2026-10-02T00:26:00.307Z",
+  "pipelineVersion": "subjects-lessons-v1",
+  "sources": [
+    {
+      "id": "abstract",
+      "label": "Original paper · abstract",
+      "url": "https://arxiv.org/abs/2404.08471",
+      "digest": "a9517bf3c2086bad58ec3142e66252ac539d17776d33577982285d91e156893e",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:23:03.397Z"
+    },
+    {
+      "id": "section-1",
+      "label": "1 Introduction",
+      "url": "https://arxiv.org/html/2404.08471#S1",
+      "digest": "65969d95151809028334ae0743921d8e52201c83dc8bb63caa3d774fb038b3a6",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:23:03.397Z"
+    },
+    {
+      "id": "section-2",
+      "label": "2 Related Works",
+      "url": "https://arxiv.org/html/2404.08471#S2",
+      "digest": "64dfdc0dc1022ce5cab1bb27481b457695219b8d7cc8f5cb7bdd71cf312a693d",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:23:03.397Z"
+    },
+    {
+      "id": "section-3",
+      "label": "3 Methodology: Video-JEPA",
+      "url": "https://arxiv.org/html/2404.08471#S3",
+      "digest": "cc5f634a2784dc77c4e61cac4572e3eb79a7e9fcef72adde2b7c0c26d1e4343a",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:23:03.397Z"
+    },
+    {
+      "id": "section-3-part-2",
+      "label": "3 Methodology: Video-JEPA · part 2",
+      "url": "https://arxiv.org/html/2404.08471#S3",
+      "digest": "3d23c7fa8664645985f9d266f9c7cc0abde39c0fe139a5a039727b69ff3c2d0a",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:23:03.397Z"
+    },
+    {
+      "id": "section-4",
+      "label": "4 What Matters for Learning Representations from Video?",
+      "url": "https://arxiv.org/html/2404.08471#S4",
+      "digest": "f0a5b941bfffc910980e7f458a67d0a33318e9422597a097be4a216997dc4137",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:23:03.397Z"
+    },
+    {
+      "id": "section-4-part-2",
+      "label": "4 What Matters for Learning Representations from Video? · part 2",
+      "url": "https://arxiv.org/html/2404.08471#S4",
+      "digest": "212d4fddeaad2834d24d9376c1479d1719c799635576f11d089332a4ac816221",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:23:03.397Z"
+    },
+    {
+      "id": "section-5",
+      "label": "5 Comparison with Prior Work",
+      "url": "https://arxiv.org/html/2404.08471#S5",
+      "digest": "28f63fbe5379565d033dad4a874121689d4bd7938ce04d18c6e5ef50bb6f574b",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:23:03.397Z"
+    },
+    {
+      "id": "section-5-part-2",
+      "label": "5 Comparison with Prior Work · part 2",
+      "url": "https://arxiv.org/html/2404.08471#S5",
+      "digest": "d3550637307085aefba0d6bfb92bb43f8ff08602c58c81787e01b4e7a4068e44",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:23:03.397Z"
+    },
+    {
+      "id": "section-6",
+      "label": "6 Evaluating the Predictor",
+      "url": "https://arxiv.org/html/2404.08471#S6",
+      "digest": "6afbd77d1090105e453101c7bc36fe8389a79f2bd1ffa15e533aed09669c84fd",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:23:03.397Z"
+    },
+    {
+      "id": "section-7",
+      "label": "7 Conclusion",
+      "url": "https://arxiv.org/html/2404.08471#S7",
+      "digest": "4c36a0e39fb864e3d88a5726301070f8e22a37567c619640618514fc7e36f270",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:23:03.397Z"
+    }
+  ],
+  "review": {
+    "status": "passed",
+    "reviewedAt": "2026-10-02T00:26:00.308Z",
+    "contentDigest": "75f3130c538a77665e9c3ae1aae45dae400c3e03731bbaeb5721ee430dd113ef"
+  }
+}

@@ -1,0 +1,581 @@
+{
+  "title": "The Hidden Clock and the Vanishing Gain",
+  "summary": "Under the paper’s squared-error objective and linear prediction target, the optimal autonomous predictor is a posterior-weighted average of conditioned predictors.",
+  "prerequisites": [
+    "Conditional expectation and Bayes posteriors",
+    "Gradients, scores, and gradient flow",
+    "Gaussian corruption and signal-to-noise ratio",
+    "Basic ordinary differential equations",
+    "Covariance as coupled variation"
+  ],
+  "objectives": [
+    "Derive the optimal autonomous predictor as a posterior average over hidden noise levels.",
+    "Explain how marginal energy differs from conditional energy at a known noise level.",
+    "Interpret the natural-gradient, transport-correction, and linear-drift components of the autonomous field.",
+    "Distinguish a bounded learned field from stable sampling dynamics.",
+    "Relate the paper’s theoretical claims to the conditions and qualitative experiments actually supplied."
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "equation",
+      "statement": "The paper represents corruption with an affine schedule combining scaled clean data and scaled standard Gaussian noise.",
+      "conditions": "For t in [0,1], clean data x, standard Gaussian ε, and method-specific scalar schedules a(t) and b(t).",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c2",
+      "kind": "equation",
+      "statement": "Under the stated squared-error objective, an autonomous optimum is the posterior average of the time-conditioned optimal predictors.",
+      "conditions": "For a model that receives u but not t and predicts the paper’s linear target.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c3",
+      "kind": "equation",
+      "statement": "Marginal energy is the negative log-density obtained after integrating the noisy-data density over the prior on the unknown noise level.",
+      "conditions": "For the mixture p(u)=∫p(u|t)p(t)dt wherever that density is positive.",
+      "sourceIds": [
+        "section-1"
+      ]
+    },
+    {
+      "id": "c4",
+      "kind": "equation",
+      "statement": "The marginal-energy gradient is a posterior expectation of negative conditional scores.",
+      "conditions": "Where differentiation through the noise-level mixture is valid and p(t|u) is defined.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c5",
+      "kind": "equation",
+      "statement": "With a regular, positive near-zero variance prior, the local additive-noise kernel gives marginal density proportional to r^(2−k) and energy-gradient magnitude (k−2)/r at leading order for codimension k>2.",
+      "conditions": "A local flat-manifold approximation with positive density at the closest support point, fixed Gaussian centers, variance v, and a prior on v approaching a finite positive constant. This is a conditional asymptotic calculation, not a theorem for every affine schedule or time prior.",
+      "sourceIds": [
+        "supplement-a2"
+      ]
+    },
+    {
+      "id": "c6",
+      "kind": "mechanism",
+      "statement": "The autonomous field separates into a gain-scaled marginal-energy gradient, a posterior-covariance transport correction, and a linear drift.",
+      "conditions": "For the unified affine formulation and the decomposition derived in Appendix D.",
+      "sourceIds": [
+        "section-5"
+      ]
+    },
+    {
+      "id": "c7",
+      "kind": "mechanism",
+      "statement": "In the gain/gradient decomposition, bounded low-noise target behavior requires the restoration residual to shrink with the noise scale; the vanishing gain alone does not establish it.",
+      "conditions": "For noise prediction, λ=b and λ∇E_t=(u−aD_t*)/b; this conditional target is O(1) along paths with residual O(b), rather than for fixed off-support u as b→0.",
+      "sourceIds": [
+        "supplement-a4"
+      ]
+    },
+    {
+      "id": "c8",
+      "kind": "result",
+      "statement": "When high ambient codimension separates noisy shells, the observation can become a proxy for the hidden noise level.",
+      "conditions": "In the paper’s high-dimensional regime with D≫1 and data intrinsic dimension d≪D.",
+      "sourceIds": [
+        "section-5"
+      ]
+    },
+    {
+      "id": "c9",
+      "kind": "result",
+      "statement": "In the local manifold approximation, the variance posterior has density proportional to $v^{-k/2}\\exp[-r^2/(2v)]p_v(v)$. If $p_v(v)$ approaches a finite positive constant at zero, this is asymptotically an inverse-Gamma kernel—not necessarily an exact inverse-Gamma scale family—and it concentrates weakly at zero as $r\\to0$ when $k>2$.",
+      "conditions": "Smooth local support of codimension $k=D-d>2$ with positive continuous density at the projection; additive Gaussian centers; a proper variance prior $p_v$ that approaches a finite positive constant near zero and yields finite normalizing integrals. Finite discrete support is the $d=0$ analogue. Weak concentration follows from the asymptotic kernel with the prior factor retained; no finite posterior-moment assumption is required.",
+      "sourceIds": [
+        "supplement-a2"
+      ]
+    },
+    {
+      "id": "c10",
+      "kind": "equation",
+      "statement": "The sampler’s drift perturbation factors into a parameterization gain and the discrepancy between autonomous and conditioned targets.",
+      "conditions": "When autonomous and oracle velocities use the same schedule coefficients μ(t) and ν(t).",
+      "sourceIds": [
+        "section-6"
+      ]
+    },
+    {
+      "id": "c11",
+      "kind": "equation",
+      "statement": "Predicting the actual corruption-path velocity gives unit sampler gain wherever the affine observation/target matrix is invertible.",
+      "conditions": "Choose c=a′ and d=b′; then ν=(b′a−a′b)/(ab′−ba′)=1. The paper’s linear Flow Matching schedule a=1−t,b=t has c=−1,d=1.",
+      "sourceIds": [
+        "supplement-a6"
+      ]
+    },
+    {
+      "id": "c12",
+      "kind": "result",
+      "statement": "The reported image experiments used four conditional/autonomous DDPM and Flow Matching configurations under one stated training setup.",
+      "conditions": "On CIFAR-10, SVHN, and Fashion MNIST with a ResNet-based U-Net, 10,000 steps, EMA 0.999, and batch size 128.",
+      "sourceIds": [
+        "section-7"
+      ]
+    },
+    {
+      "id": "c13",
+      "kind": "result",
+      "statement": "The controlled concentric-circles experiment varied ambient dimension to study noise-scale ambiguity in autonomous models.",
+      "conditions": "For a 2D concentric-circles dataset embedded in dimensions D∈{2,8,32,128}, with the time input zeroed in autonomous variants.",
+      "sourceIds": [
+        "section-7"
+      ]
+    },
+    {
+      "id": "c14",
+      "kind": "caveat",
+      "statement": "Bounded drift perturbation is necessary but not sufficient for high-fidelity generation in the paper’s structural test.",
+      "conditions": "For the stability criterion based on the limiting drift perturbation error.",
+      "sourceIds": [
+        "section-6"
+      ]
+    },
+    {
+      "id": "c15",
+      "kind": "equation",
+      "statement": "The exact sampler coefficients are μ=(a′d−b′c)/(ad−bc) and ν=(b′a−a′b)/(ad−bc).",
+      "conditions": "Differentiable affine schedules and ad−bc≠0. Target and observation are interpreted through the same invertible two-by-two coefficient system.",
+      "sourceIds": [
+        "supplement-a6"
+      ]
+    },
+    {
+      "id": "c16",
+      "kind": "caveat",
+      "statement": "A prior on time and a prior on noise variance are different measures. By the standard change-of-variables calculation, if $v=b(t)^2$ is monotone and differentiable with a differentiable local inverse, then $p_v(v)=p_t(t(v))|dt/dv|$; this Jacobian affects the posterior and its near-support asymptotics.",
+      "conditions": "This density formula is a derived change-of-variables calculation, not a quoted consequence of local homeomorphism alone. For the illustrative choice $b(t)=t$ with uniform $t$ on $(0,1)$, $v=t^2$, $t(v)=\\sqrt v$, and therefore $p_v(v)=1/(2\\sqrt v)$ on $(0,1)$, rather than a flat variance prior.",
+      "sourceIds": [
+        "section-3",
+        "supplement-a2"
+      ]
+    },
+    {
+      "id": "c17",
+      "kind": "equation",
+      "statement": "For the constructed linear schedule a=1−t,b=t, the exact sampler gains are 1/(1−t) for noise prediction, −1/t for signal prediction, and 1 for velocity prediction.",
+      "conditions": "Noise target c=0,d=1; signal c=1,d=0; velocity c=−1,d=1; 0<t<1. These are substitutions into Equation63, not universal low-noise gain rates.",
+      "sourceIds": [
+        "supplement-a6"
+      ]
+    },
+    {
+      "id": "c18",
+      "kind": "mechanism",
+      "statement": "For a uniform finite dataset at fixed noise level, the optimal denoiser is a softmax-weighted average of clean points under their Gaussian observation likelihoods.",
+      "conditions": "Weights are normalized exp(−||u−a(t)x_k||²/(2b(t)²)); the autonomous field then averages time-specific targets under p(t|u).",
+      "sourceIds": [
+        "supplement-a1"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "s1",
+      "title": "1. A static network can live inside a timed sampler",
+      "markdown": "A conventional diffusion or transport network receives both an observation $\\mathbf u$ and a noise level $t$. An autonomous network receives only $\\mathbf u$. That does **not** make the complete sampler time independent: schedule coefficients can still change during integration. Only the learned map $f^*(\\mathbf u)$ is time invariant.\n\nThe paper places multiple model families in the affine corruption scheme\n\n$$\n\\mathbf u_t=a(t)\\mathbf x+b(t)\\boldsymbol\\epsilon,\n\\qquad \\boldsymbol\\epsilon\\sim\\mathcal N(\\mathbf 0,\\mathbf I_D).\n$$\n\nHere $t\\in[0,1]$ indexes noise level; $\\mathbf x\\in\\mathbb R^D$ is clean data; $\\boldsymbol\\epsilon$ is standard Gaussian noise in ambient dimension $D$; and $a(t)$ and $b(t)$ are method-specific signal and noise scales. For normalized data, the paper defines $\\mathrm{SNR}=a(t)^2/b(t)^2$.\n\nThe rotatable figure is an **illustrative** three-dimensional construction, not a paper experiment. It uses $D=3$ and intrinsic dimension $d=0$, with a single data point $\\mathbf x=\\mathbf 0$ at the origin. For isotropic coordinate noise with standard deviation $\\sigma$, the squared norm satisfies\n\n$$\n\\mathbb E\\!\\left[\\|\\sigma\\boldsymbol\\epsilon\\|^2\\right]=D\\sigma^2,\n$$\n\nso the root-mean-square radius is\n\n$$\nr_{\\mathrm{RMS}}=\\sqrt{\\mathbb E[\\|\\sigma\\boldsymbol\\epsilon\\|^2]}=\\sigma\\sqrt D.\n$$\n\nThus, in the figure’s $D=3$ construction, the adjustable inner scale has the allowed range $0.1\\leq\\sigma\\leq0.8$ and its radius is computed as\n\n$$\nr_{\\mathrm{inner}}=\\sigma\\sqrt3.\n$$\n\nFor example, the range endpoints give $0.1\\sqrt3\\approx0.173$ and $0.8\\sqrt3\\approx1.386$. These are endpoint calculations, not a claim about the figure’s initial or current control value. The fixed outer scale $\\sigma=1$ gives\n\n$$\nr_{\\mathrm{outer}}=\\sqrt3\\approx1.732.\n$$\n\nThe displayed surfaces mark these RMS radii. Actual draws from a $D=3$ Gaussian have varying norms around the corresponding radius, so draws from the two scales can overlap. The surfaces therefore do not establish posterior concentration or disjoint high-dimensional shells.\n\nDragging, using the keyboard, or playing the rotation changes only the shared camera view. Visibility controls merely hide or reveal a fixed surface; neither action resamples points nor changes $\\sigma$. The inner-$\\sigma$ slider alone changes the inner RMS radius through $r_{\\mathrm{inner}}=\\sigma\\sqrt3$.\n\nThe paper’s later concentration argument uses a different regime. If data lie in a $d$-dimensional subspace of $\\mathbb R^D$, the relevant orthogonal noise has codimension $k=D-d$. Under the paper’s linear-subspace model with isotropic Gaussian noise and an improper flat prior on the subspace, the distance $r$ to that subspace yields the estimator $\\widehat\\sigma=r/\\sqrt{D-d}$, and its uncertainty decreases as $D-d$ grows. Increasing codimension supplies more orthogonal Gaussian coordinates, making radial noise information relatively more concentrated; only under such source-supported assumptions can different noise scales become increasingly distinguishable.",
+      "sourceIds": [
+        "section-3",
+        "section-5",
+        "main-text-part-2"
+      ],
+      "claimIds": [
+        "c1",
+        "c8"
+      ],
+      "figureId": "fig-noise"
+    },
+    {
+      "id": "s2",
+      "title": "2. Hiding time changes the regression target",
+      "markdown": "Let the linear training target be\n\n$$\nr(\\mathbf x,\\boldsymbol\\epsilon,t)=c(t)\\mathbf x+d(t)\\boldsymbol\\epsilon,\n$$\n\nwhere $c(t)$ and $d(t)$ are scalar coefficients selected by the parameterization. Under mean-squared error, the optimum with known time is\n\n$$\nf_t^*(\\mathbf u)=\\mathbb E[c(t)\\mathbf x+d(t)\\boldsymbol\\epsilon\\mid\\mathbf u,t].\n$$\n\nWhen the network cannot observe $t$, the optimum becomes\n\n$$\nf^*(\\mathbf u)=\\mathbb E_{t\\mid\\mathbf u}[f_t^*(\\mathbf u)].\n$$\n\nThus autonomy does not force one universal guessed noise level. It averages time-specific answers using the posterior $p(t\\mid\\mathbf u)$.\n\nConsider a small **illustrative** calculation, not a paper experiment. Suppose only $t_1$ and $t_2$ are possible at a scalar observation $u$, with $p(t_1\\mid u)=0.75$ and $p(t_2\\mid u)=0.25$. If $f_{t_1}^*(u)=-2$ and $f_{t_2}^*(u)=4$, then\n\n$$\nf^*(u)=0.75(-2)+0.25(4)=-1.5+1=-0.5.\n$$\n\nThe result equals neither conditional field. If the posterior instead concentrated completely on $t_1$, the average would become $-2$. Concentration matters because it removes disagreement among plausible time-specific directions.\n\nFor a finite uniform dataset, this posterior averaging is concrete. The fixed-time denoiser assigns each clean point a normalized Gaussian likelihood weight,\n\n$$\nw_k(\\mathbf u,t)=\\frac{\\exp[-\\|\\mathbf u-a(t)\\mathbf x_k\\|^2/(2b(t)^2)]}{\\sum_j\\exp[-\\|\\mathbf u-a(t)\\mathbf x_j\\|^2/(2b(t)^2)]},\n\\qquad D_t^*(\\mathbf u)=\\sum_k w_k(\\mathbf u,t)\\mathbf x_k.\n$$\n\nSmall noise strongly favors nearby candidate points; broad noise spreads weight across them. There are therefore two distinct averages: over plausible clean points at fixed time, then over plausible times at fixed observation. Collapsing one does not automatically collapse the other.",
+      "sourceIds": [
+        "section-3",
+        "supplement-a1"
+      ],
+      "claimIds": [
+        "c1",
+        "c2",
+        "c18"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s3",
+      "title": "3. Marginalizing the hidden clock creates one energy",
+      "markdown": "The paper defines the noise-level mixture and its energy as\n\n$$\np(\\mathbf u)=\\int p(\\mathbf u\\mid t)p(t)\\,dt,\n\\qquad\nE_{\\mathrm{marg}}(\\mathbf u)=-\\log p(\\mathbf u).\n$$\n\nHere $p(t)$ is the prior over training noise levels, $p(\\mathbf u\\mid t)$ is the noisy-data density at fixed $t$, and $p(\\mathbf u)$ is the resulting marginal density. Differentiating the mixture gives\n\n$$\n\\nabla_{\\mathbf u}E_{\\mathrm{marg}}(\\mathbf u)\n=\n\\mathbb E_{t\\mid\\mathbf u}[-\\nabla_{\\mathbf u}\\log p(\\mathbf u\\mid t)].\n$$\n\nThe operator $\\nabla_{\\mathbf u}$ differentiates with respect to the observation. The vector $\\nabla_{\\mathbf u}\\log p(\\mathbf u\\mid t)$ is the conditional score. Notice that the average uses posterior weights $p(t\\mid\\mathbf u)$, not the original prior weights.\n\nThis corrects a common misconception: an autonomous model does not necessarily estimate one time and then run the corresponding conditioned network. That can become a good approximation when $p(t\\mid\\mathbf u)$ is sharply concentrated, but the exact squared-error optimum is a posterior average. When several levels remain plausible, their fields can disagree, and the transport correction later records the coupled variation between noise-dependent gain and direction.",
+      "sourceIds": [
+        "section-1",
+        "section-3",
+        "section-4",
+        "section-5"
+      ],
+      "claimIds": [
+        "c2",
+        "c3",
+        "c4",
+        "c6"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s4",
+      "title": "4. Deriving a singular energy under stated conditions",
+      "markdown": "The conditional score is\n\n$$\n\\nabla\\log p(\\mathbf u\\mid t)=\\frac{a(t)D_t^*(\\mathbf u)-\\mathbf u}{b(t)^2}.\n$$\n\nIts numerator can shrink with its denominator, so a small $b$ alone does not prove a singular field. A near-support calculation shows where the singularity actually comes from. In a local additive Gaussian model, let $r$ be orthogonal distance to a smooth support of codimension $k=D-d$. Integrating the $d$ tangent coordinates leaves\n\n$$\np(\\mathbf u\\mid v)\\propto v^{-k/2}\\exp[-r^2/(2v)],\\qquad v=b^2.\n$$\n\nAssume the local support density is positive and continuous, the Gaussian centers are fixed, and the prior density on **variance** approaches a finite positive constant at zero. For $k>2$, substituting $z=r^2/(2v)$ into the mixture integral gives the leading behavior\n\n$$\np(\\mathbf u)\\propto r^{2-k},\\qquad E_{\\mathrm{marg}}(\\mathbf u)=(k-2)\\log r+C+o(1).\n$$\n\nThus the leading normal gradient has magnitude $(k-2)/r$. The density well becomes sharper as $r\\to 0$, and its energy falls without bound. This is a conditional local asymptotic mechanism, not a rule obtained by discarding the numerator of the score. A finite collection of separated points fits the local model with $d=0$.\n\nThe measure assumption matters. A uniform training prior on $t$ does not imply a uniform prior on $v$. If $b(t)=t$, then $v=t^2$ and $p_v(v)=1/(2\\sqrt v)$ on $(0,1)$ under uniform time. That Jacobian changes the mixture’s near-zero power. A shrinking signal coefficient also moves the likelihood centers; the fixed-center calculation cannot silently be applied to an arbitrary affine schedule.\n\nThe Euler control isolates a second issue. It integrates the smooth scalar field $dx/dt=-x$ and compares forward Euler against $e^{-t}$. A larger step can worsen the trajectory even when the field itself is bounded. Numerical integration error and a near-support energy singularity are different mechanisms, and this control teaches the first.",
+      "sourceIds": [
+        "section-4",
+        "supplement-a2"
+      ],
+      "claimIds": [
+        "c4",
+        "c5",
+        "c16"
+      ],
+      "figureId": "fig-ode"
+    },
+    {
+      "id": "s5",
+      "title": "5. Three pieces replace ordinary steepest descent",
+      "markdown": "First define the fixed-noise conditional energy\n\n$$\nE_t(\\mathbf u)=-\\log p(\\mathbf u\\mid t),\n$$\n\nso $\\nabla E_t(\\mathbf u)=-\\nabla\\log p(\\mathbf u\\mid t)$. For the unified affine formulation, the paper decomposes the autonomous field as\n\n$$\n\\begin{aligned}\nf^*(\\mathbf u)={}&\\bar\\lambda(\\mathbf u)\\nabla E_{\\mathrm{marg}}(\\mathbf u)\\\\\n&+\\mathbb E_{t\\mid\\mathbf u}\\!\\left[(\\lambda(t)-\\bar\\lambda(\\mathbf u))(\\nabla E_t(\\mathbf u)-\\nabla E_{\\mathrm{marg}}(\\mathbf u))\\right]\\\\\n&+\\bar c_{\\mathrm{scale}}(\\mathbf u)\\mathbf u.\n\\end{aligned}\n$$\n\nHere\n\n$$\n\\lambda(t)=\\frac{b(t)}{a(t)}(d(t)a(t)-c(t)b(t)),\n\\qquad\n\\bar\\lambda(\\mathbf u)=\\mathbb E[\\lambda(t)\\mid\\mathbf u],\n$$\n\nand $\\bar c_{\\mathrm{scale}}(\\mathbf u)=\\mathbb E[c(t)/a(t)\\mid\\mathbf u]$. The middle expression is a posterior covariance-like term: it is large when deviations of the gain $\\lambda(t)$ from its posterior mean systematically align with deviations of the conditional gradient $\\nabla E_t$ from the marginal gradient. It can therefore rotate or correct the simple gain-scaled energy direction when several noise levels remain plausible.\n\nThe phrase **Riemannian gradient flow** requires care. Under the supported parameterizations and sign conventions analyzed by the paper, the gain supplies the local conformal preconditioning behind the natural-gradient interpretation. This terminology should not be extended automatically to arbitrary signs, zero crossings, schedules, or targets.\n\n\nThe algebra follows from generalized Tweedie restoration:\n\n$$D_t^*(\\mathbf u)=\\frac{\\mathbf u-b(t)^2\\nabla E_t(\\mathbf u)}{a(t)},\\qquad a(t)\\ne0.$$\n\nInsert this into $cD_t^*+d(\\mathbf u-aD_t^*)/b$, then average over the posterior on time. The displayed three terms are an exact decomposition wherever these expectations exist. The gradient term alone is not the entire predicted target; covariance and drift can be essential.\n\nFor example, with $a=1-t,b=t$ and the noise target $c=0,d=1$, the fixed-time gain is $\\lambda=t$ and drift is zero. Consequently $\\lambda\\nabla E_t=(\\mathbf u-(1-t)D_t^*)/t$. This remains order one along a corruption path whose restoration residual is order $t$. At a fixed off-support observation the same quotient need not remain bounded. Signal prediction instead has $\\lambda=-t^2/(1-t)$ and drift coefficient $1/(1-t)$, combining to reconstruct $D_t^*$ exactly. Parameterization, sign, residual scaling, and the drift must all be retained when interpreting cancellation.\n",
+      "sourceIds": [
+        "section-5",
+        "supplement-a4",
+        "supplement-a5"
+      ],
+      "claimIds": [
+        "c4",
+        "c6",
+        "c7"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s6",
+      "title": "6. Two ways posterior conflict can disappear",
+      "markdown": "The paper identifies two routes by which the hidden noise level can become effectively recoverable.\n\n**Global high-codimension concentration.** Consider the paper’s model in which data lie in a linear subspace $\\mathbb V\\subset\\mathbb R^D$ of dimension $d<D$, the observation is $\\mathbf u=\\mathbf x+\\mathbf n$ with $\\mathbf x\\in\\mathbb V$ and $\\mathbf n\\sim\\mathcal N(\\mathbf0,\\sigma^2\\mathbf I_D)$, and the prior on $\\mathbf x$ is improper and flat over $\\mathbb V$. If\n\n$$\nr=\\min_{\\mathbf y\\in\\mathbb V}\\|\\mathbf u-\\mathbf y\\|\n$$\n\nis the orthogonal distance to the subspace, then the paper obtains\n\n$$\n\\widehat\\sigma=\\frac{r}{\\sqrt{D-d}}.\n$$\n\nWriting $k=D-d$ for codimension, the orthogonal squared radius obeys $r^2/\\sigma_0^2\\sim\\chi_k^2$ at true scale $\\sigma_0$, and the paper gives\n\n$$\n\\operatorname{Var}(\\widehat\\sigma^2)=\\frac{2\\sigma_0^4}{D-d}.\n$$\n\nAccordingly, increasing codimension makes the radial scale estimate relatively more concentrated in this model. When that concentration is sufficiently sharp, observations at different noise scales can occupy effectively separated shells, $\\mathbf u$ can act as a proxy for the hidden level, and the transport correction tends to shrink. The $D=3$, $d=0$ RMS-sphere figure in Section 1 only illustrates the radius formula; it does not itself demonstrate this asymptotic separation.\n\n\n**Local near-support concentration.** In the local model from Section 4, write $\\beta=r^2/2$ and $\\eta=k/2-1>0$. With variance-prior density $p_v$, the posterior has the normalized form\n\n$$\n\\pi_r(v)=\\frac{v^{-(\\eta+1)}e^{-\\beta/v}p_v(v)}{\\int_0^\\infty z^{-(\\eta+1)}e^{-\\beta/z}p_v(z)\\,dz}.\n$$\n\nIf $p_v(v)$ approaches a finite positive constant as $v\\downarrow0$, this density is asymptotically proportional to an inverse-Gamma kernel near the region carrying the diverging normalization, but it need not be exactly inverse-Gamma. For any fixed $\\varepsilon>0$, the posterior mass above $\\varepsilon$ has a bounded numerator under the stated properness assumptions, while the normalizing denominator grows on the order of $\\beta^{-\\eta}$ as $\\beta\\downarrow0$. Hence\n\n$$\n\\Pr(V>\\varepsilon\\mid\\mathbf u)\\to0,\n$$\n\nso $V$ converges in probability, and therefore weakly, to zero as $r\\to0$. This argument retains the prior factor and does not require the inverse-Gamma mean or variance to exist. Only with an exactly constant variance prior over the relevant domain does the normalized posterior reduce to the corresponding exact inverse-Gamma family and permit the identity $V=\\beta Z$ with a fixed-law $Z$.\n\nThe paper also states a finite-data result for $D>2$, continuous positive prior near $t=0$, and continuous increasing $b$ vanishing at zero. Its manifold derivation uses a smooth $C^2$ support of codimension greater than two and a local variance-prior approximation. Those formulations must be read with their respective likelihood and measure assumptions. In particular, the change from time to variance is a separate calculation: when $v=b(t)^2$ has a differentiable local inverse,\n\n$$\np_v(v)=p_t(t(v))\\left|\\frac{dt}{dv}\\right|.\n$$\n\nFor uniform $t$ and $b(t)=t$, this gives $p_v(v)=1/(2\\sqrt v)$, not a flat variance prior. Thus the flat-variance derivation is not automatically a theorem for every time prior or moving affine center. Likewise, weak posterior concentration does not by itself control an expectation of an unbounded function such as $1/b(t)$.\n\nThe scalar Gaussian experiment offers only an analogy for distributions becoming indistinguishable. It compares $q=\\mathcal N(\\mu,1)$ with $p=\\mathcal N(0,1)$ and displays\n\n$$\n\\mathrm{KL}(q\\|p)=\\frac{\\mu^2}{2}.\n$$\n\nFor example, changing the illustrative input $\\mu$ from $2$ to $0.5$ changes the displayed KL from $2$ to $0.125$. This Gaussian location comparison makes two distributions approaching the same center visible; the paper’s hidden-time posterior is a different distribution whose concentration requires the assumptions above.",
+      "sourceIds": [
+        "section-3",
+        "section-5",
+        "main-text-part-2",
+        "supplement-a2",
+        "supplement-a3"
+      ],
+      "claimIds": [
+        "c8",
+        "c9",
+        "c16"
+      ],
+      "figureId": "fig-latent"
+    },
+    {
+      "id": "s7",
+      "title": "7. Field boundedness is not sampler stability",
+      "markdown": "The sampler still has a clock even when the network does not. Differentiate $\\mathbf u=a\\mathbf x+b\\boldsymbol\\epsilon$, and use the target $f=c\\mathbf x+d\\boldsymbol\\epsilon$ to eliminate the unknown clean data and noise. Whenever $ad-bc\\ne0$, the two-by-two inverse gives\n\n$$\n\\dot{\\mathbf u}=\\mu(t)\\mathbf u+\\nu(t)f,\\qquad\n\\mu=\\frac{a'd-b'c}{ad-bc},\\qquad\n\\nu=\\frac{b'a-a'b}{ad-bc}.\n$$\n\nPrimes differentiate with respect to the same schedule coordinate $t$. Replacing $f$ with the autonomous optimum rather than the conditioned optimum changes velocity by\n\n$$\\Delta\\mathbf v=|\\nu(t)|\\,\\|f^*(\\mathbf u)-f_t^*(\\mathbf u)\\|.$$\n\nThe shared drift cancels, leaving a product of gain and target mismatch. Bounded network output alone cannot bound that product if the gain diverges. Conversely, a divergent gain alone cannot establish failure if the mismatch decays quickly enough.\n\nEvaluate a fully specified example: $a=1-t,b=t$, for $0<t<1$.\n\n| Target | $(c,d)$ | Exact $\\nu(t)$ |\n| --- | --- | --- |\n| Noise $\\boldsymbol\\epsilon$ | $(0,1)$ | $1/(1-t)$ |\n| Signal $\\mathbf x$ | $(1,0)$ | $-1/t$ |\n| Path velocity $\\boldsymbol\\epsilon-\\mathbf x$ | $(-1,1)$ | $1$ |\n\nNear the clean endpoint, the noise-target gain here is bounded; the signal-target gain diverges as $1/t$ in magnitude. Appendix F’s later signal expression $1/b^2$ therefore does not follow from boundary conditions $a\\to 1,b\\to 0$ alone. For a different construction, $a=1,b=\\sqrt t$, signal prediction gives $\\nu=-1/(2t)=-1/(2b^2)$. The derivative of the schedule decides the rate.\n\nThere is also a distinction between the gain and the residual-relative coefficient in the paper’s noise-error analysis. Factoring a restoration residual produces $b'/b$. For $b=t^q$, $b'/b=q/t$, including $q=1/2$; this is not an additional $t^{-3/2}$ factor. Whether the **whole** error diverges depends on the residual and posterior mismatch as well. Weak concentration is insufficient to exchange limits through an unbounded reciprocal-noise average without additional control.\n\nVelocity prediction has a particularly clean identity: choosing the actual path target $c=a',d=b'$ gives $\\nu=1$ wherever the matrix is invertible. It eliminates singular amplification by this coefficient, but still leaves approximation error and integration choices. The paper’s bounded-perturbation criterion is a necessary structural check, not a guarantee of high-fidelity samples.",
+      "sourceIds": [
+        "section-6",
+        "supplement-a6"
+      ],
+      "claimIds": [
+        "c10",
+        "c11",
+        "c14",
+        "c15",
+        "c17"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s8",
+      "title": "8. Reading the experiments within their boundaries",
+      "markdown": "The paper reports conditional and autonomous versions of DDPM and Flow Matching on CIFAR-10, SVHN, and Fashion MNIST. All four configurations used a ResNet-based U-Net, 10,000 training steps, batch size 128, and EMA 0.999. Its qualitative description says blind DDPM samples retained noise and artifacts, while blind Flow Matching produced sharp samples resembling the conditioned counterpart. Those statements belong to that setup; the qualitative image comparison is not an uncertainty estimate or a comprehensive quantitative ranking.\n\nA controlled experiment embedded 2D concentric circles into $\\mathbb R^D$ for $D\\in\\{2,8,32,128\\}$. The reported progression was ambiguity for blind models at $D=2$, cleaner Flow Matching rings at moderate dimensions, and coherent samples from both blind models at $D=128$. This supports an interaction between concentration and parameterization in that construction, not a claim that every high-dimensional dataset reveals its noise level equally well.\n\n\nThe theoretical result and the experiment answer different questions. A singular mixture energy can coexist with a bounded target along an appropriate corruption path. High codimension can improve scale inference in the subspace model. A stable gain can avoid one source of velocity amplification. None of these alone establishes that a finite trained network, an arbitrary schedule, and a numerical solver will produce accurate samples. The exact target/schedule coefficients and support/prior conditions are therefore part of the method rather than details to suppress when comparing autonomous models.\n",
+      "sourceIds": [
+        "section-5",
+        "section-6",
+        "section-7",
+        "supplement-a6"
+      ],
+      "claimIds": [
+        "c5",
+        "c7",
+        "c12",
+        "c13",
+        "c14",
+        "c15"
+      ],
+      "figureId": null
+    }
+  ],
+  "figures": [
+    {
+      "id": "fig-noise",
+      "kind": "noise-shells",
+      "title": "Two RMS noise radii around one point",
+      "question": "How does the inner RMS radius change with its coordinate scale $\\sigma$, and what remains unchanged when you rotate the view?",
+      "caption": "An illustrative $D=3$, $d=0$ construction places one data point at the origin and draws ideal RMS-radius surfaces for two isotropic Gaussian noise scales.",
+      "limitation": "The ideal surfaces are geometric references, not Gaussian samples; in three dimensions, actual draws fluctuate around these radii and may overlap.",
+      "sourceIds": [
+        "section-5",
+        "main-text-part-2"
+      ],
+      "claimIds": [
+        "c8"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "fig-ode",
+      "kind": "ode",
+      "title": "One field, different numerical errors",
+      "question": "For the same decay field $dx/dt=-x$, how does a larger forward-Euler step change the discrepancy from $e^{-t}$?",
+      "caption": "Illustrative forward Euler integration starts at $x(0)=1$ over $t\\in[0,3]$ and compares its numerical trajectory with the exact curve $e^{-t}$.",
+      "limitation": "This is not an adaptive solver, adjoint method, learned vector field, diffusion sampler, or simulation of the paper’s singular marginal energy.",
+      "sourceIds": [
+        "section-6"
+      ],
+      "claimIds": [
+        "c10",
+        "c14"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "fig-latent",
+      "kind": "latent",
+      "title": "When two scalar Gaussians coincide",
+      "question": "As mu approaches zero, what happens to the overlap of $q=\\mathcal N(\\mu,1)$ and $p=\\mathcal N(0,1)$ and to $\\mu^2/2$?",
+      "caption": "An illustrative scalar Gaussian posterior shifts relative to a standard normal, with the displayed KL divergence equal to $\\mu^2/2$.",
+      "limitation": "No learned posterior or reconstruction likelihood is simulated. This is not $p(t\\mid\\mathbf u)$ and does not establish shell concentration or the paper’s manifold result.",
+      "sourceIds": [
+        "section-5"
+      ],
+      "claimIds": [
+        "c8",
+        "c9"
+      ],
+      "illustrative": true
+    }
+  ],
+  "quiz": [
+    {
+      "question": "At a fixed observation $\\mathbf u$, suppose $p(t_1\\mid\\mathbf u)=p(t_2\\mid\\mathbf u)=1/2$ and the conditional optimal scalar fields are $-3$ and $1$. What is the squared-error-optimal autonomous field there?",
+      "options": [
+        {
+          "text": "$-1$",
+          "explanation": "Correct: the posterior average is $(1/2)(-3)+(1/2)(1)=-1$."
+        },
+        {
+          "text": "$-3$",
+          "explanation": "This would require all posterior mass on $t_1$, contrary to the equal probabilities."
+        },
+        {
+          "text": "$1$",
+          "explanation": "This would require all posterior mass on $t_2$, not an equal mixture."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c2"
+      ]
+    },
+    {
+      "question": "For $a(t)=1-t$, $b(t)=t$ and signal target $c=1,d=0$, what gain follows from the exact sampler formula on $0<t<1$?",
+      "options": [
+        {
+          "text": "$\\nu(t)=-1/t$.",
+          "explanation": "Correct. The numerator is $(1)(1-t)-(-1)t=1$ and determinant is $-t$, giving $-1/t$."
+        },
+        {
+          "text": "$\\nu(t)=1/t^2$.",
+          "explanation": "Incorrect. This rate does not follow from endpoint boundary conditions; substituting the linear schedule gives $-1/t$."
+        },
+        {
+          "text": "$\\nu(t)=1$.",
+          "explanation": "Incorrect. Unit gain belongs to the actual velocity target, not signal prediction under this schedule."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "supplement-a6"
+      ],
+      "claimIds": [
+        "c15",
+        "c17"
+      ]
+    },
+    {
+      "question": "What follows if $\\Delta\\mathbf v$ remains bounded under the paper’s structural-stability assumptions?",
+      "options": [
+        {
+          "text": "High-fidelity generation is guaranteed.",
+          "explanation": "Incorrect: bounded perturbation is described as necessary but not strictly sufficient for high fidelity."
+        },
+        {
+          "text": "The autonomous and oracle fields are identical everywhere.",
+          "explanation": "Incorrect: a bounded discrepancy may still be nonzero."
+        },
+        {
+          "text": "A necessary stability condition is satisfied, but sample quality is not guaranteed.",
+          "explanation": "Correct: boundedness avoids the stated divergence failure criterion without proving every other requirement."
+        }
+      ],
+      "answer": 2,
+      "sourceIds": [
+        "section-6"
+      ],
+      "claimIds": [
+        "c10",
+        "c14"
+      ]
+    }
+  ],
+  "id": "geometry-of-noise",
+  "createdAt": "2026-10-01T22:50:02.110Z",
+  "pipelineVersion": "subjects-lessons-v1",
+  "sources": [
+    {
+      "id": "abstract",
+      "label": "Original paper · abstract",
+      "url": "https://arxiv.org/abs/2602.18428",
+      "digest": "918c9f67f0e060d0f256b1d77e7e989abb935519b893f2b76d52bb4c4bc3c967"
+    },
+    {
+      "id": "main-text",
+      "label": "Original paper · unsectioned main text",
+      "url": "https://arxiv.org/html/2602.18428",
+      "digest": "11d2497c44a4892279cf202cf6071c5e4975e65a0f4abcfad5ddc193844aea6d"
+    },
+    {
+      "id": "main-text-part-2",
+      "label": "Original paper · unsectioned main text · part 2",
+      "url": "https://arxiv.org/html/2602.18428",
+      "digest": "52ae65e4f83d4a786e29ba54cd7ce3c54f766932e0724183603e0c2a09033ec4"
+    },
+    {
+      "id": "main-text-part-3",
+      "label": "Original paper · unsectioned main text · part 3",
+      "url": "https://arxiv.org/html/2602.18428",
+      "digest": "cb1f15f5ebe1657543fa0d0a4e165904772bb87f3d5e1ef231bd73c59e26ecbd"
+    },
+    {
+      "id": "main-text-part-4",
+      "label": "Original paper · unsectioned main text · part 4",
+      "url": "https://arxiv.org/html/2602.18428",
+      "digest": "a38c191e8149dd17cf50560d94ef6a41025938172a1e8281df61db82b0459352"
+    },
+    {
+      "id": "section-1",
+      "label": "1 Introduction",
+      "url": "https://arxiv.org/html/2602.18428#S1",
+      "digest": "e31460f62a58515960dae9363e56b3487d893abb23485b61b8158eb1f7b590a4"
+    },
+    {
+      "id": "section-2",
+      "label": "2 Related Work",
+      "url": "https://arxiv.org/html/2602.18428#S2",
+      "digest": "624536b06d1363010aa3d060572dd11d4b63ee8513de559243778102370a7aad"
+    },
+    {
+      "id": "section-3",
+      "label": "3 Preliminaries: A Unified Schedule Formulation",
+      "url": "https://arxiv.org/html/2602.18428#S3",
+      "digest": "2b04343c78db7223fd298c315ff473b8e0172b9e4d954602480e426c934892e5"
+    },
+    {
+      "id": "section-4",
+      "label": "4 The Geometry of the Marginal Energy",
+      "url": "https://arxiv.org/html/2602.18428#S4",
+      "digest": "542aee440a4c75db68cbaa1bd1ecb156a033e426d3c498656f76609481151452"
+    },
+    {
+      "id": "section-5",
+      "label": "5 Autonomous Generation as Riemannian Gradient Flow",
+      "url": "https://arxiv.org/html/2602.18428#S5",
+      "digest": "02a001296a3712284d5ef35a440aed77fb3e42deeccbd1ce7d4f68840e06d29c"
+    },
+    {
+      "id": "section-6",
+      "label": "6 Stability Conditions for Sampling with Autonomous Models",
+      "url": "https://arxiv.org/html/2602.18428#S6",
+      "digest": "f4ccda3303e73db03944e0ecc34f974f2d2618f7da0d75e7f8945766285f2c96"
+    },
+    {
+      "id": "section-7",
+      "label": "7 Empirical Verification",
+      "url": "https://arxiv.org/html/2602.18428#S7",
+      "digest": "869a202306de4cc47615614eaca276915fbec4845ab8accd6a7f720f802deab6"
+    },
+    {
+      "id": "section-8",
+      "label": "8 Conclusion",
+      "url": "https://arxiv.org/html/2602.18428#S8",
+      "digest": "b8731d78b93814e00659469073839ea4b2b7865b8b26002ed1d6647aa70254f5"
+    },
+    {
+      "id": "supplement-a1",
+      "label": "Appendix A General Derivations for Autonomous Models",
+      "url": "https://arxiv.org/html/2602.18428#A1",
+      "digest": "ef41bda3215c1c740ab5680008e58d7c9bb0919f3fd8cd16e5d5895abecc0ef5",
+      "extractionVersion": "arxiv-html-scientific-body-v5",
+      "capturedAt": "2026-10-02T00:33:49.270Z"
+    },
+    {
+      "id": "supplement-a2",
+      "label": "Appendix B Concentration of p⁡(t|𝐮)p(t|\\mathbf{u}) via Proximity",
+      "url": "https://arxiv.org/html/2602.18428#A2",
+      "digest": "e1de5f9024a60e98ae0f4d722cef5fb716fd5ebcfb812b1a8cf660c6aaf1c2ea",
+      "extractionVersion": "arxiv-html-scientific-body-v5",
+      "capturedAt": "2026-10-02T00:33:49.270Z"
+    },
+    {
+      "id": "supplement-a3",
+      "label": "Appendix C Posterior Concentration in High Dimensions",
+      "url": "https://arxiv.org/html/2602.18428#A3",
+      "digest": "0b67f65e4255b9256ab63f66189f4e4acdf09bb56edc3b19505287a40f5c943c",
+      "extractionVersion": "arxiv-html-scientific-body-v5",
+      "capturedAt": "2026-10-02T00:33:49.270Z"
+    },
+    {
+      "id": "supplement-a4",
+      "label": "Appendix D Derivation of General Energy-Aligned Decomposition",
+      "url": "https://arxiv.org/html/2602.18428#A4",
+      "digest": "b7f4799d646511114b68a491ecdb36c55684fd09b4c306692b50226eddf6f542",
+      "extractionVersion": "arxiv-html-scientific-body-v5",
+      "capturedAt": "2026-10-02T00:33:49.270Z"
+    },
+    {
+      "id": "supplement-a5",
+      "label": "Appendix E Analysis of Specific Architectures: Exact Low-Noise Asymptotics",
+      "url": "https://arxiv.org/html/2602.18428#A5",
+      "digest": "432308cb624bc81e6f95936e3d962f3ffe0786064103067055d2676ec939e599",
+      "extractionVersion": "arxiv-html-scientific-body-v5",
+      "capturedAt": "2026-10-02T00:33:49.270Z"
+    },
+    {
+      "id": "supplement-a6",
+      "label": "Appendix F Derivation of Stability Conditions",
+      "url": "https://arxiv.org/html/2602.18428#A6",
+      "digest": "ddf18e962cb03565063b9a9a7d4aa990734004e050c7a66bc1ced3a9b52dc919",
+      "extractionVersion": "arxiv-html-scientific-body-v5",
+      "capturedAt": "2026-10-02T00:33:49.270Z"
+    }
+  ],
+  "review": {
+    "status": "passed",
+    "reviewedAt": "2026-10-02T01:48:09.592Z",
+    "contentDigest": "18fa25409b4527ece363e575a14d755288ed84c312f0882307b2a43f22e0b52d"
+  }
+}

@@ -1,0 +1,711 @@
+{
+  "version": 1,
+  "sectionId": "s5",
+  "title": "From Coarse Evidence to Fine Ray Samples",
+  "introduction": "For one ray $\\mathbf r(t)=\\mathbf o+t\\mathbf d$, take coarse depths $t_A<t_B<t_C$ and far endpoint $t_F$, so $\\delta_A=t_B-t_A$, $\\delta_B=t_C-t_B$, and $\\delta_C=t_F-t_C$. Coarse densities determine weights and a piecewise-constant PDF; illustrative draws $f_1,f_2$ then join the coarse depths for fine evaluation.",
+  "entities": [
+    {
+      "id": "e-ray",
+      "label": "r",
+      "meaning": "The camera ray whose color is being rendered."
+    },
+    {
+      "id": "e-dir",
+      "label": "d",
+      "meaning": "The fixed viewing direction of camera ray r."
+    },
+    {
+      "id": "e-ta",
+      "label": "tA",
+      "meaning": "The first illustrative coarse query depth along ray r."
+    },
+    {
+      "id": "e-tb",
+      "label": "tB",
+      "meaning": "The second illustrative coarse query depth along ray r."
+    },
+    {
+      "id": "e-tc",
+      "label": "tC",
+      "meaning": "The third illustrative coarse query depth along ray r."
+    },
+    {
+      "id": "e-tf",
+      "label": "tF",
+      "meaning": "The ray's far endpoint, closing the final displayed interval after tC."
+    },
+    {
+      "id": "e-intervals",
+      "label": "ΔA–C",
+      "meaning": "The intervals [tA,tB), [tB,tC), and [tC,tF) used to derive coarse weights."
+    },
+    {
+      "id": "e-density-set",
+      "label": "σA–C",
+      "meaning": "Coarse density predictions at tA, tB, and tC, each dependent only on position."
+    },
+    {
+      "id": "e-wa",
+      "label": "wA",
+      "meaning": "The coarse rendering weight for the interval beginning at tA."
+    },
+    {
+      "id": "e-wb",
+      "label": "wB",
+      "meaning": "The coarse rendering weight for the interval beginning at tB."
+    },
+    {
+      "id": "e-wc",
+      "label": "wC",
+      "meaning": "The coarse rendering weight for the interval beginning at tC."
+    },
+    {
+      "id": "e-pdf",
+      "label": "PDF",
+      "meaning": "The piecewise-constant depth distribution obtained by normalizing wA, wB, and wC."
+    },
+    {
+      "id": "e-f1",
+      "label": "f1",
+      "meaning": "An illustrative additional depth drawn in the interval [tA,tB)."
+    },
+    {
+      "id": "e-f2",
+      "label": "f2",
+      "meaning": "An illustrative additional depth drawn in the interval [tB,tC)."
+    },
+    {
+      "id": "e-thetac",
+      "label": "Θc",
+      "meaning": "The learned parameters of the coarse neural radiance field."
+    },
+    {
+      "id": "e-thetaf",
+      "label": "Θf",
+      "meaning": "The learned parameters of the fine neural radiance field."
+    },
+    {
+      "id": "e-fine-output",
+      "label": "FineOut",
+      "meaning": "Fine densities and view-dependent colors predicted at the sorted query depths."
+    },
+    {
+      "id": "e-chatf",
+      "label": "Ĉf",
+      "meaning": "The final ray color obtained by compositing fine-network outputs in depth order."
+    }
+  ],
+  "objects": [
+    {
+      "id": "o-ray",
+      "form": "vector",
+      "label": "Camera ray",
+      "detail": "Ray and viewing direction",
+      "sourceIds": [
+        "section-3",
+        "section-5"
+      ],
+      "claimIds": [
+        "c2",
+        "c7"
+      ]
+    },
+    {
+      "id": "o-coarse-depths",
+      "form": "bank",
+      "label": "Coarse intervals",
+      "detail": "Coarse depths and far endpoint",
+      "sourceIds": [
+        "section-5"
+      ],
+      "claimIds": [
+        "c7"
+      ]
+    },
+    {
+      "id": "o-coarse-field",
+      "form": "module",
+      "label": "Coarse field",
+      "detail": "Coarse field query",
+      "sourceIds": [
+        "section-3",
+        "section-5"
+      ],
+      "claimIds": [
+        "c2",
+        "c7"
+      ]
+    },
+    {
+      "id": "o-weights",
+      "form": "vector",
+      "label": "Coarse evidence",
+      "detail": "Weights and interval PDF",
+      "sourceIds": [
+        "section-5"
+      ],
+      "claimIds": [
+        "c7"
+      ]
+    },
+    {
+      "id": "o-fine-depths",
+      "form": "bank",
+      "label": "Fine sample set",
+      "detail": "Depth-sorted combined samples",
+      "sourceIds": [
+        "section-5"
+      ],
+      "claimIds": [
+        "c7"
+      ]
+    },
+    {
+      "id": "o-fine-field",
+      "form": "module",
+      "label": "Fine field",
+      "detail": "Fine radiance-field query",
+      "sourceIds": [
+        "section-3",
+        "section-5"
+      ],
+      "claimIds": [
+        "c2",
+        "c7"
+      ]
+    },
+    {
+      "id": "o-final-color",
+      "form": "vector",
+      "label": "Final ray color",
+      "detail": "Composited fine ray color",
+      "sourceIds": [
+        "section-4",
+        "section-5"
+      ],
+      "claimIds": [
+        "c4",
+        "c7"
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "id": "r-stratify",
+      "from": "o-ray",
+      "to": "o-coarse-depths",
+      "label": "stratify bounded ray",
+      "dashed": false,
+      "sourceIds": [
+        "section-5"
+      ],
+      "claimIds": [
+        "c7"
+      ]
+    },
+    {
+      "id": "r-query-coarse-depths",
+      "from": "o-coarse-depths",
+      "to": "o-coarse-field",
+      "label": "query coarse positions",
+      "dashed": false,
+      "sourceIds": [
+        "section-3",
+        "section-5"
+      ],
+      "claimIds": [
+        "c2",
+        "c7"
+      ]
+    },
+    {
+      "id": "r-query-coarse-direction",
+      "from": "o-ray",
+      "to": "o-coarse-field",
+      "label": "condition coarse color",
+      "dashed": false,
+      "sourceIds": [
+        "section-3",
+        "section-5"
+      ],
+      "claimIds": [
+        "c2",
+        "c7"
+      ]
+    },
+    {
+      "id": "r-form-weights",
+      "from": "o-coarse-field",
+      "to": "o-weights",
+      "label": "derive interval weights",
+      "dashed": false,
+      "sourceIds": [
+        "section-5"
+      ],
+      "claimIds": [
+        "c7"
+      ]
+    },
+    {
+      "id": "r-resample",
+      "from": "o-weights",
+      "to": "o-fine-depths",
+      "label": "inverse-transform sample",
+      "dashed": false,
+      "sourceIds": [
+        "section-5"
+      ],
+      "claimIds": [
+        "c7"
+      ]
+    },
+    {
+      "id": "r-query-fine-depths",
+      "from": "o-fine-depths",
+      "to": "o-fine-field",
+      "label": "query sorted positions",
+      "dashed": false,
+      "sourceIds": [
+        "section-5"
+      ],
+      "claimIds": [
+        "c7"
+      ]
+    },
+    {
+      "id": "r-query-fine-direction",
+      "from": "o-ray",
+      "to": "o-fine-field",
+      "label": "condition fine color",
+      "dashed": false,
+      "sourceIds": [
+        "section-3",
+        "section-5"
+      ],
+      "claimIds": [
+        "c2",
+        "c7"
+      ]
+    },
+    {
+      "id": "r-composite",
+      "from": "o-fine-field",
+      "to": "o-final-color",
+      "label": "front-to-back composite",
+      "dashed": false,
+      "sourceIds": [
+        "section-4",
+        "section-5"
+      ],
+      "claimIds": [
+        "c4",
+        "c7"
+      ]
+    }
+  ],
+  "beats": [
+    {
+      "title": "Define the bounded coarse intervals",
+      "explanation": "The ray $\\mathbf r$ and direction $\\mathbf d$ are available. Stratified sampling supplies ordered coarse query depths $t_A,t_B,t_C$ within the bounded ray, while $t_F$ closes the displayed final interval. Thus all required lengths are explicit: $\\delta_A=t_B-t_A$, $\\delta_B=t_C-t_B$, and $\\delta_C=t_F-t_C$. No field predictions or hierarchical draws exist yet.",
+      "sourceIds": [
+        "section-5"
+      ],
+      "claimIds": [
+        "c7"
+      ],
+      "objects": [
+        {
+          "objectId": "o-ray",
+          "status": "active",
+          "entityIds": [
+            "e-ray",
+            "e-dir"
+          ]
+        },
+        {
+          "objectId": "o-coarse-depths",
+          "status": "active",
+          "entityIds": [
+            "e-ta",
+            "e-tb",
+            "e-tc",
+            "e-tf",
+            "e-intervals"
+          ]
+        },
+        {
+          "objectId": "o-coarse-field",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "o-weights",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "o-fine-depths",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "o-fine-field",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "o-final-color",
+          "status": "pending",
+          "entityIds": []
+        }
+      ],
+      "relationships": [
+        {
+          "relationshipId": "r-stratify",
+          "entityIds": []
+        }
+      ]
+    },
+    {
+      "title": "Turn coarse predictions into an interval PDF",
+      "explanation": "The coarse field with parameters $\\Theta_c$ queries all three positions. Its full radiance-field evaluation also uses $\\mathbf d$ for view-dependent color, but each displayed density $\\sigma_i$ depends only on position. The densities, explicit interval lengths, and preceding transmittance give $w_i=T_i(1-e^{-\\sigma_i\\delta_i})$. Normalizing these weights yields the piecewise-constant PDF $\\widehat w_i=w_i/\\sum_jw_j$ over the three displayed intervals; coarse RGB values do not determine it.",
+      "sourceIds": [
+        "section-3",
+        "section-5"
+      ],
+      "claimIds": [
+        "c2",
+        "c7"
+      ],
+      "objects": [
+        {
+          "objectId": "o-ray",
+          "status": "retained",
+          "entityIds": [
+            "e-ray",
+            "e-dir"
+          ]
+        },
+        {
+          "objectId": "o-coarse-depths",
+          "status": "retained",
+          "entityIds": [
+            "e-ta",
+            "e-tb",
+            "e-tc",
+            "e-tf",
+            "e-intervals"
+          ]
+        },
+        {
+          "objectId": "o-coarse-field",
+          "status": "active",
+          "entityIds": [
+            "e-thetac",
+            "e-density-set"
+          ]
+        },
+        {
+          "objectId": "o-weights",
+          "status": "active",
+          "entityIds": [
+            "e-wa",
+            "e-wb",
+            "e-wc",
+            "e-pdf"
+          ]
+        },
+        {
+          "objectId": "o-fine-depths",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "o-fine-field",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "o-final-color",
+          "status": "pending",
+          "entityIds": []
+        }
+      ],
+      "relationships": [
+        {
+          "relationshipId": "r-query-coarse-depths",
+          "entityIds": []
+        },
+        {
+          "relationshipId": "r-query-coarse-direction",
+          "entityIds": []
+        },
+        {
+          "relationshipId": "r-form-weights",
+          "entityIds": []
+        }
+      ]
+    },
+    {
+      "title": "Draw additional depths from the PDF",
+      "explanation": "The bounded intervals, coarse densities, weights, and normalized PDF remain available while inverse-transform sampling adds $f_1$ and $f_2$. In this illustrative placement, $t_A<f_1<t_B<f_2<t_C<t_F$. The PDF is defined across intervals, so the draws are guided by expected rendered contribution rather than by point depths alone, RGB color, or selection of only the largest density.",
+      "sourceIds": [
+        "section-5"
+      ],
+      "claimIds": [
+        "c7"
+      ],
+      "objects": [
+        {
+          "objectId": "o-ray",
+          "status": "retained",
+          "entityIds": [
+            "e-ray",
+            "e-dir"
+          ]
+        },
+        {
+          "objectId": "o-coarse-depths",
+          "status": "retained",
+          "entityIds": [
+            "e-ta",
+            "e-tb",
+            "e-tc",
+            "e-tf",
+            "e-intervals"
+          ]
+        },
+        {
+          "objectId": "o-coarse-field",
+          "status": "retained",
+          "entityIds": [
+            "e-thetac",
+            "e-density-set"
+          ]
+        },
+        {
+          "objectId": "o-weights",
+          "status": "retained",
+          "entityIds": [
+            "e-wa",
+            "e-wb",
+            "e-wc",
+            "e-pdf"
+          ]
+        },
+        {
+          "objectId": "o-fine-depths",
+          "status": "active",
+          "entityIds": [
+            "e-f1",
+            "e-f2"
+          ]
+        },
+        {
+          "objectId": "o-fine-field",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "o-final-color",
+          "status": "pending",
+          "entityIds": []
+        }
+      ],
+      "relationships": [
+        {
+          "relationshipId": "r-resample",
+          "entityIds": []
+        }
+      ]
+    },
+    {
+      "title": "Sort and evaluate the combined samples",
+      "explanation": "The fine sample set changes from two new draws to the ordered union $t_A,f_1,t_B,f_2,t_C$. The far endpoint $t_F$ remains an interval boundary rather than a field query. The fine field with parameters $\\Theta_f$ evaluates every query position; its density depends only on position, while its emitted color also uses the unchanged direction $\\mathbf d$. All coarse and added depth identities persist.",
+      "sourceIds": [
+        "section-3",
+        "section-5"
+      ],
+      "claimIds": [
+        "c2",
+        "c7"
+      ],
+      "objects": [
+        {
+          "objectId": "o-ray",
+          "status": "retained",
+          "entityIds": [
+            "e-ray",
+            "e-dir"
+          ]
+        },
+        {
+          "objectId": "o-coarse-depths",
+          "status": "retained",
+          "entityIds": [
+            "e-ta",
+            "e-tb",
+            "e-tc",
+            "e-tf",
+            "e-intervals"
+          ]
+        },
+        {
+          "objectId": "o-coarse-field",
+          "status": "retained",
+          "entityIds": [
+            "e-thetac",
+            "e-density-set"
+          ]
+        },
+        {
+          "objectId": "o-weights",
+          "status": "retained",
+          "entityIds": [
+            "e-wa",
+            "e-wb",
+            "e-wc",
+            "e-pdf"
+          ]
+        },
+        {
+          "objectId": "o-fine-depths",
+          "status": "active",
+          "entityIds": [
+            "e-ta",
+            "e-f1",
+            "e-tb",
+            "e-f2",
+            "e-tc"
+          ]
+        },
+        {
+          "objectId": "o-fine-field",
+          "status": "active",
+          "entityIds": [
+            "e-thetaf",
+            "e-fine-output"
+          ]
+        },
+        {
+          "objectId": "o-final-color",
+          "status": "pending",
+          "entityIds": []
+        }
+      ],
+      "relationships": [
+        {
+          "relationshipId": "r-query-fine-depths",
+          "entityIds": []
+        },
+        {
+          "relationshipId": "r-query-fine-direction",
+          "entityIds": []
+        }
+      ]
+    },
+    {
+      "title": "Composite the fine rendering",
+      "explanation": "The sorted fine colors and densities are composited front to back using weights of the form $T_i(1-e^{-\\sigma_i\\delta_i})$, producing $\\widehat C_f(\\mathbf r)$. Ordering matters because each transmittance depends on preceding densities. The coarse interval PDF determined where extra queries were placed, while the final color comes from fine-field density and direction-conditioned color outputs.",
+      "sourceIds": [
+        "section-4",
+        "section-5"
+      ],
+      "claimIds": [
+        "c4",
+        "c7"
+      ],
+      "objects": [
+        {
+          "objectId": "o-ray",
+          "status": "retained",
+          "entityIds": [
+            "e-ray",
+            "e-dir"
+          ]
+        },
+        {
+          "objectId": "o-coarse-depths",
+          "status": "retained",
+          "entityIds": [
+            "e-ta",
+            "e-tb",
+            "e-tc",
+            "e-tf",
+            "e-intervals"
+          ]
+        },
+        {
+          "objectId": "o-coarse-field",
+          "status": "retained",
+          "entityIds": [
+            "e-thetac",
+            "e-density-set"
+          ]
+        },
+        {
+          "objectId": "o-weights",
+          "status": "retained",
+          "entityIds": [
+            "e-wa",
+            "e-wb",
+            "e-wc",
+            "e-pdf"
+          ]
+        },
+        {
+          "objectId": "o-fine-depths",
+          "status": "retained",
+          "entityIds": [
+            "e-ta",
+            "e-f1",
+            "e-tb",
+            "e-f2",
+            "e-tc"
+          ]
+        },
+        {
+          "objectId": "o-fine-field",
+          "status": "retained",
+          "entityIds": [
+            "e-thetaf",
+            "e-fine-output"
+          ]
+        },
+        {
+          "objectId": "o-final-color",
+          "status": "active",
+          "entityIds": [
+            "e-chatf"
+          ]
+        }
+      ],
+      "relationships": [
+        {
+          "relationshipId": "r-composite",
+          "entityIds": []
+        }
+      ]
+    }
+  ],
+  "takeaway": "Coarse density-derived weights focus extra ray samples; fine evaluations of all sorted depths determine the rendered color.",
+  "sourceIds": [
+    "section-3",
+    "section-4",
+    "section-5"
+  ],
+  "claimIds": [
+    "c2",
+    "c4",
+    "c7"
+  ],
+  "lessonId": "nerf-representing-scenes-as-neural-radiance",
+  "parentContentDigest": "b3a1eb8a5d93aa51cc53b32c7174950b541f66c5d1326406f2c81374338b4ce4",
+  "review": {
+    "status": "source-passed",
+    "reviewedAt": "2026-10-02T00:21:15.140Z",
+    "contentDigest": "1cc3c1e6933ca4c60439fb95da0b8f5b37b2020c4334b1158558aa7a50095cbd",
+    "rendererDigest": "2cc690a7105c5faca75e22053e83674a2cf2e227ae22afe88cc4662d09c98bb4",
+    "visualReviewedAt": null
+  }
+}

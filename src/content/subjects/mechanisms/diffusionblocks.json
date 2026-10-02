@@ -1,0 +1,883 @@
+{
+  "version": 1,
+  "sectionId": "s4",
+  "title": "Independent training pairs, sequential inference states",
+  "introduction": "Use a continuous target y and condition x to expose the dependency change. A chosen training block receives the directly sampled corruption zb=y+σbε. Inference uses a different persistent state, beginning at pure noise and changing after each numerical step as the active noise specialist changes.",
+  "entities": [
+    {
+      "id": "clean-y",
+      "label": "y",
+      "meaning": "The supervised clean target, available during training."
+    },
+    {
+      "id": "condition-x",
+      "label": "x",
+      "meaning": "The clean task condition, available during both training and conditional inference."
+    },
+    {
+      "id": "sigma-train",
+      "label": "σb",
+      "meaning": "A sampled training noise level in the chosen block’s assigned training interval."
+    },
+    {
+      "id": "epsilon-train",
+      "label": "ε",
+      "meaning": "The independent standard Gaussian draw used to corrupt the clean training target."
+    },
+    {
+      "id": "z-train",
+      "label": "zb",
+      "meaning": "The directly constructed training input y+σbε."
+    },
+    {
+      "id": "train-identity",
+      "label": "Bb",
+      "meaning": "The block selected for this training example’s noise interval."
+    },
+    {
+      "id": "pred-train",
+      "label": "ŷb",
+      "meaning": "The chosen block’s symbolic denoised prediction for the supervised target."
+    },
+    {
+      "id": "z-zero",
+      "label": "z0",
+      "meaning": "The inference sampler’s initial pure-noise state at the maximum selected noise level."
+    },
+    {
+      "id": "z-one",
+      "label": "z1",
+      "meaning": "The same sampler object’s state after its first numerical update."
+    },
+    {
+      "id": "z-two",
+      "label": "z2",
+      "meaning": "The same sampler object’s state after the next illustrated numerical update."
+    },
+    {
+      "id": "block-high",
+      "label": "Bhi",
+      "meaning": "The specialist assigned to the current high-noise inference region."
+    },
+    {
+      "id": "block-low",
+      "label": "Blo",
+      "meaning": "The neighboring specialist after the sampler crosses into a lower-noise region."
+    },
+    {
+      "id": "denoise-high",
+      "label": "Dhi",
+      "meaning": "The high-noise specialist’s symbolic denoising estimate for z0 conditioned on x."
+    },
+    {
+      "id": "denoise-low",
+      "label": "Dlo",
+      "meaning": "The lower-noise specialist’s symbolic denoising estimate for z1 conditioned on x."
+    }
+  ],
+  "objects": [
+    {
+      "id": "target",
+      "form": "vector",
+      "label": "Clean training target",
+      "detail": "Supervised target y",
+      "sourceIds": [
+        "section-3",
+        "section-4",
+        "supplement-a2",
+        "supplement-a3"
+      ],
+      "claimIds": [
+        "c6",
+        "c7",
+        "c18"
+      ]
+    },
+    {
+      "id": "condition",
+      "form": "vector",
+      "label": "Condition",
+      "detail": "Clean task input x",
+      "sourceIds": [
+        "section-3",
+        "section-4",
+        "supplement-a2",
+        "supplement-a3"
+      ],
+      "claimIds": [
+        "c6",
+        "c7",
+        "c18"
+      ]
+    },
+    {
+      "id": "noise",
+      "form": "vector",
+      "label": "Sampled corruption",
+      "detail": "Noise level and Gaussian draw",
+      "sourceIds": [
+        "section-3",
+        "section-4",
+        "supplement-a2",
+        "supplement-a3"
+      ],
+      "claimIds": [
+        "c6",
+        "c7",
+        "c18"
+      ]
+    },
+    {
+      "id": "noisy-pair",
+      "form": "vector",
+      "label": "Direct noisy input",
+      "detail": "Constructed target corruption",
+      "sourceIds": [
+        "section-3",
+        "section-4",
+        "supplement-a2",
+        "supplement-a3"
+      ],
+      "claimIds": [
+        "c6",
+        "c7",
+        "c18"
+      ]
+    },
+    {
+      "id": "train-block",
+      "form": "module",
+      "label": "Chosen training block",
+      "detail": "One independently trained block",
+      "sourceIds": [
+        "section-3",
+        "section-4",
+        "supplement-a2",
+        "supplement-a3"
+      ],
+      "claimIds": [
+        "c6",
+        "c7",
+        "c18"
+      ]
+    },
+    {
+      "id": "objective",
+      "form": "module",
+      "label": "Local objective",
+      "detail": "Prediction compared with target",
+      "sourceIds": [
+        "section-3",
+        "section-4",
+        "supplement-a2",
+        "supplement-a3"
+      ],
+      "claimIds": [
+        "c6",
+        "c7",
+        "c18"
+      ]
+    },
+    {
+      "id": "infer-state",
+      "form": "bank",
+      "label": "Persistent sampler state",
+      "detail": "One evolving inference state",
+      "sourceIds": [
+        "section-3",
+        "section-4",
+        "supplement-a2",
+        "supplement-a3"
+      ],
+      "claimIds": [
+        "c6",
+        "c7",
+        "c18"
+      ]
+    },
+    {
+      "id": "infer-block",
+      "form": "module",
+      "label": "Selected inference block",
+      "detail": "Current noise specialist",
+      "sourceIds": [
+        "section-3",
+        "section-4",
+        "supplement-a2",
+        "supplement-a3"
+      ],
+      "claimIds": [
+        "c6",
+        "c7",
+        "c18"
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "id": "target-corruption",
+      "from": "target",
+      "to": "noisy-pair",
+      "label": "sample direct pair",
+      "dashed": false,
+      "sourceIds": [
+        "section-3",
+        "section-4",
+        "supplement-a2",
+        "supplement-a3"
+      ],
+      "claimIds": [
+        "c6",
+        "c7",
+        "c18"
+      ]
+    },
+    {
+      "id": "noise-corruption",
+      "from": "noise",
+      "to": "noisy-pair",
+      "label": "add sampled noise",
+      "dashed": false,
+      "sourceIds": [
+        "section-3",
+        "section-4",
+        "supplement-a2",
+        "supplement-a3"
+      ],
+      "claimIds": [
+        "c6",
+        "c7",
+        "c18"
+      ]
+    },
+    {
+      "id": "train-condition",
+      "from": "condition",
+      "to": "train-block",
+      "label": "condition",
+      "dashed": false,
+      "sourceIds": [
+        "section-3",
+        "section-4",
+        "supplement-a2",
+        "supplement-a3"
+      ],
+      "claimIds": [
+        "c6",
+        "c7",
+        "c18"
+      ]
+    },
+    {
+      "id": "train-state",
+      "from": "noisy-pair",
+      "to": "train-block",
+      "label": "noisy target input",
+      "dashed": false,
+      "sourceIds": [
+        "section-3",
+        "section-4",
+        "supplement-a2",
+        "supplement-a3"
+      ],
+      "claimIds": [
+        "c6",
+        "c7",
+        "c18"
+      ]
+    },
+    {
+      "id": "loss-target",
+      "from": "target",
+      "to": "objective",
+      "label": "supervised target",
+      "dashed": false,
+      "sourceIds": [
+        "section-3",
+        "section-4",
+        "supplement-a2",
+        "supplement-a3"
+      ],
+      "claimIds": [
+        "c6",
+        "c7",
+        "c18"
+      ]
+    },
+    {
+      "id": "loss-prediction",
+      "from": "train-block",
+      "to": "objective",
+      "label": "local prediction",
+      "dashed": false,
+      "sourceIds": [
+        "section-3",
+        "section-4",
+        "supplement-a2",
+        "supplement-a3"
+      ],
+      "claimIds": [
+        "c6",
+        "c7",
+        "c18"
+      ]
+    },
+    {
+      "id": "infer-input",
+      "from": "infer-state",
+      "to": "infer-block",
+      "label": "read current state",
+      "dashed": false,
+      "sourceIds": [
+        "section-3",
+        "section-4",
+        "supplement-a2",
+        "supplement-a3"
+      ],
+      "claimIds": [
+        "c6",
+        "c7",
+        "c18"
+      ]
+    },
+    {
+      "id": "infer-update",
+      "from": "infer-block",
+      "to": "infer-state",
+      "label": "numerical update",
+      "dashed": true,
+      "sourceIds": [
+        "section-3",
+        "section-4",
+        "supplement-a2",
+        "supplement-a3"
+      ],
+      "claimIds": [
+        "c6",
+        "c7",
+        "c18"
+      ]
+    },
+    {
+      "id": "infer-condition",
+      "from": "condition",
+      "to": "infer-block",
+      "label": "condition",
+      "dashed": false,
+      "sourceIds": [
+        "section-3",
+        "section-4",
+        "supplement-a2",
+        "supplement-a3"
+      ],
+      "claimIds": [
+        "c6",
+        "c7",
+        "c18"
+      ]
+    }
+  ],
+  "beats": [
+    {
+      "title": "Training: construct a local pair directly",
+      "explanation": "Choose a block Bb and sample σb from its restricted noise distribution, then draw Gaussian ε and construct zb=y+σbε. The condition x and clean target y come from supervised data. This gives the chosen block its input without executing any earlier block: the corruption is sampled directly from y. Training and inference are separate phases in this walkthrough.",
+      "sourceIds": [
+        "section-3",
+        "section-4",
+        "supplement-a2",
+        "supplement-a3"
+      ],
+      "claimIds": [
+        "c6",
+        "c7",
+        "c18"
+      ],
+      "objects": [
+        {
+          "objectId": "target",
+          "status": "active",
+          "entityIds": [
+            "clean-y"
+          ]
+        },
+        {
+          "objectId": "condition",
+          "status": "retained",
+          "entityIds": [
+            "condition-x"
+          ]
+        },
+        {
+          "objectId": "noise",
+          "status": "active",
+          "entityIds": [
+            "sigma-train",
+            "epsilon-train"
+          ]
+        },
+        {
+          "objectId": "noisy-pair",
+          "status": "active",
+          "entityIds": [
+            "z-train"
+          ]
+        },
+        {
+          "objectId": "train-block",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "objective",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "infer-state",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "infer-block",
+          "status": "pending",
+          "entityIds": []
+        }
+      ],
+      "relationships": [
+        {
+          "relationshipId": "target-corruption",
+          "entityIds": []
+        },
+        {
+          "relationshipId": "noise-corruption",
+          "entityIds": []
+        }
+      ]
+    },
+    {
+      "title": "Training: optimize only the chosen specialist",
+      "explanation": "Bb receives x and zb and produces the symbolic prediction ŷb, which the local objective compares with y. Only the chosen block needs differentiation for this example. The objective and representation depend on the task: continuous-target denoising uses its weighted reconstruction loss, while classification and token adaptations use cross-entropy. No upstream block output is required to obtain this training pair.",
+      "sourceIds": [
+        "section-3",
+        "section-4",
+        "supplement-a2",
+        "supplement-a3"
+      ],
+      "claimIds": [
+        "c6",
+        "c7",
+        "c18"
+      ],
+      "objects": [
+        {
+          "objectId": "target",
+          "status": "retained",
+          "entityIds": [
+            "clean-y"
+          ]
+        },
+        {
+          "objectId": "condition",
+          "status": "retained",
+          "entityIds": [
+            "condition-x"
+          ]
+        },
+        {
+          "objectId": "noise",
+          "status": "retained",
+          "entityIds": [
+            "sigma-train",
+            "epsilon-train"
+          ]
+        },
+        {
+          "objectId": "noisy-pair",
+          "status": "active",
+          "entityIds": [
+            "z-train"
+          ]
+        },
+        {
+          "objectId": "train-block",
+          "status": "active",
+          "entityIds": [
+            "train-identity",
+            "condition-x",
+            "z-train",
+            "pred-train"
+          ]
+        },
+        {
+          "objectId": "objective",
+          "status": "active",
+          "entityIds": [
+            "clean-y",
+            "pred-train"
+          ]
+        },
+        {
+          "objectId": "infer-state",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "infer-block",
+          "status": "pending",
+          "entityIds": []
+        }
+      ],
+      "relationships": [
+        {
+          "relationshipId": "train-condition",
+          "entityIds": [
+            "condition-x"
+          ]
+        },
+        {
+          "relationshipId": "train-state",
+          "entityIds": [
+            "z-train"
+          ]
+        },
+        {
+          "relationshipId": "loss-target",
+          "entityIds": [
+            "clean-y"
+          ]
+        },
+        {
+          "relationshipId": "loss-prediction",
+          "entityIds": [
+            "pred-train"
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Inference: evaluate the high-noise specialist",
+      "explanation": "Inference starts from the pure-noise sampler state z0 and retains the condition x. The supervised target and local training pair are unavailable in this phase. Select Bhi from the current noise region, read z0, and obtain its symbolic denoising estimate Dhi. This is a new use of the trained specialists, not a continuation that feeds the clean training target into generation.",
+      "sourceIds": [
+        "section-3",
+        "section-4",
+        "supplement-a2",
+        "supplement-a3"
+      ],
+      "claimIds": [
+        "c6",
+        "c7",
+        "c18"
+      ],
+      "objects": [
+        {
+          "objectId": "target",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "condition",
+          "status": "retained",
+          "entityIds": [
+            "condition-x"
+          ]
+        },
+        {
+          "objectId": "noise",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "noisy-pair",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "train-block",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "objective",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "infer-state",
+          "status": "active",
+          "entityIds": [
+            "z-zero"
+          ]
+        },
+        {
+          "objectId": "infer-block",
+          "status": "active",
+          "entityIds": [
+            "block-high",
+            "condition-x",
+            "z-zero",
+            "denoise-high"
+          ]
+        }
+      ],
+      "relationships": [
+        {
+          "relationshipId": "infer-input",
+          "entityIds": [
+            "z-zero"
+          ]
+        },
+        {
+          "relationshipId": "infer-condition",
+          "entityIds": [
+            "condition-x"
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Inference: update the persistent state",
+      "explanation": "The numerical sampler combines the current state, the selected specialist’s estimate, and the signed noise-level step to obtain z1. The sampler object persists; its state changes from z0 to z1. The estimate is symbolic because its actual value comes from the trained network. A specialist may serve several numerical steps while their noise levels remain in its assigned region.",
+      "sourceIds": [
+        "section-3",
+        "section-4",
+        "supplement-a2",
+        "supplement-a3"
+      ],
+      "claimIds": [
+        "c6",
+        "c7",
+        "c18"
+      ],
+      "objects": [
+        {
+          "objectId": "target",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "condition",
+          "status": "retained",
+          "entityIds": [
+            "condition-x"
+          ]
+        },
+        {
+          "objectId": "noise",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "noisy-pair",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "train-block",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "objective",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "infer-state",
+          "status": "active",
+          "entityIds": [
+            "z-one"
+          ]
+        },
+        {
+          "objectId": "infer-block",
+          "status": "retained",
+          "entityIds": [
+            "block-high",
+            "condition-x",
+            "z-zero",
+            "denoise-high"
+          ]
+        }
+      ],
+      "relationships": [
+        {
+          "relationshipId": "infer-update",
+          "entityIds": []
+        }
+      ]
+    },
+    {
+      "title": "Inference: cross into the next noise region",
+      "explanation": "At the illustrated handoff, the current state is still z1 but the selected specialist changes to Blo. Blo reads that state with the same condition x and produces Dlo. Overlapping training intervals give neighboring specialists experience near the boundary; inference still selects the relevant block for the current region. Block count and numerical-step count are separate choices.",
+      "sourceIds": [
+        "section-3",
+        "section-4",
+        "supplement-a2",
+        "supplement-a3"
+      ],
+      "claimIds": [
+        "c6",
+        "c7",
+        "c18"
+      ],
+      "objects": [
+        {
+          "objectId": "target",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "condition",
+          "status": "retained",
+          "entityIds": [
+            "condition-x"
+          ]
+        },
+        {
+          "objectId": "noise",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "noisy-pair",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "train-block",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "objective",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "infer-state",
+          "status": "active",
+          "entityIds": [
+            "z-one"
+          ]
+        },
+        {
+          "objectId": "infer-block",
+          "status": "active",
+          "entityIds": [
+            "block-low",
+            "condition-x",
+            "z-one",
+            "denoise-low"
+          ]
+        }
+      ],
+      "relationships": [
+        {
+          "relationshipId": "infer-input",
+          "entityIds": [
+            "z-one"
+          ]
+        },
+        {
+          "relationshipId": "infer-condition",
+          "entityIds": [
+            "condition-x"
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Inference: continue the shared reverse process",
+      "explanation": "The next numerical update changes the persistent sampler state from z1 to z2 using Blo’s estimate. Training blocks could acquire their noisy inputs independently from supervised targets; inference states instead depend successively on preceding numerical updates. The noise-indexed specialization therefore removes upstream activation dependence from training without removing sequential state dependence from sampling.",
+      "sourceIds": [
+        "section-3",
+        "section-4",
+        "supplement-a2",
+        "supplement-a3"
+      ],
+      "claimIds": [
+        "c6",
+        "c7",
+        "c18"
+      ],
+      "objects": [
+        {
+          "objectId": "target",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "condition",
+          "status": "retained",
+          "entityIds": [
+            "condition-x"
+          ]
+        },
+        {
+          "objectId": "noise",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "noisy-pair",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "train-block",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "objective",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "infer-state",
+          "status": "active",
+          "entityIds": [
+            "z-two"
+          ]
+        },
+        {
+          "objectId": "infer-block",
+          "status": "retained",
+          "entityIds": [
+            "block-low",
+            "condition-x",
+            "z-one",
+            "denoise-low"
+          ]
+        }
+      ],
+      "relationships": [
+        {
+          "relationshipId": "infer-update",
+          "entityIds": []
+        }
+      ]
+    }
+  ],
+  "takeaway": "Training inputs are sampled directly from clean targets, while inference retains one evolving state and composes the appropriate noise specialists.",
+  "sourceIds": [
+    "section-3",
+    "section-4",
+    "supplement-a2",
+    "supplement-a3"
+  ],
+  "claimIds": [
+    "c6",
+    "c7",
+    "c18"
+  ],
+  "lessonId": "diffusionblocks",
+  "parentContentDigest": "32dcb5bdcb4d7bd8eb9b80c4cd357b4e835705ba306eb2db82171a02f1e08e5b",
+  "review": {
+    "status": "source-passed",
+    "reviewedAt": "2026-10-02T01:53:01.308Z",
+    "contentDigest": "0123ad73f478fdaff023108ca4e11814ab15701b3a693bfcdb7d67c080b50138",
+    "rendererDigest": "2cc690a7105c5faca75e22053e83674a2cf2e227ae22afe88cc4662d09c98bb4",
+    "visualReviewedAt": null
+  }
+}

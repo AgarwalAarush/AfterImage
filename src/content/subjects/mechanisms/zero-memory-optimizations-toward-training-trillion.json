@@ -1,0 +1,557 @@
+{
+  "version": 1,
+  "sectionId": "s4",
+  "title": "Partitioned ownership with full parameter reuse",
+  "introduction": "Let $p_A$ and $p_B$ be parameter shards available as a full collection on each data-parallel process. Local backward passes produce gradient contributions; reduce-scatter sends each reduced shard to its owner, which applies its matching optimizer state. An all-gather then restores the updated full collection.",
+  "entities": [
+    {
+      "id": "p-a",
+      "label": "pA",
+      "meaning": "Parameter shard assigned to owner A and copied into the full parameter collection."
+    },
+    {
+      "id": "p-b",
+      "label": "pB",
+      "meaning": "Parameter shard assigned to owner B and copied into the full parameter collection."
+    },
+    {
+      "id": "d-a",
+      "label": "dA",
+      "meaning": "One process's locally computed gradient contributions across the parameters."
+    },
+    {
+      "id": "d-b",
+      "label": "dB",
+      "meaning": "Another process's locally computed gradient contributions across the parameters."
+    },
+    {
+      "id": "g-a",
+      "label": "gA",
+      "meaning": "Reduced gradient shard routed to the owner of parameter shard pA."
+    },
+    {
+      "id": "g-b",
+      "label": "gB",
+      "meaning": "Reduced gradient shard routed to the owner of parameter shard pB."
+    },
+    {
+      "id": "o-a",
+      "label": "oA",
+      "meaning": "Optimizer state owned with parameter shard pA."
+    },
+    {
+      "id": "o-b",
+      "label": "oB",
+      "meaning": "Optimizer state owned with parameter shard pB."
+    }
+  ],
+  "objects": [
+    {
+      "id": "parameters",
+      "form": "bank",
+      "label": "Replicated parameters",
+      "detail": "Full parameter collection",
+      "sourceIds": [
+        "section-6",
+        "section-8"
+      ],
+      "claimIds": [
+        "c3",
+        "c6"
+      ]
+    },
+    {
+      "id": "local-gradients",
+      "form": "bank",
+      "label": "Local gradients",
+      "detail": "Local gradient contributions",
+      "sourceIds": [
+        "section-3",
+        "section-8"
+      ],
+      "claimIds": [
+        "c1",
+        "c6"
+      ]
+    },
+    {
+      "id": "reduce-scatter",
+      "form": "module",
+      "label": "Reduce-scatter",
+      "detail": "Partitioned gradient reduction",
+      "sourceIds": [
+        "section-6",
+        "section-8"
+      ],
+      "claimIds": [
+        "c3",
+        "c6"
+      ]
+    },
+    {
+      "id": "owned-gradients",
+      "form": "bank",
+      "label": "Owned gradient shards",
+      "detail": "Reduced owner-aligned gradients",
+      "sourceIds": [
+        "section-6",
+        "section-8"
+      ],
+      "claimIds": [
+        "c3",
+        "c4",
+        "c6"
+      ]
+    },
+    {
+      "id": "optimizer-states",
+      "form": "bank",
+      "label": "Owned optimizer states",
+      "detail": "Partitioned optimizer state",
+      "sourceIds": [
+        "section-6"
+      ],
+      "claimIds": [
+        "c3",
+        "c4"
+      ]
+    },
+    {
+      "id": "owner-update",
+      "form": "module",
+      "label": "Owner update",
+      "detail": "Shard-local parameter update",
+      "sourceIds": [
+        "section-6",
+        "section-8"
+      ],
+      "claimIds": [
+        "c3",
+        "c6"
+      ]
+    },
+    {
+      "id": "updated-shards",
+      "form": "bank",
+      "label": "Updated parameter shards",
+      "detail": "Owner-updated parameter shards",
+      "sourceIds": [
+        "section-6",
+        "section-8"
+      ],
+      "claimIds": [
+        "c3",
+        "c6"
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "id": "r-backward",
+      "from": "parameters",
+      "to": "local-gradients",
+      "label": "backpropagation produces",
+      "dashed": false,
+      "sourceIds": [
+        "section-3",
+        "section-6"
+      ],
+      "claimIds": [
+        "c1",
+        "c3"
+      ]
+    },
+    {
+      "id": "r-reduce-input",
+      "from": "local-gradients",
+      "to": "reduce-scatter",
+      "label": "enters reduce-scatter",
+      "dashed": false,
+      "sourceIds": [
+        "section-6",
+        "section-8"
+      ],
+      "claimIds": [
+        "c3",
+        "c6"
+      ]
+    },
+    {
+      "id": "r-route-shards",
+      "from": "reduce-scatter",
+      "to": "owned-gradients",
+      "label": "reduces and routes shards",
+      "dashed": false,
+      "sourceIds": [
+        "section-6",
+        "section-8"
+      ],
+      "claimIds": [
+        "c3",
+        "c6"
+      ]
+    },
+    {
+      "id": "r-gradient-update",
+      "from": "owned-gradients",
+      "to": "owner-update",
+      "label": "supplies owned gradient",
+      "dashed": false,
+      "sourceIds": [
+        "section-6",
+        "section-8"
+      ],
+      "claimIds": [
+        "c3",
+        "c6"
+      ]
+    },
+    {
+      "id": "r-state-update",
+      "from": "optimizer-states",
+      "to": "owner-update",
+      "label": "supplies matching state",
+      "dashed": false,
+      "sourceIds": [
+        "section-6"
+      ],
+      "claimIds": [
+        "c3",
+        "c4"
+      ]
+    },
+    {
+      "id": "r-write-shards",
+      "from": "owner-update",
+      "to": "updated-shards",
+      "label": "writes updated shards",
+      "dashed": false,
+      "sourceIds": [
+        "section-6",
+        "section-8"
+      ],
+      "claimIds": [
+        "c3",
+        "c6"
+      ]
+    },
+    {
+      "id": "r-all-gather",
+      "from": "updated-shards",
+      "to": "parameters",
+      "label": "all-gathers updated shards",
+      "dashed": false,
+      "sourceIds": [
+        "section-6",
+        "section-8"
+      ],
+      "claimIds": [
+        "c3",
+        "c6"
+      ]
+    }
+  ],
+  "beats": [
+    {
+      "title": "Compute local gradient contributions",
+      "explanation": "Each process begins with the full parameter collection containing $p_A$ and $p_B$, while persistent optimizer state remains partitioned as $o_A$ and $o_B$. Different processes run backward propagation and produce current-step contributions $d_A$ and $d_B$. Reduced owner-aligned gradients are still unavailable because the contributions have not yet been combined.",
+      "sourceIds": [
+        "section-3",
+        "section-6"
+      ],
+      "claimIds": [
+        "c1",
+        "c3",
+        "c4"
+      ],
+      "objects": [
+        {
+          "objectId": "parameters",
+          "status": "active",
+          "entityIds": [
+            "p-a",
+            "p-b"
+          ]
+        },
+        {
+          "objectId": "local-gradients",
+          "status": "active",
+          "entityIds": [
+            "d-a",
+            "d-b"
+          ]
+        },
+        {
+          "objectId": "reduce-scatter",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "owned-gradients",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "optimizer-states",
+          "status": "retained",
+          "entityIds": [
+            "o-a",
+            "o-b"
+          ]
+        },
+        {
+          "objectId": "owner-update",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "updated-shards",
+          "status": "pending",
+          "entityIds": []
+        }
+      ],
+      "relationships": [
+        {
+          "relationshipId": "r-backward",
+          "entityIds": []
+        }
+      ]
+    },
+    {
+      "title": "Reduce directly toward gradient owners",
+      "explanation": "Reduce-scatter combines the local contributions and routes only the relevant reduced shard to each owner. The output bank changes from unavailable to $g_A,g_B$: $g_A$ belongs with $p_A$, while $g_B$ belongs with $p_B$. Unlike an all-reduce, this operation does not leave every process holding the complete reduced gradient.",
+      "sourceIds": [
+        "section-6",
+        "section-8"
+      ],
+      "claimIds": [
+        "c3",
+        "c4",
+        "c6"
+      ],
+      "objects": [
+        {
+          "objectId": "parameters",
+          "status": "retained",
+          "entityIds": [
+            "p-a",
+            "p-b"
+          ]
+        },
+        {
+          "objectId": "local-gradients",
+          "status": "active",
+          "entityIds": [
+            "d-a",
+            "d-b"
+          ]
+        },
+        {
+          "objectId": "reduce-scatter",
+          "status": "active",
+          "entityIds": []
+        },
+        {
+          "objectId": "owned-gradients",
+          "status": "active",
+          "entityIds": [
+            "g-a",
+            "g-b"
+          ]
+        },
+        {
+          "objectId": "optimizer-states",
+          "status": "retained",
+          "entityIds": [
+            "o-a",
+            "o-b"
+          ]
+        },
+        {
+          "objectId": "owner-update",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "updated-shards",
+          "status": "pending",
+          "entityIds": []
+        }
+      ],
+      "relationships": [
+        {
+          "relationshipId": "r-reduce-input",
+          "entityIds": []
+        },
+        {
+          "relationshipId": "r-route-shards",
+          "entityIds": []
+        }
+      ]
+    },
+    {
+      "title": "Update only the owned parameter shards",
+      "explanation": "Each owner combines its reduced gradient shard with its matching optimizer state: $g_A$ with $o_A$, and $g_B$ with $o_B$. The owner-update computation writes updated versions of the same parameter identities $p_A$ and $p_B$. No process needs another owner's optimizer state or reduced gradient shard to perform its assigned update.",
+      "sourceIds": [
+        "section-6",
+        "section-8"
+      ],
+      "claimIds": [
+        "c3",
+        "c4",
+        "c6"
+      ],
+      "objects": [
+        {
+          "objectId": "parameters",
+          "status": "retained",
+          "entityIds": [
+            "p-a",
+            "p-b"
+          ]
+        },
+        {
+          "objectId": "local-gradients",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "reduce-scatter",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "owned-gradients",
+          "status": "active",
+          "entityIds": [
+            "g-a",
+            "g-b"
+          ]
+        },
+        {
+          "objectId": "optimizer-states",
+          "status": "active",
+          "entityIds": [
+            "o-a",
+            "o-b"
+          ]
+        },
+        {
+          "objectId": "owner-update",
+          "status": "active",
+          "entityIds": []
+        },
+        {
+          "objectId": "updated-shards",
+          "status": "active",
+          "entityIds": [
+            "p-a",
+            "p-b"
+          ]
+        }
+      ],
+      "relationships": [
+        {
+          "relationshipId": "r-gradient-update",
+          "entityIds": []
+        },
+        {
+          "relationshipId": "r-state-update",
+          "entityIds": []
+        },
+        {
+          "relationshipId": "r-write-shards",
+          "entityIds": []
+        }
+      ]
+    },
+    {
+      "title": "Restore the full updated parameters",
+      "explanation": "An all-gather copies the owner-updated shards $p_A$ and $p_B$ into the full parameter collection used by every process. Their identities persist through the copy. In the paper's volume model, gradient reduce-scatter moves $\\Psi$ elements and parameter all-gather moves another $\\Psi$, totaling the baseline $2\\Psi$ per step.",
+      "sourceIds": [
+        "section-6",
+        "section-8"
+      ],
+      "claimIds": [
+        "c3",
+        "c6"
+      ],
+      "objects": [
+        {
+          "objectId": "parameters",
+          "status": "active",
+          "entityIds": [
+            "p-a",
+            "p-b"
+          ]
+        },
+        {
+          "objectId": "local-gradients",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "reduce-scatter",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "owned-gradients",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "optimizer-states",
+          "status": "retained",
+          "entityIds": [
+            "o-a",
+            "o-b"
+          ]
+        },
+        {
+          "objectId": "owner-update",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "updated-shards",
+          "status": "active",
+          "entityIds": [
+            "p-a",
+            "p-b"
+          ]
+        }
+      ],
+      "relationships": [
+        {
+          "relationshipId": "r-all-gather",
+          "entityIds": [
+            "p-a",
+            "p-b"
+          ]
+        }
+      ]
+    }
+  ],
+  "takeaway": "Optimizer and gradient ownership stays partitioned while reduce-scatter and all-gather restore full updated parameters at baseline communication volume.",
+  "sourceIds": [
+    "section-3",
+    "section-6",
+    "section-8"
+  ],
+  "claimIds": [
+    "c1",
+    "c3",
+    "c4",
+    "c6"
+  ],
+  "lessonId": "zero-memory-optimizations-toward-training-trillion",
+  "parentContentDigest": "7e29e7f53b95476555ff42034ed6c1af687b9dbf158331228ebe0dd0e1e6f944",
+  "review": {
+    "status": "source-passed",
+    "reviewedAt": "2026-10-02T00:19:59.909Z",
+    "contentDigest": "a048e0ef06e8ae6a29f2364ad5130957b4421e66eebd73b190d734c75eeb6f09",
+    "rendererDigest": "2cc690a7105c5faca75e22053e83674a2cf2e227ae22afe88cc4662d09c98bb4",
+    "visualReviewedAt": null
+  }
+}

@@ -1,0 +1,490 @@
+{
+  "title": "One Token, One Expert: The Switch Transformer Trade",
+  "summary": "Switch Transformers enlarge model capacity without proportionally increasing per-token computation by assigning each token to one selected feed-forward expert, subject to the expert’s capacity.",
+  "prerequisites": [
+    "Transformer residual blocks and feed-forward networks",
+    "Softmax probabilities and argmax selection",
+    "Training loss, FLOPs, and distributed communication"
+  ],
+  "objectives": [
+    "Explain how top-1 routing changes a Transformer feed-forward layer.",
+    "Calculate router probabilities, expert capacity, and balancing loss.",
+    "Distinguish total parameter count from computation per token.",
+    "Interpret reported speed and quality results under their conditions.",
+    "Identify overflow, communication, stability, and transfer limits."
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "mechanism",
+      "statement": "Switch Transformer introduces sparsity by activating only a subset of its weights for each incoming example.",
+      "conditions": "Applies to the paper’s sparse expert architecture rather than sparsity in attention patterns.",
+      "sourceIds": [
+        "section-1"
+      ]
+    },
+    {
+      "id": "c2",
+      "kind": "mechanism",
+      "statement": "The router converts token representations into a probability distribution over the available experts.",
+      "conditions": "For a token representation x, router matrix W_r, and N experts at one sparse layer.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c3",
+      "kind": "equation",
+      "statement": "The gate probability for expert i is the softmax of its router logit.",
+      "conditions": "The denominator includes all N experts available at that layer.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c4",
+      "kind": "mechanism",
+      "statement": "A Switch layer uses top-1 routing, sending each token to a single selected expert while retaining a differentiable gate value.",
+      "conditions": "This is the paper’s k=1 alternative to conventional top-k mixture-of-experts routing.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c5",
+      "kind": "equation",
+      "statement": "Expert capacity divides the batch’s tokens evenly across experts and multiplies that share by a capacity factor.",
+      "conditions": "Static tensor shapes require a predetermined per-expert token capacity.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c6",
+      "kind": "caveat",
+      "statement": "Tokens exceeding an expert’s capacity skip that expert computation and continue through the residual path.",
+      "conditions": "Occurs when routing is uneven enough to overflow the fixed capacity of an expert.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c7",
+      "kind": "equation",
+      "statement": "The auxiliary balancing loss is a scaled dot product between realized dispatch fractions and average router probabilities.",
+      "conditions": "For N experts, dispatch fractions f_i, mean probability fractions P_i, and coefficient alpha.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c8",
+      "kind": "mechanism",
+      "statement": "Increasing the number of experts raises parameter count while leaving the selected expert computation per token approximately fixed.",
+      "conditions": "The router itself still grows with the expert count, and distributed execution adds communication.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c9",
+      "kind": "result",
+      "statement": "Under equal FLOPs per example on 32 TPUv3 cores, the 64-expert Switch-Base reached comparable quality in about one-seventh the time of T5-Base.",
+      "conditions": "C4 pre-training comparison with the paper’s model implementations, hardware, and quality target.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c10",
+      "kind": "result",
+      "statement": "Selective precision stabilized the reported 32-expert experiment by performing routing locally in float32 while keeping the broader computation and communication in bfloat16.",
+      "conditions": "Quality was measured at a fixed early training step count; this is not a guarantee for every scale or implementation.",
+      "sourceIds": [
+        "section-2-part-2"
+      ]
+    },
+    {
+      "id": "c11",
+      "kind": "result",
+      "statement": "FLOP-matched Switch variants improved most reported downstream tasks, but not every task.",
+      "conditions": "Models were pre-trained for 550k steps on revised C4 and evaluated using the paper’s fine-tuning protocol.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c12",
+      "kind": "caveat",
+      "statement": "The paper did not fully solve stability at its largest compute-intensive sparse configuration.",
+      "conditions": "The stated failure concerns Switch-XXL; the authors reported no observed instability for several other named variants.",
+      "sourceIds": [
+        "section-8"
+      ]
+    },
+    {
+      "id": "c13",
+      "kind": "caveat",
+      "statement": "Equal per-token FLOPs do not imply equal wall-clock time because routing and cross-device communication add overhead.",
+      "conditions": "Relevant when experts are distributed across devices and implementations differ in communication efficiency.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c14",
+      "kind": "result",
+      "statement": "The Switch-C configuration in Table 9 reported 1,571 billion parameters and 890 billion FLOPs per sequence.",
+      "conditions": "Values are from the paper’s Table 9 model configuration, not a general property of Switch layers.",
+      "sourceIds": [
+        "section-5-part-2"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "s1",
+      "title": "The axis dense scaling leaves coupled",
+      "markdown": "A standard Transformer block combines self-attention with a position-wise feed-forward network (FFN). Self-attention mixes information among token positions; the FFN applies the same learned transformation independently to every token representation. For $x\\in\\mathbb{R}^{d_{model}}$, a dense FFN can be written as\n\n$$h=\\operatorname{ReLU}(xW_{in}),\\qquad y=hW_{out},$$\n\nwhere $W_{in}\\in\\mathbb{R}^{d_{model}\\times d_{ff}}$ and $W_{out}\\in\\mathbb{R}^{d_{ff}\\times d_{model}}$. Increasing $d_{ff}$ adds parameters to both matrices, but it also enlarges both matrix multiplications performed for every token. Dense FFN scaling therefore couples stored model capacity to the arithmetic activated by each input.\n\nSwitch Transformer introduces another scaling axis by replacing selected dense FFNs with Switch layers. A Switch layer contains $N$ distinct FFN experts, $E_1,\\ldots,E_N$, with compatible input and output dimensions. For each token representation $x$, a learned router with matrix $W_r$ computes logits\n\n$$h(x)=W_rx$$\n\nand converts them into probabilities\n\n$$p_i(x)=\\frac{e^{h_i(x)}}{\\sum_{j=1}^{N}e^{h_j(x)}}.$$\n\nThe layer selects\n\n$$i^*=\\arg\\max_i p_i(x)$$\n\nand, when the selected expert has room for the token, returns\n\n$$y=p_{i^*}(x)E_{i^*}(x).$$\n\nThis is top-1 routing: only the selected expert FFN is evaluated for that token. The choice of expert is discrete, but the selected output remains multiplied by the soft gate $p_{i^*}(x)$, which provides a differentiable path into the router. Different tokens in the same sequence or batch may select different experts, and routing is performed anew at every Switch layer. A token is not permanently assigned to one specialist.\n\nThe sparsity is in the activated weights. The surrounding self-attention operation can retain its ordinary dense attention pattern; conditional computation occurs where a dense FFN would otherwise appear. The architecture consequently gives each token access to a large bank of possible FFN parameters while activating only one member of that bank at a particular Switch layer.\n\nDistributed execution imposes a fixed capacity on each expert. For a batch containing $T$ tokens, $N$ experts, and capacity factor $c$, the paper defines the per-expert capacity as\n\n$$C=\\left(\\frac{T}{N}\\right)c.$$\n\nThe even share $T/N$ is enlarged by $c$ to provide room for imperfectly balanced assignments. If more than $C$ tokens select one expert, the excess tokens are not redirected to experts with unused capacity. Their expert computation is skipped, and their representations continue through the residual connection. Top-1 routing therefore permits at most one expert execution per token; overflow means that some tokens execute no expert FFN at that layer. Increasing the capacity factor can reduce overflow, but it also reserves larger expert tensors and can increase padded computation, memory use, and communication.\n\nBecause hard routing can concentrate tokens in a few experts, training includes an auxiliary balancing loss. For a batch $\\mathcal B$ of $T$ tokens, let\n\n$$f_i=\\frac{1}{T}\\sum_{x\\in\\mathcal B}\\mathbf 1\\{\\arg\\max p(x)=i\\}$$\n\nbe the realized fraction of tokens dispatched to expert $i$, and let\n\n$$P_i=\\frac{1}{T}\\sum_{x\\in\\mathcal B}p_i(x)$$\n\nbe the average soft probability assigned to that expert. The auxiliary term is\n\n$$L_{\\mathrm{balance}}=\\alpha N\\sum_{i=1}^{N}f_iP_i.$$\n\nThe objective encourages the hard dispatch fractions and soft probability mass to remain near a uniform allocation. Gradients flow through the differentiable $P_i$ values rather than through the argmax indicators in $f_i$. In the reported experiments, the authors used $\\alpha=10^{-2}$ after sweeping powers of ten from $10^{-1}$ to $10^{-5}$. Better balance matters because it reduces the chance that one expert overflows while others leave their fixed-capacity buffers partly unused.\n\nAdding experts increases the total parameter count because every expert contributes its own $W_{in}$ and $W_{out}$. If expert dimensions remain fixed, however, a non-overflowing token still evaluates only one expert FFN. The dominant expert arithmetic along that token’s path therefore remains approximately constant as $N$ grows, even though the collection of stored expert parameters grows with $N$. This is the central Switch Transformer trade: expand the parameter bank without proportionally expanding the expert computation activated for each token.\n\nThe separation is approximate rather than costless. The router must score all $N$ experts, with cost $O(d_{model}N)$. Static expert capacities introduce padding when assignments do not fill every reserved slot. When experts reside on different devices, tokens must be redistributed to the devices holding their selected experts and the results must be returned for recombination. These all-to-all transfers can materially affect throughput. If model parallelism is also used to partition an individual expert, its internal computations add further collective communication.\n\nParameter count, FLOPs, and elapsed time therefore answer different questions. Parameter count includes every learned weight across all experts, including experts unused by a particular token. FLOPs per token or sequence measure arithmetic on the configured execution path, including the active expert and router. Wall-clock time additionally depends on load balance, capacity padding, overflow, communication, device topology, kernels, and hardware utilization. Equal FLOPs do not guarantee equal training time, while a larger total parameter count does not imply that all those parameters are evaluated for every token.\n\nThe architectural claim is consequently precise: top-1 conditional computation can make many alternative FFNs available while executing one selected expert for each token that fits within capacity. Whether this produces a speed or quality improvement is empirical. It depends on the router learning useful and sufficiently balanced assignments, capacity being large enough to limit skipped expert updates, numerical stability in the routing computation, and a distributed implementation that handles token exchange efficiently.",
+      "sourceIds": [
+        "section-1",
+        "section-2",
+        "section-3"
+      ],
+      "claimIds": [
+        "c1",
+        "c8",
+        "c13"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s2",
+      "title": "From a token to one expert",
+      "markdown": "Let $x\\in\\mathbb{R}^{d}$ be one token representation of width $d$. A learned router matrix $W_r\\in\\mathbb{R}^{N\\times d}$ produces logits\n\n$$h(x)=W_r x,$$\n\nwhere $N$ is the number of experts and $h_i(x)$ is expert $i$’s logit. The router normalizes them:\n\n$$p_i(x)=\\frac{e^{h_i(x)}}{\\sum_{j=1}^{N}e^{h_j(x)}}.$$\n\nEach $p_i(x)$ is nonnegative and the probabilities sum to one. Ordinary top-$k$ MoE selects a set $\\mathcal{T}$ of $k$ experts and combines their outputs as $y=\\sum_{i\\in\\mathcal{T}}p_i(x)E_i(x)$, where $E_i$ is expert $i$’s FFN. Switch sets $k=1$. If $i^*=\\arg\\max_i p_i(x)$, its sparse-layer output is\n\n$$y=p_{i^*}(x)E_{i^*}(x).$$\n\nThus the choice is discrete, but the selected output still contains the differentiable gate $p_{i^*}(x)$. The routing experiment below uses four illustrative tokens and three experts. Changing $k$ exposes how top-1 limits expert execution compared with top-2; it does not reproduce learned router logits, residual connections, capacity overflow, or the balancing loss.",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c2",
+        "c3",
+        "c4"
+      ],
+      "figureId": "fig-routing"
+    },
+    {
+      "id": "s3",
+      "title": "Capacity turns routing into a resource problem",
+      "markdown": "Experts operate on bounded token batches rather than accepting unlimited assignments. With $T$ tokens, $N$ experts, and capacity factor $c$, the paper defines the nominal capacity of each expert as\n\n$$C=\\frac{T}{N}c.$$\n\nCapacity is measured in token slots per expert. For an **illustrative** batch with $T=12$, $N=3$, and $c=1.25$, each expert receives\n\n$$C=\\frac{12}{3}\\times1.25=5$$\n\nslots, for 15 reserved slots across the layer. Suppose the router assigns $(7,3,2)$ tokens to the three experts. The first expert can process only five of its seven assigned tokens, so two overflow, even though the other experts leave $2+3=5$ slots unused. The problem is therefore not insufficient total capacity but an uneven distribution across fixed per-expert buffers.\n\nIncreasing $c$ provides more room for routing imbalance and can reduce overflow, but it also enlarges the tensors used for expert computation and communication. When assignments are balanced, some of that reserved capacity becomes padding. Capacity factor thus controls a direct trade: a larger buffer protects more tokens from overflow, while a smaller buffer reduces padded work and memory.\n\nAn overflowing token is not removed from the model. Its expert computation is skipped, and its representation continues through the residual connection. Frequent overflow nevertheless weakens the intended sparse transformation because affected tokens receive no expert FFN update at that layer.\n\nThe accompanying constructed 16-slot calculation isolates the same allocation principle. It holds nine live tokens fixed and changes the block width, so the visible change in unused slots comes only from how capacity is reserved in blocks. The slots are dimensionless teaching units rather than physical bytes. This makes padding easy to inspect, while the Switch method itself applies the principle separately to each expert’s routed token buffer.",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c5",
+        "c6"
+      ],
+      "figureId": "fig-capacity"
+    },
+    {
+      "id": "s4",
+      "title": "Balancing the hard choices with a soft signal",
+      "markdown": "A router could collapse, sending nearly everything to a few experts. For a batch $\\mathcal{B}$ containing $T$ tokens, define\n\n$$f_i=\\frac{1}{T}\\sum_{x\\in\\mathcal{B}}\\mathbf{1}\\{\\arg\\max p(x)=i\\},$$\n\nwhere $f_i$ is the realized fraction dispatched to expert $i$. Also define\n\n$$P_i=\\frac{1}{T}\\sum_{x\\in\\mathcal{B}}p_i(x),$$\n\nthe average soft probability assigned to expert $i$. The auxiliary term is\n\n$$L_{\\mathrm{balance}}=\\alpha N\\sum_{i=1}^{N}f_iP_i,$$\n\nwhere $\\alpha$ weights this term relative to the primary language-model loss. Do not confuse $p_i(x)$, one token’s probability, with $P_i$, the batch average.\n\nFor a correctly calculated **illustrative** two-expert balanced batch, let $f=(0.5,0.5)$ and $P=(0.5,0.5)$. Then $\\sum_i f_iP_i=0.5$, so $L_{\\mathrm{balance}}=\\alpha\\cdot2\\cdot0.5=\\alpha$. If both vectors collapse to $(1,0)$, the same expression becomes $2\\alpha$. This paired comparison illustrates the intended pressure toward balance because $f$ and $P$ are coupled outputs of the same router decisions: the probabilities $p_i(x)$ determine both each token’s hard argmax assignment and the batch’s average soft allocation. The dot product would not, for arbitrary independent vectors $f$ and $P$, constitute a general proof that uniformity minimizes the objective. Even with the router coupling, the auxiliary term does not guarantee equal loads: $f_i$ contains an argmax and is nondifferentiable, while gradients flow through the soft $P_i$ component.",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c7"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s5",
+      "title": "Why the computational bargain is conditional",
+      "markdown": "Adding experts adds stored FFN matrices, yet top-1 routing still invokes one expert per token. That is the source of the approximate constant-FLOP argument. It is not free scaling. The router must score more experts, expert capacity can create padding, and tokens may travel across devices. The paper gives router cost as lightweight relative to the expert FFN, but it still grows with model width and expert count.\n\nAt trillion scale, the systems design combines data sharding with expert sharding. Each core begins with its local share of the batch and computes token-to-expert assignments locally. The resulting token groups are then redistributed by an all-to-all operation so that each expert shard receives the tokens assigned to its expert; after expert computation, corresponding communication returns the results for recombination. Thus expert parallelism avoids replicating every expert on every device, but routing introduces communication proportional to the expert-capacity tensors.\n\nSwitch-C used this expert-parallel design without model parallelism. Its comparatively smaller width, depth, and head count allowed each expert’s weights to fit without partitioning an individual expert across model-parallel cores. That avoided the additional internal all-reduce communication required when a partitioned FFN dimension must be summed, leaving the routing all-to-all as the principal expert-layer redistribution. The alternative Switch-XXL combined model and expert parallelism to support wider computation per token, but incurred both all-to-all routing and model-parallel all-reduces.\n\nA useful misconception to reject is: **“A trillion parameters means a trillion parameters are evaluated for every token.”** Switch-C’s reported 1,571 billion parameters describe the total collection of weights, including 2,048 experts; its table reports 890 billion FLOPs per sequence. The same table lists $d_{model}=2080$, which is the model width, not the expert count. Stored capacity and activated computation are different accounting categories.\n\nNor does equal FLOPs guarantee equal elapsed time. All-to-all transfers, device topology, static shapes, and low-level kernels affect throughput. The strongest interpretation is therefore conditional: sparse capacity can improve the quality–compute trade under an implementation and hardware setup able to route and batch tokens efficiently.",
+      "sourceIds": [
+        "section-3",
+        "section-5",
+        "section-5-part-2"
+      ],
+      "claimIds": [
+        "c8",
+        "c13",
+        "c14"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s6",
+      "title": "What the reported comparisons establish",
+      "markdown": "The pre-training evidence ties claims to specific controls. In one comparison, models ran on 32 TPUv3 cores with equal FLOPs per example; the 64-expert Switch-Base reached the T5-Base comparison quality in about one-seventh the time. That supports a wall-clock advantage in the reported C4 setup, not a hardware-independent constant. It also differs from a step-based comparison: fewer optimization steps to a target reflects sample or token efficiency only when the number of batch tokens and data exposure per step are comparable. The supplied Figure 5 passage does not explicitly establish those per-step controls, so its wall-clock result should not be used by itself to claim equal token exposure per optimization step. Fewer hours additionally depends on realized throughput.\n\nThe capacity-factor experiments make that distinction concrete. Reducing reserved expert capacity can remove padded computation and communication, but uneven routing can then overflow an expert and cause tokens to skip its computation. Consequently, the capacity factor is not simply a quality knob or a speed knob. It sets a resource margin whose effect depends on the batch’s routing distribution and the implementation. The paper’s reported dropped-token rates and preferred settings belong to its training setup; the illustrative 12-token calculation earlier explains the accounting trade without claiming to reproduce those measurements.\n\nThe paper also reports that naive bfloat16 routing diverged in an early 32-expert test, while selective precision—float32 inside the local router and bfloat16 elsewhere—matched the listed bfloat16 throughput and closely matched float32 quality. The mechanism matters: the router input and local routing calculations used float32, then the dispatch and combine tensors were cast back to bfloat16 before all-to-all communication. Higher precision was therefore localized rather than applied to every expert computation or transmitted tensor. This result was measured after a fixed early training step count, so it establishes the behavior of that experiment rather than universal stability at every model scale.\n\nDownstream results were broad but not universal. Under the stated protocol, the models were pre-trained on revised C4 for 550,000 steps with 1,048,576 tokens per batch, then fine-tuned with the paper’s task-specific evaluation procedure. FLOP-matched Switch variants improved most listed tasks, while ARC contained exceptions: T5-Base was better on ARC Challenge, and T5-Large was better on ARC Easy. This prevents a common overreach: improved pre-training perplexity, greater sparse capacity, or better performance on many benchmarks does not logically guarantee improvement on every downstream task.",
+      "sourceIds": [
+        "section-2-part-2",
+        "section-3",
+        "section-4"
+      ],
+      "claimIds": [
+        "c9",
+        "c10",
+        "c11"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s7",
+      "title": "Where the result stops—and what remains open",
+      "markdown": "Switch routing trades dense arithmetic for a different set of constraints. Each expert has fixed capacity, so uneven routing can cause overflow, whereas larger buffers consume more memory and padded computation. When experts are distributed across devices, routing also requires communication. The practical result therefore depends on the joint behavior of the router, capacity factor, numerical precision, device topology, and implementation—not merely on the number of stored parameters.\n\nTraining stability remains scale-dependent. Selective float32 routing and smaller initialization improved the reported experiments, but they did not stabilize every configuration. The authors reported no observed instability for Switch-Base, Switch-Large, and Switch-C, while Switch-XXL was sometimes unstable. Table 9 reports $6.3$ trillion FLOPs per sequence for Switch-XXL and $890$ billion for Switch-C, a ratio of approximately $7.1$, so total parameter count alone does not order the difficulty of training sparse models.\n\nThe paper recommends reducing the default Transformer initialization scale by a factor of ten. In an early 32-expert experiment measured after 3,500 steps across three random seeds, the $0.1\\times$ initialization produced average negative log perplexity $-2.72$ with standard deviation $0.01$, compared with $-3.60$ and $0.68$ for the default scale. This is evidence for a useful stabilization technique under those conditions, not a universal guarantee for sparse training.\n\nFine-tuning introduces a separate overfitting problem because sparse models contain many parameters while downstream datasets may be small. The paper’s expert-dropout setting retained dropout $0.1$ outside expert layers and used $0.4$ within expert FFNs. Relative to Switch-Base with dropout $0.1$ throughout, it improved GLUE from $84.7$ to $85.2$ and CNNDM from $19.1$ to $19.6$, while tying SQuAD at $83.7$ and SuperGLUE at $73.0$. Raising dropout uniformly across all layers performed worse overall, indicating that the reported benefit came from concentrating regularization in the high-capacity expert computation.\n\nSparse-to-dense distillation reduced deployment size but retained only part of the teacher’s advantage. The best reported procedure initialized compatible non-expert weights from the sparse teacher and trained with a mixture containing $0.25$ teacher probabilities and $0.75$ ground-truth labels. Across the compression experiments, dense students preserved roughly 30% of the sparse teacher’s quality gain while removing most of its parameters. The authors cautioned that substantially stronger and larger teachers may require larger students, so this result does not imply that an arbitrarily large sparse model can be compressed into a fixed dense architecture without increasing the quality loss.\n\nThe multilingual results broaden the evidence without making it universal. FLOP-matched mSwitch-Base and mT5-Base models were pre-trained on mC4 for one million steps. Switch achieved better final negative log perplexity for all 101 reported languages; the mean step speedup to the baseline’s quality was fivefold, and 91% of languages achieved at least a fourfold step speedup. These are pre-training quality and optimization-step results under the paper’s multilingual setup, not guarantees about downstream accuracy or deployment latency.\n\nSeveral boundaries remain scientifically important. The experiments concern language models with homogeneous experts, and the largest models show that more stored parameters, more FLOPs per token, and better upstream perplexity do not translate mechanically into the same downstream ranking. For example, Switch-C had about four times as many parameters as Switch-XXL but used about one-seventh the FLOPs per sequence, and its reported SQuAD exact-match score was lower. This leaves the relationship among sparse capacity, activated computation, stability, and transfer quality unresolved.\n\nThe central result is therefore conditional but substantial: top-1 routing makes a large bank of FFNs available while executing at most one expert for each token; an assignment that exceeds expert capacity skips that expert computation and continues through the residual path. Whether that architectural advantage becomes a speed–quality improvement depends on balanced assignments, adequate expert capacity, stable router computation, effective distributed communication, and the evaluation setting. Reduced initialization, expert-specific dropout, distillation, and multilingual pre-training extend the method, while the reported failures and exceptions define where its evidence stops.",
+      "sourceIds": [
+        "section-1",
+        "section-2",
+        "section-2-part-2",
+        "section-2-part-3",
+        "section-4",
+        "section-4-part-2",
+        "section-6",
+        "section-8"
+      ],
+      "claimIds": [
+        "c5",
+        "c6",
+        "c12",
+        "c13"
+      ],
+      "figureId": null
+    }
+  ],
+  "figures": [
+    {
+      "id": "fig-routing",
+      "kind": "routing",
+      "title": "Top-1 versus top-2 token-choice routing",
+      "question": "When k changes from 1 to 2, which additional cells are selected and how does each expert’s derived load change?",
+      "caption": "Four tokens use a fixed illustrative affinity grid over three experts; each row selects its top-k cells, making the extra computation and changing load visible.",
+      "limitation": "This is token-choice routing only, with fixed affinities and no learned router, expert capacity, dropped tokens, residual path, or balancing-loss optimization.",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c2",
+        "c4"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "fig-capacity",
+      "kind": "memory",
+      "title": "Reserved slots and padding",
+      "question": "How does changing block width alter unused allocated slots for the same nine live tokens?",
+      "caption": "A 16-slot illustrative layout places nine live tokens into blocks and compares the resulting padding with a fixed 16-slot reservation.",
+      "limitation": "This models generic slot allocation, not Switch expert assignment, physical memory bytes, communication, latency, or an implemented allocator.",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c5",
+        "c6"
+      ],
+      "illustrative": true
+    }
+  ],
+  "quiz": [
+    {
+      "question": "Assume expert FFNs have equal size and ignore router and communication overhead. If a top-1 Switch layer grows from 8 to 64 experts, what happens to expert-FFN computation for one token?",
+      "options": [
+        {
+          "text": "It stays approximately constant.",
+          "explanation": "Correct. Top-1 routing executes one equal-sized expert for the token regardless of how many alternatives exist."
+        },
+        {
+          "text": "It increases eightfold.",
+          "explanation": "Incorrect. Total stored expert parameters increase, but the token does not execute all 64 experts."
+        },
+        {
+          "text": "It falls by a factor of eight.",
+          "explanation": "Incorrect. Adding alternatives does not shrink the single selected expert under the stated assumptions."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-2",
+        "section-3"
+      ],
+      "claimIds": [
+        "c4",
+        "c8"
+      ]
+    },
+    {
+      "question": "For an illustrative batch with 12 tokens, 3 experts, and capacity factor 1.25, what nominal capacity does the paper’s formula assign to each expert?",
+      "options": [
+        {
+          "text": "4 slots",
+          "explanation": "Incorrect. Four is the even share before multiplying by the capacity factor."
+        },
+        {
+          "text": "5 slots",
+          "explanation": "Correct. $(12/3)\\times1.25=5$ slots per expert."
+        },
+        {
+          "text": "15 slots",
+          "explanation": "Incorrect. Fifteen is the total capacity across all three experts, not capacity per expert."
+        }
+      ],
+      "answer": 1,
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c5"
+      ]
+    },
+    {
+      "question": "Which conclusion is best supported by the reported evidence?",
+      "options": [
+        {
+          "text": "Equal FLOPs guarantee equal wall-clock time on any hardware.",
+          "explanation": "Incorrect. Routing, communication, implementation, and hardware efficiency can change elapsed time."
+        },
+        {
+          "text": "Every downstream task improves when dense FFNs are replaced by Switch layers.",
+          "explanation": "Incorrect. The paper reports exceptions on the ARC datasets."
+        },
+        {
+          "text": "Switch achieved a reported speed–quality advantage under controlled pre-training conditions, but the result is setup-dependent.",
+          "explanation": "Correct. The comparison controlled hardware and computation, while the paper also identifies communication and implementation costs."
+        }
+      ],
+      "answer": 2,
+      "sourceIds": [
+        "section-3",
+        "section-4"
+      ],
+      "claimIds": [
+        "c9",
+        "c11",
+        "c13"
+      ]
+    }
+  ],
+  "id": "switch-transformers-scaling-to-trillion-parameter",
+  "createdAt": "2026-10-01T23:59:47.107Z",
+  "pipelineVersion": "subjects-lessons-v1",
+  "sources": [
+    {
+      "id": "abstract",
+      "label": "Original paper · abstract",
+      "url": "https://arxiv.org/abs/2101.03961",
+      "digest": "0d50356def94672de3d11a9157376b0c424c055c05b8fc3098953d1cead596b7",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:54:52.167Z"
+    },
+    {
+      "id": "main-text",
+      "label": "Original paper · unsectioned main text",
+      "url": "https://arxiv.org/html/2101.03961",
+      "digest": "1f6328a55c33c3dac2efeca2c4122b94c500eaf2cebec307e25253fbf3fbedce",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:54:52.167Z"
+    },
+    {
+      "id": "section-1",
+      "label": "1 Introduction",
+      "url": "https://arxiv.org/html/2101.03961#S1",
+      "digest": "d9336758f25d02c53b28edc0bd6810dac7aca220fac94e1ac1c554160aca4638",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:54:52.167Z"
+    },
+    {
+      "id": "section-2",
+      "label": "2 Switch Transformer",
+      "url": "https://arxiv.org/html/2101.03961#S2",
+      "digest": "8e0d886a5d5f0f101b3320afd615937c3732ae218753498a88265662d2f289b6",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:54:52.167Z"
+    },
+    {
+      "id": "section-2-part-2",
+      "label": "2 Switch Transformer · part 2",
+      "url": "https://arxiv.org/html/2101.03961#S2",
+      "digest": "2ddfb888faab8d918ad78e40e34fcd2a210dc3935036150ac13abfa882b75d06",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:54:52.167Z"
+    },
+    {
+      "id": "section-2-part-3",
+      "label": "2 Switch Transformer · part 3",
+      "url": "https://arxiv.org/html/2101.03961#S2",
+      "digest": "5e88fc9ec309fdca3718b4af561ccc7e3b03b81cdd3d4fb195451e4c492c89ef",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:54:52.167Z"
+    },
+    {
+      "id": "section-3",
+      "label": "3 Scaling Properties",
+      "url": "https://arxiv.org/html/2101.03961#S3",
+      "digest": "04f2e88ba3a3ef189a0b3393f819576f392a660910b63218a74fdbdcdb44252a",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:54:52.167Z"
+    },
+    {
+      "id": "section-4",
+      "label": "4 Downstream Results",
+      "url": "https://arxiv.org/html/2101.03961#S4",
+      "digest": "57c3bfc2196951e189a8e7a1f9d60c040d5fd5c06a7b705111f58afcb8a1c0fe",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:54:52.167Z"
+    },
+    {
+      "id": "section-4-part-2",
+      "label": "4 Downstream Results · part 2",
+      "url": "https://arxiv.org/html/2101.03961#S4",
+      "digest": "9d31f594386e1940a6d70c5ef89529dc2c1ad18b3ba6327d7058b16dea16dc90",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:54:52.167Z"
+    },
+    {
+      "id": "section-5",
+      "label": "5 Designing Models with Data, Model, and Expert-Parallelism",
+      "url": "https://arxiv.org/html/2101.03961#S5",
+      "digest": "0a0fab3a7dd1169ba238141859585e3f64ae51c0b6a808d7b7ef2e409b188b10",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:54:52.167Z"
+    },
+    {
+      "id": "section-5-part-2",
+      "label": "5 Designing Models with Data, Model, and Expert-Parallelism · part 2",
+      "url": "https://arxiv.org/html/2101.03961#S5",
+      "digest": "02b40ed25a798b52db8943e8e8921ca84fc9da60082bcb3329c3068661f66612",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:54:52.167Z"
+    },
+    {
+      "id": "section-6",
+      "label": "6 Related Work",
+      "url": "https://arxiv.org/html/2101.03961#S6",
+      "digest": "af1ed76b1fabbb02e0c2d7c70860f69c1cd625cea3ff564fec5b04bd30e969a1",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:54:52.167Z"
+    },
+    {
+      "id": "section-7",
+      "label": "7 Discussion",
+      "url": "https://arxiv.org/html/2101.03961#S7",
+      "digest": "24b4c4354bedf66b8859ffdb2749bb1ce5a0c07fa0e99648829d520968053565",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:54:52.167Z"
+    },
+    {
+      "id": "section-8",
+      "label": "8 Future Work",
+      "url": "https://arxiv.org/html/2101.03961#S8",
+      "digest": "3e586fe7920b070b3ab747513f1cf9e09225ec80578fcb7435d23c57faf67b56",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:54:52.167Z"
+    }
+  ],
+  "review": {
+    "status": "passed",
+    "reviewedAt": "2026-10-02T02:24:12.765Z",
+    "contentDigest": "284be7342db45429556661a3875674a88759a90a7d015a5a2fbe90c30e2b6df4"
+  }
+}

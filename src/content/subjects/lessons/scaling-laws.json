@@ -1,0 +1,438 @@
+{
+  "title": "The Three-Budget Frontier of Language Modeling",
+  "summary": "Kaplan et al. connect language-model loss to model size, data, and compute through empirical power laws, then use those fits to derive a compute-efficient training frontier.",
+  "prerequisites": [
+    "Cross-entropy and token prediction",
+    "Power-law relationships and exponents",
+    "Early stopping and test loss",
+    "Compute allocation across training resources"
+  ],
+  "objectives": [
+    "Interpret model-, data-, and compute-limited scaling laws.",
+    "Explain why model size and dataset size must scale together.",
+    "Reconstruct the compute-efficient allocation argument.",
+    "Distinguish empirical trends from universal laws and capability guarantees.",
+    "Calculate predicted changes from scaling a training resource."
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "result",
+      "statement": "The paper studies cross-entropy loss as a function of model size, dataset size, and training compute.",
+      "conditions": "Language models evaluated with the paper’s empirical loss methodology.",
+      "sourceIds": [
+        "abstract"
+      ]
+    },
+    {
+      "id": "c2",
+      "kind": "caveat",
+      "statement": "The fitted scale constants $N_c$, $D_c$, and $C_c^{\\rm min}$ depend on vocabulary size and tokenization, while the complete numerical fit is associated with the paper’s WebText2 setting.",
+      "conditions": "The scale constants and numerical fits reported for the paper’s vocabulary, tokenizer, models, and WebText2 experiments.",
+      "sourceIds": [
+        "section-1"
+      ]
+    },
+    {
+      "id": "c3",
+      "kind": "equation",
+      "statement": "In the parameter-limited regime, the fitted loss is $L(N)=(N_c/N)^{\\alpha_N}$ with $\\alpha_N\\sim0.076$.",
+      "conditions": "Models trained to convergence on sufficiently large datasets; $N$ excludes embeddings.",
+      "sourceIds": [
+        "section-1"
+      ]
+    },
+    {
+      "id": "c4",
+      "kind": "equation",
+      "statement": "The joint fit combines capacity and data terms as $L(N,D)=[(N_c/N)^{\\alpha_N/\\alpha_D}+D_c/D]^{\\alpha_D}$.",
+      "conditions": "Early-stopped models with model size $N$ and dataset size $D$ in the fitted regime.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c5",
+      "kind": "result",
+      "statement": "Using estimated random-seed loss variation of roughly 0.02 as the detectable-overfitting benchmark, the required dataset size grew approximately as $N^{0.74}$ in these experiments.",
+      "conditions": "Training to within the roughly 0.02 random-seed variation of convergence, under the paper’s training procedure and fitted WebText2 regime.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c6",
+      "kind": "mechanism",
+      "statement": "The paper models finite-training loss as the sum of a model-size term and a step-limited term.",
+      "conditions": "Infinite-data approximation, after the initial transient, using batch-adjusted minimum steps.",
+      "sourceIds": [
+        "section-5"
+      ]
+    },
+    {
+      "id": "c7",
+      "kind": "result",
+      "statement": "Critical batch size was modeled primarily as a function of attained loss rather than model size.",
+      "conditions": "Transformer measurements used for the paper’s batch-efficiency analysis.",
+      "sourceIds": [
+        "section-5"
+      ]
+    },
+    {
+      "id": "c8",
+      "kind": "mechanism",
+      "statement": "Training near the critical batch size trades serial time against compute efficiency; much larger batches have diminishing returns.",
+      "conditions": "Training to a fixed target loss under the batch-size relation used in Section 5.",
+      "sourceIds": [
+        "section-5"
+      ]
+    },
+    {
+      "id": "c9",
+      "kind": "result",
+      "statement": "The empirically optimal model size grew approximately as the 0.73 power of adjusted compute.",
+      "conditions": "Optimization over model sizes using $C_{\\rm min}$ in the paper’s observed regime.",
+      "sourceIds": [
+        "section-6"
+      ]
+    },
+    {
+      "id": "c10",
+      "kind": "result",
+      "statement": "On the paper’s compute-efficient frontier, the adjusted number of serial steps increased only weakly with compute.",
+      "conditions": "Critical-batch adjustment and the empirical allocation analysis of Section 6.",
+      "sourceIds": [
+        "section-6"
+      ]
+    },
+    {
+      "id": "c11",
+      "kind": "caveat",
+      "statement": "The fitted power laws cannot continue indefinitely because language has irreducible entropy.",
+      "conditions": "Extrapolation beyond the measured ranges of compute, data, and model size.",
+      "sourceIds": [
+        "section-6"
+      ]
+    },
+    {
+      "id": "c12",
+      "kind": "caveat",
+      "statement": "Smooth reductions in aggregate loss do not by themselves establish improvements on particular language tasks.",
+      "conditions": "Interpreting loss trends as evidence about downstream or qualitative capabilities.",
+      "sourceIds": [
+        "section-8"
+      ]
+    },
+    {
+      "id": "c13",
+      "kind": "result",
+      "statement": "The experiments covered model sizes from 768 to 1.5 billion non-embedding parameters and datasets from 22 million to 23 billion tokens.",
+      "conditions": "The collection of model and dataset runs summarized in Section 3.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c14",
+      "kind": "mechanism",
+      "statement": "The paper estimates non-embedding training compute as $C\\approx6NBS$.",
+      "conditions": "Context-dependent terms neglected for the primarily studied models; $B$ is tokens per batch and $S$ is update steps.",
+      "sourceIds": [
+        "section-1-part-2"
+      ]
+    },
+    {
+      "id": "c15",
+      "kind": "caveat",
+      "statement": "The smallest-dataset runs departed from the joint fit and may belong to a different regime.",
+      "conditions": "Dataset reduced to about $2\\times10^7$ tokens, giving only about 40 updates per epoch.",
+      "sourceIds": [
+        "section-4"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "s1",
+      "title": "What is being scaled?",
+      "markdown": "The paper asks a deliberately narrow question: how does autoregressive language-model cross-entropy change as training resources increase? Cross-entropy $L$ is measured in nats per token; lower is better because the model assigns more probability to the observed continuation. The principal scale variables are $N$, the number of non-embedding parameters; $D$, the number of dataset tokens; and $C$, estimated non-embedding training compute.\n\nThe experimental setting matters. The authors primarily trained decoder-only Transformers on WebText2, using a 50,257-item byte-pair vocabulary and evaluating loss over 1024-token contexts. Their survey ranged from 768 to 1.5 billion non-embedding parameters and from 22 million to 23 billion dataset tokens. These are empirical regularities within that family, not mathematical laws applying automatically to every architecture, corpus, tokenizer, or objective.\n\nThe exclusion of embeddings from $N$ is substantive: the authors found cleaner trends when model size counted the internal non-embedding computation rather than every stored parameter. Thus even the horizontal axis embodies a modeling choice.",
+      "sourceIds": [
+        "section-1-part-2",
+        "section-2",
+        "section-3"
+      ],
+      "claimIds": [
+        "c1",
+        "c2",
+        "c13"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s2",
+      "title": "Reading a power law without being fooled",
+      "markdown": "A decreasing power law has the form\n\n$$\nL(X)=\\left(\\frac{X_c}{X}\\right)^{\\alpha_X},\n$$\n\nwhere $X$ is a training resource, $X_c$ is a fitted scale constant, and $\\alpha_X>0$ is the fitted exponent. For two resource levels $X_1$ and $X_2$, the scale constant cancels:\n\n$$\n\\frac{L(X_2)}{L(X_1)}=\\left(\\frac{X_2}{X_1}\\right)^{-\\alpha_X}.\n$$\n\nThis ratio is the practical content of the fit. Multiplying the resource by a factor $k$ multiplies predicted loss by $k^{-\\alpha_X}$; it does not subtract a fixed amount from loss. Because the fitted exponents are small, equal multiplicative increases produce equal proportional reductions but progressively smaller absolute reductions. If successive doublings multiply loss by the same factor, the second doubling begins from an already lower loss and therefore removes fewer nats per token.\n\nFor parameter-limited models trained to convergence on sufficiently large datasets, Kaplan et al. fit\n\n$$\nL(N)=\\left(\\frac{N_c}{N}\\right)^{\\alpha_N},\n\\qquad \\alpha_N\\sim0.076,\n$$\n\nwith $N$ counting non-embedding parameters. Doubling model size while remaining in that regime gives\n\n$$\n\\frac{L(2N)}{L(N)}=2^{-0.076}\\approx0.949.\n$$\n\nThe predicted loss is therefore about $94.9\\%$ of its former value, a relative reduction of roughly $5.1\\%$. Increasing $N$ eightfold gives $8^{-0.076}\\approx0.854$, or about a $14.6\\%$ relative reduction. These calculations compare points on the fitted parameter-limited curve; they require enough data and training for neither finite data nor incomplete optimization to become the active bottleneck.\n\nThe exponent controls the slope on logarithmic axes. Taking logarithms yields\n\n$$\n\\log L=\\alpha_N\\log N_c-\\alpha_N\\log N,\n$$\n\nso the fitted line has slope $-\\alpha_N$. The intercept contains $N_c$, whose numerical value depends on vocabulary and tokenization, while the slope summarizes how loss changed with scale in the measured setting. The relation is empirical: it describes the observed Transformer and WebText2 regime and must eventually bend because natural language has nonzero entropy.",
+      "sourceIds": [
+        "section-1",
+        "section-3"
+      ],
+      "claimIds": [
+        "c3"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s3",
+      "title": "Two bottlenecks share one loss",
+      "markdown": "A model can be capacity-limited or data-limited. Kaplan et al. combine both effects with\n\n$$\nL(N,D)=\\left[\\left(\\frac{N_c}{N}\\right)^{\\alpha_N/\\alpha_D}+\\frac{D_c}{D}\\right]^{\\alpha_D}.\n$$\n\nHere $N_c$ and $D_c$ are fitted scale constants, while $\\alpha_N$ and $\\alpha_D$ govern parameter and data scaling. At $D\\to\\infty$, the data term vanishes and the parameter-only law remains. At $N\\to\\infty$, the capacity term vanishes and the dataset-only law remains. With either resource fixed, increasing the other eventually brings diminishing benefit because the remaining term dominates.\n\nBalancing the two terms gives the useful scaling relation $D\\propto N^{\\alpha_N/\\alpha_D}$, approximately $N^{0.74}$ in the paper’s account. Thus multiplying $N$ by eight calls for roughly $8^{0.74}\\approx4.66$, or about five times as much data, to preserve a comparable balance. This does not say that five times the data is universally sufficient. The paper estimated that loss varied by roughly 0.02 across random seeds and used that observed variation as the benchmark for minimal detectable overfitting when training near convergence. Under early stopping, 10% dropout, and the fitted WebText2 regime, this gave $D\\gtrsim(5\\times10^3)N^{0.74}$. The authors also observed a failure of the fit at their smallest dataset, where an epoch contained only about 40 updates.",
+      "sourceIds": [
+        "section-1",
+        "section-4"
+      ],
+      "claimIds": [
+        "c4",
+        "c5",
+        "c15"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s4",
+      "title": "Training time is another limiting resource",
+      "markdown": "Convergence is not free. After an initial transient, the paper models finite-training loss by\n\n$$\nL(N,S_{\\min})=\\left(\\frac{N_c}{N}\\right)^{\\alpha_N}+\\left(\\frac{S_c}{S_{\\min}}\\right)^{\\alpha_S}.\n$$\n\n$S_{\\min}$ is a batch-adjusted estimate of the minimum serial update count needed to attain a loss; $S_c$ is a fitted step scale; and the reported fit gives $\\alpha_S\\approx0.76$. The first term is the model’s capacity limitation. The second is the unfinished-optimization penalty. A larger model lowers the first term, but under fixed compute it also leaves fewer resources for tokens or updates.\n\nThe optimizer illustration uses ordinary gradient descent on the invented scalar function $f(x)=x^2/2$, starting at $x=3$ for 12 updates. Its learning-rate control changes the recurrence $x_{t+1}=(1-\\eta)x_t$. Predict which learning rate reduces this toy objective fastest without unstable behavior. The picture teaches only that update count and step size shape a finite trajectory. It does not simulate Adam, Adafactor, Transformer loss, critical batches, or the paper’s fitted learning curves.",
+      "sourceIds": [
+        "section-1-part-2",
+        "section-5"
+      ],
+      "claimIds": [
+        "c6"
+      ],
+      "figureId": "f2"
+    },
+    {
+      "id": "s5",
+      "title": "Why batch size changes the accounting",
+      "markdown": "Raw update count and raw compute are not interchangeable. Let $B$ be batch size in tokens and $S$ the number of parameter updates. The paper estimates training compute as\n\n$$\nC\\approx6NBS,\n$$\n\nwhere the factor six approximates forward and backward matrix operations and context-dependent terms are neglected in the main regime studied.\n\nThe critical batch size $B_{\\rm crit}(L)$ marks a time–compute tradeoff at target loss $L$. Below it, increasing $B$ can reduce serial steps with little loss of compute efficiency. Far above it, additional batch size brings diminishing returns. The authors therefore define adjusted quantities: $S_{\\min}$ approximates the least serial steps attainable with very large batches, while $C_{\\min}$ approximates the least compute attainable with batches far below the critical size.\n\nA common misconception is that “optimal compute allocation” means simply maximizing the number of tokens processed. It does not. The calculation jointly selects model capacity, batch behavior, and training duration for the lowest fitted loss at a fixed adjusted compute budget. Hardware limits may favor a different wall-clock choice, and the target-dependent critical batch size is a moving quantity rather than one universal default.",
+      "sourceIds": [
+        "section-1-part-2",
+        "section-5",
+        "section-6"
+      ],
+      "claimIds": [
+        "c7",
+        "c8",
+        "c14"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s6",
+      "title": "Deriving the compute-efficient frontier",
+      "markdown": "The allocation argument starts from the finite-training fit\n\n$$\nL(N,S_{\\min})=\\left(\\frac{N_c}{N}\\right)^{\\alpha_N}+\\left(\\frac{S_c}{S_{\\min}}\\right)^{\\alpha_S}\n$$\n\nand the adjusted-compute constraint\n\n$$\nS_{\\min}=\\frac{C_{\\min}}{6N B_{\\rm crit}}.\n$$\n\nBecause the critical batch fit is $B_{\\rm crit}\\propto L^{-1/\\alpha_B}$, substitution gives an implicit fixed-compute loss of the scaling form\n\n$$\nL=\\left(\\frac{N_c}{N}\\right)^{\\alpha_N}+\\left(\\frac{6S_cN B_{\\rm crit}(L)}{C_{\\min}}\\right)^{\\alpha_S}.\n$$\n\nMinimizing this expression over $N$ at fixed $C_{\\min}$ balances the model-capacity and finite-step contributions. Along that optimum, their common loss scale implies\n\n$$\nN\\propto L^{-1/\\alpha_N},\\qquad B_{\\rm crit}\\propto L^{-1/\\alpha_B},\\qquad S_{\\min}\\propto L^{-1/\\alpha_S}.\n$$\n\nSince $C_{\\min}\\propto N B_{\\rm crit}S_{\\min}$, it follows that\n\n$$\nC_{\\min}\\propto L^{-(1/\\alpha_N+1/\\alpha_B+1/\\alpha_S)},\n$$\n\nso\n\n$$\n\\alpha_C^{\\min}=\\frac{1}{1/\\alpha_S+1/\\alpha_B+1/\\alpha_N},\n$$\n\nwith the theoretical allocations\n\n$$\nN\\propto C_{\\min}^{\\alpha_C^{\\min}/\\alpha_N},\\qquad B_{\\rm crit}\\propto C_{\\min}^{\\alpha_C^{\\min}/\\alpha_B},\\qquad S_{\\min}\\propto C_{\\min}^{\\alpha_C^{\\min}/\\alpha_S}.\n$$\n\nUsing the fitted component exponents gives $\\alpha_C^{\\min}\\approx0.054$ and theoretical allocation exponents of approximately $0.71$ for model size, $0.26$ for critical batch size, and $0.071$ for serial steps. These are predictions from the fitted loss and batch relations. Separately, the empirical allocation analysis reported\n\n$$\nN\\propto C_{\\min}^{0.73},\\qquad B\\propto C_{\\min}^{0.24},\\qquad S_{\\min}\\propto C_{\\min}^{0.03}.\n$$\n\nThus the approximately $0.71$ model-size exponent is the theoretical prediction, whereas approximately $0.73$ is the empirical fit. For an illustrative tenfold increase in $C_{\\min}$, the empirical laws predict multipliers of $10^{0.73}\\approx5.37$ for $N$, $10^{0.24}\\approx1.74$ for $B$, and $10^{0.03}\\approx1.07$ for $S_{\\min}$. This arithmetic applies the paper’s fitted exponents; it is not a newly measured run.\n\nThe conclusion is often paraphrased too strongly. It is not “train the largest possible model regardless of data.” It is “on this fitted frontier, scale model size most rapidly while retaining enough data and an efficient batch/step allocation, then stop well before full convergence.”",
+      "sourceIds": [
+        "section-1-part-2",
+        "section-6"
+      ],
+      "claimIds": [
+        "c9",
+        "c10",
+        "c14"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s7",
+      "title": "Where extrapolation must stop",
+      "markdown": "The fitted straight lines on log–log plots describe an observed regime, not an indefinitely valid law. Natural language has nonzero entropy, so cross-entropy cannot continue falling toward zero. The paper also derives an internal warning against long extrapolation: on its compute-efficient frontier, one-pass data usage grows approximately as $D(C_{\\min})\\propto C_{\\min}^{0.26}$, whereas controlling overfitting after substituting the fitted optimal model scaling requires approximately $D\\propto N^{0.74}\\propto C_{\\min}^{0.54}$. Those trends cannot both persist arbitrarily far. Their eventual conflict means that at least one fitted relation must bend before the extrapolated intersection; the paper emphasizes that the intersection’s numerical location is highly sensitive to the fitted exponents.\n\nThe scope is also tied to the measurement choices. The scale constants depend on vocabulary and tokenization, and the numerical fits come from the paper’s WebText2 experiments with primarily decoder-only Transformers. Depth, width, attention-head count, and feed-forward dimension had only weak effects when non-embedding parameter count was held fixed within the investigated range. That result supports treating scale as the dominant variable there, but it does not establish architectural irrelevance in new or much larger regimes.\n\nFinally, cross-entropy is an aggregate predictive metric. A smooth reduction in loss may coexist with qualitative changes in capability, but the loss curve alone neither identifies those changes nor guarantees improvement on any particular language task. The scientific interpretation is therefore conditional: the fitted relations provide a useful predictive framework across the measured ranges of model size, data, and optimized compute, while their constants, regime boundaries, downstream consequences, and compute-efficient allocation must be measured again when the corpus, tokenizer, architecture, objective, or scale changes.",
+      "sourceIds": [
+        "section-1",
+        "section-6",
+        "section-8"
+      ],
+      "claimIds": [
+        "c2",
+        "c11",
+        "c12"
+      ],
+      "figureId": null
+    }
+  ],
+  "figures": [
+    {
+      "id": "f2",
+      "kind": "optimizer",
+      "title": "Finite updates on a simple objective",
+      "question": "How does changing the learning rate alter the 12-step trajectory from $x=3$ on the fixed quadratic?",
+      "caption": "Plain gradient descent iterates $x_{t+1}=x_t-\\eta x_t$ on $f(x)=x^2/2$, showing how finite update count and learning rate jointly determine progress.",
+      "limitation": "This scalar quadratic is not Adam, Adafactor, a Transformer loss landscape, or a reproduction of the paper’s learning curves.",
+      "sourceIds": [
+        "section-5"
+      ],
+      "claimIds": [
+        "c6"
+      ],
+      "illustrative": true
+    }
+  ],
+  "quiz": [
+    {
+      "question": "Under the parameter-limited law with $\\alpha_N=0.076$, what happens to predicted loss when $N$ doubles and no other bottleneck intervenes?",
+      "options": [
+        {
+          "text": "It is multiplied by about 0.95.",
+          "explanation": "Correct: $L(2N)/L(N)=2^{-0.076}\\approx0.949$."
+        },
+        {
+          "text": "It is divided by two.",
+          "explanation": "Incorrect: doubling the resource does not halve loss when the exponent is much smaller than one."
+        },
+        {
+          "text": "It is unchanged.",
+          "explanation": "Incorrect: the fitted exponent is positive, so increasing $N$ lowers predicted loss in this regime."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-1"
+      ],
+      "claimIds": [
+        "c3"
+      ]
+    },
+    {
+      "question": "Why can increasing model size eventually yield little benefit when dataset size is fixed?",
+      "options": [
+        {
+          "text": "The dataset term becomes the dominant bottleneck in the joint loss fit.",
+          "explanation": "Correct: as the capacity term shrinks, the finite-data term remains and limits improvement."
+        },
+        {
+          "text": "The joint equation requires model loss to rise whenever $N$ rises.",
+          "explanation": "Incorrect: with the paper’s early-stopped fit, increasing $N$ does not itself force higher optimal test loss."
+        },
+        {
+          "text": "Embedding parameters must grow faster than every non-embedding parameter.",
+          "explanation": "Incorrect: that is not the mechanism represented by the joint $L(N,D)$ equation."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-4"
+      ],
+      "claimIds": [
+        "c4",
+        "c5"
+      ]
+    },
+    {
+      "question": "Which conclusion is justified by the paper’s limitations?",
+      "options": [
+        {
+          "text": "The fitted frontier should be remeasured for a new corpus, tokenizer, or model regime.",
+          "explanation": "Correct: numerical fits are setting-dependent and the power laws must eventually bend."
+        },
+        {
+          "text": "A smooth decrease in cross-entropy guarantees improvement on every language task.",
+          "explanation": "Incorrect: the paper explicitly identifies the loss-to-task relationship as something requiring investigation."
+        },
+        {
+          "text": "The measured power laws prove that architecture cannot matter at larger untested scales.",
+          "explanation": "Incorrect: weak dependence within an investigated range is not a universal invariance result."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-1",
+        "section-6",
+        "section-8"
+      ],
+      "claimIds": [
+        "c2",
+        "c11",
+        "c12"
+      ]
+    }
+  ],
+  "id": "scaling-laws",
+  "createdAt": "2026-10-01T23:26:10.969Z",
+  "pipelineVersion": "subjects-lessons-v1",
+  "sources": [
+    {
+      "id": "abstract",
+      "label": "Original paper · abstract",
+      "url": "https://arxiv.org/abs/2001.08361",
+      "digest": "a10c5cdebc266f7c85a1b2a06f97aa3495c26137b049842656678dc3d6087770"
+    },
+    {
+      "id": "section-1",
+      "label": "1 Introduction",
+      "url": "https://arxiv.org/html/2001.08361#S1",
+      "digest": "a5e2701e6ae91a0d30c1adae37efdb65d36bf9541f0546a04ded39387e3163f2"
+    },
+    {
+      "id": "section-1-part-2",
+      "label": "1 Introduction · part 2",
+      "url": "https://arxiv.org/html/2001.08361#S1",
+      "digest": "3d80d08714a65642af36368a51965eb3300fd70ab37d494997a0d0462f292fbb"
+    },
+    {
+      "id": "section-2",
+      "label": "2 Background and Methods",
+      "url": "https://arxiv.org/html/2001.08361#S2",
+      "digest": "eff8660bd3579db453c20112f4b0a45f421ab68ab4e1dc4489090b3b8b28373a"
+    },
+    {
+      "id": "section-3",
+      "label": "3 Empirical Results and Basic Power Laws",
+      "url": "https://arxiv.org/html/2001.08361#S3",
+      "digest": "9896579eb3cc0bb6593ac322bf11d004216fd744717200b73b886abbc5b9e831"
+    },
+    {
+      "id": "section-4",
+      "label": "4 Charting the Infinite Data Limit and Overfitting",
+      "url": "https://arxiv.org/html/2001.08361#S4",
+      "digest": "5ef65e675691c5579817ac0ac3231287bc3d47bfddc87065b97195a8f9dd9b1b"
+    },
+    {
+      "id": "section-5",
+      "label": "5 Scaling Laws with Model Size and Training Time",
+      "url": "https://arxiv.org/html/2001.08361#S5",
+      "digest": "c0a0658279820a7530dd4bc0fe9684252adb5d1fa6e7d9b612501fd73100da2e"
+    },
+    {
+      "id": "section-6",
+      "label": "6 Optimal Allocation of the Compute Budget",
+      "url": "https://arxiv.org/html/2001.08361#S6",
+      "digest": "9d3ce261023c72039362bee9718c13fbd2adc3dfd8e46ebc413344bd51adc7a7"
+    },
+    {
+      "id": "section-6-part-2",
+      "label": "6 Optimal Allocation of the Compute Budget · part 2",
+      "url": "https://arxiv.org/html/2001.08361#S6",
+      "digest": "9a3bdfe3e2ea941e8b765adbc20e7ff6804ceff1ac78cfa8fcb1f8f752925971"
+    },
+    {
+      "id": "section-7",
+      "label": "7 Related Work",
+      "url": "https://arxiv.org/html/2001.08361#S7",
+      "digest": "3ce1e0b12977ad8ff775b6ba84aaf30c330b460b0546fe60e106c40beb20ac40"
+    },
+    {
+      "id": "section-8",
+      "label": "8 Discussion",
+      "url": "https://arxiv.org/html/2001.08361#S8",
+      "digest": "49f66eb5b4706396882e265bdc932b74065416e70a4e34eb9ffedcd865d1b5c1"
+    },
+    {
+      "id": "section-9",
+      "label": "Acknowledgements",
+      "url": "https://arxiv.org/html/2001.08361#Sx1",
+      "digest": "3ee3c66e4fca3cfcaeef075e2881b5d17b6958eede035c1fea04a6b44f70935e"
+    }
+  ],
+  "review": {
+    "status": "passed",
+    "reviewedAt": "2026-10-02T02:21:22.624Z",
+    "contentDigest": "1e779a550d1cd4fea3228ecdc9482ce3838ba1ee0ae5467abc454567b706e8d0"
+  }
+}

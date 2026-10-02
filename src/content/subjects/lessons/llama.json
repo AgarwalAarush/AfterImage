@@ -1,0 +1,465 @@
+{
+  "title": "The Inference-Budget Bet Behind LLaMA",
+  "summary": "LLaMA’s central contribution is an inference-aware scaling strategy: train comparatively smaller transformers longer on public data to obtain strong benchmark performance.",
+  "prerequisites": [
+    "Autoregressive language modeling",
+    "Decoder-only Transformer architecture",
+    "Softmax probability distributions",
+    "Training and inference costs",
+    "Zero-shot and few-shot evaluation"
+  ],
+  "objectives": [
+    "Explain why LLaMA prioritizes inference budgets over minimal training cost.",
+    "Reconstruct LLaMA's data, architecture, training, and evaluation pipeline.",
+    "Interpret benchmark results under the reported evaluation conditions.",
+    "Separate the paper's evidence from illustrative scaling calculations.",
+    "Identify safety, data, environmental, and reporting limitations."
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "result",
+      "statement": "The released LLaMA family spans 7B through 65B parameters and was trained on trillions of tokens.",
+      "conditions": "Applies to the model family introduced in the paper.",
+      "sourceIds": [
+        "abstract"
+      ]
+    },
+    {
+      "id": "c2",
+      "kind": "mechanism",
+      "statement": "The project targets strong performance at several inference budgets by spending more training compute on additional tokens.",
+      "conditions": "The design preference assumes repeated inference makes model size operationally important.",
+      "sourceIds": [
+        "section-1"
+      ]
+    },
+    {
+      "id": "c3",
+      "kind": "result",
+      "statement": "The authors observed continued improvement for the 7B model beyond one trillion training tokens.",
+      "conditions": "This is an empirical observation about the paper’s 7B training run, not a universal stopping rule.",
+      "sourceIds": [
+        "section-1"
+      ]
+    },
+    {
+      "id": "c4",
+      "kind": "mechanism",
+      "statement": "Pretraining used a mixture restricted to publicly available sources considered compatible with open sourcing.",
+      "conditions": "The restriction describes source availability; it does not establish that every document is harmless, unbiased, or free of rights concerns.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c5",
+      "kind": "mechanism",
+      "statement": "The tokenizer uses SentencePiece BPE, splits numbers into digits, and can fall back to bytes for unknown UTF-8 characters.",
+      "conditions": "Applies to the preprocessing and tokenization described for these models.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c6",
+      "kind": "mechanism",
+      "statement": "Relative to the original Transformer, LLaMA normalizes the input of each Transformer sublayer with RMSNorm and replaces ReLU with SwiGLU.",
+      "conditions": "These are architecture choices reported for the LLaMA family; the paper states their placement and feed-forward dimension but does not provide full implementation definitions in this discussion.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c7",
+      "kind": "mechanism",
+      "statement": "LLaMA uses RMSNorm and replaces the ReLU nonlinearity with SwiGLU activations.",
+      "conditions": "These are architecture choices reported for the LLaMA family; the supplied excerpt does not define RMSNorm’s calculation or SwiGLU’s gating computation.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c8",
+      "kind": "mechanism",
+      "statement": "LLaMA pretraining uses AdamW with $\\beta_1=0.9$ and $\\beta_2=0.95$, a cosine learning-rate schedule ending at 10% of the maximum rate, weight decay of $0.1$, and gradient clipping of $1.0$.",
+      "conditions": "These settings describe the reported pretraining runs; maximum learning rates vary by model size as shown in Table 2.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c9",
+      "kind": "mechanism",
+      "statement": "Multiple-choice answers are generally chosen using completion likelihood normalized by character count, with an exception to that normalization for BoolQ and OpenBookQA.",
+      "conditions": "Applies to the benchmark evaluation protocol described in Section 3.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c10",
+      "kind": "result",
+      "statement": "On the reported zero-shot common-sense suite, LLaMA-65B beat Chinchilla-70B except on BoolQ and beat PaLM-540B except on BoolQ and WinoGrande.",
+      "conditions": "Restricted to the benchmarks with reported entries in Table 3 and their zero-shot evaluation setup.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c11",
+      "kind": "caveat",
+      "statement": "LLaMA-65B did not lead the reported five-shot MMLU comparison.",
+      "conditions": "This is a hypothesis about five-shot MMLU averages, not a demonstrated causal attribution.",
+      "sourceIds": [
+        "section-3-part-2"
+      ]
+    },
+    {
+      "id": "c12",
+      "kind": "caveat",
+      "statement": "The paper’s responsible-AI benchmarks reveal concerns but are insufficient to characterize the models’ full risk profile.",
+      "conditions": "Applies to the selected toxicity and stereotype evaluations, which cover only particular prompts, metrics, and scoring systems.",
+      "sourceIds": [
+        "section-5"
+      ]
+    },
+    {
+      "id": "c13",
+      "kind": "caveat",
+      "statement": "TruthfulQA scores remained low enough for the authors to warn that the models were likely to produce incorrect answers.",
+      "conditions": "Applies to the reported TruthfulQA prompt and automated scoring setup; it is not a general hallucination rate.",
+      "sourceIds": [
+        "section-5"
+      ]
+    },
+    {
+      "id": "c14",
+      "kind": "equation",
+      "statement": "The paper estimates training electricity as GPU-hours multiplied by GPU power and power usage effectiveness: $E_{Wh}=H_{GPU}P_{GPU}PUE$.",
+      "conditions": "This accounting equation uses assumed device power and PUE rather than direct end-to-end facility measurements.",
+      "sourceIds": [
+        "section-6"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "s1",
+      "title": "The decision LLaMA optimizes",
+      "markdown": "A language model assigns probabilities to token sequences and is commonly trained to predict the next token. If the context tokens are $x_1,\\ldots,x_T$, an autoregressive model factors their joint probability as\n\n$$p(x_1,\\ldots,x_T)=\\prod_{t=1}^{T}p(x_t\\mid x_1,\\ldots,x_{t-1}).$$\n\nHere $T$ is sequence length, $x_t$ is the token at position $t$, and $p(x_t\\mid x_{<t})$ is the model’s conditional probability for that token. More parameters can increase representational capacity, while more training tokens provide more prediction events. Both consume training compute, but parameter count also strongly affects every later inference.\n\nThat distinction motivates LLaMA’s particular bet. A training-compute optimum asks which allocation minimizes loss for one fixed training budget. LLaMA instead emphasizes the model that reaches a desired performance while remaining economical to serve repeatedly. Training a smaller model for longer can cost more initially yet reduce recurring inference cost.\n\nThe scaling control makes this qualitative idea visible through the invented teaching law $L(N)=1+4N^{-0.3}$, where $L$ is illustrative loss and $N$ is a resource multiplier. At $N=1$, $L=5$. At $N=8$, $L\\approx1+4/1.866\\approx3.14$: an eightfold resource increase reduces loss but does not divide it by eight. Predict how the diminishing return changes as $N$ grows. The coefficients are illustrative, not fitted to LLaMA, and the control cannot identify an optimal division between parameters and tokens.",
+      "sourceIds": [
+        "section-1"
+      ],
+      "claimIds": [
+        "c2",
+        "c3"
+      ],
+      "figureId": "f1"
+    },
+    {
+      "id": "s2",
+      "title": "From public corpora to prediction tokens",
+      "markdown": "The pretraining mixture combines several public sources with deliberately different roles and preprocessing. CommonCrawl supplies 67% of sampled training data and C4 another 15%; GitHub, Wikipedia, books, arXiv, and Stack Exchange provide smaller domain-specific shares. The mixture therefore remains predominantly web text while adding code, multilingual encyclopedia articles, long-form books, scientific writing, and question–answer material.\n\nCleaning is matched to each source rather than treated as one universal filter. CommonCrawl is deduplicated at the line level, restricted to English with language identification, and filtered for quality; C4 also uses deduplication and language identification but relies more heavily on webpage heuristics. GitHub retains projects under Apache, BSD, or MIT licenses, removes low-quality files and boilerplate, and deduplicates exact files. Wikipedia formatting is removed; books with more than 90% content overlap are deduplicated; arXiv sources are stripped of material before the first section, bibliographies, and comments while user macros are expanded; Stack Exchange HTML is removed and answers are ordered by score. These operations target different failure modes, so none by itself establishes that the complete corpus is duplicate-free, uncontaminated, representative, or harmless.\n\nSentencePiece byte-pair encoding converts the processed text into prediction tokens. Written numbers are split into individual digits, and otherwise unknown UTF-8 characters can be decomposed into bytes. This makes the model’s basic prediction units neither whole words nor raw documents: a word may span multiple subword tokens, a number becomes a digit sequence, and uncommon characters remain representable through byte fallback.\n\nAfter tokenization, the full corpus contains roughly 1.4 trillion tokens. The sampling proportions stay fixed for the 1-trillion-token runs, while the largest runs use 1.4 trillion tokens. Most data is traversed about once; Wikipedia and books are sampled for approximately two epochs, with the reported 1.4-trillion-token mixture giving 2.45 epochs for Wikipedia and 2.23 for books. Here an epoch is an average traversal of that subset, not evidence that every document is seen exactly the same number of times.\n\nRestricting the mixture to publicly available data made the training setup compatible with the project’s open-release objective, but public availability is only an access criterion. It does not by itself settle licensing, rights, privacy, safety, bias, or benchmark-contamination questions.",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c4",
+        "c5"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s3",
+      "title": "The model stack and causal attention",
+      "markdown": "LLaMA retains the decoder-only Transformer organization while changing three components of the original architecture. It applies RMSNorm to the input of each Transformer sublayer, a pre-normalization arrangement intended to improve training stability. It replaces ReLU with SwiGLU and sets the feed-forward dimension to $\\frac{2}{3}(4d)$ for model width $d$. It also removes absolute positional embeddings and applies rotary positional embeddings at every layer. These are refinements to normalization, nonlinear transformation, and positional representation rather than a new sequence-modeling objective.\n\nCausal self-attention restricts a token at position $t$ to information available at that position and earlier positions. For permitted attention scores $s_i$, the illustrative control computes\n\n$$a_i=\\frac{\\exp(s_i/\\tau)}{\\sum_j\\exp(s_j/\\tau)},$$\n\nwhere $a_i$ is the normalized weight, $\\tau>0$ is temperature, and the sum is over the allowed keys. With the constructed scores $[2,1,0,-1]$, reducing $\\tau$ magnifies score differences before exponentiation, so the position with score $2$ receives more of the total weight. Increasing $\\tau$ makes the four weights more similar. The weights are dimensionless and always sum to one.\n\nThis calculation isolates the softmax step used to turn scores into a weighted distribution. Its scores and temperature are constructed teaching quantities, not values measured from a LLaMA attention head, and changing the control does not model learning or RoPE. In the full method, queries and keys produce the scores, positional information is introduced through rotary embeddings, and the causal constraint excludes future positions.\n\nThe reported implementation exploits that same causal structure for efficiency: it avoids computing query–key entries that the causal mask would discard and avoids retaining the full attention-weight matrix for the backward pass. Those choices reduce memory use and runtime while preserving the causal computation; they do not allow information to flow from future tokens.",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c6",
+        "c7"
+      ],
+      "figureId": "f2"
+    },
+    {
+      "id": "s4",
+      "title": "Training the family efficiently",
+      "markdown": "LLaMA’s pretraining pipeline uses AdamW rather than plain gradient descent. The reported momentum coefficients are $\\beta_1=0.9$ and $\\beta_2=0.95$. The learning rate follows a cosine schedule whose final value is 10% of its maximum, after 2,000 warmup steps. Weight decay is $0.1$, gradient clipping is $1.0$, and the maximum learning rate depends on model size: $3.0\\times10^{-4}$ for the 6.7B and 13.0B models and $1.5\\times10^{-4}$ for the 32.5B and 65.2B models. Table 2 reports batches of 4 million tokens; the smaller models train on 1.0 trillion tokens and the larger models on 1.4 trillion.\n\nThe paper also reports systems-level efficiency measures. Its causal multi-head attention implementation avoids storing attention weights and avoids computing query-key scores that the causal mask would discard. Checkpointing retains expensive activations such as linear-layer outputs to reduce backward-pass recomputation. Manually implemented backward functions, model and sequence parallelism, and overlap between activation computation and inter-GPU communication further reduce memory or runtime costs. These measures accelerate the reported training procedure without changing the causal language-modeling objective.\n\nThe optimizer control isolates a much simpler calculation. For the illustrative objective $f(x)=x^2/2$, the gradient is $f'(x)=x$. Ordinary gradient descent with learning rate $\\eta$, starting from $x_0=3$, applies 12 updates according to\n\n$$x_{k+1}=x_k-\\eta x_k=(1-\\eta)x_k,$$\n\nso $x_k=3(1-\\eta)^k$. For $0<\\eta<1$, the iterates approach zero without changing sign; $\\eta=1$ reaches zero in one update; and $1<\\eta<2$ produces sign-changing overshoots whose magnitude shrinks. At $\\eta=2$, the iterates oscillate with constant magnitude, while $\\eta>2$ makes their magnitude grow.\n\nThis scalar recurrence is an illustrative plain-gradient-descent baseline, not the paper’s AdamW optimizer, cosine schedule, warmup, weight decay, gradient clipping, or distributed training system. It demonstrates step-size behavior only and supplies no measured LLaMA optimization result.",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c8"
+      ],
+      "figureId": "f3"
+    },
+    {
+      "id": "s5",
+      "title": "Evaluation protocols and benchmark comparisons",
+      "markdown": "The paper evaluates LLaMA on 20 benchmarks under zero-shot and few-shot protocols. In a zero-shot evaluation, the prompt contains a task description and the test example. In a few-shot evaluation, it additionally contains between one and 64 demonstrations. Depending on the benchmark, the model either generates an answer or ranks candidate completions, so a reported score is inseparable from the prompt format, shot count, scoring rule, and task metric.\n\nFor most multiple-choice tasks, candidates are ranked by completion likelihood normalized by the number of characters in the completion. This adjustment reduces the direct preference that unnormalized sequence likelihood can give to shorter strings. BoolQ and OpenBookQA instead use the ratio\n\n$$\\frac{P(\\mathtt{completion}\\mid\\mathtt{context})}{P(\\mathtt{completion}\\mid\\text{“Answer:”})},$$\n\nwhich compares support from the task context with the completion’s baseline likelihood under a minimal answer prompt. The two normalizations are different evaluation choices and their resulting scores should not be treated as interchangeable probabilities.\n\nUnder the reported zero-shot common-sense protocol, LLaMA-65B exceeded Chinchilla-70B on every benchmark for which both had reported results except BoolQ. It exceeded PaLM-540B except on BoolQ and WinoGrande. This comparison is confined to the eight listed common-sense tasks and their reported entries; it does not establish a universal ordering among the models.\n\nThe remaining evaluations probe distinct capabilities under distinct conditions. NaturalQuestions and TriviaQA are closed-book question-answering tests scored by exact match, meaning the model cannot consult supporting documents during evaluation. RACE reports zero-shot reading-comprehension accuracy. MATH and GSM8k test mathematical reasoning, with additional majority-vote results generated from $k=256$ samples for MATH and $k=100$ for GSM8k in the LLaMA comparison. HumanEval uses zero-shot prompts, whereas MBPP uses three-shot prompts; both evaluate generated programs with pass-at-$k$. Pass@1 uses sampling temperature $0.1$, while pass@100 for HumanEval and pass@80 for MBPP use temperature $0.8$. MMLU reports five-shot multiple-choice accuracy across knowledge domains.\n\nThese conditions explain why the benchmark table is evidence across a portfolio of tasks rather than a single capability scale. Exact match, accuracy, majority voting, and pass-at-$k$ answer different questions, and additional demonstrations or samples change the evaluation procedure. The defensible conclusion is therefore benchmark-specific: LLaMA achieved strong results for its parameter scale under the stated protocols, with explicit exceptions rather than uniform dominance.",
+      "sourceIds": [
+        "section-3",
+        "section-3-part-2"
+      ],
+      "claimIds": [
+        "c9",
+        "c10"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s6",
+      "title": "Where the headline weakens—and instruction tuning helps",
+      "markdown": "The strongest benchmark headline has important boundaries. On five-shot MMLU, LLaMA-65B averaged 63.4, behind Chinchilla-70B at 67.5 and PaLM-540B at 69.3. The authors proposed the comparatively limited quantity of books and academic papers in LLaMA’s pretraining mixture as a possible explanation. That is a hypothesis, not evidence that this data difference caused the gap.\n\nThe paper also includes one limited instruction-finetuning experiment. Starting from LLaMA-65B, brief instruction finetuning produced LLaMA-I, which reached 68.9 on five-shot MMLU in the reported comparison. The authors describe improved instruction following as well, but provide only this single experiment and say instruction finetuning was not the paper’s focus. It should therefore be treated as evidence that brief instruction tuning can improve this setup, not as a complete instruction-tuning recipe or a general guarantee across tasks.\n\nTaken together, the results separate three questions that are easy to conflate: how well the pretrained model performs, how evaluation prompts and scoring define a benchmark result, and how post-training changes behavior. Parameter count alone does not answer any of them.",
+      "sourceIds": [
+        "section-3-part-2",
+        "section-4"
+      ],
+      "claimIds": [
+        "c11"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s7",
+      "title": "Costs, harms, and the honest boundary",
+      "markdown": "Public availability does not remove data or deployment harms. The paper notes that language models can reproduce or amplify biases in training data and generate toxic or offensive content. It evaluates LLaMA-65B with RealToxicityPrompts, CrowS-Pairs, and WinoGender, but explicitly says these selected evaluations are insufficient to characterize the models’ full risk profile. RealToxicityPrompts also relies on a third-party automated scoring pipeline, and the paper cautions that methodological differences make comparisons with earlier models difficult.\n\nThe reported analyses expose particular failure modes rather than one general safety score. CrowS-Pairs tests preferences between stereotypical and anti-stereotypical sentences across specified categories. WinoGender tests whether pronoun and occupation associations affect coreference resolution; the paper reports worse performance on “gotcha” cases where an occupation’s majority-gender association conflicts with the correct answer. These findings connect model behavior to social patterns in web-heavy training data, but the benchmarks cover only selected prompts, identities, metrics, and scoring procedures.\n\nTruthfulQA addresses another boundary: adversarial questions designed to probe literal truth and misinformation. LLaMA’s reported scores exceeded the listed GPT-3 values, yet the authors still judged the correct-answer rate low and warned that incorrect answers remained likely. This result is specific to TruthfulQA’s questions, prompt style, and automated scoring; it is not a universal hallucination rate.\n\nTraining also has an environmental cost. The paper estimates electricity as\n\n$$E_{Wh}=H_{GPU}P_{GPU}PUE,$$\n\nwhere $H_{GPU}$ is GPU-hours, $P_{GPU}$ is assumed GPU power in watts, and PUE accounts for facility overhead. Its comparison assumes 400 W A100-80GB GPUs, PUE $1.1$, and a common US-average carbon intensity of $0.385\\ \\mathrm{kg\\ CO_2e/kWh}$. Those common assumptions support like-for-like estimates, not direct end-to-end facility measurements or location-specific emissions. The paper separately estimates the full model-development effort at 2,638 MWh and 1,015 tCO2eq under those assumptions, which is broader than a single final training run. Reporting assumptions, system boundaries, and whether figures cover one run or the entire development process is therefore essential.",
+      "sourceIds": [
+        "section-5",
+        "section-5-part-2",
+        "section-6"
+      ],
+      "claimIds": [
+        "c12",
+        "c13",
+        "c14"
+      ],
+      "figureId": null
+    }
+  ],
+  "figures": [
+    {
+      "id": "f1",
+      "kind": "scaling",
+      "title": "Diminishing returns in a toy scaling law",
+      "question": "As the resource multiplier grows, how quickly does the illustrative excess-loss term shrink?",
+      "caption": "The control plots $L(N)=1+4N^{-0.3}$ while changing the resource multiplier $N$, exposing diminishing returns relevant to the paper’s inference-budget motivation.",
+      "limitation": "The coefficients are invented for teaching; this is neither a fitted LLaMA scaling law nor an optimizer for allocating compute between tokens and parameters.",
+      "sourceIds": [
+        "section-1"
+      ],
+      "claimIds": [
+        "c2",
+        "c3"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "f2",
+      "kind": "attention",
+      "title": "Temperature and normalized attention weights",
+      "question": "Which of the four fixed positions gains the most probability when temperature decreases?",
+      "caption": "The control divides fixed scores $[2,1,0,-1]$ by a positive temperature and applies softmax, showing how temperature changes concentration.",
+      "limitation": "It shows normalized weights only, not a measured LLaMA attention head, learned token similarity, positional rotation, or causal masking computation.",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c6"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "f3",
+      "kind": "optimizer",
+      "title": "Step size on a scalar quadratic",
+      "question": "How does changing the learning rate alter convergence or overshoot over 12 gradient-descent updates?",
+      "caption": "Starting from $x=3$, the control applies ordinary gradient descent to $f(x)=x^2/2$ and displays 12 iterates.",
+      "limitation": "This is plain scalar gradient descent, not the paper’s AdamW optimizer, cosine schedule, warmup, clipping, or distributed training system.",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c8"
+      ],
+      "illustrative": true
+    }
+  ],
+  "quiz": [
+    {
+      "question": "Assume two models reach the same target quality, but one has fewer parameters after receiving more training tokens. Which consideration most directly reflects LLaMA’s stated design objective?",
+      "options": [
+        {
+          "text": "The smaller model may be preferable when repeated inference cost matters.",
+          "explanation": "Correct. LLaMA explicitly prioritizes performance at different inference budgets, where a smaller trained-longer model can be cheaper to serve."
+        },
+        {
+          "text": "The smaller model must also have required less training compute.",
+          "explanation": "Incorrect. Longer training can increase upfront compute; the argument concerns recurring inference economics."
+        },
+        {
+          "text": "The smaller model is guaranteed to win every downstream benchmark.",
+          "explanation": "Incorrect. The paper reports benchmark-specific exceptions and does not establish universal dominance."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-1",
+        "section-3-part-2"
+      ],
+      "claimIds": [
+        "c2",
+        "c11"
+      ]
+    },
+    {
+      "question": "In the illustrative attention control, fixed scores are divided by a smaller positive temperature before softmax. What should happen?",
+      "options": [
+        {
+          "text": "The distribution becomes more concentrated on the largest score.",
+          "explanation": "Correct. Dividing score differences by a smaller positive temperature magnifies them before exponentiation."
+        },
+        {
+          "text": "All four weights become exactly equal.",
+          "explanation": "Incorrect. Equality is approached as temperature becomes large, not small, when the scores differ."
+        },
+        {
+          "text": "The control reveals which tokens a trained LLaMA head prefers.",
+          "explanation": "Incorrect. The scores are fixed illustrative values and are not measurements from a trained model."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c6"
+      ]
+    },
+    {
+      "question": "What is the strongest defensible interpretation of LLaMA-65B’s reported TruthfulQA result?",
+      "options": [
+        {
+          "text": "It improved over the listed GPT-3 values but still had substantial incorrect-answer risk under that setup.",
+          "explanation": "Correct. The table comparison favors LLaMA, while the authors explicitly say the correctness rate remains low."
+        },
+        {
+          "text": "It establishes a general-purpose hallucination rate of 43%.",
+          "explanation": "Incorrect. TruthfulQA uses a particular adversarial question set, prompt style, and automated scoring method."
+        },
+        {
+          "text": "It proves public-data training eliminates misinformation.",
+          "explanation": "Incorrect. The reported limitation states the opposite: incorrect answers remain likely."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-5"
+      ],
+      "claimIds": [
+        "c12",
+        "c13"
+      ]
+    }
+  ],
+  "id": "llama",
+  "createdAt": "2026-10-01T23:47:59.240Z",
+  "pipelineVersion": "subjects-lessons-v1",
+  "sources": [
+    {
+      "id": "abstract",
+      "label": "Original paper · abstract",
+      "url": "https://arxiv.org/abs/2302.13971",
+      "digest": "1bdaa04d6d7eb1c2b3702d4bf3ef7bcef8a1f1d6177164a59cb683b445cfaab6",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:32:35.943Z"
+    },
+    {
+      "id": "section-1",
+      "label": "1 Introduction",
+      "url": "https://arxiv.org/html/2302.13971#S1",
+      "digest": "5e88586ebf341b527672b9148bcc81174a091436d669f44b5eeeb9e41497324f",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:32:35.943Z"
+    },
+    {
+      "id": "section-2",
+      "label": "2 Approach",
+      "url": "https://arxiv.org/html/2302.13971#S2",
+      "digest": "17eef368c21c38e9c1207ae920ebc67625c3b18bbcc1a02f1364ab72f6829b79",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:32:35.943Z"
+    },
+    {
+      "id": "section-3",
+      "label": "3 Main results",
+      "url": "https://arxiv.org/html/2302.13971#S3",
+      "digest": "eea2f79b452a285438a67c2ef4d5bf963e3926d03ce91ffd6b81d27173d0a84e",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:32:35.943Z"
+    },
+    {
+      "id": "section-3-part-2",
+      "label": "3 Main results · part 2",
+      "url": "https://arxiv.org/html/2302.13971#S3",
+      "digest": "df1d7e39d2313cad1998bfcc519f765fc3fb7b4d3e8d4f01c3512214092fd80d",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:32:35.943Z"
+    },
+    {
+      "id": "section-4",
+      "label": "4 Instruction Finetuning",
+      "url": "https://arxiv.org/html/2302.13971#S4",
+      "digest": "d282e5094645993680a7f4182bc71b6f13c423a45889011c6c3352efaf296ded",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:32:35.943Z"
+    },
+    {
+      "id": "section-5",
+      "label": "5 Bias, Toxicity and Misinformation",
+      "url": "https://arxiv.org/html/2302.13971#S5",
+      "digest": "a7eb0f464c60491cb4be63a93cedd7c3dfbdd6dba6a07b475f8e6d0e2d89d7df",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:32:35.943Z"
+    },
+    {
+      "id": "section-5-part-2",
+      "label": "5 Bias, Toxicity and Misinformation · part 2",
+      "url": "https://arxiv.org/html/2302.13971#S5",
+      "digest": "43660ca1724b344d3e1217dd95007ad0848f3febf29f7a7395790a9caec3af38",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:32:35.943Z"
+    },
+    {
+      "id": "section-6",
+      "label": "6 Carbon footprint",
+      "url": "https://arxiv.org/html/2302.13971#S6",
+      "digest": "320af3146cbd6efb02811f85a15a0e2a430f1dd35f8e795cdc6afd2553e01952",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:32:35.943Z"
+    },
+    {
+      "id": "section-7",
+      "label": "7 Related work",
+      "url": "https://arxiv.org/html/2302.13971#S7",
+      "digest": "af1e792ea1d842ab45fe89181a695a3910a15bce5c4310593c70cb39d97827e0",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:32:35.943Z"
+    },
+    {
+      "id": "section-8",
+      "label": "8 Conclusion",
+      "url": "https://arxiv.org/html/2302.13971#S8",
+      "digest": "b573db4677081f3ddedcc49b71272d0e5c6b7455e02983c199637bcc2c9e1b08",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:32:35.943Z"
+    }
+  ],
+  "review": {
+    "status": "passed",
+    "reviewedAt": "2026-10-02T02:00:44.227Z",
+    "contentDigest": "32738dd7ca1402f0bc3f7f6c819b9aed8c7e899046743415b990a0858d59f98f"
+  }
+}

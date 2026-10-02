@@ -1,0 +1,439 @@
+{
+  "title": "The Error Worth Chasing",
+  "summary": "Curiosity-Critic turns cumulative world-model improvement into an online reward by subtracting a learned, transition-specific noise floor from current prediction error.",
+  "prerequisites": [
+    "State-action transitions and their resulting next states",
+    "World-model prediction of next states or observations",
+    "Reducible model error and irreducible environmental noise",
+    "Intrinsic rewards for task-independent exploration"
+  ],
+  "objectives": [
+    "Distinguish raw prediction error from its reducible component.",
+    "Derive the practical reward from cumulative world-model improvement.",
+    "Explain how the critic learns a transition-specific error baseline.",
+    "Interpret the grid-world results within their experimental scope.",
+    "Identify limits of the epistemic and aleatoric error interpretation."
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "mechanism",
+      "statement": "Raw prediction-error curiosity rewards transitions that the current world model predicts poorly, whether the error is reducible or irreducible.",
+      "conditions": "For Curiosity V1 with reward equal to the chosen prediction-error metric.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c2",
+      "kind": "mechanism",
+      "statement": "The proposed cumulative objective credits an update by its change in prediction error across all transitions visited through the current time.",
+      "conditions": "For the history-dependent reward defined over the dataset of visited transitions.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c3",
+      "kind": "caveat",
+      "statement": "Direct evaluation of the cumulative reward through every step requires quadratic total compute and linear memory in the trajectory length.",
+      "conditions": "When the full visited history is retained and reevaluated at every time step.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c4",
+      "kind": "equation",
+      "statement": "In the derivation limit where the cumulative-objective discount approaches one, the effective per-step term is current error minus that transition's error under the final world model.",
+      "conditions": "For the finite-horizon decomposition in the paper, with the limit used to derive the signal rather than fix the downstream RL discount.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c5",
+      "kind": "equation",
+      "statement": "The practical surrogate replaces final-model sample error with expected error under an asymptotically converged model: current error minus the expected asymptotic baseline.",
+      "conditions": "Under the horizon and sample-to-expectation approximations described by the authors.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c6",
+      "kind": "mechanism",
+      "statement": "With MSE world-model training, convergence to the conditional mean makes the expected L2 residual the asymptotic baseline of that MSE-trained predictor; it is not generally the minimum achievable expected L2 error.",
+      "conditions": "When MSE training converges to the conditional mean under the transition distribution and prediction error is evaluated with the L2 norm; under L2 evaluation, a conditional geometric median generally minimizes expected error.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c7",
+      "kind": "caveat",
+      "statement": "With finite model capacity or incomplete optimization, the asymptotic baseline can absorb error that the chosen architecture and optimizer cannot eliminate, not only environmental randomness.",
+      "conditions": "When the converged model is not the Bayes-optimal predictor.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c8",
+      "kind": "mechanism",
+      "statement": "At each step, the critic is trained toward the world model's post-update error on the observed transition, then its baseline estimate is subtracted from the pre-update error.",
+      "conditions": "For the paper's per-environment-step Curiosity-Critic procedure.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c9",
+      "kind": "mechanism",
+      "statement": "Repeated visits can correct an underestimated stochastic-transition baseline because they supply additional critic targets until the estimated floor rises and the reward falls.",
+      "conditions": "When policy, world model, and critic are trained concurrently and revisits continue to provide representative samples.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c10",
+      "kind": "result",
+      "statement": "After 35,000 steps in the 30-by-30 stochastic grid world, the neural critic achieved mean deterministic-cell L2 error 1.858 with standard deviation 0.080 across five seeds, the best reported non-oracle result.",
+      "conditions": "For the paper's controlled grid world, architectures, training procedure, metric, horizon, and five experimental seeds.",
+      "sourceIds": [
+        "section-5"
+      ]
+    },
+    {
+      "id": "c11",
+      "kind": "result",
+      "statement": "The neural critic first reduced deterministic-cell error below 3.0 at step 13,400, while RND using state input did so at step 21,700.",
+      "conditions": "For the reported grid-world training curves and the specified error threshold.",
+      "sourceIds": [
+        "section-5"
+      ]
+    },
+    {
+      "id": "c12",
+      "kind": "result",
+      "statement": "During the final 5,000 steps, the neural-critic policy spent 70.9 percent of steps in the deterministic region, compared with 52.8 percent for state-input RND and 42.6 percent for random exploration.",
+      "conditions": "For the reported grid-world visitation measurement averaged over five seeds.",
+      "sourceIds": [
+        "section-5"
+      ]
+    },
+    {
+      "id": "c13",
+      "kind": "result",
+      "statement": "The learned neural critic's stochastic-cell estimate first came within five percent of the analytic noise floor by step 400.",
+      "conditions": "For the 200-dimensional Bernoulli-observation stochastic region, whose stated analytic L2 floor is approximately 7.07.",
+      "sourceIds": [
+        "section-5"
+      ]
+    },
+    {
+      "id": "c14",
+      "kind": "caveat",
+      "statement": "The reported empirical evaluation is confined to a controlled grid world; behavior in high-dimensional environments was not empirically characterized.",
+      "conditions": "At the scope of the paper's reported experiments.",
+      "sourceIds": [
+        "section-6"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "s1",
+      "title": "The noisy surprise problem",
+      "markdown": "A world model with parameters $\\theta_t$ predicts the next state or observation from a state–action pair $(s_t,a_t)$. Let $s_{t+1}$ be the observed outcome and let $e(s_t,a_t\\mid\\theta_t)$ be a consistent prediction-error measure. The original L2 instance is $\\|\\theta_t(s_t,a_t)-s_{t+1}\\|$, although the paper allows other consistent errors.\n\nRaw-error curiosity sets the intrinsic reward equal to that error. This answers, “What surprises my model now?” but not, “What can further training improve?” A deterministic pattern that has not been learned and a source of fresh random noise can both produce large errors. Only the first offers useful learning progress. Thus high surprise is not automatically high information value.\n\nThe intended distinction is between reducible error and a transition-specific long-run residual. Under matched training and evaluation losses, where the converged predictor is Bayes-optimal for the evaluated error, that residual can be identified with the aleatoric Bayes risk and cannot be learned away under the same loss. In the paper's MSE-training/L2-evaluation instance, however, MSE targets the conditional mean while expected L2 distance is generally minimized by a conditional geometric median. The conditional-mean model's expected L2 residual is therefore the asymptotic baseline for that chosen learner, not necessarily the minimum achievable expected L2 error. Curiosity-Critic seeks the portion above this model-relative baseline rather than treating every residual as learnable.",
+      "sourceIds": [
+        "section-2",
+        "section-4"
+      ],
+      "claimIds": [
+        "c1",
+        "c6"
+      ],
+      "figureId": "fig-noise"
+    },
+    {
+      "id": "s2",
+      "title": "Begin with the global quantity we actually care about",
+      "markdown": "Define the visited history as $\\mathcal{D}_t=\\{s_0,a_0,s_1,a_1,\\ldots,s_t,a_t\\}$. After training on the current experience, the world model changes from $\\theta_t$ to $\\theta_{t+1}$. The paper begins with\n\n$$\nr_t(s_t,a_t\\mid\\mathcal{D}_t)=\\sum_{t'\\le t}\\left[e(s_{t'},a_{t'}\\mid\\theta_t)-e(s_{t'},a_{t'}\\mid\\theta_{t+1})\\right].\n$$\n\nHere $t'$ indexes an earlier visited transition. This reward asks how much the update improves prediction over the entire accumulated history, including whether learning the new sample helps or harms earlier cases. For purely noisy transitions, the paper argues that the expected contribution vanishes because an update cannot systematically reduce their error.\n\nThe definition captures a global training goal, but it is not an efficient online reward. Reevaluating every prior transition after every update costs $\\mathcal{O}(t^2)$ total computation through time $t$ and requires $\\mathcal{O}(t)$ stored history. The central technical task is therefore to preserve the objective's meaning without replaying the full past merely to calculate curiosity.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c2",
+        "c3"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s3",
+      "title": "How the history collapses into a local signal",
+      "markdown": "Let $T$ be the training horizon and $\\gamma$ the discount used only in the cumulative-objective derivation. The authors decompose the discounted sum of history-wide improvements into an intractable history term and a tractable term. As $\\gamma\\to1$, the coefficient on the history term vanishes and the remaining expression telescopes:\n\n$$\nC(T)\\big|_{\\gamma\\to1}=\\sum_{t=0}^{T}\\left[e(s_t,a_t\\mid\\theta_t)-e(s_t,a_t\\mid\\theta_{T+1})\\right].\n$$\n\nThus an effective reward for the transition at time $t$ is\n\n$$\nr_t^{\\mathrm{eff}}=e(s_t,a_t\\mid\\theta_t)-e(s_t,a_t\\mid\\theta_{T+1}).\n$$\n\nThis is an identity for the stated limit, not yet an online algorithm: $\\theta_{T+1}$ belongs to the end of training. The paper then makes two approximations. First, it replaces the finite final model by an asymptotic model $\\theta_\\infty$. Second, it replaces one realized final error with its expectation under the transition distribution $\\mathcal{P}(\\cdot\\mid s_t,a_t)$:\n\n$$\nr_t^{\\mathrm{eff}}\\approx e(s_t,a_t\\mid\\theta_t)-\\mathbb{E}_{\\mathcal{P}}\\!\\left[e(s_t,a_t\\mid\\theta_\\infty)\\right].\n$$\n\nEvery symbol now has a role: $s_t$ is the current state, $a_t$ the action, $\\mathcal{P}$ the outcome distribution, $e$ the selected error, $\\theta_t$ the current world model, and $\\theta_\\infty$ its convergence limit. The derivational limit does not require the downstream RL algorithm to use discount one; the resulting reward can be consumed with its own discount.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c4",
+        "c5"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s4",
+      "title": "A worked subtraction, and why one update is not convergence",
+      "markdown": "Consider an illustrative transition whose current prediction error is $6.0$. Suppose its learned asymptotic baseline is $4.5$. The intrinsic reward is\n\n$$\nr^{\\mathrm{eff}}=6.0-4.5=1.5.\n$$\n\nNow compare a learnable transition with current error $3.0$ and baseline $0.2$: its reward is $2.8$. Although its raw error is smaller, its reducible excess is larger, so it should be preferred under this signal. If later its current error falls to $0.3$ while the baseline remains $0.2$, its reward falls to $0.1$. These numbers are illustrative, not paper measurements.\n\nThe optimizer control below supplies a deliberately tiny analogy. It runs ordinary gradient descent on $f(x)=x^2/2$, beginning at $x=3$, for 12 updates. Changing the learning rate changes both the first-step decrease and the later iterates. Use it to compare a one-step proxy with a longer-run remainder: a single update can leave substantial reducible error, so post-update error is not generally the same thing as an asymptotic floor. The control is not the paper's optimizer, critic, stochastic environment, or world model, and its quadratic has a zero minimum rather than a transition-dependent noise floor.",
+      "sourceIds": [
+        "section-3",
+        "section-4"
+      ],
+      "claimIds": [
+        "c5",
+        "c8"
+      ],
+      "figureId": "fig-optimizer"
+    },
+    {
+      "id": "s5",
+      "title": "The critic learns the asymptotic error baseline",
+      "markdown": "Under MSE training, a converged Bayes-optimal model for the squared-error training objective approaches the conditional mean $\\mathbb{E}_{\\mathcal{P}}[s_{t+1}\\mid s_t,a_t]$. With L2 evaluation, the corresponding expected residual is\n\n$$\n\\mathbb{E}_{\\mathcal{P}}\\!\\left[\\left\\|\\mathbb{E}_{\\mathcal{P}}[s_{t+1}\\mid s_t,a_t]-s_{t+1}\\right\\|\\right].\n$$\n\nThis quantity is the asymptotic L2 baseline of the MSE-trained conditional-mean predictor. It is not generally the Bayes risk for expected L2 distance, which is minimized by a conditional geometric median rather than the conditional mean. Consequently, this baseline is irreducible relative to the converged MSE-trained predictor, but it need not be the smallest expected L2 error attainable by every predictor. An exact aleatoric interpretation requires the training and evaluation losses to be aligned so that they induce the same Bayes-optimal statistic; for example, squared-error training paired with expected squared-error evaluation targets the conditional mean consistently.\n\nBecause neither $\\mathcal{P}$ nor $\\theta_\\infty$ is available online, the method trains a critic $\\phi$. At step $t$, the current model produces the pre-update error; the observed outcome updates the model to $\\theta_{t+1}$; the resulting same-transition post-update error becomes a regression target for the critic; and the updated critic estimates the baseline. The implemented reward is\n\n$$\nr_t=e(s_t,a_t\\mid\\theta_t)-\\phi_{t+1}(s_t,a_t).\n$$\n\nPooling targets across related inputs can let the critic estimate transition difficulty earlier than the world model learns exact outcomes. If the critic initially underestimates a stochastic transition's asymptotic residual, excessive reward causes revisits, which provide more targets and can raise the estimate until the reward subsides.\n\nThere is a further qualification: with limited capacity or incomplete optimization, the baseline also includes error this particular architecture and optimizer cannot remove. Operationally, the reward measures improvement remaining for the chosen training system and error metric. Calling the subtraction an exact epistemic–aleatoric decomposition is justified only when the converged predictor is Bayes-optimal under that same evaluated loss.",
+      "sourceIds": [
+        "section-4"
+      ],
+      "claimIds": [
+        "c6",
+        "c7",
+        "c8",
+        "c9"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s6",
+      "title": "What the controlled experiment establishes",
+      "markdown": "The experiment used a $30\\times30$ grid divided equally by columns. Each deterministic-half cell emitted a fixed 200-dimensional binary observation. Each stochastic-half cell resampled an independent Bernoulli$(0.5)$ observation on every visit; its stated analytic L2 floor was $\\sqrt{200}\\times0.5\\approx7.07$. Motion between cells was deterministic. The reported metric was mean L2 prediction error over the 450 deterministic cells, checked every 100 environment steps.\n\nAcross five seeds and 35,000 steps, the neural critic ended at $1.858\\pm0.080$, the best non-oracle final result; state-input RND ended at $2.220\\pm0.109$. The neural critic crossed error $3.0$ at step 13,400, versus 21,700 for state-input RND. In the final 5,000 steps it spent 70.9% of visits in the deterministic region, versus 52.8% for state-input RND and 42.6% for random exploration. Its stochastic-cell critic estimate first came within 5% of the analytic floor by step 400.\n\nThese measurements jointly support the proposed mechanism in this environment: an early estimate of stochastic difficulty coincided with greater attention to learnable cells and lower deterministic-cell error. They do not independently establish which component caused every performance difference, nor do they establish results outside the specified grid, models, reward processing, and training setup.",
+      "sourceIds": [
+        "section-5"
+      ],
+      "claimIds": [
+        "c10",
+        "c11",
+        "c12",
+        "c13"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s7",
+      "title": "Misconceptions and boundaries",
+      "markdown": "A common misconception is that subtracting the critic makes stochastic transitions predictable. It does not change their outcomes or directly reduce their irreducible error. It changes the exploration reward so persistent randomness stops looking like unfinished learning once the estimated floor catches up.\n\nAnother misconception is that the critic simply predicts the next observation. Its target is scalar post-update prediction error, conditioned on the transition input; the world model still predicts the outcome. Nor is the critic's target instantly equal to the true asymptotic floor: early post-update errors contain reducible error, and the learned estimator depends on sampling, generalization, capacity, and optimization.\n\nThe evidence is intentionally narrow. Only a controlled grid world was evaluated, while high-dimensional domains were left for future work. The best critic inputs and parameter sharing also remain open design questions. More broadly, the derivation relies on the $\\gamma\\to1$ objective limit plus horizon and expectation approximations. Consequently, the paper supplies a principled and tractable signal with controlled empirical support—not a proof that it will outperform other exploration methods in every environment or under every world-model architecture.",
+      "sourceIds": [
+        "section-3",
+        "section-4",
+        "section-6"
+      ],
+      "claimIds": [
+        "c5",
+        "c7",
+        "c8",
+        "c14"
+      ],
+      "figureId": null
+    }
+  ],
+  "figures": [
+    {
+      "id": "fig-noise",
+      "kind": "noise",
+      "title": "Dimension changes the geometry of random error",
+      "question": "At fixed Gaussian scale, how does increasing dimension change the sampled norm histogram relative to the RMS radius?",
+      "caption": "An illustrative seeded Gaussian sample shows norm histograms, the measured mean radius, and the reference radius $\\sigma\\sqrt{D}$. Use the controls to see why the scale of stochastic residuals depends on dimension rather than vanishing merely because a predictor has converged.",
+      "limitation": "This is a Gaussian norm demonstration, not the paper's Bernoulli grid world, learned critic, world-model residual distribution, or a reproduction of any reported measurement.",
+      "sourceIds": [
+        "section-4",
+        "section-5"
+      ],
+      "claimIds": [
+        "c6",
+        "c13"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "fig-optimizer",
+      "kind": "optimizer",
+      "title": "One-step improvement versus a longer-run remainder",
+      "question": "How does the learning rate change the error remaining after one update compared with the error after 12 updates?",
+      "caption": "Ordinary gradient descent follows 12 iterates of the illustrative scalar quadratic $f(x)=x^2/2$ from $x=3$. The trace makes the distinction between a one-step post-update quantity and a longer-run value concrete.",
+      "limitation": "The quadratic, starting point, update count, and iterates are illustrative; this is not the paper's optimizer, world model, critic training, stochastic noise floor, or an empirical result.",
+      "sourceIds": [
+        "section-3",
+        "section-4"
+      ],
+      "claimIds": [
+        "c5",
+        "c8"
+      ],
+      "illustrative": true
+    }
+  ],
+  "quiz": [
+    {
+      "question": "Two transitions have current errors 6 and 3, with accurate asymptotic baselines 5.5 and 0.5. Which receives the larger Curiosity-Critic reward?",
+      "options": [
+        {
+          "text": "The first, because its raw error is larger.",
+          "explanation": "Incorrect. The relevant excess is $6-5.5=0.5$, not raw error alone."
+        },
+        {
+          "text": "The second, because its reducible excess is 2.5.",
+          "explanation": "Correct. Its reward is $3-0.5=2.5$, exceeding the first transition's $0.5$."
+        },
+        {
+          "text": "They tie because both transitions remain imperfect.",
+          "explanation": "Incorrect. Imperfection alone does not determine the reward; each transition has its own baseline."
+        }
+      ],
+      "answer": 1,
+      "sourceIds": [
+        "section-3",
+        "section-4"
+      ],
+      "claimIds": [
+        "c5",
+        "c6"
+      ]
+    },
+    {
+      "question": "Why train a critic instead of always subtracting the same transition's one-step post-update error?",
+      "options": [
+        {
+          "text": "The critic can pool samples and estimate expected transition difficulty.",
+          "explanation": "Correct. The learned scalar estimator can generalize across related transitions and reduce reliance on one noisy target."
+        },
+        {
+          "text": "The critic guarantees that the world model reaches the Bayes optimum.",
+          "explanation": "Incorrect. Critic training does not guarantee world-model capacity or optimization success."
+        },
+        {
+          "text": "The critic removes stochasticity from the environment.",
+          "explanation": "Incorrect. It changes the reward estimate, not the environment's outcome distribution."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-4"
+      ],
+      "claimIds": [
+        "c7",
+        "c8",
+        "c9"
+      ]
+    },
+    {
+      "question": "What conclusion is best supported by the reported experiments?",
+      "options": [
+        {
+          "text": "The method is proven to dominate exploration baselines in all high-dimensional tasks.",
+          "explanation": "Incorrect. High-dimensional behavior was not empirically characterized."
+        },
+        {
+          "text": "The method exactly recovers aleatoric uncertainty for every finite neural network.",
+          "explanation": "Incorrect. Finite capacity and optimization can make the baseline include model-specific irreducible error."
+        },
+        {
+          "text": "In the controlled stochastic grid world, the neural critic improved the reported learning speed and final deterministic-cell error.",
+          "explanation": "Correct. This conclusion preserves the environment, metric, horizon, and comparison conditions of the evidence."
+        }
+      ],
+      "answer": 2,
+      "sourceIds": [
+        "section-5",
+        "section-6"
+      ],
+      "claimIds": [
+        "c10",
+        "c11",
+        "c14"
+      ]
+    }
+  ],
+  "id": "curiosity-critic-cumulative-prediction-error-improvement",
+  "createdAt": "2026-10-02T00:28:53.825Z",
+  "pipelineVersion": "subjects-lessons-v1",
+  "sources": [
+    {
+      "id": "abstract",
+      "label": "Original paper · abstract",
+      "url": "https://arxiv.org/abs/2604.18701",
+      "digest": "9e1c0c7158cbe95aa5296b2edcc7b3953cc9d199c2ac3d9703158a88c14bc6e1",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:26:00.623Z"
+    },
+    {
+      "id": "section-1",
+      "label": "1 Introduction",
+      "url": "https://arxiv.org/html/2604.18701#S1",
+      "digest": "fa01c756289763f77f27374229347bd425c6baa9c423c49f5c2e239860bd85a5",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:26:00.623Z"
+    },
+    {
+      "id": "section-2",
+      "label": "2 Previous Works",
+      "url": "https://arxiv.org/html/2604.18701#S2",
+      "digest": "f64a1913e9450c1c7f075539d0fb7a2fcfae3194930a5346081a8b0932808de1",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:26:00.623Z"
+    },
+    {
+      "id": "section-3",
+      "label": "3 Cumulative Prediction Error Improvement as an Intrinsic Reward",
+      "url": "https://arxiv.org/html/2604.18701#S3",
+      "digest": "257fd57bfc57bb4d13ae378c9c6584ca9c23f00797c8edddb4793b83d256528f",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:26:00.623Z"
+    },
+    {
+      "id": "section-4",
+      "label": "4 Estimating the Asymptotic Error Baseline",
+      "url": "https://arxiv.org/html/2604.18701#S4",
+      "digest": "8788ae3b9bd758ea00ee5dac97e9ffcbf4739f717fd2d0cb07d3063736550e10",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:26:00.623Z"
+    },
+    {
+      "id": "section-5",
+      "label": "5 Experiments",
+      "url": "https://arxiv.org/html/2604.18701#S5",
+      "digest": "0efbcb8c068bb7e2a0f750ea0a19c7e01927e6803fae48859771cbeed733bf25",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:26:00.623Z"
+    },
+    {
+      "id": "section-6",
+      "label": "6 Conclusions",
+      "url": "https://arxiv.org/html/2604.18701#S6",
+      "digest": "4ee05bacf7650f4968be1cf3dc79310efb6db1b94be3a8b481e3cdf99664ab9a",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:26:00.623Z"
+    },
+    {
+      "id": "section-8",
+      "label": "Impact Statement",
+      "url": "https://arxiv.org/html/2604.18701#Sx2",
+      "digest": "a63b8d77053359f825ff158eee901033285ae6ac2991b961438640b8810225ef",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:26:00.623Z"
+    }
+  ],
+  "review": {
+    "status": "passed",
+    "reviewedAt": "2026-10-02T00:28:53.826Z",
+    "contentDigest": "689d996f833aa2115a1dc8e86838e7735c95ef411806187ffb820086b7bce760"
+  }
+}

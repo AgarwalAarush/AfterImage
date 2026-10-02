@@ -1,0 +1,423 @@
+{
+  "title": "The U-Shaped Bargain: Context, Coordinates, and Scarce Labels",
+  "summary": "U-Net joins coarse contextual features with cropped high-resolution features, enabling precise biomedical segmentation while using augmentation and weighted loss to cope with scarce labels.",
+  "prerequisites": [
+    "Local image features from convolution",
+    "Spatial downsampling and contextual expansion",
+    "Per-pixel class probabilities from softmax",
+    "Per-pixel classification loss from cross-entropy"
+  ],
+  "objectives": [
+    "Trace information through U-Net's contracting and expanding paths.",
+    "Explain how skip concatenation combines precise location with context.",
+    "Calculate a pixel's softmax probability and weighted loss.",
+    "Relate augmentation and border weighting to scarce biomedical labels.",
+    "Interpret reported segmentation results under their stated conditions."
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "mechanism",
+      "statement": "U-Net pairs a contracting path for contextual representation with a symmetric expanding path for localization.",
+      "conditions": "For the architecture introduced in this paper.",
+      "sourceIds": [
+        "abstract"
+      ]
+    },
+    {
+      "id": "c2",
+      "kind": "mechanism",
+      "statement": "Each contracting stage uses two unpadded 3-by-3 convolutions with ReLU, followed by stride-2 max pooling.",
+      "conditions": "At repeated downsampling stages of the reported architecture.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c3",
+      "kind": "mechanism",
+      "statement": "At every downsampling step, U-Net doubles its feature-channel count.",
+      "conditions": "Within the contracting path described in the paper.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c4",
+      "kind": "mechanism",
+      "statement": "An expanding stage upsamples, reduces channel count, concatenates a cropped contracting-path map, and applies two convolutions with ReLU.",
+      "conditions": "At each reported expanding-path stage; cropping compensates for border loss from valid convolutions.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c5",
+      "kind": "mechanism",
+      "statement": "The final 1-by-1 convolution maps each 64-component pixel feature vector to class scores.",
+      "conditions": "At the final layer of the architecture reported in the paper.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c6",
+      "kind": "caveat",
+      "statement": "Because convolutions are unpadded, predictions cover only locations having complete input context.",
+      "conditions": "For the paper's valid-convolution architecture rather than a same-padded variant.",
+      "sourceIds": [
+        "section-1"
+      ]
+    },
+    {
+      "id": "c7",
+      "kind": "mechanism",
+      "statement": "Large images can be segmented by overlapping tiles, with mirrored input used to supply missing border context.",
+      "conditions": "When inference images exceed a convenient processing tile or require border predictions.",
+      "sourceIds": [
+        "section-1"
+      ]
+    },
+    {
+      "id": "c8",
+      "kind": "equation",
+      "statement": "The paper defines each pixel's class probability by exponentiating its class activation and normalizing across all classes.",
+      "conditions": "For pixel position x in the output domain and K mutually exclusive classes.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c9",
+      "kind": "mechanism",
+      "statement": "A spatial weight map counteracts class imbalance and emphasizes narrow borders separating touching cells.",
+      "conditions": "For ground-truth cell segmentations in which adjacent instances must remain distinct.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c10",
+      "kind": "mechanism",
+      "statement": "Random elastic deformation is a central augmentation strategy for learning from few annotated microscopy images.",
+      "conditions": "For the microscopy training regime described by the authors.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c11",
+      "kind": "result",
+      "statement": "On the EM challenge, an average over seven rotated inputs attained the stated warping and Rand errors without additional preprocessing or postprocessing.",
+      "conditions": "ISBI EM segmentation challenge submission reported in 2015; predictions were averaged over seven rotated input versions.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c12",
+      "kind": "result",
+      "statement": "The reported PhC-U373 mean intersection-over-union was 92%, compared with 83% for the second-best algorithm.",
+      "conditions": "ISBI cell tracking challenge 2015 PhC-U373 evaluation.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c13",
+      "kind": "result",
+      "statement": "The reported DIC-HeLa mean intersection-over-union was 77.5%, compared with 46% for the second-best algorithm.",
+      "conditions": "ISBI cell tracking challenge 2015 DIC-HeLa evaluation with 20 partially annotated training images.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c14",
+      "kind": "caveat",
+      "statement": "The training configuration favored one large input tile per batch and used momentum 0.99.",
+      "conditions": "Under the authors' Caffe implementation and GPU-memory tradeoff.",
+      "sourceIds": [
+        "section-3"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "s1",
+      "title": "The problem is not merely classification",
+      "markdown": "Image classification assigns one label to an entire image. Biomedical segmentation instead requires a label at every pixel: membrane or cell, foreground or background, and so forth. That changes what a useful network must preserve. A deep contracting classifier can gather broad context, but repeated pooling discards exact spatial detail. A purely local classifier retains location but sees too little surrounding structure.\n\nBefore U-Net, the paper highlights sliding-window prediction: run a classifier on a patch around each target pixel. Overlapping patches repeat much of the same computation. Worse, patch size exposes a tension. A large patch provides context but typically requires more pooling; a small patch protects resolution but limits context. U-Net's particular contribution is an end-to-end, fully convolutional construction that addresses both sides together: a contracting path builds contextual features, while a roughly symmetric expanding path restores resolution and reintroduces high-resolution evidence.\n\nA useful mental model is that segmentation asks two questions simultaneously: **what structure is present?** and **where exactly is its boundary?** The downward route becomes increasingly suited to the first question. The upward route, aided by copied features, recovers information needed for the second. This is not simply an encoder followed by interpolation; the cross-path combination is the architectural bargain that makes the U shape meaningful.",
+      "sourceIds": [
+        "section-1",
+        "abstract"
+      ],
+      "claimIds": [
+        "c1"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s2",
+      "title": "Descending: exchange resolution for context",
+      "markdown": "Let an input feature map have spatial coordinates and $C$ channels. A convolution produces a new value at each output location from a local neighborhood across those channels. A rectified linear unit applies $\\operatorname{ReLU}(z)=\\max(0,z)$. Max pooling then summarizes each local region and reduces spatial dimensions.\n\nIn U-Net's contracting path, each downsampling stage applies two unpadded $3\\times3$ convolutions, each followed by ReLU, and then a $2\\times2$ max-pooling operation with stride $2$. After every downsampling, the number of feature channels doubles. Spatial samples therefore become coarser while the representation gains channels capable of encoding a richer set of patterns. The bottom, or bottleneck, block is the exception: it applies its convolutions without another pooling step before the expanding path begins. Thus the repeated downsampling blocks and the no-pooling bottom block should be traced separately.\n\nThe spatial-footprint control below offers a deliberately simplified prerequisite. It displays\n\n$$g(r)=\\exp\\left(-\\frac{r^2}{2\\sigma^2}\\right),$$\n\nwhere $r$ is distance from a center and $\\sigma>0$ controls width. Predict how increasing $\\sigma$ changes the visible neighborhood before moving the control. A wider footprint illustrates why broader context can help disambiguate a pixel. It does **not** implement a convolutional stack, pooling, learned filters, or U-Net's actual receptive field. Its Gaussian values are illustrative, not measurements from the paper.",
+      "sourceIds": [
+        "section-1",
+        "section-2"
+      ],
+      "claimIds": [
+        "c2",
+        "c3"
+      ],
+      "figureId": "f1"
+    },
+    {
+      "id": "s3",
+      "title": "Ascending: restore detail with a coordinate-bearing shortcut",
+      "markdown": "Each expanding stage first upsamples its current map. A $2\\times2$ up-convolution then halves the channel count. The result is concatenated channel-wise with the correspondingly scaled feature map copied from the contracting path. Two more unpadded $3\\times3$ convolution-plus-ReLU operations refine the combined representation.\n\nConcatenation matters because the two inputs carry complementary evidence. The upsampled map conveys coarser contextual interpretation. The copied contracting feature map supplies higher-resolution structure from before deeper pooling erased detail. Subsequent convolutions learn how to combine them; the skip connection does not itself decide which pixels form a boundary.\n\nBecause unpadded convolutions shrink maps, the contracting feature map must be cropped before concatenation so its spatial size matches the upsampled map. At the end, a $1\\times1$ convolution acts independently at each output position to map a 64-component feature vector into $K$ class activations. Here $K$ is the number of target classes. The complete reported network contains 23 convolutional layers.\n\nA common misconception is that U-Net's precision comes from upsampling alone. Upsampling can increase the number of spatial positions, but it cannot magically reconstruct discarded coordinates. The copied high-resolution features are what supply location-sensitive evidence; learned convolutions then reconcile that evidence with contextual features.",
+      "sourceIds": [
+        "section-2",
+        "section-1"
+      ],
+      "claimIds": [
+        "c4",
+        "c5"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s4",
+      "title": "From activations to a weighted pixel decision",
+      "markdown": "For output position $\\mathbf{x}\\in\\Omega$, let $\\Omega\\subset\\mathbb{Z}^2$ be the set of predicted pixel coordinates. Let $a_k(\\mathbf{x})$ be the activation for class $k$, with $k\\in\\{1,\\ldots,K\\}$. The pixel-wise softmax is\n\n$$p_k(\\mathbf{x})=\\frac{\\exp(a_k(\\mathbf{x}))}{\\sum_{k'=1}^{K}\\exp(a_{k'}(\\mathbf{x}))}.$$\n\nExponentiation makes every term positive, and division by their sum normalizes the class probabilities at each pixel. The largest activation therefore receives the largest probability, while all $K$ probabilities sum to one. If $\\ell(\\mathbf{x})$ is the true class and $w(\\mathbf{x})$ is the pixel's loss weight, the paper writes\n\n$$E=\\sum_{\\mathbf{x}\\in\\Omega}w(\\mathbf{x})\\log p_{\\ell(\\mathbf{x})}(\\mathbf{x}).$$\n\nThis quantity is a weighted log-likelihood; equivalently, training by loss minimization uses the negative weighted cross-entropy $-E$. In either convention, $w(\\mathbf{x})$ controls the influence of a labeled location without changing its softmax probability. U-Net uses this degree of freedom both to balance class frequencies and to emphasize the narrow background borders that distinguish touching cells.\n\nConsider an illustrative pixel with two activations, $a_1=\\ln 3$ and $a_2=0$. Its probabilities are\n\n$$p_1=\\frac{3}{3+1}=0.75,\\qquad p_2=\\frac{1}{3+1}=0.25.$$\n\nIf its true class is $\\ell=1$ and its constructed weight is $w=2$, its negative weighted cross-entropy contribution is\n\n$$-w\\log p_1=-2\\log(0.75)\\approx0.5754.$$\n\nAt weight $w=1$, the contribution would be about $0.2877$. Doubling the weight doubles the penalty and hence the pixel's contribution to the training objective, but it does not alter the predicted probability in this calculation. These numerical values are a constructed demonstration of the loss, not a measured U-Net result.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c8",
+        "c9"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s5",
+      "title": "Make scarce labels work harder",
+      "markdown": "When annotated microscopy images are scarce, augmentation makes each image-label pair support more than one training configuration. The authors identify invariance to shifts and rotations and robustness to deformation and gray-value variation as useful properties for microscopy. Their central augmentation mechanism is random elastic deformation: random displacement vectors are sampled on a coarse $3\\times3$ grid, with a Gaussian standard deviation of 10 pixels, and bicubic interpolation converts those sparse vectors into a smooth displacement field. Applying the same field to an image and its segmentation map preserves their pixelwise correspondence. Dropout at the end of the contracting path supplies an additional implicit source of variation during training.\n\nElastic deformation is especially relevant to tissue because it constructs smoothly varying changes rather than independent pixel perturbations. It expands the set of plausible shapes presented during optimization, encouraging the learned decision rule to remain stable under deformations like those expected in microscopy. This is a training strategy for using the available annotations more efficiently, not a claim that every possible deformation is biologically valid or that augmentation replaces representative labeled examples.\n\nA separate intervention addresses touching cells. Frequency balancing alone can leave the thin background gap between adjacent instances with too little influence on the objective. U-Net therefore uses a spatial weight map\n\n$$w(\\mathbf{x})=w_c(\\mathbf{x})+w_0\\exp\\left(-\\frac{(d_1(\\mathbf{x})+d_2(\\mathbf{x}))^2}{2\\sigma^2}\\right).$$\n\nHere $w_c(\\mathbf{x})$ compensates for class frequency, while $d_1(\\mathbf{x})$ and $d_2(\\mathbf{x})$ are distances in pixels to the nearest and second-nearest cell borders. The exponential term is largest where both distances are small—precisely the narrow region between neighboring cells. The coefficient $w_0$ sets the strength of this added penalty, and $\\sigma$ sets its spatial extent. The reported experiments use $w_0=10$ and $\\sigma\\approx5$ pixels.\n\nThe two techniques address different consequences of scarce supervision. Elastic augmentation creates additional, smoothly transformed image-label configurations; spatial weighting reallocates learning pressure within each configuration toward rare or structurally important pixels. Together they help the network learn deformation robustness while treating separation borders as consequential errors.",
+      "sourceIds": [
+        "section-1",
+        "section-3"
+      ],
+      "claimIds": [
+        "c9",
+        "c10"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s6",
+      "title": "Optimization is the carrier, not the architectural idea",
+      "markdown": "The authors trained from corresponding images and segmentation maps using Caffe's stochastic gradient descent. Because valid convolutions make output tiles smaller than input tiles, they favored large input tiles and reduced the batch to one image. They paired that choice with momentum $0.99$, allowing previous gradients to influence the current update.\n\nThe control below isolates the prerequisite idea of iterative descent. It uses the illustrative scalar objective\n\n$$f(x)=\\frac{x^2}{2},\\qquad \\nabla f(x)=x,$$\n\nand ordinary gradient descent\n\n$$x_{t+1}=x_t-\\eta x_t=(1-\\eta)x_t,$$\n\nstarting from $x_0=3$, where $t$ indexes one of 12 updates and $\\eta$ is the learning rate. For an illustrative $\\eta=0.25$, the first two updates are $x_1=2.25$ and $x_2=1.6875$. Predict whether a larger allowed learning rate reaches zero more quickly or begins oscillating.\n\nThis figure is not U-Net training: it has one scalar, a quadratic loss, and no stochastic batches, momentum, convolutions, weighted pixels, or Caffe behavior. Its purpose is narrower—to show how step size changes a basic descent trajectory before distinguishing that toy rule from the paper's momentum-based stochastic optimization.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c14"
+      ],
+      "figureId": "f2"
+    },
+    {
+      "id": "s7",
+      "title": "What the reported scores establish—and what they do not",
+      "markdown": "The reported results test the complete U-Net training and inference procedure on three biomedical segmentation tasks. For the EM segmentation challenge, the training set contained 30 fully annotated $512\\times512$ serial-section electron-microscopy images of the Drosophila first-instar larva ventral nerve cord. The organizers kept the test segmentations secret and evaluated submitted membrane-probability maps at ten thresholds using warping, Rand, and pixel errors.\n\nU-Net averaged predictions from seven rotated versions of each input and applied no further preprocessing or postprocessing. Under that protocol it achieved a warping error of $0.0003529$ and a Rand error of $0.0382$. The comparison reported in the paper placed it ahead of the cited sliding-window network in both measures, although some dataset-specific postprocessing submissions obtained a lower Rand error. The seven-view averaging condition is part of the result, so these values should not be interpreted as measurements of single-view inference.\n\nThe light-microscopy evaluations used the 2015 ISBI cell-tracking challenge. On PhC-U373, a phase-contrast dataset with 35 partially annotated training images, U-Net attained mean intersection-over-union of $92\\%$, compared with $83\\%$ for the second-best 2015 algorithm. On DIC-HeLa, a differential-interference-contrast dataset with 20 partially annotated training images, it attained $77.5\\%$, compared with $46\\%$. These comparisons establish performance for the stated datasets, annotations, metrics, competitors, and 2015 evaluation conditions; they do not imply the same margins on other imaging modalities or segmentation domains.\n\nThe inference geometry also follows from the reported architecture. Unpadded convolutions produce predictions only where the input supplies complete context, so large images are processed with overlapping tiles. At the outer image boundary, mirrored input supplies the otherwise missing context. Input tile dimensions must keep the feature-map sizes even at every $2\\times2$ pooling operation so the contracting and expanding paths remain geometrically compatible.\n\nTaken together, the experiments show that the full architecture and training strategy—context contraction, localization through the expanding path and copied features, elastic augmentation, weighted pixel loss, and the stated inference procedure—worked effectively under these challenge conditions. Because the reported comparisons evaluate the combined system rather than controlled component removals, they do not assign a separate causal share of the improvement to any one component.",
+      "sourceIds": [
+        "section-1",
+        "section-2",
+        "section-4",
+        "section-5"
+      ],
+      "claimIds": [
+        "c6",
+        "c7",
+        "c11",
+        "c12",
+        "c13"
+      ],
+      "figureId": null
+    }
+  ],
+  "figures": [
+    {
+      "id": "f1",
+      "kind": "spatial",
+      "title": "How far does a local footprint reach?",
+      "question": "As the width increases, which grid locations receive appreciable influence from the fixed center?",
+      "caption": "An illustrative Gaussian radial footprint on a two-dimensional grid; changing width expands or contracts the displayed neighborhood around one center.",
+      "limitation": "This is a fixed Gaussian footprint, not a learned convolution, stacked receptive field, pooling operation, or measurement from U-Net.",
+      "sourceIds": [
+        "section-1",
+        "section-2"
+      ],
+      "claimIds": [
+        "c1",
+        "c2"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "f2",
+      "kind": "optimizer",
+      "title": "Step size on a scalar descent path",
+      "question": "Over 12 updates from x=3, how does the learning rate change convergence or oscillation on the quadratic?",
+      "caption": "Ordinary gradient descent on the illustrative scalar objective f(x)=x²/2, showing 12 iterates as the learning rate changes.",
+      "limitation": "The control omits stochastic batches, momentum, neural-network parameters, weighted pixel loss, and all details of U-Net's Caffe optimizer.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c14"
+      ],
+      "illustrative": true
+    }
+  ],
+  "quiz": [
+    {
+      "question": "At a matching resolution, why does U-Net concatenate a cropped contracting-path feature map with the upsampled map?",
+      "options": [
+        {
+          "text": "To combine higher-resolution location evidence with coarser contextual features.",
+          "explanation": "Correct. The two paths provide complementary localization and contextual information for subsequent convolutions."
+        },
+        {
+          "text": "To make softmax probabilities sum to one across classes.",
+          "explanation": "Incorrect. Normalization across classes is performed by softmax after class activations are produced."
+        },
+        {
+          "text": "To eliminate the need for annotated segmentation masks.",
+          "explanation": "Incorrect. Skip concatenation changes feature flow, not the requirement for supervised target masks."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-1",
+        "section-2"
+      ],
+      "claimIds": [
+        "c1",
+        "c4"
+      ]
+    },
+    {
+      "question": "In the illustrative two-class example, the true-class probability remains 0.75 but its pixel weight changes from 1 to 2. What happens to its negative weighted cross-entropy contribution?",
+      "options": [
+        {
+          "text": "It doubles from about 0.2877 to about 0.5754.",
+          "explanation": "Correct. With probability fixed, multiplying the weight by two doubles the contribution."
+        },
+        {
+          "text": "It halves because the correct class already has the larger probability.",
+          "explanation": "Incorrect. The class ranking does not reverse the linear effect of the weight."
+        },
+        {
+          "text": "It remains unchanged because weights affect only softmax normalization.",
+          "explanation": "Incorrect. The stated weight multiplies the loss contribution; it is not part of the softmax denominator."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c8",
+        "c9"
+      ]
+    },
+    {
+      "question": "Which conclusion is best supported by the reported EM result?",
+      "options": [
+        {
+          "text": "Under the stated challenge evaluation, seven-rotation averaging achieved the reported errors without further pre- or postprocessing.",
+          "explanation": "Correct. This preserves the evaluation conditions attached to the paper's reported numbers."
+        },
+        {
+          "text": "A single unrotated input necessarily achieves the same errors on any EM dataset.",
+          "explanation": "Incorrect. The result used seven rotated versions and concerns one challenge dataset."
+        },
+        {
+          "text": "The result isolates skip connections as the sole cause of improvement.",
+          "explanation": "Incorrect. The supplied evidence reports the complete system and does not provide that component ablation."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-4"
+      ],
+      "claimIds": [
+        "c11"
+      ]
+    }
+  ],
+  "id": "unet",
+  "createdAt": "2026-10-01T23:51:05.927Z",
+  "pipelineVersion": "subjects-lessons-v1",
+  "sources": [
+    {
+      "id": "abstract",
+      "label": "Original paper · abstract",
+      "url": "https://arxiv.org/abs/1505.04597",
+      "digest": "f2beb506a1917013c121bcf9d246d15e4141ee997e23c1afeb87f2fb4344b8fc",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:48:31.172Z"
+    },
+    {
+      "id": "section-1",
+      "label": "1 Introduction",
+      "url": "https://arxiv.org/html/1505.04597#S1",
+      "digest": "b72b26c23f385bbd8a3f692ac6b437e4cc633a5779efa294aeaec80f11209174",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:48:31.172Z"
+    },
+    {
+      "id": "section-2",
+      "label": "2 Network Architecture",
+      "url": "https://arxiv.org/html/1505.04597#S2",
+      "digest": "bdac1bb4cde24cc5a617594e96cd1a7fddb2e52fbe9eec2eef5a8a98aa8330d3",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:48:31.172Z"
+    },
+    {
+      "id": "section-3",
+      "label": "3 Training",
+      "url": "https://arxiv.org/html/1505.04597#S3",
+      "digest": "eafdd53621735804bb1d83cbc2dd066101fd51efdcacbd29755e305aab20bb9c",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:48:31.172Z"
+    },
+    {
+      "id": "section-4",
+      "label": "4 Experiments",
+      "url": "https://arxiv.org/html/1505.04597#S4",
+      "digest": "7e710d38e980e8c2f04e622cd9280f753ff92519643cf7a7e90abe28c875dcc0",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:48:31.172Z"
+    },
+    {
+      "id": "section-5",
+      "label": "5 Conclusion",
+      "url": "https://arxiv.org/html/1505.04597#S5",
+      "digest": "872a4d16af9c854ca4404be7a0c7a33bac9e9c8268879290bc5de1304b1e5b39",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:48:31.172Z"
+    },
+    {
+      "id": "section-6",
+      "label": "Acknowlegements",
+      "url": "https://arxiv.org/html/1505.04597#Sx1",
+      "digest": "64622e483954a805081c61ecd3f483184d7cffc0253a29a7dc924365035acab9",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:48:31.172Z"
+    }
+  ],
+  "review": {
+    "status": "passed",
+    "reviewedAt": "2026-10-02T02:08:39.214Z",
+    "contentDigest": "dd5853790c5cb5eb26a27a862992bf6c613ccb562ad20eccab63eac82287a2b6"
+  }
+}

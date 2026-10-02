@@ -1,0 +1,384 @@
+{
+  "title": "From Noise Back to Structure: The Original Diffusion Construction",
+  "summary": "The paper turns density learning into the estimation of many small reverse Markov transitions that reconstruct data from a tractable noise distribution.",
+  "prerequisites": [
+    "Conditional probability and Markov chains",
+    "Gaussian and Bernoulli distributions",
+    "Log likelihood, entropy, and KL divergence",
+    "An intuitive grasp of Jensen's inequality"
+  ],
+  "objectives": [
+    "Explain why the model uses a long forward-and-reverse Markov chain.",
+    "Derive the forward and generative trajectory factorizations.",
+    "Interpret the likelihood bound as local reverse-transition matching.",
+    "Distinguish exact ancestral sampling from approximate likelihood evaluation.",
+    "Relate the reported results to their datasets and evaluation conditions."
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "mechanism",
+      "statement": "The method deliberately diffuses data into a simple distribution, then learns a finite-time Markov reversal that generates data from that distribution.",
+      "conditions": "For a chosen forward diffusion whose terminal distribution is close to a tractable reference distribution.",
+      "sourceIds": [
+        "abstract",
+        "section-2"
+      ]
+    },
+    {
+      "id": "c2",
+      "kind": "equation",
+      "statement": "The forward joint distribution factors into the data density and one known transition kernel for every diffusion step.",
+      "conditions": "For a first-order Markov forward process with states indexed from 0 through T.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c3",
+      "kind": "mechanism",
+      "statement": "Small diffusion steps make the local reverse conditionals amenable to the same Gaussian or binomial family used by the forward process.",
+      "conditions": "In the continuous-diffusion limit with a sufficiently small step rate beta_t.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c4",
+      "kind": "result",
+      "statement": "Training maximizes a Jensen lower bound whose variable terms match learned reverse transitions to forward-process posterior transitions.",
+      "conditions": "For the paper’s diffusion trajectories, with analytically computable entropy and KL terms.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c5",
+      "kind": "caveat",
+      "statement": "The likelihood expression is an expectation over forward trajectories; a single trajectory becomes exact only in the ideal identical-trajectory limit.",
+      "conditions": "Exact single-sample evaluation requires forward and reverse trajectory distributions to be identical, corresponding to a quasi-static process.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c6",
+      "kind": "mechanism",
+      "statement": "Conditioning uses a locally normalized reverse kernel; it yields the intended modified marginals only under the paper’s small-perturbation approximation, while direct multiplication is exact in closed-form cases.",
+      "conditions": "Approximate equivalence requires sharply peaked diffusion steps and a sufficiently smooth factor; exact multiplication requires a factor that combines with the Gaussian or binomial kernel in closed form, such as a delta constraint on selected coordinates.",
+      "sourceIds": [
+        "section-2-part-2"
+      ]
+    },
+    {
+      "id": "c7",
+      "kind": "result",
+      "statement": "On the binary heartbeat task, the model was trained on length-20 sequences containing a one every fifth bin.",
+      "conditions": "For the described binary dataset and an MLP producing reverse Bernoulli rates.",
+      "sourceIds": [
+        "section-1-part-2",
+        "section-3"
+      ]
+    },
+    {
+      "id": "c8",
+      "kind": "result",
+      "statement": "The reported dead-leaves comparison gave the diffusion model 1.489 bits per pixel versus 1.244 for MCGSM.",
+      "conditions": "Using identical dead-leaves training and test data for the comparison reported in Table 2.",
+      "sourceIds": [
+        "section-2-part-3"
+      ]
+    },
+    {
+      "id": "c9",
+      "kind": "caveat",
+      "statement": "The MNIST comparison used a Parzen-window estimate rather than the paper’s own asymptotically consistent likelihood lower bound.",
+      "conditions": "For comparison with prior continuous-MNIST results evaluated using the released Parzen-window procedure.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c10",
+      "kind": "caveat",
+      "statement": "Computational cost grows with both the cost of the learned transition functions and the number of time steps.",
+      "conditions": "For sequential execution of every reverse transition during sampling or trajectory evaluation.",
+      "sourceIds": [
+        "section-2"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "s1",
+      "title": "The modeling problem hidden inside normalization",
+      "markdown": "A flexible density can be written as $p(\\mathbf{x})=\\phi(\\mathbf{x})/Z$, where $\\mathbf{x}$ is an observed data vector, $\\phi$ is any nonnegative scoring function, and $Z$ is the integral or sum needed to normalize it. The difficulty is that a richly structured $\\phi$ can make $Z$ intractable. This paper’s contribution is to avoid specifying the final density through one globally normalized potential. It instead defines the model as the endpoint of a long, tractable stochastic trajectory.\n\nThe necessary vocabulary is compact. A Markov chain is a sequence $\\mathbf{x}^{(0)},\\ldots,\\mathbf{x}^{(T)}$ in which the next state depends only on the current state. A transition kernel is the conditional distribution that performs one step. KL divergence, $D_{KL}(q\\|p)$, is nonnegative and measures how poorly $p$ represents samples distributed as $q$. Entropy measures uncertainty. These ideas let a difficult global fit be decomposed into many local fits.\n\nThe direction labels are crucial. The known forward process starts with data and destroys structure. The learned reverse process starts with noise and restores structure. “Forward” therefore refers to the inference or corruption direction, not the direction used to generate a sample.",
+      "sourceIds": [
+        "section-1",
+        "section-2"
+      ],
+      "claimIds": [
+        "c1"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s2",
+      "title": "The forward chain is a controlled demolition",
+      "markdown": "Let $q(\\mathbf{x}^{(0)})$ denote the data distribution, $t\\in\\{0,\\ldots,T\\}$ the time index, and $\\pi(\\mathbf{x})$ a simple reference density. The paper chooses a kernel $T_\\pi(\\mathbf{y}\\mid\\mathbf{y}';\\beta)$ that preserves $\\pi$, where $\\beta$ is a diffusion rate. Each forward step is\n\n$$q(\\mathbf{x}^{(t)}\\mid\\mathbf{x}^{(t-1)})=T_\\pi(\\mathbf{x}^{(t)}\\mid\\mathbf{x}^{(t-1)};\\beta_t).$$\n\nThe entire known trajectory is\n\n$$q(\\mathbf{x}^{(0:T)})=q(\\mathbf{x}^{(0)})\\prod_{t=1}^{T}q(\\mathbf{x}^{(t)}\\mid\\mathbf{x}^{(t-1)}),$$\n\nwhere $\\mathbf{x}^{(0:T)}$ abbreviates every state from 0 through $T$. Repeated Gaussian diffusion approaches an identity-covariance Gaussian; the paper also uses binomial diffusion toward independent binomial noise.\n\nThe illustrative noise control makes one prerequisite visible. It draws seeded Gaussian samples in $D$ dimensions and plots their norms. Increasing $\\sigma$ scales lengths, while increasing $D$ moves the root-mean-square radius to $\\sigma\\sqrt{D}$ and concentrates relative variation. Predict which control changes scale and which changes concentration before moving it. This is useful for understanding why a high-dimensional terminal Gaussian occupies a characteristic shell, but it is not the paper’s learned diffusion, schedule, or reverse model.",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c1",
+        "c2"
+      ],
+      "figureId": "f1"
+    },
+    {
+      "id": "s3",
+      "title": "Learning the local reversal",
+      "markdown": "The generative chain reverses the indexing:\n\n$$p(\\mathbf{x}^{(T)})=\\pi(\\mathbf{x}^{(T)}),\\qquad p(\\mathbf{x}^{(0:T)})=p(\\mathbf{x}^{(T)})\\prod_{t=1}^{T}p(\\mathbf{x}^{(t-1)}\\mid\\mathbf{x}^{(t)}).$$\n\nHere $p$ denotes the learned generative trajectory. Sampling is ancestral: draw $\\mathbf{x}^{(T)}$ from $\\pi$, then repeatedly draw $\\mathbf{x}^{(t-1)}$ from the learned reverse conditional until reaching $\\mathbf{x}^{(0)}$.\n\nWhy should a reverse step be simple? A large corruption step can mix together distant parts of the data distribution, producing a complicated predecessor distribution. With sufficiently small $\\beta_t$, each step is only a local perturbation. In the continuous-diffusion limit described by the paper, a Gaussian forward step has a Gaussian-form reversal, and a binomial step has a binomial-form reversal. The learned functions specify Gaussian means and covariances or binomial flip probabilities.\n\nThe paper’s architecture descriptions are internally inconsistent. Section 2 makes the blanket statement that multilayer perceptrons define these functions for all reported results, but the experiment-specific account in Section 3 says that the Swiss-roll model used a radial-basis-function network to generate its reverse mean and covariance functions, Binary Heartbeat used a multilayer perceptron to generate reverse Bernoulli rates, and the MNIST, CIFAR-10, bark, and dead-leaves image experiments shared a multiscale convolutional architecture. The experiment-specific descriptions therefore provide the more precise account: the reverse-kernel family follows the diffusion type, while the function approximator producing its parameters varies by experiment.\n\nA common misconception is that the network directly predicts a clean example in one jump. It does not. The model defines a distribution over a chain of stochastic reverse transitions. More steps can simplify each local estimation problem, but they also multiply sequential computation.",
+      "sourceIds": [
+        "section-2",
+        "section-3"
+      ],
+      "claimIds": [
+        "c3",
+        "c10"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s4",
+      "title": "From trajectory ratios to a trainable bound",
+      "markdown": "For an observed datum $\\mathbf{x}^{(0)}$, the model likelihood marginalizes all intermediate states:\n\n$$p(\\mathbf{x}^{(0)})=\\int d\\mathbf{x}^{(1:T)}\\,p(\\mathbf{x}^{(0:T)}).$$\n\nEquations 7–9 turn this marginal into an expectation under the known forward trajectory by multiplying and dividing by $q(\\mathbf{x}^{(1:T)}\\mid\\mathbf{x}^{(0)})$:\n\n$$p(\\mathbf{x}^{(0)})=\\mathbb{E}_{q(\\mathbf{x}^{(1:T)}\\mid\\mathbf{x}^{(0)})}\\!\\left[p(\\mathbf{x}^{(T)})\\prod_{t=1}^{T}\\frac{p(\\mathbf{x}^{(t-1)}\\mid\\mathbf{x}^{(t)})}{q(\\mathbf{x}^{(t)}\\mid\\mathbf{x}^{(t-1)})}\\right].$$\n\nThe bracketed trajectory ratio is an importance weight: its numerator follows the learned reverse joint trajectory, while its denominator is the conditional probability of the sampled forward trajectory. Averaging these weights evaluates the marginal in Equation 6. A single trajectory evaluates it exactly only in the ideal quasi-static case where the forward and reverse trajectory distributions coincide.\n\nThe data-averaged log likelihood in Equations 10–12 places a logarithm outside that forward-trajectory expectation. Applying Jensen’s inequality moves the logarithm inside and gives the lower bound in Equations 13–14, $L\\ge K$. For the paper’s diffusion trajectories, Equation 15 writes that bound as\n\n$$K=-\\sum_{t=2}^{T}\\mathbb{E}_{q(\\mathbf{x}^{(0)},\\mathbf{x}^{(t)})}\\!\\left[D_{KL}\\!\\left(q(\\mathbf{x}^{(t-1)}\\mid\\mathbf{x}^{(t)},\\mathbf{x}^{(0)})\\,\\middle\\|\\,p(\\mathbf{x}^{(t-1)}\\mid\\mathbf{x}^{(t)})\\right)\\right]$$\n\n$$\\qquad+H_q(\\mathbf{X}^{(T)}\\mid\\mathbf{X}^{(0)})-H_q(\\mathbf{X}^{(1)}\\mid\\mathbf{X}^{(0)})-H_p(\\mathbf{X}^{(T)}).$$\n\nThe conditional $q(\\mathbf{x}^{(t-1)}\\mid\\mathbf{x}^{(t)},\\mathbf{x}^{(0)})$ is the forward-process posterior for the preceding state when both the current noisy state and the original datum are known. It is a training target, not the unconditional time reversal $q(\\mathbf{x}^{(t-1)}\\mid\\mathbf{x}^{(t)})$. With the forward process and terminal distribution held fixed, the two conditional entropies are fixed by $q$, and $H_p(\\mathbf{X}^{(T)})$ is fixed by $p(\\mathbf{x}^{(T)})=\\pi(\\mathbf{x}^{(T)})$. The learned reverse kernels occur in the KL terms. Because KL divergence is nonnegative and appears with a minus sign, maximizing $K$ as in Equation 16 locally fits each $p(\\mathbf{x}^{(t-1)}\\mid\\mathbf{x}^{(t)})$ to the corresponding forward posterior, averaged over data and noisy states. If the forward schedule is also optimized, the $q$-dependent quantities can change with that schedule; the local reverse-kernel interpretation applies while that forward process is fixed.\n\nThe illustrative figure isolates the arithmetic of one possible local mismatch. For equal unit variances,\n\n$$D_{KL}\\!\\left(\\mathcal N(\\mu,1)\\,\\middle\\|\\,\\mathcal N(0,1)\\right)=\\frac{\\mu^2}{2},$$\n\nso doubling the mean displacement multiplies this scalar KL by four. This toy calculation resembles one KL penalty in Equation 15, but it is not a learned posterior, does not include the expectations or entropy terms, and is not the complete diffusion objective.",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c4",
+        "c5"
+      ],
+      "figureId": "f2"
+    },
+    {
+      "id": "s5",
+      "title": "Conditioning by modifying the reverse walk",
+      "markdown": "The framework seeks to combine its learned endpoint density with a bounded positive function $r(\\mathbf{x}^{(0)})$, defining the desired modified distribution $\\widetilde p(\\mathbf{x}^{(0)})\\propto p(\\mathbf{x}^{(0)})r(\\mathbf{x}^{(0)})$. Equation 22 gives transitions that would preserve the corresponding modified intermediate marginals, but those transitions may not be normalized probability distributions. Equation 23 therefore replaces them with the locally normalized kernel\n\n$$\\widetilde p(\\mathbf{x}^{(t)}\\mid\\mathbf{x}^{(t+1)})=\\frac{p(\\mathbf{x}^{(t)}\\mid\\mathbf{x}^{(t+1)})r(\\mathbf{x}^{(t)})}{\\widetilde Z_t(\\mathbf{x}^{(t+1)})},$$\n\nwhere $\\widetilde Z_t(\\mathbf{x}^{(t+1)})$ normalizes the conditional for the given later state. This normalized construction should not generally be read as exactly producing the desired endpoint product. For a sharply peaked Gaussian transition and sufficiently smooth $r$, the ratio of nearby factor values is treated as a small perturbation; under that approximation, the perturbation shifts the Gaussian mean without changing the relevant normalization, making Equations 22 and 23 equivalent.\n\nExact multiplication is available in special closed-form cases. If $r(\\mathbf{x}^{(t)})$ can be multiplied analytically with the Gaussian or binomial reverse kernel, the factor can be incorporated directly rather than through the smooth-perturbation approximation. A delta constraint on known coordinates is the paper’s inpainting example.\n\nThus, conditioning is not an unrestricted promise that every positive factor yields the exact product distribution through Equation 23. Approximation quality depends on the diffusion step being narrow and the factor being sufficiently smooth; exactness instead depends on closed-form multiplication. In the bark demonstration, the central $100\\times100$ region was treated as missing while the rest was fixed, and a posterior sample filled the missing region.",
+      "sourceIds": [
+        "section-2-part-2",
+        "section-2-part-3"
+      ],
+      "claimIds": [
+        "c6"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s6",
+      "title": "Reading the evidence without overclaiming",
+      "markdown": "The experiments span a two-dimensional Swiss roll, binary sequences, MNIST, CIFAR-10, bark, and dead-leaves images. Together they show that the broad construction accommodates continuous Gaussian and discrete binomial corruption, but the reported numbers do not all measure the same quantity and should not be compared without their evaluation conditions.\n\nFor the heartbeat dataset, each length-20 sequence has a one every fifth bin, with the first pulse uniformly distributed over the first five bins. There are therefore five valid phase offsets. Under that uniform phase assumption, the true probability of each valid sequence is $1/5$, so\n\n$$\\log_2(1/5)\\approx-2.322\\ \\text{bits per sequence}.$$\n\nThe reported learned lower bound was $-2.414$ bits per sequence, a difference of about $0.092$ bits per sequence under this synthetic setup. The unit matters: this is a log-probability per entire 20-bin sequence, not per bin or per pixel. The arithmetic follows from the stated five phases and the paper’s reported bound; it is not a new benchmark or an additional measured result.\n\nFor dead leaves, Table 2 reports 1.489 bits per pixel for the diffusion model and 1.244 bits per pixel for MCGSM, using identical training and test data. The table describes these as log-likelihood comparisons, so the larger reported value is better under that convention. Table 1 separately identifies $K$ as a lower bound computed on a holdout set. All datasets in that table except Binary Heartbeat were scaled by a constant to have variance 1 before likelihood computation, which is another reason not to transfer a numerical value from one dataset directly to another.\n\nMNIST uses a different evaluation route. Although the training algorithm supplies an asymptotically consistent lower bound on log likelihood, the cross-method MNIST comparison used the released Parzen-window procedure because prior continuous-MNIST results were commonly reported that way. Table 2 gives the diffusion estimate as $317\\pm2.7$ bits, but that estimate should be interpreted within the Parzen-window comparison rather than as the same quantity as $K$. CIFAR-10 likelihood reporting also depended on preprocessing: uniform noise was added to remove 8-bit pixel quantization before the revised bound was reported.\n\nThe qualitative demonstrations answer still different questions. The Swiss-roll experiment visualizes whether forward Gaussian corruption and a learned reverse trajectory can connect a structured two-dimensional distribution with identity-covariance Gaussian noise. The bark example demonstrates conditional generation: the central $100\\times100$-pixel region is missing, the surrounding pixels are fixed, and a posterior sample supplies the missing region. These images illustrate behavior of trained models, whereas the likelihood tables quantify specified evaluation procedures.\n\nFinally, “exact sampling” means that once the finite learned Markov model is fixed, drawing from its terminal reference distribution and executing every normalized reverse transition produces a sample distributed according to that model. It does not establish that the learned endpoint distribution exactly equals the unknown data distribution. Likewise, probability evaluation is an expectation over forward trajectories. One forward trajectory gives the exact integral only in the ideal quasi-static case where the forward and reverse trajectory distributions coincide. Outside that limiting condition, trajectory averaging or the likelihood lower bound is required. Computational cost also remains sequential in the number of time steps: it is the cost of the learned transition functions multiplied by the number of steps.",
+      "sourceIds": [
+        "section-2",
+        "section-2-part-2",
+        "section-2-part-3",
+        "section-3",
+        "section-4"
+      ],
+      "claimIds": [
+        "c5",
+        "c7",
+        "c8",
+        "c9",
+        "c10"
+      ],
+      "figureId": null
+    }
+  ],
+  "figures": [
+    {
+      "id": "f1",
+      "kind": "noise",
+      "title": "Gaussian radius and dimension",
+      "question": "At fixed sigma, how does increasing dimension change the typical radius and its relative concentration?",
+      "caption": "A seeded Gaussian sample shows a norm histogram, measured mean radius, and the reference RMS radius sigma times square root of D.",
+      "limitation": "This illustrates Gaussian geometry only; it does not run the paper’s forward schedule, learn a reverse kernel, or display D as physical dimensions.",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c1",
+        "c2"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "f2",
+      "kind": "latent",
+      "title": "A local Gaussian mismatch",
+      "question": "If the illustrative mean displacement doubles while both variances remain one, how does the KL divergence change?",
+      "caption": "The control compares q=N(mu,1) with p=N(0,1) and displays the exact illustrative value KL=mu squared over two.",
+      "limitation": "This is one scalar equal-variance KL term, not a learned posterior, reconstruction model, or complete diffusion training objective.",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c4"
+      ],
+      "illustrative": true
+    }
+  ],
+  "quiz": [
+    {
+      "question": "Assume each forward step is made smaller while the chain is lengthened enough to reach the same simple terminal distribution. What is the intended modeling benefit?",
+      "options": [
+        {
+          "text": "Each local reverse conditional becomes simpler to estimate.",
+          "explanation": "Correct. The paper motivates long trajectories by making each reversal a small perturbation with Gaussian or binomial form."
+        },
+        {
+          "text": "The terminal noise distribution becomes unnecessary.",
+          "explanation": "Incorrect. Reverse generation still begins from the tractable terminal distribution."
+        },
+        {
+          "text": "The learned reverse chain becomes deterministic.",
+          "explanation": "Incorrect. The reverse model remains a stochastic Markov chain."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-2",
+        "section-4"
+      ],
+      "claimIds": [
+        "c1",
+        "c3"
+      ]
+    },
+    {
+      "question": "Under the paper’s construction, which operation generates a new sample after training?",
+      "options": [
+        {
+          "text": "Corrupt a training example and retain its final noisy state.",
+          "explanation": "Incorrect. That describes the forward direction and depends on an existing data example."
+        },
+        {
+          "text": "Draw from the terminal reference density and apply learned reverse transitions.",
+          "explanation": "Correct. Ancestral sampling starts at pi and proceeds from time T down to time 0."
+        },
+        {
+          "text": "Minimize one Gaussian KL and output its mean directly.",
+          "explanation": "Incorrect. Training contains local matching terms, but generation executes the full reverse chain."
+        }
+      ],
+      "answer": 1,
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c1",
+        "c3"
+      ]
+    },
+    {
+      "question": "Which conclusion is justified by an exact ancestral sample from the learned finite chain?",
+      "options": [
+        {
+          "text": "The sample is exactly distributed according to the learned model.",
+          "explanation": "Correct. Executing every normalized model transition samples from the model’s defined joint and endpoint distribution."
+        },
+        {
+          "text": "The learned endpoint distribution exactly equals the data distribution.",
+          "explanation": "Incorrect. Exact model sampling does not eliminate estimation error or finite-data limitations."
+        },
+        {
+          "text": "One forward trajectory always gives the exact data likelihood.",
+          "explanation": "Incorrect. Single-trajectory exactness requires the ideal identical forward-and-reverse trajectory condition."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-2",
+        "section-4"
+      ],
+      "claimIds": [
+        "c5"
+      ]
+    }
+  ],
+  "id": "deep-unsupervised-learning-using-nonequilibrium-thermodynamics",
+  "createdAt": "2026-10-01T23:38:23.908Z",
+  "pipelineVersion": "subjects-lessons-v1",
+  "sources": [
+    {
+      "id": "abstract",
+      "label": "Original paper · abstract",
+      "url": "https://arxiv.org/abs/1503.03585",
+      "digest": "137e9eec744075e31a89053cc9e996de5697de33f58023e79c70499048cf75dd",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:37:31.375Z"
+    },
+    {
+      "id": "section-1",
+      "label": "1 Introduction",
+      "url": "https://arxiv.org/html/1503.03585#S1",
+      "digest": "f9fa996e8645528a8a225c80f364438982b57b335aa74759f35facf9903281f7",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:37:31.375Z"
+    },
+    {
+      "id": "section-1-part-2",
+      "label": "1 Introduction · part 2",
+      "url": "https://arxiv.org/html/1503.03585#S1",
+      "digest": "eb66418b086b139a6ffa178e1622fb8794a14886c62f6f549d10b5e58bd3d9ac",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:37:31.375Z"
+    },
+    {
+      "id": "section-2",
+      "label": "2 Algorithm",
+      "url": "https://arxiv.org/html/1503.03585#S2",
+      "digest": "8cce0df4a0de1d456bc1ec3ef4a02dde13eea5ef02fe1993baf6de1589701c1d",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:37:31.375Z"
+    },
+    {
+      "id": "section-2-part-2",
+      "label": "2 Algorithm · part 2",
+      "url": "https://arxiv.org/html/1503.03585#S2",
+      "digest": "f825f5a87f5577523f86fc2ea7d4b23e1c686f6658a4ac0816d9e457e2991f51",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:37:31.375Z"
+    },
+    {
+      "id": "section-2-part-3",
+      "label": "2 Algorithm · part 3",
+      "url": "https://arxiv.org/html/1503.03585#S2",
+      "digest": "cded6beb2d7372bd3f68ecb02c1aaad3a0b3576e84bbb6dec1d1bff0c8b4ef54",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:37:31.375Z"
+    },
+    {
+      "id": "section-3",
+      "label": "3 Experiments",
+      "url": "https://arxiv.org/html/1503.03585#S3",
+      "digest": "4563c52ec3469d05d19b05583781ff0543581c96ccafe59eb43720682e554057",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:37:31.375Z"
+    },
+    {
+      "id": "section-4",
+      "label": "4 Conclusion",
+      "url": "https://arxiv.org/html/1503.03585#S4",
+      "digest": "e870ca91bf6f9e2cc6b547443e7722062d15144b8a74c368b0d793ddafe34350",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:37:31.375Z"
+    }
+  ],
+  "review": {
+    "status": "passed",
+    "reviewedAt": "2026-10-01T23:38:23.909Z",
+    "contentDigest": "e9495620cfb16664ae884e7a47a55d39544f43884a4fd43fb2377aa76dadafd9"
+  }
+}

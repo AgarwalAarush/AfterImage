@@ -1,0 +1,403 @@
+{
+  "title": "Teaching a Reward Signal to Watch Before the Policy Acts",
+  "summary": "The paper scales preference-based reward learning by fitting a neural reward predictor from short human comparisons while an RL policy continually adapts to that predictor.",
+  "prerequisites": [
+    "Sequential decision making",
+    "Trajectory segments and cumulative rewards",
+    "Softmax probabilities and cross-entropy",
+    "Supervised learning and policy optimization"
+  ],
+  "objectives": [
+    "Explain how pairwise clip judgments train a reward model.",
+    "Calculate preference probabilities and cross-entropy losses.",
+    "Trace how policies, queries, and reward learning interact.",
+    "Interpret the robotics, Atari, and novel-behavior evidence.",
+    "Explain why static feedback can fail as policy behavior changes."
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "mechanism",
+      "statement": "The method replaces an environment-provided reward with human preferences between short trajectory segments.",
+      "conditions": "The overseer can compare observed behavior even when no numerical task reward is available to the agent.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c2",
+      "kind": "mechanism",
+      "statement": "Training interleaves policy rollouts, human comparison queries, and supervised reward-model updates.",
+      "conditions": "The policy and reward estimate are neural networks updated asynchronously during training.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c3",
+      "kind": "equation",
+      "statement": "A segment's score is the sum of its predicted per-step rewards, and a two-way softmax converts the two segment scores into a preference probability.",
+      "conditions": "Equation 1 sums undiscounted predicted rewards within each compared clip.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c4",
+      "kind": "mechanism",
+      "statement": "A preferred clip produces a one-hot label, a tie produces a uniform label, and an incomparable pair is discarded.",
+      "conditions": "Labels are stored as distributions over the two presented segments.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c5",
+      "kind": "mechanism",
+      "statement": "The implementation normalizes learned rewards before policy optimization because their absolute location is not identified by comparisons.",
+      "conditions": "Normalization is applied to outputs of the learned reward estimate before the RL update.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c6",
+      "kind": "mechanism",
+      "statement": "Query selection uses ensemble disagreement as an approximate measure of reward-model uncertainty.",
+      "conditions": "Candidate segment pairs are ranked by variance among ensemble preference predictions.",
+      "sourceIds": [
+        "section-2-part-2"
+      ]
+    },
+    {
+      "id": "c7",
+      "kind": "caveat",
+      "statement": "The uncertainty heuristic was not uniformly beneficial across tasks.",
+      "conditions": "This concerns disagreement-based query prioritization in the reported ablations, not the entire preference-learning method.",
+      "sourceIds": [
+        "section-2-part-2"
+      ]
+    },
+    {
+      "id": "c8",
+      "kind": "result",
+      "statement": "On eight modified MuJoCo benchmark tasks, 700 human queries produced performance near RL trained on the true reward.",
+      "conditions": "Performance was measured using each task's true reward; learned-reward training was less stable and had higher variance.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c9",
+      "kind": "result",
+      "statement": "The Atari results showed substantial but uneven learning and did not generally match true-reward RL.",
+      "conditions": "The comparison used seven Atari games and 5,500 real-human queries, with synthetic-query and true-reward baselines.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c10",
+      "kind": "result",
+      "statement": "Preference feedback also trained a repeated-backflip behavior without a supplied programmatic reward for that behavior.",
+      "conditions": "The Hopper experiment used author feedback, 900 queries, and less than one hour of feedback.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c11",
+      "kind": "caveat",
+      "statement": "Collecting comparisons only near the start can leave the reward model vulnerable when later policy behavior shifts.",
+      "conditions": "The reported failure concerns offline reward-predictor training under a changing policy occupancy distribution.",
+      "sourceIds": [
+        "section-3-part-2"
+      ]
+    },
+    {
+      "id": "c12",
+      "kind": "result",
+      "statement": "Learning a separate reward model substantially reduced the required frequency of human interaction relative to agent-environment interaction.",
+      "conditions": "The paper's estimate concerns its studied deep-RL preference-feedback setup and is approximate.",
+      "sourceIds": [
+        "section-4"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "s1",
+      "title": "The supervision bottleneck",
+      "markdown": "Traditional reinforcement learning assumes that, after action $a_t$, the environment supplies a scalar reward. The hard part in many real tasks is not choosing an optimizer but writing that scalar signal without accidentally rewarding a loophole. This paper's particular move is to ask a weaker question: given two short pieces of behavior, which one better serves the intended goal?\n\nAt time $t$, the agent observes $o_t\\in\\mathcal{O}$ and selects $a_t\\in\\mathcal{A}$, where $\\mathcal{O}$ and $\\mathcal{A}$ are the observation and action spaces. A length-$k$ segment is\n\n$$\\sigma=\\big((o_0,a_0),\\ldots,(o_{k-1},a_{k-1})\\big).$$\n\nThe notation $\\sigma^1\\succ\\sigma^2$ means that the overseer prefers segment 1. This differs from imitation learning: the human need not demonstrate the action sequence. It also differs from using each judgment directly as an online reward: comparisons train a reusable reward estimate that can score far more agent interactions than the human labels individually.",
+      "sourceIds": [
+        "section-1",
+        "section-2",
+        "section-4"
+      ],
+      "claimIds": [
+        "c1",
+        "c12"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s2",
+      "title": "Turning a comparison into a probability",
+      "markdown": "## Turning a comparison into a probability\n\nThe reward predictor $\\hat r(o,a)\\in\\mathbb{R}$ assigns a scalar value to each observation–action pair. For segment $i$, its predicted score is the undiscounted sum\n\n$$R_i=\\sum_{t=0}^{k-1}\\hat r(o_t^i,a_t^i).$$\n\nEquation 1 converts the two segment scores into a modeled preference probability:\n\n$$\\hat P[\\sigma^1\\succ\\sigma^2]=\\frac{e^{R_1}}{e^{R_1}+e^{R_2}}=\\frac{1}{1+e^{-(R_1-R_2)}}.$$\n\nOnly the difference $R_1-R_2$ affects the result. If both scores receive the same additive shift, the probability is unchanged. A one-unit advantage gives probability $1/(1+e^{-1})\\approx0.731$; reversing the advantage gives approximately $0.269$.\n\nThe figure generalizes this calculation to the constructed scores $[2,1,0,-1]$. Dividing them by a positive temperature $T$ and applying softmax gives\n\n$$w_j=\\frac{e^{s_j/T}}{\\sum_\\ell e^{s_\\ell/T}}.$$\n\nAt $T=1$, the normalized weights are approximately $[0.644,0.237,0.087,0.032]$. Lowering $T$ magnifies score differences and moves more mass to the highest score; raising it makes the distribution flatter. The temperature is an illustrative control for understanding softmax sensitivity, whereas the paper's two-clip model uses the summed rewards directly.\n\nIn the implemented learning algorithm, the softmax prediction is mixed with a 10% uniformly random response model. For two alternatives, this makes the final probability $0.9\\hat P+0.05$. Its purpose is to represent a nonzero chance of labeling error even when the predicted score gap is very large, so modeled choices do not become perfectly certain.",
+      "sourceIds": [
+        "section-2",
+        "section-2-part-2"
+      ],
+      "claimIds": [
+        "c3"
+      ],
+      "figureId": "fig-attention"
+    },
+    {
+      "id": "s3",
+      "title": "Labels, loss, and a worked comparison",
+      "markdown": "Each accepted judgment is stored as $(\\sigma^1,\\sigma^2,\\mu)$, where $\\mu(1)$ and $\\mu(2)$ are label masses for the two alternatives. A strict preference for segment 1 gives $\\mu=(1,0)$; a tie gives $\\mu=(1/2,1/2)$; an incomparable pair is omitted. The reward network is fitted by cross-entropy between this label and the modeled preference probabilities.\n\nConsider an explicitly illustrative pair whose learned per-step rewards sum to $R_1=2$ and $R_2=1$. Then\n\n$$p_1=\\frac{e^2}{e^2+e^1}=\\frac{1}{1+e^{-1}}\\approx0.731,$$\n\nand $p_2=1-p_1\\approx0.269$. If the human prefers segment 1, this example's loss is\n\n$$-\\log p_1\\approx-\\log(0.731)\\approx0.313.$$\n\nIf the human instead marks a tie, the loss is\n\n$$-\\tfrac12\\log p_1-\\tfrac12\\log p_2\\approx0.813.$$\n\nThe optimizer figure shows ordinary gradient descent on the unrelated toy function $f(x)=x^2/2$, starting at $x=3$ for 12 updates. Varying the learning rate reveals how iterative parameter fitting can converge slowly, quickly, or unstably. It teaches the optimization prerequisite only: it does not reproduce neural reward-model training, its regularization, or the paper's RL algorithms.",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c3",
+        "c4"
+      ],
+      "figureId": "fig-optimizer"
+    },
+    {
+      "id": "s4",
+      "title": "The asynchronous learning loop",
+      "markdown": "The mechanism has three coupled processes. First, the current policy $\\pi:\\mathcal{O}\\rightarrow\\mathcal{A}$ interacts with the environment and is updated to maximize predicted reward $\\hat r(o_t,a_t)$. Second, the system selects pairs of short segments from collected trajectories and asks a person to compare them. Third, supervised learning refits $\\hat r$ to all accumulated comparisons. New reward parameters flow back to policy training while further behavior flows toward the query process.\n\nThis loop creates a moving target in both directions. The policy changes because the reward model changes; the reward model's training distribution changes because the policy visits new states. The paper used A2C for Atari and TRPO for simulated robotics, showing that preference learning is a reward-construction layer rather than a replacement for an RL algorithm.\n\nAn ensemble supplies several reward predictions. Candidate pairs with high variance among ensemble members are prioritized as uncertain queries. This is only a heuristic: the authors explicitly report that it hurt performance on some tasks. A common misconception is therefore that the method always asks the mathematically most informative question. It does not; ensemble disagreement is merely an approximation to useful query selection.",
+      "sourceIds": [
+        "section-2",
+        "section-2-part-2"
+      ],
+      "claimIds": [
+        "c2",
+        "c6",
+        "c7"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s5",
+      "title": "Why reward scale is treated carefully",
+      "markdown": "## Why reward scale is treated carefully\n\nPairwise comparisons determine how two equal-length segments rank, but they do not identify an absolute reward origin. Adding a constant $c$ to every per-step prediction adds the same $kc$ to both segment scores, leaving $R_1-R_2$ and therefore the preference probability unchanged. The implementation accounts for this underdetermined location by normalizing each ensemble predictor independently and then averaging the normalized outputs used for policy learning.\n\nThe figure makes the calculation explicit with the constructed activation vector\n\n$$x=[-2,-1,0,2,6].$$\n\nIts mean is $1$, and its population variance is\n\n$$\\frac{(-3)^2+(-2)^2+(-1)^2+1^2+5^2}{5}=8,$$\n\nso its population standard deviation is $\\sqrt{8}\\approx2.828$. Applying\n\n$$z_j=\\frac{x_j-\\bar x}{\\sqrt{8}}$$\n\ngives approximately\n\n$$[-1.061,-0.707,-0.354,0.354,1.768].$$\n\nIf a common offset is added to every raw activation, the displayed raw values and their mean move by that offset, but each centered difference $x_j-\\bar x$ remains unchanged. The standardized vector therefore stays fixed. The values are dimensionless constructed quantities: the control isolates the effect of an arbitrary location shift and shows why a stable normalized scale is useful before an RL update consumes the predictor's outputs.\n\nThis normalization handles location and scale conventions; it does not make the underlying reward uniquely identifiable. Comparisons constrain relative preferences over the observed clips, so safe behavior outside that data still depends on continued coverage and on how well the learned predictor generalizes.",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c5"
+      ],
+      "figureId": "fig-normalization"
+    },
+    {
+      "id": "s6",
+      "title": "What the experiments establish",
+      "markdown": "The evidence spans modified MuJoCo tasks, seven Atari games, and novel qualitative goals. On eight simulated robotics benchmarks, 700 human labels nearly matched true-reward RL on the reported task reward, although learned-reward training was less stable and more variable. That result is conditional on those environments, modifications, algorithms, and evaluation rewards; it is not a guarantee for arbitrary physical robots.\n\nAtari was more uneven. With 5,500 human queries, the approach showed substantial learning on most games and sometimes matched or exceeded RL, but it struggled on others. The paper notes possible effects from labeling error, inconsistency, uneven label timing, and clips that were difficult to interpret. Curves for real human feedback were single runs, while the principal synthetic and true-reward curves averaged multiple runs, which limits strong comparisons.\n\nThe repeated Hopper backflip is a different kind of result: 900 author-provided queries in less than an hour trained repeated flips with upright landings. It demonstrates that recognition can specify behavior that is awkward to encode as a hand-written reward. It does not supply a numerical benchmark proving general preference alignment.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c8",
+        "c9",
+        "c10"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s7",
+      "title": "The central failure mode and honest boundary",
+      "markdown": "## The central failure mode and honest boundary\n\nThe sharpest lesson comes from removing online queries. A reward predictor trained only on early behavior sees only the early occupancy distribution—the states and actions visited by the policy at that stage. As the policy optimizes the learned reward, it changes that distribution and may reach behaviors for which the predictor has little relevant training data. Predicted reward can then diverge from the intended objective.\n\nThe Pong ablation gives a concrete example. Offline reward training sometimes produced a policy that learned to avoid losing points without learning to score. The resulting extremely long, repetitive volleys were attractive under the incomplete learned reward even though they were undesirable under the game's true reward. Interleaving feedback with policy learning allows newly encountered behavior to be compared and incorporated into later reward-model updates, reducing this particular distribution-shift failure.\n\nThe result is qualified rather than universal: online feedback helped in the reported experiments, but it does not guarantee that reward hacking disappears. Human comparisons may be noisy or inconsistent, short clips may omit long-term consequences, and the undiscounted clip score models the timing of reward within a clip as irrelevant. The learned reward also remains non-stationary as new comparisons arrive, while disagreement-based query selection was itself counterproductive on some tasks.\n\nThe contribution is therefore an engineered separation of scarce preference supervision from abundant agent–environment interaction. A supervised reward model lets each comparison influence many policy updates, reducing the required frequency of human interaction by roughly three orders of magnitude in the studied setup. Continual data collection helps keep that model relevant as the policy changes, without establishing a general guarantee that it recovers or safely extrapolates the human's full objective.",
+      "sourceIds": [
+        "section-2",
+        "section-2-part-2",
+        "section-3-part-2",
+        "section-4"
+      ],
+      "claimIds": [
+        "c7",
+        "c11",
+        "c12"
+      ],
+      "figureId": null
+    }
+  ],
+  "figures": [
+    {
+      "id": "fig-attention",
+      "kind": "attention",
+      "title": "From relative scores to normalized weights",
+      "question": "As temperature decreases, how does the normalized weight on the fixed highest score change?",
+      "caption": "An illustrative softmax divides fixed scores [2,1,0,-1] by a positive temperature and displays their normalized weights, clarifying the normalization used in a two-choice preference model.",
+      "limitation": "This is not a measured attention head, learned token similarity, or the paper's reward network; the paper's stated preference equation does not introduce this temperature control.",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c3"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "fig-optimizer",
+      "kind": "optimizer",
+      "title": "Iterative fitting on a scalar objective",
+      "question": "Which learning rates move x toward zero smoothly over the 12 displayed gradient-descent updates?",
+      "caption": "Ordinary gradient descent updates x on the illustrative quadratic f(x)=x^2/2 from x=3, showing how learning rate changes 12 optimization iterates.",
+      "limitation": "This is plain scalar gradient descent, not the neural reward predictor, A2C, TRPO, Adam, RMSProp, or a reproduction of any reported training curve.",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c2"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "fig-normalization",
+      "kind": "normalization",
+      "title": "Removing offset from illustrative rewards",
+      "question": "When a common offset is added to all five activations, what changes before and after standardization?",
+      "caption": "The fixed vector [-2,-1,0,2,6] is shifted and then standardized by subtracting its mean and dividing by its population standard deviation.",
+      "limitation": "This is one illustrative vector, not a full BatchNorm or LayerNorm training implementation and not the paper's complete ensemble-normalization pipeline.",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c5"
+      ],
+      "illustrative": true
+    }
+  ],
+  "quiz": [
+    {
+      "question": "Assume two equal-length clips have predicted reward sums R1=3 and R2=1 under Equation 1. What is the modeled probability that clip 1 is preferred?",
+      "options": [
+        {
+          "text": "Exactly 0.5",
+          "explanation": "Incorrect. Equal probability occurs when the two summed scores are equal."
+        },
+        {
+          "text": "1/(1+e^-2), approximately 0.881",
+          "explanation": "Correct. The two-way softmax depends on the score difference R1-R2=2."
+        },
+        {
+          "text": "3/(3+1)=0.75",
+          "explanation": "Incorrect. Equation 1 exponentiates the summed scores rather than normalizing the raw sums."
+        }
+      ],
+      "answer": 1,
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c3"
+      ]
+    },
+    {
+      "question": "Why can collecting comparisons throughout policy training help more than collecting them only at the beginning?",
+      "options": [
+        {
+          "text": "Later comparisons cover behavior induced by optimizing the evolving reward model.",
+          "explanation": "Correct. They can expose mistakes in regions visited by the changing policy."
+        },
+        {
+          "text": "Online comparisons make the learned reward mathematically identical to true reward.",
+          "explanation": "Incorrect. Continued feedback can correct observed failures but does not guarantee recovery of the true objective."
+        },
+        {
+          "text": "Online comparisons remove the need for an RL algorithm.",
+          "explanation": "Incorrect. The reported method still uses an RL algorithm to optimize predicted reward."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-2",
+        "section-3-part-2"
+      ],
+      "claimIds": [
+        "c2",
+        "c11"
+      ]
+    },
+    {
+      "question": "Which conclusion is best supported by the reported Atari evidence?",
+      "options": [
+        {
+          "text": "Preference learning uniformly surpassed true-reward RL on all seven games.",
+          "explanation": "Incorrect. Performance varied by game, and the method failed to match RL on some tasks."
+        },
+        {
+          "text": "Human and synthetic labels were indistinguishable in every Atari condition.",
+          "explanation": "Incorrect. Human feedback was often similar or slightly worse, with task-specific differences and proposed causes."
+        },
+        {
+          "text": "The method produced substantial learning on most games, but results were uneven and sometimes below RL.",
+          "explanation": "Correct. This matches the paper's qualified description of the Atari results."
+        }
+      ],
+      "answer": 2,
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c9"
+      ]
+    }
+  ],
+  "id": "deep-reinforcement-learning-from-human-preferences",
+  "createdAt": "2026-10-01T23:19:11.004Z",
+  "pipelineVersion": "subjects-lessons-v1",
+  "sources": [
+    {
+      "id": "abstract",
+      "label": "Original paper · abstract",
+      "url": "https://arxiv.org/abs/1706.03741",
+      "digest": "24ea4446004bc21bbb2fccf606d74927f567480e988f48f96a148eb13405a1fb"
+    },
+    {
+      "id": "section-1",
+      "label": "1 Introduction",
+      "url": "https://arxiv.org/html/1706.03741#S1",
+      "digest": "1221bfc0e3795c6c12b5f9f628c668832aa00b24ce7a9ca216401393da65154c"
+    },
+    {
+      "id": "section-2",
+      "label": "2 Preliminaries and Method",
+      "url": "https://arxiv.org/html/1706.03741#S2",
+      "digest": "843fb15536fa5f1eff1140724ce5f26db8c1ed52be1a82dc963adbac94e2b49e"
+    },
+    {
+      "id": "section-2-part-2",
+      "label": "2 Preliminaries and Method · part 2",
+      "url": "https://arxiv.org/html/1706.03741#S2",
+      "digest": "8104d5cce0beaf88667781d6238b4ed304da0d3664207df5e2845bb5c9a1e2e5"
+    },
+    {
+      "id": "section-3",
+      "label": "3 Experimental Results",
+      "url": "https://arxiv.org/html/1706.03741#S3",
+      "digest": "7a2a2f7178f35a6573ccc721247bfd52586b5379f6a72d1ce1562b1d1f658d8b"
+    },
+    {
+      "id": "section-3-part-2",
+      "label": "3 Experimental Results · part 2",
+      "url": "https://arxiv.org/html/1706.03741#S3",
+      "digest": "13af31af804494ebe1db0fab0bd8221d562620222cbb37c2b03dc7fc79398374"
+    },
+    {
+      "id": "section-4",
+      "label": "4 Discussion and Conclusions",
+      "url": "https://arxiv.org/html/1706.03741#S4",
+      "digest": "b2f4186fd93b5e16a6611388513b8cdd9ebdb7813379d00157d6b11c586b6383"
+    }
+  ],
+  "review": {
+    "status": "passed",
+    "reviewedAt": "2026-10-02T01:53:08.650Z",
+    "contentDigest": "f3dbfde6a378b9b85b53c467103db4096a437005195b44e79bf806b11cad19df"
+  }
+}

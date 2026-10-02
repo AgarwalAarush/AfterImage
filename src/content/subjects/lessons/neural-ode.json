@@ -1,0 +1,459 @@
+{
+  "title": "Depth Becomes Time: Building and Training Neural ODEs",
+  "summary": "Neural ODEs replace a fixed stack of hidden-state updates with a learned vector field, then use numerical integration and adjoint dynamics for evaluation and training.",
+  "prerequisites": [
+    "Residual updates and the chain rule",
+    "Initial-value ordinary differential equations",
+    "Jacobians, vector-Jacobian products, and numerical integration",
+    "Probability densities and change of variables"
+  ],
+  "objectives": [
+    "Explain how residual updates become continuous-time state equations.",
+    "Trace an initial state through numerical ODE evaluation.",
+    "Derive and interpret the adjoint equation for reverse-mode gradients.",
+    "Relate solver tolerance and function evaluations to computational cost.",
+    "Explain the Jacobian trace in continuous normalizing flows."
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "equation",
+      "statement": "A residual layer updates a hidden vector by adding a learned finite transformation.",
+      "conditions": "For discrete layer index t, hidden state h_t, and layer parameters theta_t.",
+      "sourceIds": [
+        "section-1"
+      ]
+    },
+    {
+      "id": "c2",
+      "kind": "mechanism",
+      "statement": "A neural ODE instead parameterizes the instantaneous derivative of the hidden state with a neural network.",
+      "conditions": "For continuous time t, state h(t), shared parameters theta, and vector field f.",
+      "sourceIds": [
+        "section-1"
+      ]
+    },
+    {
+      "id": "c3",
+      "kind": "mechanism",
+      "statement": "The model output is the solution at a terminal time, computed by a solver that evaluates the vector field where needed.",
+      "conditions": "For an initial-value problem beginning at h(0) and ending at time T.",
+      "sourceIds": [
+        "section-1"
+      ]
+    },
+    {
+      "id": "c4",
+      "kind": "mechanism",
+      "statement": "Adjoint sensitivity computes reverse-mode gradients by solving an augmented differential equation backward in time.",
+      "conditions": "For a scalar loss whose input is an ODE solution.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c5",
+      "kind": "equation",
+      "statement": "Using row gradients, the adjoint a(t)=∂L/∂z(t) evolves as da/dt=−a(t)(∂f/∂z).",
+      "conditions": "Along the state trajectory z(t), with a(t) represented as a row covector and ∂f/∂z as the state Jacobian.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c6",
+      "kind": "mechanism",
+      "statement": "The backward solve can reconstruct the required state trajectory jointly with the adjoint, starting from the terminal state.",
+      "conditions": "When intermediate forward states are not stored and backward numerical reconstruction is used.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c7",
+      "kind": "result",
+      "statement": "In the reported MNIST comparison, ODE-Net had 0.42% test error, 0.22M parameters, constant-in-depth memory, and solver-dependent time.",
+      "conditions": "For the architectures, implicit Adams solver setup, and MNIST experiment reported in Section 3.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c8",
+      "kind": "mechanism",
+      "statement": "Solver tolerance controls an accuracy-versus-computation tradeoff because evaluation time tracks requested vector-field evaluations.",
+      "conditions": "For the trained ODE-Net and solver measurements discussed around Figure 3.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c9",
+      "kind": "equation",
+      "statement": "Along a continuous flow, log density changes at the negative trace of the vector-field Jacobian.",
+      "conditions": "When z(t) is finite and continuous, and f is uniformly Lipschitz in z and continuous in t.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c10",
+      "kind": "mechanism",
+      "statement": "A latent ODE obtains latent states at arbitrary observation times by solving from one sampled initial state under shared dynamics.",
+      "conditions": "For observation times t_0 through t_N and latent dynamics parameterized by theta_f.",
+      "sourceIds": [
+        "section-5"
+      ]
+    },
+    {
+      "id": "c11",
+      "kind": "result",
+      "statement": "On the reported noisy spiral task, latent ODE predictive RMSE was lower than the RNN baseline at all three observation counts.",
+      "conditions": "For 1,000 two-dimensional spirals, the stated models, and prediction on 100 extrapolation time points.",
+      "sourceIds": [
+        "section-5"
+      ]
+    },
+    {
+      "id": "c12",
+      "kind": "caveat",
+      "statement": "Backward trajectory reconstruction can accumulate numerical error, and checkpointing selected forward states can mitigate this error by providing restart points for re-integration.",
+      "conditions": "When the state is reconstructed by integrating backward rather than retained exactly from the forward pass; checkpointing trades additional memory for more faithful reconstruction.",
+      "sourceIds": [
+        "section-6"
+      ]
+    },
+    {
+      "id": "c13",
+      "kind": "caveat",
+      "statement": "Existence and uniqueness are tied to regularity assumptions on the learned dynamics, not guaranteed merely by calling a solver.",
+      "conditions": "For an initial-value problem whose vector field is uniformly Lipschitz in z and continuous in t.",
+      "sourceIds": [
+        "section-6"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "s1",
+      "title": "From a staircase of layers to a trajectory",
+      "markdown": "A residual network transforms a hidden vector by repeated additions,\n\n$$\n\\mathbf{h}_{t+1}=\\mathbf{h}_t+f(\\mathbf{h}_t,\\theta_t).\n$$\n\nHere $t$ is a discrete layer index, $\\mathbf{h}_t\\in\\mathbb{R}^D$ is a $D$-dimensional hidden state, $f$ is a learned transformation, and $\\theta_t$ denotes that layer's parameters. This resembles a forward-Euler step: the current state plus a finite increment. If increments are associated with progressively smaller time intervals, the limiting description is\n\n$$\n\\frac{d\\mathbf{h}(t)}{dt}=f(\\mathbf{h}(t),t,\\theta).\n$$\n\nNow $t$ is continuous, $\\mathbf{h}(t)$ is the state at time $t$, $\\theta$ parameterizes the vector field, and $f$ specifies the instantaneous direction and speed. Given $\\mathbf{h}(0)$, an ODE solver approximates $\\mathbf{h}(T)$. The model therefore specifies dynamics rather than a predetermined list of evaluation points.\n\nThe illustrative control below makes the discretization idea concrete. It applies forward Euler to $dx/dt=-x$, $x(0)=1$, on $[0,3]$ and compares the numerical points with $e^{-t}$. Predict what happens when the step size shrinks: the approximation should approach the exact curve. This teaches discretization error, but it is not the paper's adaptive solver, learned vector field, or training method.",
+      "sourceIds": [
+        "section-1"
+      ],
+      "claimIds": [
+        "c1",
+        "c2",
+        "c3"
+      ],
+      "figureId": "fig-ode"
+    },
+    {
+      "id": "s2",
+      "title": "What the solver actually contributes",
+      "markdown": "Write the terminal state as\n\n$$\n\\mathbf{z}(t_1)=\\mathbf{z}(t_0)+\\int_{t_0}^{t_1}f(\\mathbf{z}(t),t,\\theta)\\,dt.\n$$\n\nHere $\\mathbf{z}(t)$ is the evolving state, $t_0$ and $t_1$ are boundary times, and $\\theta$ contains learned parameters. A numerical solver samples $f$ at selected times and constructs an approximation satisfying a requested error tolerance. Those sampling locations are computational events, not learned network layers. Consequently, an input that produces difficult dynamics may require more evaluations than another input.\n\nThis corrects a common misconception: a neural ODE is not an infinite stack of explicitly executed layers. The mathematical model is continuous, while its computed answer remains a finite numerical approximation. Tightening tolerance generally requests more work; loosening it can reduce work at the price of numerical accuracy. The paper reports that forward time was proportional to the number of function evaluations in its trained ODE-Net study, but that observation belongs to that implementation and experiment—not to every solver and device.\n\nDepth is therefore replaced by two different notions: the modeled time interval $[t_0,t_1]$, and the solver's realized number of function evaluations, often abbreviated NFE. Only the latter directly counts calls to $f$.",
+      "sourceIds": [
+        "section-1",
+        "section-3"
+      ],
+      "claimIds": [
+        "c3",
+        "c8"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s3",
+      "title": "Reverse-mode differentiation as another dynamical system",
+      "markdown": "Suppose the scalar loss is $L(\\mathbf{z}(t_1))$. In this section, every gradient is represented as a row vector. Define the adjoint\n\n$$\n\\mathbf{a}(t)=\\frac{\\partial L}{\\partial \\mathbf{z}(t)}.\n$$\n\nThus, if $\\mathbf{z}\\in\\mathbb{R}^D$, then $\\mathbf{a}(t)$ has shape $1\\times D$. The adjoint records how changing the state at time $t$ would change the final loss. Its continuous chain rule is\n\n$$\n\\frac{d\\mathbf{a}(t)}{dt}=-\\mathbf{a}(t)\\frac{\\partial f}{\\partial\\mathbf{z}},\n$$\n\nwhere $\\partial f/\\partial\\mathbf{z}$ is the $D\\times D$ state Jacobian evaluated along the trajectory. Starting from $\\mathbf{a}(t_1)=\\partial L/\\partial\\mathbf{z}(t_1)$, the method integrates backward. With the parameter gradient also represented as a row vector, parameter sensitivity is\n\n$$\n\\frac{dL}{d\\theta}=-\\int_{t_1}^{t_0}\\mathbf{a}(t)\\frac{\\partial f}{\\partial\\theta}\\,dt\n=\\int_{t_0}^{t_1}\\mathbf{a}(t)\\frac{\\partial f}{\\partial\\theta}\\,dt,\n$$\n\nwhere $\\partial f/\\partial\\theta$ is the parameter Jacobian. The products $\\mathbf{a}(\\partial f/\\partial\\mathbf{z})$ and $\\mathbf{a}(\\partial f/\\partial\\theta)$ are vector-Jacobian products, so automatic differentiation need not materialize either full Jacobian. A column-gradient convention would instead write $d\\mathbf{a}/dt=-(\\partial f/\\partial\\mathbf{z})^{\\mathsf T}\\mathbf{a}$; the two conventions are equivalent when used consistently.\n\nThe paper concatenates state, adjoint, and accumulated partial derivatives into one augmented backward solve. If losses touch several observation times, the solve is divided at those times and the adjoint receives the corresponding loss-gradient contribution. Low memory comes from avoiding storage of every forward solver operation. It does not mean computation is free: the state trajectory must be reconstructed, and imperfect backward reconstruction can create extra numerical error.",
+      "sourceIds": [
+        "section-2",
+        "section-6"
+      ],
+      "claimIds": [
+        "c4",
+        "c5",
+        "c6",
+        "c12"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s4",
+      "title": "A discrete stepping-stone: residual state updates",
+      "markdown": "Before passing to continuous dynamics, it helps to inspect the discrete state-update pattern that motivates them. A residual layer has the form\n\n$$\n\\mathbf{h}_{t+1}=\\mathbf{h}_t+f(\\mathbf{h}_t,\\theta_t).\n$$\n\nThe scalar illustrative recurrence below uses\n\n$$\nh_t=a h_{t-1}+u_t,\n$$\n\nwith a single impulse $u_0=1$ and no later inputs. Its closed-form response after the impulse is $h_t=a^t$. Increasing the retention factor $a$ therefore makes the initial state persist for more displayed steps, while smaller values attenuate it more quickly.\n\nThis recurrence is a discrete analogy for repeated state transformation: each new state depends on the preceding state and the current update. It does not implement a continuous ODE, an ODE solver, or the adjoint equation. In a neural ODE, the corresponding modeling move is to replace a prescribed sequence of finite updates with an instantaneous derivative $d\\mathbf{h}/dt=f(\\mathbf{h}(t),t,\\theta)$ and let a numerical solver determine evaluation points.",
+      "sourceIds": [
+        "section-1"
+      ],
+      "claimIds": [
+        "c1"
+      ],
+      "figureId": "fig-state"
+    },
+    {
+      "id": "s5",
+      "title": "Continuous flows track density by divergence",
+      "markdown": "For a discrete invertible map, density correction involves a log absolute Jacobian determinant. The paper's continuous-time result replaces that finite determinant with an instantaneous trace:\n\n$$\n\\frac{\\partial\\log p(\\mathbf{z}(t))}{\\partial t}\n=-\\operatorname{tr}\\!\\left(\\frac{\\partial f}{\\partial\\mathbf{z}(t)}\\right).\n$$\n\nHere $p(\\mathbf{z}(t))$ is the density at the moving state, $\\operatorname{tr}$ sums a square matrix's diagonal, and $\\partial f/\\partial\\mathbf{z}$ is the vector field's Jacobian. The trace is the field's divergence: positive local expansion lowers log density, while contraction raises it. Integrating state and log density together yields a continuous normalizing flow.\n\nA small illustrative check uses $dz/dt=cz$ in one dimension. The Jacobian trace is simply $c$, so $d\\log p/dt=-c$. If $c=0.2$ for two time units, then $\\Delta\\log p=-0.4$. The state expands by $e^{0.4}$ while its density is multiplied by $e^{-0.4}$. This is arithmetic from the stated equation, not a measured result.\n\nThe theorem requires appropriate regularity: the paper states uniform Lipschitz continuity in the state and continuity in time. The claim is therefore not that every arbitrary neural vector field automatically defines a well-behaved invertible flow.",
+      "sourceIds": [
+        "section-4",
+        "section-6"
+      ],
+      "claimIds": [
+        "c9",
+        "c13"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s6",
+      "title": "One trajectory, irregular observation times",
+      "markdown": "A latent ODE separates latent evolution from observation. An initial latent state $\\mathbf{z}_{t_0}$ is sampled or inferred; shared dynamics $f(\\mathbf{z},\\theta_f)$ generate $\\mathbf{z}_{t_1},\\ldots,\\mathbf{z}_{t_N}$ at requested times; and a decoder defines $p(\\mathbf{x}_{t_i}\\mid\\mathbf{z}_{t_i},\\theta_{\\mathbf{x}})$. Here $\\mathbf{x}_{t_i}$ is an observation, $\\theta_f$ parameterizes dynamics, and $\\theta_{\\mathbf{x}}$ parameterizes the observation model. Irregular timestamps need not first be forced onto a uniform grid.\n\nThe illustrative latent control below compares $q=\\mathcal N(\\mu,1)$ with $p=\\mathcal N(0,1)$ and displays $\\mathrm{KL}(q\\|p)=\\mu^2/2$. Predict how moving $\\mu$ away from zero changes overlap and KL. This isolates the initial-state uncertainty used in latent-variable reasoning; it does not simulate a learned trajectory, recognition RNN, decoder, or reconstruction likelihood.\n\nEvidence must remain tied to its setting. On the paper's synthetic dataset of 1,000 noisy two-dimensional spirals, evaluated by predictive RMSE over 100 extrapolation points, the latent ODE produced lower reported RMSE than the RNN baseline for 30, 50, and 100 observed points. Those numbers demonstrate performance under that construction; they do not establish universal superiority on medical records or every irregular time series.",
+      "sourceIds": [
+        "section-5"
+      ],
+      "claimIds": [
+        "c10",
+        "c11"
+      ],
+      "figureId": "fig-latent"
+    },
+    {
+      "id": "s7",
+      "title": "What the contribution does—and does not—promise",
+      "markdown": "The central contribution is a differentiable modeling interface: a neural network specifies the vector field of an initial-value problem, a numerical ODE solver evaluates the resulting trajectory, and an augmented adjoint system propagates gradients backward without retaining every forward solver operation. Within the paper, this interface supports continuous-depth supervised models, continuous normalizing flows, and latent continuous-time trajectories.\n\nIts computational claims are qualified. The adjoint method has constant memory cost as a function of depth, not zero memory or constant runtime. In the reported MNIST experiment, the ODE-Net used an implicit Adams solver, had 0.22 million parameters, achieved 0.42% test error, and required solver-dependent time $\\mathcal{O}(\\tilde L)$, where $\\tilde L$ is the number of requested vector-field evaluations. These results show performance comparable to the tested residual architecture under the stated setup; they are not universal accuracy or efficiency guarantees.\n\nSolver tolerance controls the numerical approximation rather than task correctness directly. Tighter tolerances generally demand more computation, and the paper observed forward time proportional to the number of function evaluations for its trained ODE-Net. Training also requires tolerances for both forward and reverse solves. Because the low-memory adjoint procedure reconstructs the state by integrating backward from the terminal state, numerical error can make that reconstructed path differ from the forward path. Checkpointing mitigates this risk by retaining selected forward states and restarting reconstruction from them, trading additional memory for greater numerical fidelity.\n\nMini-batching introduces another solver-level interaction: concatenated examples share error control, so a difficult example can increase the work required for the combined system. The paper notes this possible coupling while reporting that evaluation counts did not increase substantially in its experiments. Likewise, existence and uniqueness follow only under regularity conditions such as uniform Lipschitz continuity in the state and continuity in time. Continuous dynamics are therefore an inductive bias and modeling choice, not proof that the data-generating process is smooth, deterministic, or uniquely recoverable.",
+      "sourceIds": [
+        "abstract",
+        "section-2",
+        "section-3",
+        "section-6"
+      ],
+      "claimIds": [
+        "c4",
+        "c7",
+        "c8",
+        "c12",
+        "c13"
+      ],
+      "figureId": null
+    }
+  ],
+  "figures": [
+    {
+      "id": "fig-ode",
+      "kind": "ode",
+      "title": "Step size and Euler error",
+      "question": "As the Euler step size decreases, how does the numerical trajectory compare with the exact exponential decay?",
+      "caption": "An illustrative forward-Euler solution of $dx/dt=-x$ from $x(0)=1$ over $t\\in[0,3]$, compared with $e^{-t}$; the control changes step size.",
+      "limitation": "This fixed-step scalar example is not an adaptive solver, an adjoint implementation, or a learned vector field.",
+      "sourceIds": [
+        "section-1",
+        "section-3"
+      ],
+      "claimIds": [
+        "c1",
+        "c2",
+        "c8"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "fig-state",
+      "kind": "state",
+      "title": "Impulse memory in a scalar recurrence",
+      "question": "When retention $a$ increases, how long does the initial impulse remain visible across the 12 displayed steps?",
+      "caption": "An illustrative recurrence $h_t=a h_{t-1}+u_t$ with the single impulse $u_0=1$ shows how repeated discrete state transitions retain or attenuate an initial condition.",
+      "limitation": "This is a discrete scalar residual/state-update analogy. It is not a neural ODE solve, continuous adjoint, selective state-space model, or learned rollout.",
+      "sourceIds": [
+        "section-1"
+      ],
+      "claimIds": [
+        "c1"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "fig-latent",
+      "kind": "latent",
+      "title": "Moving an illustrative latent posterior",
+      "question": "How do density overlap and $\\mathrm{KL}(q\\|p)$ change as the posterior mean moves farther from zero?",
+      "caption": "The control moves $q=\\mathcal N(\\mu,1)$ relative to $p=\\mathcal N(0,1)$ and computes the illustrative identity $\\mathrm{KL}(q\\|p)=\\mu^2/2$.",
+      "limitation": "No posterior is learned, and no recognition network, ODE trajectory, decoder, or reconstruction likelihood is simulated.",
+      "sourceIds": [
+        "section-5"
+      ],
+      "claimIds": [
+        "c10"
+      ],
+      "illustrative": true
+    }
+  ],
+  "quiz": [
+    {
+      "question": "For the same trained vector field and initial state, what is the most defensible prediction when an adaptive solver's error tolerance is tightened?",
+      "options": [
+        {
+          "text": "It will generally request more function evaluations to improve numerical accuracy.",
+          "explanation": "Correct. Tolerance governs the numerical approximation, and the paper connects evaluation cost to function evaluations."
+        },
+        {
+          "text": "It will necessarily improve classification accuracy.",
+          "explanation": "Incorrect. A more accurate numerical solve does not guarantee better task predictions."
+        },
+        {
+          "text": "It will add learned residual layers to the model.",
+          "explanation": "Incorrect. Solver evaluations are numerical samples of one vector field, not newly learned layers."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-1",
+        "section-3"
+      ],
+      "claimIds": [
+        "c3",
+        "c8"
+      ]
+    },
+    {
+      "question": "Why does the adjoint method need access to the state trajectory during the backward solve?",
+      "options": [
+        {
+          "text": "The adjoint dynamics and parameter gradient evaluate Jacobians along the current state.",
+          "explanation": "Correct. Both $\\partial f/\\partial\\mathbf{z}$ and $\\partial f/\\partial\\theta$ are evaluated along $\\mathbf{z}(t)$."
+        },
+        {
+          "text": "The terminal loss must be recomputed at every solver evaluation.",
+          "explanation": "Incorrect. The terminal loss initializes the adjoint; it need not be recomputed at every instant."
+        },
+        {
+          "text": "The solver converts the continuous model into independently trained layers.",
+          "explanation": "Incorrect. Numerical evaluation points do not become separate parameterized layers."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c5",
+        "c6"
+      ]
+    },
+    {
+      "question": "Which conclusion is justified by the reported spiral experiment?",
+      "options": [
+        {
+          "text": "Under the stated synthetic spiral setup, latent ODE RMSE was lower at all three observation counts.",
+          "explanation": "Correct. The table reports lower latent ODE RMSE for 30, 50, and 100 observed points."
+        },
+        {
+          "text": "Latent ODEs outperform RNNs on every irregularly sampled dataset.",
+          "explanation": "Incorrect. A synthetic spiral experiment cannot establish a universal ranking."
+        },
+        {
+          "text": "The experiment proves backward reconstruction introduces no numerical error.",
+          "explanation": "Incorrect. That issue is separate, and the paper explicitly identifies possible reconstruction error."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-5",
+        "section-6"
+      ],
+      "claimIds": [
+        "c11",
+        "c12"
+      ]
+    }
+  ],
+  "id": "neural-ode",
+  "createdAt": "2026-10-01T23:55:53.478Z",
+  "pipelineVersion": "subjects-lessons-v1",
+  "sources": [
+    {
+      "id": "abstract",
+      "label": "Original paper · abstract",
+      "url": "https://arxiv.org/abs/1806.07366",
+      "digest": "3996203c403c74667e94cf666361a4f237d6451ea12be854126bd151229fc852",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:53:04.676Z"
+    },
+    {
+      "id": "main-text",
+      "label": "Original paper · unsectioned main text",
+      "url": "https://arxiv.org/html/1806.07366",
+      "digest": "587dbc4dba5032558555a3318672a026f2ef4a2fb97eb475a4e37698a616f923",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:53:04.676Z"
+    },
+    {
+      "id": "section-1",
+      "label": "1 Introduction",
+      "url": "https://arxiv.org/html/1806.07366#S1",
+      "digest": "7436752f9a53df35b2c9515cbb085f8df10c70cf7c5c05d831e6742cd62eed39",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:53:04.676Z"
+    },
+    {
+      "id": "section-2",
+      "label": "2 Reverse-mode automatic differentiation of ODE solutions",
+      "url": "https://arxiv.org/html/1806.07366#S2",
+      "digest": "d401009c9e999def6cbe315b34386b03aafc5605f5f3627614ee1e34c0289633",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:53:04.676Z"
+    },
+    {
+      "id": "section-3",
+      "label": "3 Replacing residual networks with ODEs for supervised learning",
+      "url": "https://arxiv.org/html/1806.07366#S3",
+      "digest": "65d7d059a22690aae6dcef68e92ef8748ecdad0b64dfd7403eca3de068c97263",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:53:04.676Z"
+    },
+    {
+      "id": "section-4",
+      "label": "4 Continuous Normalizing Flows",
+      "url": "https://arxiv.org/html/1806.07366#S4",
+      "digest": "983eb1ea32909a5bd9f72a6ee866348da0bf0abc5cfa8db4cf10b0b1f8cee134",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:53:04.676Z"
+    },
+    {
+      "id": "section-5",
+      "label": "5 A generative latent function time-series model",
+      "url": "https://arxiv.org/html/1806.07366#S5",
+      "digest": "adb5f4f3bbdc750c5e8e71d2a715a4570b2a615f8261590e2957191bbc298dae",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:53:04.676Z"
+    },
+    {
+      "id": "section-6",
+      "label": "6 Scope and Limitations",
+      "url": "https://arxiv.org/html/1806.07366#S6",
+      "digest": "04efec62b0d3a9b6c055c7b517abb2955f365d822d23ffc50fcc191eabb74423",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:53:04.676Z"
+    },
+    {
+      "id": "section-7",
+      "label": "7 Related Work",
+      "url": "https://arxiv.org/html/1806.07366#S7",
+      "digest": "de7cb9d1eb22693558cbacad5adf717574ca1e7e681fb42cf3c6925c8f8840e6",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:53:04.676Z"
+    },
+    {
+      "id": "section-8",
+      "label": "8 Conclusion",
+      "url": "https://arxiv.org/html/1806.07366#S8",
+      "digest": "dc73e7231cea7eb36650c7570fe69bd5c0c65522b058eb789832fb525bd551b5",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:53:04.676Z"
+    }
+  ],
+  "review": {
+    "status": "passed",
+    "reviewedAt": "2026-10-02T02:03:18.870Z",
+    "contentDigest": "aecf5d451a63bbbcecf36001345eb293a328fa53b2fb6da3b374134c5ab0d21c"
+  }
+}

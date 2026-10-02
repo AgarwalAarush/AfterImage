@@ -1,0 +1,437 @@
+{
+  "title": "A Mask Is an Answer, Not the Answer",
+  "summary": "SAM reframes segmentation as prompt-conditioned mask generation, coupling ambiguity-aware decoding with a model-assisted data engine for broad zero-shot transfer.",
+  "prerequisites": [
+    "Binary masks and intersection over union",
+    "Image embeddings and positional encodings",
+    "Self-attention and cross-attention",
+    "Supervised learning and zero-shot transfer"
+  ],
+  "objectives": [
+    "Explain how promptable segmentation differs from fixed-task segmentation.",
+    "Trace a prompt through SAM's image encoder, prompt encoder, and mask decoder.",
+    "Calculate intersection over union for a small illustrative example.",
+    "Explain how multiple outputs preserve distinct interpretations of ambiguous prompts.",
+    "Reconstruct the three stages of the SA-1B data engine."
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "mechanism",
+      "statement": "Promptable segmentation asks for a valid mask conditioned on information indicating what should be segmented.",
+      "conditions": "The prompt may be spatial, textual, or another form of information that identifies a segmentation target.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c2",
+      "kind": "caveat",
+      "statement": "Validity does not require recovering every plausible interpretation of an ambiguous prompt.",
+      "conditions": "When one prompt is compatible with several objects, at least one reasonable corresponding mask satisfies the task definition.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c3",
+      "kind": "mechanism",
+      "statement": "SAM separates reusable image computation from prompt-dependent computation through an image encoder, prompt encoder, and mask decoder.",
+      "conditions": "The image embedding is computed once and subsequently queried with prompts.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c4",
+      "kind": "mechanism",
+      "statement": "Sparse prompts use positional and type information, whereas a mask prompt is embedded convolutionally and combined with the image embedding.",
+      "conditions": "The stated sparse prompt types are points, boxes, and text; masks are dense prompts.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c5",
+      "kind": "mechanism",
+      "statement": "The decoder exchanges information between prompts and image features before producing spatial foreground probabilities with a dynamic classifier.",
+      "conditions": "This describes the paper’s high-level two-block decoder, not all implementation details in its appendix.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c6",
+      "kind": "mechanism",
+      "statement": "SAM represents common prompt ambiguity with three candidate masks and learns by assigning the loss to the best-matching candidate.",
+      "conditions": "The paper reports three outputs as sufficient for most common nested whole-part-subpart cases.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c7",
+      "kind": "mechanism",
+      "statement": "The model estimates each candidate mask’s IoU to rank multiple predictions at inference time.",
+      "conditions": "The score is an estimated IoU rather than comparison with unavailable test-time ground truth.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c8",
+      "kind": "equation",
+      "statement": "Automatic mask selection tests stability by comparing masks obtained at probability thresholds $0.5-\\delta$ and $0.5+\\delta$, where $\\delta$ is a threshold perturbation.",
+      "conditions": "This criterion belongs to the fully automatic data-engine stage and is followed by duplicate filtering.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c9",
+      "kind": "result",
+      "statement": "The completed SA-1B collection contains 1.1 billion masks over 11 million images, with almost all masks generated automatically.",
+      "conditions": "The 99.1% figure describes the data engine’s output; the released SA-1B includes only automatically generated masks.",
+      "sourceIds": [
+        "section-5"
+      ]
+    },
+    {
+      "id": "c10",
+      "kind": "result",
+      "statement": "A correction study found high overlap between sampled automatic masks and professionally corrected versions.",
+      "conditions": "The estimate uses 500 randomly sampled images, about 50,000 masks, and IoU against professional corrections.",
+      "sourceIds": [
+        "section-5"
+      ]
+    },
+    {
+      "id": "c11",
+      "kind": "result",
+      "statement": "Under the reported single-point protocol, SAM exceeded RITM on 16 of 23 datasets with default confidence-based selection and on all 23 with oracle selection; the oracle changed the comparison outcome on the remaining seven datasets.",
+      "conditions": "Default evaluation selected SAM’s most confident mask, while oracle evaluation selected the candidate most relevant to ground truth.",
+      "sourceIds": [
+        "section-7"
+      ]
+    },
+    {
+      "id": "c12",
+      "kind": "result",
+      "statement": "Using only automatically generated masks cost roughly 0.5 mIoU relative to a more complicated all-stage training mixture.",
+      "conditions": "The all-stage mixture oversampled manual and semi-automatic masks tenfold; evaluation used the 23-dataset single-center-point suite.",
+      "sourceIds": [
+        "section-7-part-3"
+      ]
+    },
+    {
+      "id": "c13",
+      "kind": "caveat",
+      "statement": "SAM prioritizes broad applicability over refinement to extremely high overlap after many corrective prompts.",
+      "conditions": "The comparison concerns dedicated interactive segmentation methods supplied with many points.",
+      "sourceIds": [
+        "section-8"
+      ]
+    },
+    {
+      "id": "c14",
+      "kind": "caveat",
+      "statement": "Prompt response can be real-time after encoding even though the complete pipeline with a heavy image encoder is not.",
+      "conditions": "The distinction is between prompt-dependent decoding and total processing including image encoding.",
+      "sourceIds": [
+        "section-3",
+        "section-8"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "s1",
+      "title": "The problem is an interface, not a label set",
+      "markdown": "Classical segmentation is not one task. Semantic segmentation assigns classes to pixels; instance segmentation separates objects; interactive segmentation refines a target from user input. SAM instead defines an interface: given an image and a prompt indicating what to segment, return a valid mask. A foreground point, background point, box, rough mask, or text cue can carry that intent.\n\nWrite an image as $I$, a prompt as $p$, and a binary mask as $M\\in\\{0,1\\}^{H\\times W}$, where $H$ and $W$ are image height and width. Promptable segmentation seeks a mapping\n\n$$f(I,p)\\rightarrow \\{M_1,\\ldots,M_K\\}.$$\n\nHere $K$ is the number of candidate masks. The braces matter: a point on a shirt can reasonably mean the shirt, the person, or a smaller printed region. The task asks for a valid interpretation rather than pretending the prompt uniquely determines one mask.\n\nThis also explains the project’s three-part contribution. The task defines a reusable interface, the model implements it, and the data engine supplies supervision at unusual scale. Zero-shot transfer then means applying that trained interface to unseen datasets or new task constructions without task-specific retraining—not that the model learned without supervised masks.",
+      "sourceIds": [
+        "section-1",
+        "section-2",
+        "section-8"
+      ],
+      "claimIds": [
+        "c1",
+        "c2"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s2",
+      "title": "What a mask score measures—and what it misses",
+      "markdown": "A binary mask is a set of foreground pixels. For prediction $P$ and reference $G$, intersection-over-union is\n\n$$\\operatorname{IoU}(P,G)=\\frac{|P\\cap G|}{|P\\cup G|},$$\n\nwhere $|\\cdot|$ counts pixels, $P\\cap G$ contains pixels marked foreground by both masks, and $P\\cup G$ contains pixels marked foreground by either mask.\n\nIllustrative worked example: suppose $P$ contains 6 pixels, $G$ contains 5, and 4 occur in both. Then the union contains $6+5-4=7$ pixels, so\n\n$$\\operatorname{IoU}(P,G)=\\frac{4}{7}\\approx0.571.$$\n\nThis arithmetic is illustrative, not a reported SAM result. It also exposes an evaluation problem central to the paper. If a single point validly denotes a shirt but a dataset stores only the whole person, a good shirt mask can receive low IoU. SAM therefore predicts an estimated IoU for ranking, while the paper supplements automatic evaluation with human judgments and an oracle analysis. Oracle selection compares all three candidates with ground truth; it diagnoses whether a suitable candidate existed, but it is not a deployable selection rule because real inference lacks the reference mask.",
+      "sourceIds": [
+        "section-3",
+        "section-7"
+      ],
+      "claimIds": [
+        "c2",
+        "c7",
+        "c11"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s3",
+      "title": "Compute the image once, then ask many questions",
+      "markdown": "## Compute the image once, then ask many questions\n\nSAM splits expensive image understanding from inexpensive prompt response. First, a Vision Transformer image encoder maps $I$ to an embedding $E_I$. It runs once per image, so the same $E_I$ can serve many interactions. Second, the prompt encoder maps $p$ to prompt embeddings $E_p$. Points and boxes combine positional encodings with learned prompt-type embeddings; free-form text uses a CLIP text encoder. A mask prompt is convolutionally embedded and added element-wise to the image embedding.\n\nThird, the mask decoder combines $E_I$, $E_p$, and output tokens. Prompt self-attention lets prompt tokens exchange information. Cross-attention in both directions updates prompt representations from image features and image representations from prompts. After two modified decoder blocks, the image embedding is upsampled. An MLP—multilayer perceptron—maps an output token to a dynamic linear classifier, which computes a foreground probability at every image location. With a precomputed image embedding, the paper reports that the prompt encoder and mask decoder run in about $50\\,\\mathrm{ms}$ in a web browser; this timing excludes the heavyweight image-encoding step.\n\nThe attention experiment isolates the normalization used when scores determine relative weight. Its four constructed, dimensionless scores are\n\n$$s=[2,1,0,-1],$$\n\nand a positive, dimensionless temperature $T$ produces\n\n$$a_i=\\frac{\\exp(s_i/T)}{\\sum_j\\exp(s_j/T)}.$$\n\nEach $a_i$ is a unitless share and the four weights sum to one. At $T=1$, the approximate weights are $[0.644,0.237,0.087,0.032]$: the largest score receives most of the weight, but every position contributes. Raising $T$ reduces the differences between the scaled scores $s_i/T$, moving the weights toward the uniform value $0.25$. Lowering $T$ enlarges those differences and concentrates weight on the largest score. The control therefore changes concentration, not score order or total weight.\n\nThis calculation explains how attention can turn compatibility scores into normalized emphasis. In SAM, the relevant scores are learned within prompt self-attention and bidirectional prompt–image cross-attention rather than fixed to these four values. The constructed example clarifies that weighting operation while the actual decoder uses learned, vector-valued representations to connect a prompt with spatial image features.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c3",
+        "c4",
+        "c5"
+      ],
+      "figureId": "fig-attention"
+    },
+    {
+      "id": "s4",
+      "title": "Ambiguity must branch before it can be ranked",
+      "markdown": "For an ambiguous point, forcing one output encourages a compromise: probability mass can be averaged across incompatible valid objects. Thresholding that compromise need not yield any coherent object. SAM produces three candidate masks in the ambiguity-aware evaluation setting, denoted $M_1,M_2,M_3$, together with confidence estimates $q_1,q_2,q_3$. The paper interprets each $q_k$ as estimated IoU.\n\nDuring training, let $L(M_k,G)$ be the supervised mask loss between candidate $k$ and ground truth $G$. SAM applies minimum-loss supervision,\n\n$$L_{\\mathrm{amb}}=\\min_{k\\in\\{1,2,3\\}}L(M_k,G).$$\n\nThe loss itself is a linear combination of focal and Dice losses. The minimum permits one candidate to explain the annotation without requiring every output to match it. At inference, estimated confidence—not minimum training loss—ranks the candidates.\n\nA useful misconception to reject is that three outputs enumerate every possible object. They do not. The paper says three were sufficient for most common cases motivated by nested whole, part, and subpart structures. The task’s validity criterion also does not guarantee the user’s intended interpretation appears or ranks first. More information—a box, extra points, or a mask prompt—can reduce ambiguity.",
+      "sourceIds": [
+        "section-2",
+        "section-3"
+      ],
+      "claimIds": [
+        "c2",
+        "c6",
+        "c7"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s5",
+      "title": "The data engine turns a model into a collection tool",
+      "markdown": "Segmentation masks are not naturally available at web scale, so SAM and its training collection were co-developed through a three-stage data engine. Each stage changed the division of labor between the model and professional annotators, and the masks collected at one stage helped train the model used in the next.\n\nIn the assisted-manual stage, annotators used a browser-based interactive tool powered by SAM. They marked objects with foreground and background points, inspected the predicted masks, and made pixel-precise corrections with brush and eraser tools when necessary. Precomputed image embeddings allowed the prompt encoder and mask decoder to respond interactively without rerunning the image encoder for every correction. Annotators labeled both countable objects and amorphous regions without being restricted to a fixed semantic category list. They were encouraged to leave an image when a single mask took more than 30 seconds to annotate.\n\nSAM was retrained six times as this collection grew, while its image encoder was scaled from ViT-B to ViT-H and other architectural details evolved. Average annotation time fell from 34 to 14 seconds per mask, and the average number of masks collected per image rose from 20 to 44. The stage produced 4.3 million masks from 120,000 images. These measurements describe the evolving model-assisted workflow: as SAM improved, annotators could obtain acceptable boundaries more quickly and label more regions in each image.\n\nThe semi-automatic stage shifted human effort toward objects that automatic proposals had missed. A bounding-box detector was trained from the first-stage masks using one generic “object” category. Confident detections were converted into masks and displayed as prefilled regions. Annotators then searched each image for additional, unlabeled objects. The remaining objects tended to be less prominent or harder to identify, so each newly added manual mask took an average of 34 seconds even though conspicuous regions had already been supplied automatically.\n\nSAM was retrained five more times during this stage. Annotators added 5.9 million masks from 180,000 images, bringing the cumulative manual and semi-automatic collection to 10.2 million masks. Counting the automatically prefilled masks, average coverage rose from 44 to 72 masks per image. Automatic prefill therefore changed more than annotation speed: it directed professional attention toward regions absent from the existing proposals and increased the diversity of supervision available for subsequent training.\n\nThe final stage generated masks without annotator input. This became feasible after the earlier stages had improved SAM using a larger and more diverse mask collection and after the model had acquired ambiguity-aware multiple-mask prediction. For every image, the generator placed foreground prompts on a regular $32\\times32$ grid. At each grid point, SAM predicted a set of candidates that could represent different valid interpretations of the prompt, such as a subpart, a larger part, and a whole object. The model’s predicted IoU score was then used to retain confident candidates.\n\nConfidence alone does not show that a mask has a robust boundary. The generator also tested stability under a small perturbation of the foreground-probability threshold. Let $z(x)$ be a candidate’s foreground probability at pixel $x$, and define\n\n$$S(\\tau)=\\{x:z(x)\\geq\\tau\\}.$$\n\nFor a positive threshold perturbation $\\delta$, the procedure compares\n\n$$S(0.5-\\delta)\\quad\\text{and}\\quad S(0.5+\\delta).$$\n\nPixels with probabilities between the two thresholds change membership. If those changes substantially alter the mask, its shape depends too strongly on the exact cutoff, so the candidate is not selected as stable. Stability and predicted IoU address different failure modes: the estimated IoU ranks predicted mask quality, while threshold stability checks whether a small decision-threshold change causes a large change in the selected region. Neither test establishes a semantic class label, because the automatic procedure does not assign one.\n\nNearby grid points can prompt the same object, and multiple candidates can describe heavily overlapping regions. After confidence and stability selection, non-maximal suppression removes duplicates by preferring one candidate and suppressing sufficiently overlapping alternatives. The generator also processes multiple overlapping, zoomed-in crops. A small object covers more pixels within a crop than within the complete image, giving the model another opportunity to represent and segment it. Masks from the crop passes are combined with the other predictions and filtered for confidence, stability, and duplication.\n\nThis fully automatic procedure was applied to all 11 million images and produced the masks released in SA-1B. The released dataset contains 1.1 billion automatically generated masks over those 11 million images. A separate statistic describes the complete history of the three-stage data engine: across manual, semi-automatic, and fully automatic production, the engine produced 1.1 billion masks in total, of which 99.1% were generated fully automatically. The 99.1% figure is therefore a proportion of everything produced during the data-engine process; it does not mean that 0.9% of the masks released in SA-1B are manual. SA-1B includes only the automatically generated masks.\n\nThe complete mechanism is an iterative feedback loop. Assisted interaction first produces supervision while exposing where the model needs correction. Semi-automatic prefill then reserves human effort for objects absent from confident proposals, expanding coverage and diversity. The improved ambiguity-aware model finally applies systematic point prompting over the complete image collection, generates multiple interpretations where necessary, ranks them with predicted IoU, rejects threshold-sensitive regions, revisits small objects through overlapping crops, and removes duplicates with non-maximal suppression. The collection’s scale follows from this transition from human-guided correction to automatic generation, while the filtering stages determine which automatic proposals enter the released dataset.",
+      "sourceIds": [
+        "section-3",
+        "section-4"
+      ],
+      "claimIds": [
+        "c8",
+        "c9"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s6",
+      "title": "Scale is evidence only under its measurement conditions",
+      "markdown": "The resulting collection contains 1.1 billion masks over 11 million images. The data engine generated 99.1% automatically, and the released SA-1B uses automatic masks. Scale alone does not establish quality, so the paper sampled 500 images—about 50,000 masks—and had professionals correct every sampled mask. Comparing automatic and corrected masks, 94% of pairs exceeded 90% IoU and 97% exceeded 75% IoU.\n\nThose percentages estimate agreement under that sampling-and-correction procedure; they do not prove every mask is accurate or semantically complete. Likewise, the ablation finding that automatic-only training was about 0.5 mIoU below all-stage training applies to the paper’s 23-dataset, single-center-point suite. The all-stage setup also oversampled manual and semi-automatic masks by $10\\times$, so the comparison is not simply “all collected examples once” versus “automatic examples once.”\n\nA second misconception is that the model is primarily self-supervised because its image encoder begins with MAE pre-training. The discussion explicitly says most capabilities come from large-scale supervised training. The data engine is therefore not ancillary infrastructure: it is part of the learning strategy that made broad supervised training possible.",
+      "sourceIds": [
+        "section-5",
+        "section-7-part-3",
+        "section-8"
+      ],
+      "claimIds": [
+        "c9",
+        "c10",
+        "c12"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s7",
+      "title": "Zero-shot transfer is composition under a protocol",
+      "markdown": "The paper evaluates datasets and tasks absent from training. In the core single-point test, one foreground point was usually sampled at the center of a ground-truth mask, and the most confident SAM candidate was evaluated by default. Under that protocol, SAM exceeded RITM on 16 of 23 datasets. When an oracle selected whichever of SAM’s three candidates best matched ground truth, SAM exceeded RITM on all 23. The gap between ordinary and oracle selection is evidence about unresolved ambiguity, not a production capability.\n\nComposition extends the interface. A detector can supply boxes and SAM can act as the mask-producing component of instance segmentation. A regular point grid plus filtering turns it into an object-proposal mechanism. For edge detection, the experiment derived edges from many unthresholded mask probability maps and postprocessing rather than asking SAM for edges directly. Thus “zero-shot” describes lack of task-specific SAM training under these evaluations; it does not mean no engineered prompts, detector, filtering, or task-specific postprocessing.\n\nThis distinction prevents an overclaim: SAM is a flexible segmentation component, not a universal vision system. A larger pipeline inherits errors and biases from every component that chooses prompts, ranks candidates, or interprets masks.",
+      "sourceIds": [
+        "section-2",
+        "section-7",
+        "section-7-part-2"
+      ],
+      "claimIds": [
+        "c1",
+        "c7",
+        "c11"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s8",
+      "title": "Where the interface stops being a guarantee",
+      "markdown": "## Where the interface stops being a guarantee\n\nSAM’s breadth has concrete limits. The paper reports missed fine structures, occasional hallucinated small disconnected components, and boundaries less crisp than those from computationally intensive zoom-in methods. Dedicated interactive methods are expected to outperform SAM when many corrective points are supplied in pursuit of very high IoU. This reflects SAM’s design priority: broad promptable segmentation rather than refinement optimized for a single interactive setting. Its text-to-mask results were exploratory and not entirely robust, and the paper leaves open how simple prompts could reliably implement semantic or panoptic segmentation. Domain-specific tools may likewise remain stronger within their specialties.\n\nLatency must be divided into image-dependent and prompt-dependent work. The heavyweight image encoder computes $E_I$ once; subsequent prompts reuse that embedding, so prompt encoding and mask decoding can respond in about $50\\,\\mathrm{ms}$ under the reported browser conditions. That amortized response supports interaction after precomputation, but it does not make the complete pipeline real-time when image encoding is included.\n\nThe fairness analysis is also conditional rather than a universal guarantee. It measured person-segmentation mIoU under simulated one- and three-point interaction across perceived gender presentation, age group, and skin tone. Most reported 95% confidence intervals overlapped, but the paper also found an indication of bias for clothing segmentation and warned that new biases may arise when SAM is embedded in a larger system. Dataset scale does not remove representation imbalance either: Africa and low-income countries remained underrepresented in SA-1B. The appropriate conclusion is therefore scoped—SAM showed broadly similar performance across the evaluated groups and protocol, not proven fairness across identities, domains, prompts, or downstream applications.",
+      "sourceIds": [
+        "section-6",
+        "section-8"
+      ],
+      "claimIds": [
+        "c13",
+        "c14"
+      ],
+      "figureId": null
+    }
+  ],
+  "figures": [
+    {
+      "id": "fig-attention",
+      "kind": "attention",
+      "title": "Temperature and normalized attention",
+      "question": "As temperature rises, how do the weights assigned to the four fixed scores change?",
+      "caption": "Illustrative softmax of fixed scores $[2,1,0,-1]$ divided by a positive temperature; the control changes how concentrated the normalized weights are.",
+      "limitation": "This is not a measured SAM head, learned token similarity, or simulation of SAM’s two-way cross-attention.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c5"
+      ],
+      "illustrative": true
+    }
+  ],
+  "quiz": [
+    {
+      "question": "A single foreground point lies on a shirt worn by a person. Under SAM’s task definition, which outcome is valid?",
+      "options": [
+        {
+          "text": "Only the shirt mask is valid.",
+          "explanation": "Incorrect. The point may reasonably indicate the shirt, person, or another nested region."
+        },
+        {
+          "text": "A coherent shirt or person mask may be valid.",
+          "explanation": "Correct. The task accepts a reasonable mask for at least one object compatible with an ambiguous prompt."
+        },
+        {
+          "text": "The candidates must be averaged into one mask.",
+          "explanation": "Incorrect. Multiple candidates are introduced specifically to avoid averaging incompatible valid masks."
+        }
+      ],
+      "answer": 1,
+      "sourceIds": [
+        "section-2",
+        "section-3"
+      ],
+      "claimIds": [
+        "c2",
+        "c6"
+      ]
+    },
+    {
+      "question": "Using the definition $\\operatorname{IoU}(P,G)=|P\\cap G|/|P\\cup G|$, suppose an illustrative prediction has 8 foreground pixels, the reference has 7, and their intersection has 5. What is IoU?",
+      "options": [
+        {
+          "text": "$5/10=0.5$",
+          "explanation": "Correct. The union is $8+7-5=10$, so IoU is $5/10$."
+        },
+        {
+          "text": "$5/15\\approx0.333$",
+          "explanation": "Incorrect. Adding both mask sizes double-counts the five intersecting pixels."
+        },
+        {
+          "text": "$7/8=0.875$",
+          "explanation": "Incorrect. That ratio ignores the intersection and union definition."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-7"
+      ],
+      "claimIds": [
+        "c7",
+        "c11"
+      ]
+    },
+    {
+      "question": "Why does SAM’s oracle single-point result not describe deployable mask selection?",
+      "options": [
+        {
+          "text": "It selects the candidate using ground truth.",
+          "explanation": "Correct. Ground-truth comparison is available for analysis but not ordinary inference."
+        },
+        {
+          "text": "It disables the reusable image embedding.",
+          "explanation": "Incorrect. Oracle selection concerns choosing among masks, not recomputing image features."
+        },
+        {
+          "text": "It trains a new model for every dataset.",
+          "explanation": "Incorrect. The reported oracle is an evaluation rule within the zero-shot protocol, not retraining."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-7"
+      ],
+      "claimIds": [
+        "c11"
+      ]
+    }
+  ],
+  "id": "sam",
+  "createdAt": "2026-10-01T23:29:07.025Z",
+  "pipelineVersion": "subjects-lessons-v1",
+  "sources": [
+    {
+      "id": "abstract",
+      "label": "Original paper · abstract",
+      "url": "https://arxiv.org/abs/2304.02643",
+      "digest": "76726fd6f28dc5ae9999e7ad0d1f8d4cffd835393e8d9f70f975cb8b2293cfae"
+    },
+    {
+      "id": "section-1",
+      "label": "1 Introduction",
+      "url": "https://arxiv.org/html/2304.02643#S1",
+      "digest": "1adf87ce5227a80c19505a196959b77f8d536d730782023ff146c69c5927fd4c"
+    },
+    {
+      "id": "section-2",
+      "label": "2 Segment Anything Task",
+      "url": "https://arxiv.org/html/2304.02643#S2",
+      "digest": "a1de6edc2af3626e2267d996bf5229e8c036f54a96523e94b141b3abc01a7662"
+    },
+    {
+      "id": "section-3",
+      "label": "3 Segment Anything Model",
+      "url": "https://arxiv.org/html/2304.02643#S3",
+      "digest": "201e5c5cbf7c7a84225dc36ba3e079d0b6c57595627b4f3f67949b662053b6cc"
+    },
+    {
+      "id": "section-4",
+      "label": "4 Segment Anything Data Engine",
+      "url": "https://arxiv.org/html/2304.02643#S4",
+      "digest": "82f854851feb0188f2ada94cd134ac3dd220aec3c4a2a1f620fd1dafc8c41f56"
+    },
+    {
+      "id": "section-5",
+      "label": "5 Segment Anything Dataset",
+      "url": "https://arxiv.org/html/2304.02643#S5",
+      "digest": "231332939b205a02ed6e63f3b9ce20572b260991b353ec38f0baceda9ed49e76"
+    },
+    {
+      "id": "section-6",
+      "label": "6 Segment Anything RAI Analysis",
+      "url": "https://arxiv.org/html/2304.02643#S6",
+      "digest": "6fdf3479f2978d04c14980ddaf0a41679b6b972209e01e79a6cad43db5ed51d8"
+    },
+    {
+      "id": "section-7",
+      "label": "7 Zero-Shot Transfer Experiments",
+      "url": "https://arxiv.org/html/2304.02643#S7",
+      "digest": "4c57d98901f01648c7172b577f7adea33d19734782816be5a4f9d675959a3fb9"
+    },
+    {
+      "id": "section-7-part-2",
+      "label": "7 Zero-Shot Transfer Experiments · part 2",
+      "url": "https://arxiv.org/html/2304.02643#S7",
+      "digest": "35b58232e28f3be1bf74e47c96c21e86c2ac22342218764e04c972075da3c16e"
+    },
+    {
+      "id": "section-7-part-3",
+      "label": "7 Zero-Shot Transfer Experiments · part 3",
+      "url": "https://arxiv.org/html/2304.02643#S7",
+      "digest": "4712b76e899f36cee6e08eb8ba4ea8a1eb253dc78862c72a81ecf7458f95abd8"
+    },
+    {
+      "id": "section-8",
+      "label": "8 Discussion",
+      "url": "https://arxiv.org/html/2304.02643#S8",
+      "digest": "313f8473d5c7060ffbae6cabc99097f47e1845a451080b82a15788e037ba0b64"
+    }
+  ],
+  "review": {
+    "status": "passed",
+    "reviewedAt": "2026-10-02T02:14:50.145Z",
+    "contentDigest": "5d11d168070ba5264b2595825c2f6976474940c9593fafa74139b46563e1afa5"
+  }
+}

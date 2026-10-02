@@ -1,0 +1,466 @@
+{
+  "title": "Teaching a Language Model to Look: The LLaVA Bridge",
+  "summary": "LLaVA turns frozen CLIP features into language-model tokens, then instruction-tunes the projection and Vicuna so visual evidence can guide conversational answers.",
+  "prerequisites": [
+    "Transformer language models and autoregressive prediction",
+    "Image encoders that produce grids of feature vectors",
+    "Maximum-likelihood training and parameter freezing",
+    "Instruction tuning with prompts and target responses"
+  ],
+  "objectives": [
+    "Explain how symbolic image descriptions support visual instruction generation.",
+    "Derive the linear projection from CLIP features to Vicuna embeddings.",
+    "Distinguish alignment pretraining from multimodal instruction tuning.",
+    "Interpret benchmark results within their reported evaluation conditions.",
+    "Identify conclusions that the paper's evidence does not support."
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "mechanism",
+      "statement": "The paper reframes existing image–text resources as multimodal instruction-following examples generated with a text-only teacher.",
+      "conditions": "For the proposed data-collection pipeline, using textual representations of images rather than image pixels as teacher input.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c2",
+      "kind": "mechanism",
+      "statement": "The text-only teacher receives captions and object bounding boxes as symbolic representations of an image.",
+      "conditions": "During GPT-assisted instruction-data generation; the teacher itself does not consume the image.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c3",
+      "kind": "result",
+      "statement": "The generated collection contains 158K samples divided among conversation, description, and reasoning formats.",
+      "conditions": "For the reported COCO-based language-image instruction collection.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c4",
+      "kind": "mechanism",
+      "statement": "LLaVA connects a pretrained CLIP ViT-L/14 visual encoder to the language model through a trainable linear projection.",
+      "conditions": "For the architecture evaluated in the paper.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c5",
+      "kind": "equation",
+      "statement": "Visual features are mapped into language-space visual tokens by $\\mathbf H_v=\\mathbf W\\mathbf Z_v$, with $\\mathbf Z_v=g(\\mathbf X_v)$.",
+      "conditions": "Here $g$ is the frozen visual encoder and $\\mathbf W$ is the learned projection matrix.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c6",
+      "kind": "mechanism",
+      "statement": "Training predicts assistant-answer tokens autoregressively while conditioning every answer on the image and preceding conversation.",
+      "conditions": "For the unified multimodal conversation sequence and the objective in Equation 3.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c7",
+      "kind": "mechanism",
+      "statement": "The first training stage freezes both major pretrained networks and updates only the projection matrix.",
+      "conditions": "During alignment pretraining on the filtered CC3M image-caption pairs.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c8",
+      "kind": "mechanism",
+      "statement": "The second stage keeps the visual encoder frozen but updates the projection and the language model together.",
+      "conditions": "During downstream instruction tuning for the chatbot and ScienceQA settings.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c9",
+      "kind": "result",
+      "statement": "On the COCO version of LLaVA-Bench, the full three-type training mixture obtained the best reported overall relative score, 85.1%.",
+      "conditions": "For 30 COCO-Val-2014 images, 90 generated questions, and GPT-4 judging relative to a text-only GPT-4 reference with ground-truth descriptions.",
+      "sourceIds": [
+        "section-5"
+      ]
+    },
+    {
+      "id": "c10",
+      "kind": "result",
+      "statement": "The reported no-instruction-tuning ablation was more than 50 points worse in instruction-following score.",
+      "conditions": "On the paper’s COCO LLaVA-Bench protocol using GPT-4 comparative judging.",
+      "sourceIds": [
+        "section-5"
+      ]
+    },
+    {
+      "id": "c11",
+      "kind": "result",
+      "statement": "The paper reports 90.92% ScienceQA accuracy for LLaVA and 92.53% when GPT-4 judges disagreements between LLaVA and GPT-4 outputs.",
+      "conditions": "For the paper’s ScienceQA runs; LLaVA uses pre-last-layer visual features, reasoning-first output, and 12 training epochs.",
+      "sourceIds": [
+        "section-5-part-2"
+      ]
+    },
+    {
+      "id": "c12",
+      "kind": "caveat",
+      "statement": "LLaVA can conflate co-occurring objects instead of representing their compositional relation correctly.",
+      "conditions": "Observed in the paper’s refrigerator example, where separate strawberries and yogurt were mistaken for strawberry yogurt.",
+      "sourceIds": [
+        "section-5-part-2"
+      ]
+    },
+    {
+      "id": "c13",
+      "kind": "result",
+      "statement": "Skipping the alignment pretraining stage reduced the reported ScienceQA accuracy by 5.11 percentage points.",
+      "conditions": "In the paper’s ScienceQA design-choice ablation against its 90.92% best variant.",
+      "sourceIds": [
+        "section-5-part-3"
+      ]
+    },
+    {
+      "id": "c14",
+      "kind": "caveat",
+      "statement": "The paper presents this system as an initial investigation centered mainly on real-life tasks, not a complete evaluation of multimodal intelligence.",
+      "conditions": "For the scope claimed in the conclusion of the supplied paper.",
+      "sourceIds": [
+        "section-6"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "s1",
+      "title": "The missing interface between seeing and obeying",
+      "markdown": "A captioning model answers one implicit request: describe the image. An instruction-following assistant must instead let language select the task—describe, count, compare, explain an anomaly, or answer a science question. LLaVA’s particular contribution is to join those capabilities with a deliberately simple bridge and instruction data.\n\nThree objects should be kept separate. A **visual encoder** maps pixels to feature vectors. A **language model** maps a sequence of embeddings to probabilities for later text tokens. **Instruction tuning** teaches the combined system which response is appropriate for a user’s request. This differs from visual prompt tuning, which the paper identifies as a parameter-efficient adaptation method rather than a method whose target is instruction following.\n\nThe central problem is therefore not merely attaching an image to a chatbot. The attachment must produce vectors that the language model can use, and the training examples must reward answers that follow varied instructions rather than always emitting captions.",
+      "sourceIds": [
+        "section-1",
+        "section-2",
+        "section-4"
+      ],
+      "claimIds": [
+        "c4",
+        "c6"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s2",
+      "title": "A text-only teacher writes visual lessons",
+      "markdown": "The data pipeline begins with an apparent contradiction: GPT-4 or ChatGPT is asked to create visual instruction data even though the versions used here accept only text. The solution is a symbolic proxy. For each image, captions communicate scene content, while labeled bounding boxes communicate object identities and approximate locations. The teacher sees those symbols—not the pixels—and generates three kinds of targets: multi-turn conversations, detailed descriptions, and complex-reasoning exchanges.\n\nThis is data reformation rather than new pixel annotation at full scale. A few manually designed examples seed in-context generation. The resulting 158K samples comprise 58K conversation, 23K description, and 77K reasoning samples. A simpler expansion also exists: pair a request to describe the image with its existing caption. The authors regard that cheap construction as deficient in diversity and depth, but use it for the first alignment stage.\n\nA useful mental model is that image regions become an ordered collection of features. In the illustrative patch control, an $8\\times8$ grid contains 64 cells and the mask changes how many remain visible. If the mask hides 16 cells, then $64-16=48$ are visible. This arithmetic is illustrative: LLaVA does not train with this masking experiment, and the control says nothing about reconstruction quality. Its teaching purpose is narrower—an encoder can expose a collection of local units without thereby encoding all relationships among them.",
+      "sourceIds": [
+        "section-3",
+        "section-4",
+        "section-5-part-2"
+      ],
+      "claimIds": [
+        "c1",
+        "c2",
+        "c3",
+        "c12"
+      ],
+      "figureId": "fig-patches"
+    },
+    {
+      "id": "s3",
+      "title": "The linear bridge into language space",
+      "markdown": "Let $\\mathbf X_v$ denote an input image and let $g$ denote the pretrained CLIP ViT-L/14 encoder. It produces visual grid features\n\n$$\n\\mathbf Z_v=g(\\mathbf X_v).\n$$\n\nLet $d_v$ be the visual-feature dimension and $d_\\ell$ the language-model embedding dimension. If there are $n$ visual positions, write $\\mathbf Z_v\\in\\mathbb R^{d_v\\times n}$. The trainable matrix $\\mathbf W\\in\\mathbb R^{d_\\ell\\times d_v}$ produces\n\n$$\n\\mathbf H_v=\\mathbf W\\mathbf Z_v\\in\\mathbb R^{d_\\ell\\times n}.\n$$\n\nHere $\\mathbf H_v$ is the sequence of visual tokens supplied in the same dimensional space as Vicuna’s word embeddings. The equation changes representation, not meaning by decree; training must make the projected vectors useful.\n\nFor a small illustrative calculation, suppose one visual feature is $\\mathbf z=[2,-1]^\\top$ and\n\n$$\n\\mathbf W=\\begin{bmatrix}1&2\\\\0&-1\\\\3&1\\end{bmatrix}.\n$$\n\nThen\n\n$$\n\\mathbf h=\\mathbf W\\mathbf z\n=\\begin{bmatrix}1(2)+2(-1)\\\\0(2)+(-1)(-1)\\\\3(2)+1(-1)\\end{bmatrix}\n=\\begin{bmatrix}0\\\\1\\\\5\\end{bmatrix}.\n$$\n\nThis merely verifies the projection’s dimensional role; these numbers are invented and are not learned LLaVA weights. The paper deliberately leaves gated cross-attention, Q-formers, and other richer connectors to future work.",
+      "sourceIds": [
+        "section-4"
+      ],
+      "claimIds": [
+        "c4",
+        "c5"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s4",
+      "title": "What the autoregressive objective rewards",
+      "markdown": "## What the autoregressive objective rewards\n\nFor $T$ conversation turns, $\\mathbf X_q^t$ and $\\mathbf X_a^t$ denote the question and answer at turn $t$. At the first turn, the image and question are placed in either order; subsequent turns add their question text while the preceding conversation remains in context. The model is trained on assistant-answer tokens, including the stopping token, rather than on every token in the combined sequence.\n\nIf $L$ answer tokens are predicted, the paper writes their conditional probability as\n\n$$\np(\\mathbf X_a\\mid\\mathbf X_v,\\mathbf X_{\\mathrm{instruct}})\n=\\prod_{i=1}^{L}p_{\\boldsymbol\\theta}(x_i\\mid\\mathbf X_v,\\mathbf X_{\\mathrm{instruct},<i},\\mathbf X_{a,<i}).\n$$\n\nHere $x_i$ is the current target answer token, $\\boldsymbol\\theta$ is the set of trainable parameters, and the subscript $<i$ denotes the instruction and answer tokens available before that prediction. The explicit conditioning on $\\mathbf X_v$ means that every answer token may depend on the image, not only the first token or first conversational turn. Maximizing the product is equivalent to minimizing the summed negative log-likelihood\n\n$$\n\\mathcal L=-\\sum_{i=1}^{L}\\log p_{\\boldsymbol\\theta}(x_i\\mid\\mathbf X_v,\\mathbf X_{\\mathrm{instruct},<i},\\mathbf X_{a,<i}).\n$$\n\nThe attention figure isolates one calculation that helps explain how a token-processing mechanism can distribute emphasis. It starts from the declared scores $[2,1,0,-1]$, divides each by a positive temperature $\\tau$, and normalizes them:\n\n$$\na_j(\\tau)=\\frac{\\exp(s_j/\\tau)}{\\sum_k \\exp(s_k/\\tau)}.\n$$\n\nThe $a_j$ are dimensionless weights and always sum to one. Lowering $\\tau$ magnifies score differences, concentrating more weight on the score $2$; raising $\\tau$ reduces those differences, moving the weights toward a uniform distribution. Temperature therefore controls concentration without changing the ordering of these fixed scores. The scores and temperature sweep are constructed teaching quantities, so the figure explains softmax normalization rather than reporting a measured LLaVA attention head. In the actual method, the training signal comes from the autoregressive likelihood above: parameters are rewarded when the image and conversation history increase the probability assigned to the correct next assistant token.",
+      "sourceIds": [
+        "section-4"
+      ],
+      "claimIds": [
+        "c5",
+        "c6"
+      ],
+      "figureId": "fig-attention"
+    },
+    {
+      "id": "s5",
+      "title": "Two stages, two parameter boundaries",
+      "markdown": "Stage 1 aligns modalities. The authors filter CC3M to 595K image–caption pairs, turn each into a single-turn request-and-caption example, freeze the visual encoder and Vicuna, and update only $\\mathbf W$. In this stage, $\\boldsymbol\\theta=\\{\\mathbf W\\}$. Calling it a compatible visual tokenizer is helpful: the projection learns how to express existing visual features in a coordinate system useful to the frozen language model.\n\nStage 2 teaches task behavior. The visual encoder stays frozen, but both the initialized projection and Vicuna parameters $\\boldsymbol\\phi$ are updated, so $\\boldsymbol\\theta=\\{\\mathbf W,\\boldsymbol\\phi\\}$. Chatbot tuning uses the 158K mixture; ScienceQA is arranged as a single turn whose target contains reasoning and an answer.\n\nThe illustrative optimizer control performs plain gradient descent on $f(x)=x^2/2$ from $x_0=3$. Since $f'(x)=x$, one update with learning rate $\\eta$ is $x_{t+1}=(1-\\eta)x_t$. For illustrative $\\eta=0.2$, $x_1=2.4$ and $x_2=1.92$. The control helps distinguish parameters held fixed from parameters allowed to move, but it is not Adam, the paper’s optimizer implementation, or evidence about LLaVA convergence. The paper reports that omitting stage 1 lowered ScienceQA accuracy from 90.92% to 85.81% under its ablation setup.",
+      "sourceIds": [
+        "section-4",
+        "section-5",
+        "section-5-part-3"
+      ],
+      "claimIds": [
+        "c7",
+        "c8",
+        "c13"
+      ],
+      "figureId": "fig-optimizer"
+    },
+    {
+      "id": "s6",
+      "title": "Reading the evidence without enlarging it",
+      "markdown": "The COCO benchmark used 30 COCO-Val-2014 images and three question types per image, totaling 90 questions. A text-only GPT-4 judge received textual visual information plus candidate and reference responses, scored helpfulness, relevance, accuracy, and detail, and results were expressed relative to a text-only GPT-4 reference using ground-truth descriptions. Under that protocol, full instruction tuning scored 85.1% overall, while the no-instruction-tuning row scored 21.5%. These are judge-relative scores, not task accuracy or proof of equivalence to GPT-4.\n\nOn ScienceQA, LLaVA used visual features from before CLIP’s last layer, predicted reasons before the answer, and trained for 12 epochs. It obtained 90.92% accuracy. A separate ensemble asked text-only GPT-4 to adjudicate disagreements and reached 92.53%. The surprising improvement does not mean the judge saw images: the authors explain that some image-context questions can be answered without actually requiring the image.\n\nThe evidence supports a causal comparison inside these ablations: instruction-formatted data and alignment pretraining mattered under the reported settings. It does not isolate every possible confound, establish human preference, or show that a GPT-4 judge is unbiased.",
+      "sourceIds": [
+        "section-5",
+        "section-5-part-2",
+        "section-5-part-3"
+      ],
+      "claimIds": [
+        "c9",
+        "c10",
+        "c11",
+        "c13"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s7",
+      "title": "The bag-of-patches misconception and honest limits",
+      "markdown": "## The bag-of-patches misconception and honest limits\n\nA common misconception is: **if a model has image tokens, it understands the scene’s relationships**. The refrigerator failure contradicts that inference. LLaVA answered yes when asked whether strawberry-flavored yogurt was present, even though the scene contained strawberries and yogurt as separate items. The model recognized relevant components but combined their co-occurrence into an unsupported relation. Object evidence alone therefore does not establish correct compositional binding.\n\nThis failure also clarifies where information can be lost. During instruction-data generation, the text-only teacher receives captions and labeled bounding boxes rather than pixels. Those symbolic descriptions communicate selected objects, locations, and scene summaries, but they need not preserve every visual detail or relationship. During model training, CLIP grid features are mapped through a lightweight linear projection into Vicuna’s embedding space. That bridge makes visual features usable as language-space tokens; it does not itself guarantee that the resulting representation distinguishes every attribute, relation, or composition.\n\nThe reported evidence should be interpreted within its evaluation conditions. The chatbot results combine qualitative examples with GPT-4-judged benchmarks, and the ScienceQA ensemble uses text-only GPT-4 to resolve disagreements between its answer and LLaVA’s answer. These experiments demonstrate useful instruction following and benchmark gains under the paper’s protocols, but they do not show that fluent responses are always visually grounded. The paper presents LLaVA as an initial investigation focused mainly on real-life tasks. Its durable contribution is the separation of three problems—constructing instruction data, aligning visual features with language embeddings, and tuning the combined model to follow requests—while the refrigerator example shows that success at those stages can coexist with errors in relational perception.",
+      "sourceIds": [
+        "section-3",
+        "section-4",
+        "section-5",
+        "section-5-part-2",
+        "section-6"
+      ],
+      "claimIds": [
+        "c1",
+        "c12",
+        "c14"
+      ],
+      "figureId": null
+    }
+  ],
+  "figures": [
+    {
+      "id": "fig-patches",
+      "kind": "patches",
+      "title": "Visible units are not relational understanding",
+      "question": "As the masked fraction rises, how do the visible-cell and masked-cell counts change while the grid stays fixed?",
+      "caption": "An illustrative $8\\times8$ grid uses a deterministic mask to separate visible from hidden cells, making the count of available local units concrete.",
+      "limitation": "This is not LLaVA’s preprocessing or a reconstruction experiment; it reports neither encoder quality nor whether visible patches are composed into correct relationships.",
+      "sourceIds": [
+        "section-4",
+        "section-5-part-2"
+      ],
+      "claimIds": [
+        "c4",
+        "c12"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "fig-attention",
+      "kind": "attention",
+      "title": "Temperature reshapes normalized weighting",
+      "question": "When positive temperature increases, do four fixed-score softmax weights become more concentrated or more uniform?",
+      "caption": "Four illustrative scores $[2,1,0,-1]$ are divided by temperature and normalized with softmax to expose the weighting calculation behind token processing.",
+      "limitation": "The scores are fixed teaching values, not a measured LLaVA head, learned similarity, or empirical finding from the paper.",
+      "sourceIds": [
+        "section-4"
+      ],
+      "claimIds": [
+        "c6"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "fig-optimizer",
+      "kind": "optimizer",
+      "title": "Updating versus freezing a parameter",
+      "question": "For $f(x)=x^2/2$ from $x=3$, how does changing the learning rate alter the 12 plain-gradient-descent iterates?",
+      "caption": "The control follows ordinary gradient descent on one illustrative quadratic so that parameter movement can be contrasted with freezing.",
+      "limitation": "It does not simulate LLaVA’s optimizer, matrices, training data, loss surface, or reported convergence behavior.",
+      "sourceIds": [
+        "section-4",
+        "section-5-part-3"
+      ],
+      "claimIds": [
+        "c7",
+        "c8",
+        "c13"
+      ],
+      "illustrative": true
+    }
+  ],
+  "quiz": [
+    {
+      "question": "Assume the visual encoder and language model are frozen. Which parameter can learn during LLaVA’s first alignment stage?",
+      "options": [
+        {
+          "text": "Only the projection matrix $\\mathbf W$.",
+          "explanation": "Correct. The paper sets the trainable parameters to $\\boldsymbol\\theta=\\{\\mathbf W\\}$ in the alignment stage."
+        },
+        {
+          "text": "Only the visual encoder $g$.",
+          "explanation": "Incorrect. The visual encoder remains frozen in both reported training stages."
+        },
+        {
+          "text": "Both Vicuna and the visual encoder.",
+          "explanation": "Incorrect. Neither is updated during stage 1; Vicuna is updated only in stage 2."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-4"
+      ],
+      "claimIds": [
+        "c7",
+        "c8"
+      ]
+    },
+    {
+      "question": "Under the illustrative four-score softmax control, what happens when a positive temperature becomes very large?",
+      "options": [
+        {
+          "text": "The weights approach a uniform distribution.",
+          "explanation": "Correct. Dividing fixed finite scores by a very large positive temperature makes their logits nearly equal before softmax."
+        },
+        {
+          "text": "The highest-score item approaches weight one.",
+          "explanation": "Incorrect. That behavior occurs as positive temperature approaches zero, not as it grows."
+        },
+        {
+          "text": "The weights stop summing to one.",
+          "explanation": "Incorrect. Softmax remains normalized for every positive temperature."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-4"
+      ],
+      "claimIds": [
+        "c6"
+      ]
+    },
+    {
+      "question": "Which conclusion is justified by the reported refrigerator failure?",
+      "options": [
+        {
+          "text": "Recognizing separate items does not guarantee correct relational composition.",
+          "explanation": "Correct. The model conflated separate strawberries and yogurt with strawberry-flavored yogurt."
+        },
+        {
+          "text": "The model cannot recognize any objects in refrigerators.",
+          "explanation": "Incorrect. The failure concerns a relation between recognized contents, not total object-recognition failure."
+        },
+        {
+          "text": "Patch-based visual encoders can never represent relationships.",
+          "explanation": "Incorrect. One example reveals a failure mode of this system; it does not prove an impossibility for an architecture class."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-5-part-2"
+      ],
+      "claimIds": [
+        "c12",
+        "c14"
+      ]
+    }
+  ],
+  "id": "visual-instruction-tuning",
+  "createdAt": "2026-10-01T23:53:04.350Z",
+  "pipelineVersion": "subjects-lessons-v1",
+  "sources": [
+    {
+      "id": "abstract",
+      "label": "Original paper · abstract",
+      "url": "https://arxiv.org/abs/2304.08485",
+      "digest": "f8e5df4b8818738c0878d3cc47e6f77350160547b1f5d42f8d807cfa7f6ba7a7",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:51:06.196Z"
+    },
+    {
+      "id": "section-1",
+      "label": "1 Introduction",
+      "url": "https://arxiv.org/html/2304.08485#S1",
+      "digest": "4f586920a420a8ccb45e43b9555ff250cc168c5744694b054f316485228ee7c6",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:51:06.196Z"
+    },
+    {
+      "id": "section-2",
+      "label": "2 Related Work",
+      "url": "https://arxiv.org/html/2304.08485#S2",
+      "digest": "62a4d1d3bf08395e94bcb85d327d519495ea07034752b89cf3c3a5fafc91f3a5",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:51:06.196Z"
+    },
+    {
+      "id": "section-3",
+      "label": "3 GPT-assisted Visual Instruction Data Generation",
+      "url": "https://arxiv.org/html/2304.08485#S3",
+      "digest": "37c4a2e507d0afca1f41917755a045dbc5cca9d0b5bfc22561a2a8b451b3ad59",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:51:06.196Z"
+    },
+    {
+      "id": "section-4",
+      "label": "4 Visual Instruction Tuning",
+      "url": "https://arxiv.org/html/2304.08485#S4",
+      "digest": "1b3e60543eee71d16a4ee30647f1a1c093872e5efc59d38b5655e723b0e04068",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:51:06.196Z"
+    },
+    {
+      "id": "section-5",
+      "label": "5 Experiments",
+      "url": "https://arxiv.org/html/2304.08485#S5",
+      "digest": "d88603eed62d0c384ac5adb1a37afaf4ff098b4071d44fcfc26cfde165608e13",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:51:06.196Z"
+    },
+    {
+      "id": "section-5-part-2",
+      "label": "5 Experiments · part 2",
+      "url": "https://arxiv.org/html/2304.08485#S5",
+      "digest": "a1f0041703faa93392042520e6e4dda1c1825671e46fb475f81b5235ce96b5db",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:51:06.196Z"
+    },
+    {
+      "id": "section-5-part-3",
+      "label": "5 Experiments · part 3",
+      "url": "https://arxiv.org/html/2304.08485#S5",
+      "digest": "247569c87af7babee155890dce918818b25897be02b3fd45fddbfe9496902274",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:51:06.196Z"
+    },
+    {
+      "id": "section-6",
+      "label": "6 Conclusion",
+      "url": "https://arxiv.org/html/2304.08485#S6",
+      "digest": "98eae1d28c0f865c8d395881cd54f35a76474ec8b538c94864e813d295009eb5",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:51:06.196Z"
+    }
+  ],
+  "review": {
+    "status": "passed",
+    "reviewedAt": "2026-10-02T02:09:11.889Z",
+    "contentDigest": "772595364694ddded883136e3ebbc81f83eda4f6afe4b120d8b060983c23ac26"
+  }
+}

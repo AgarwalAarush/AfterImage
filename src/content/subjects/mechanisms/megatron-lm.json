@@ -1,0 +1,525 @@
+{
+  "version": 1,
+  "sectionId": "s2",
+  "title": "Keep the MLP Nonlinearity Local",
+  "introduction": "Let $X$ be shared token representations, and column-partition the first MLP weight as $A=[A_1,A_2]$. Worker $i$ can form $Y_i=\\operatorname{GeLU}(XA_i)$ without communicating because its output-feature partition is complete. A row-partitioned second weight then consumes the matching $Y_i$ locally; only the resulting partial outputs must be summed.",
+  "entities": [
+    {
+      "id": "x",
+      "label": "X",
+      "meaning": "Shared input token representations supplied to both workers."
+    },
+    {
+      "id": "a1",
+      "label": "A1",
+      "meaning": "First worker's output-column shard of the first MLP weight."
+    },
+    {
+      "id": "a2",
+      "label": "A2",
+      "meaning": "Second worker's output-column shard of the first MLP weight."
+    },
+    {
+      "id": "y1",
+      "label": "Y1",
+      "meaning": "First worker's local activation GeLU(XA1)."
+    },
+    {
+      "id": "y2",
+      "label": "Y2",
+      "meaning": "Second worker's local activation GeLU(XA2)."
+    },
+    {
+      "id": "b1",
+      "label": "B1",
+      "meaning": "First worker's row shard of the second MLP weight, aligned with Y1."
+    },
+    {
+      "id": "b2",
+      "label": "B2",
+      "meaning": "Second worker's row shard of the second MLP weight, aligned with Y2."
+    },
+    {
+      "id": "z1",
+      "label": "Z1",
+      "meaning": "First worker's partial second-projection output."
+    },
+    {
+      "id": "z2",
+      "label": "Z2",
+      "meaning": "Second worker's partial second-projection output."
+    },
+    {
+      "id": "z",
+      "label": "Z",
+      "meaning": "Shared second-projection output obtained by reducing Z1 and Z2."
+    }
+  ],
+  "objects": [
+    {
+      "id": "input",
+      "form": "vector",
+      "label": "Shared input",
+      "detail": "Shared token representations",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c3",
+        "c5"
+      ]
+    },
+    {
+      "id": "first-weights",
+      "form": "bank",
+      "label": "Column shards",
+      "detail": "First-projection weight shards",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c5"
+      ]
+    },
+    {
+      "id": "first-projection",
+      "form": "module",
+      "label": "Local first projection",
+      "detail": "Partitioned GEMM and GeLU",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c3",
+        "c5"
+      ]
+    },
+    {
+      "id": "local-activations",
+      "form": "vector",
+      "label": "Local activations",
+      "detail": "Complete feature partitions",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c5"
+      ]
+    },
+    {
+      "id": "second-weights",
+      "form": "bank",
+      "label": "Row shards",
+      "detail": "Aligned second-weight shards",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c6"
+      ]
+    },
+    {
+      "id": "partial-outputs",
+      "form": "vector",
+      "label": "Partial outputs",
+      "detail": "Local second-projection sums",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c6"
+      ]
+    },
+    {
+      "id": "reduced-output",
+      "form": "vector",
+      "label": "Reduced output",
+      "detail": "Shared summed MLP output",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c6"
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "id": "r-input-first",
+      "from": "input",
+      "to": "first-projection",
+      "label": "broadcast shared input",
+      "dashed": false,
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c5"
+      ]
+    },
+    {
+      "id": "r-a-first",
+      "from": "first-weights",
+      "to": "first-projection",
+      "label": "apply column shards",
+      "dashed": false,
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c5"
+      ]
+    },
+    {
+      "id": "r-first-y",
+      "from": "first-projection",
+      "to": "local-activations",
+      "label": "compute local GeLU",
+      "dashed": false,
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c3",
+        "c5"
+      ]
+    },
+    {
+      "id": "r-y-partial",
+      "from": "local-activations",
+      "to": "partial-outputs",
+      "label": "feed aligned partitions",
+      "dashed": false,
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c6"
+      ]
+    },
+    {
+      "id": "r-b-partial",
+      "from": "second-weights",
+      "to": "partial-outputs",
+      "label": "apply row shards",
+      "dashed": false,
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c6"
+      ]
+    },
+    {
+      "id": "r-partial-reduce",
+      "from": "partial-outputs",
+      "to": "reduced-output",
+      "label": "all-reduce partial outputs",
+      "dashed": false,
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c6"
+      ]
+    }
+  ],
+  "beats": [
+    {
+      "title": "Distribute the shared input",
+      "explanation": "Both workers receive the same $X$, while each retains a different output-column shard, $A_1$ or $A_2$. Because the split is across output features rather than the contracted input dimension, no partial products need to be combined yet.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c5"
+      ],
+      "objects": [
+        {
+          "objectId": "input",
+          "status": "active",
+          "entityIds": [
+            "x"
+          ]
+        },
+        {
+          "objectId": "first-weights",
+          "status": "active",
+          "entityIds": [
+            "a1",
+            "a2"
+          ]
+        },
+        {
+          "objectId": "first-projection",
+          "status": "active",
+          "entityIds": []
+        },
+        {
+          "objectId": "local-activations",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "second-weights",
+          "status": "retained",
+          "entityIds": [
+            "b1",
+            "b2"
+          ]
+        },
+        {
+          "objectId": "partial-outputs",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "reduced-output",
+          "status": "pending",
+          "entityIds": []
+        }
+      ],
+      "relationships": [
+        {
+          "relationshipId": "r-input-first",
+          "entityIds": []
+        },
+        {
+          "relationshipId": "r-a-first",
+          "entityIds": []
+        }
+      ]
+    },
+    {
+      "title": "Apply GeLU within each shard",
+      "explanation": "The workers independently produce $Y_1=\\operatorname{GeLU}(XA_1)$ and $Y_2=\\operatorname{GeLU}(XA_2)$. Each result is complete for its owned feature subset, so the nonlinearity needs no intervening synchronization.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c3",
+        "c5"
+      ],
+      "objects": [
+        {
+          "objectId": "input",
+          "status": "active",
+          "entityIds": [
+            "x"
+          ]
+        },
+        {
+          "objectId": "first-weights",
+          "status": "active",
+          "entityIds": [
+            "a1",
+            "a2"
+          ]
+        },
+        {
+          "objectId": "first-projection",
+          "status": "active",
+          "entityIds": []
+        },
+        {
+          "objectId": "local-activations",
+          "status": "active",
+          "entityIds": [
+            "y1",
+            "y2"
+          ]
+        },
+        {
+          "objectId": "second-weights",
+          "status": "retained",
+          "entityIds": [
+            "b1",
+            "b2"
+          ]
+        },
+        {
+          "objectId": "partial-outputs",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "reduced-output",
+          "status": "pending",
+          "entityIds": []
+        }
+      ],
+      "relationships": [
+        {
+          "relationshipId": "r-input-first",
+          "entityIds": []
+        },
+        {
+          "relationshipId": "r-a-first",
+          "entityIds": []
+        },
+        {
+          "relationshipId": "r-first-y",
+          "entityIds": []
+        }
+      ]
+    },
+    {
+      "title": "Continue into the second projection",
+      "explanation": "The row shards are aligned with the feature partitions: $Y_1$ feeds $B_1$, and $Y_2$ feeds $B_2$. Each worker therefore forms its own partial output, $Z_1$ or $Z_2$, without first exchanging the local activations.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c6"
+      ],
+      "objects": [
+        {
+          "objectId": "input",
+          "status": "retained",
+          "entityIds": [
+            "x"
+          ]
+        },
+        {
+          "objectId": "first-weights",
+          "status": "retained",
+          "entityIds": [
+            "a1",
+            "a2"
+          ]
+        },
+        {
+          "objectId": "first-projection",
+          "status": "retained",
+          "entityIds": []
+        },
+        {
+          "objectId": "local-activations",
+          "status": "active",
+          "entityIds": [
+            "y1",
+            "y2"
+          ]
+        },
+        {
+          "objectId": "second-weights",
+          "status": "active",
+          "entityIds": [
+            "b1",
+            "b2"
+          ]
+        },
+        {
+          "objectId": "partial-outputs",
+          "status": "active",
+          "entityIds": [
+            "z1",
+            "z2"
+          ]
+        },
+        {
+          "objectId": "reduced-output",
+          "status": "pending",
+          "entityIds": []
+        }
+      ],
+      "relationships": [
+        {
+          "relationshipId": "r-y-partial",
+          "entityIds": []
+        },
+        {
+          "relationshipId": "r-b-partial",
+          "entityIds": []
+        }
+      ]
+    },
+    {
+      "title": "Reduce at the block boundary",
+      "explanation": "The second projection's shards contribute to the same output coordinates, so their partial results must now be summed. An all-reduce combines $Z_1$ and $Z_2$ into the shared output $Z$ before dropout, concentrating forward communication after both local GEMMs and GeLU.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c6"
+      ],
+      "objects": [
+        {
+          "objectId": "input",
+          "status": "retained",
+          "entityIds": [
+            "x"
+          ]
+        },
+        {
+          "objectId": "first-weights",
+          "status": "retained",
+          "entityIds": [
+            "a1",
+            "a2"
+          ]
+        },
+        {
+          "objectId": "first-projection",
+          "status": "retained",
+          "entityIds": []
+        },
+        {
+          "objectId": "local-activations",
+          "status": "retained",
+          "entityIds": [
+            "y1",
+            "y2"
+          ]
+        },
+        {
+          "objectId": "second-weights",
+          "status": "retained",
+          "entityIds": [
+            "b1",
+            "b2"
+          ]
+        },
+        {
+          "objectId": "partial-outputs",
+          "status": "active",
+          "entityIds": [
+            "z1",
+            "z2"
+          ]
+        },
+        {
+          "objectId": "reduced-output",
+          "status": "active",
+          "entityIds": [
+            "z"
+          ]
+        }
+      ],
+      "relationships": [
+        {
+          "relationshipId": "r-partial-reduce",
+          "entityIds": []
+        }
+      ]
+    }
+  ],
+  "takeaway": "The invariant is that each worker owns a complete first-projection feature partition through $\\operatorname{GeLU}$ and the aligned second projection; communication becomes necessary only when the second projection's partial contributions must form the shared output $Z$.",
+  "sourceIds": [
+    "section-3"
+  ],
+  "claimIds": [
+    "c3",
+    "c5",
+    "c6"
+  ],
+  "lessonId": "megatron-lm",
+  "parentContentDigest": "0441dd9abda9ac8804db4eff5f6c00bae4137233636fcd4ce11dc3c3ae867e57",
+  "review": {
+    "status": "source-passed",
+    "reviewedAt": "2026-10-02T00:00:07.221Z",
+    "contentDigest": "9ef84f4690a684f9d3ec9902fa21f83c82da0fd574353d8975e36ea2cbe42c03",
+    "rendererDigest": "2cc690a7105c5faca75e22053e83674a2cf2e227ae22afe88cc4662d09c98bb4",
+    "visualReviewedAt": null
+  }
+}

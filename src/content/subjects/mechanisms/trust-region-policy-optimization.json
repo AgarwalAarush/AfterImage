@@ -1,0 +1,862 @@
+{
+  "version": 1,
+  "sectionId": "s6",
+  "title": "From Local Direction to Accepted Policy",
+  "introduction": "Follow an old-policy batch through TRPO's sampled surrogate and average-KL constraint. Conjugate gradient produces one search direction; backtracking preserves that direction while shortening the trial step. The failure-then-success path is symbolic, not a reported run.",
+  "entities": [
+    {
+      "id": "theta-old",
+      "label": "θold",
+      "meaning": "Parameters of the fixed reference policy that generated the trajectory samples."
+    },
+    {
+      "id": "s1",
+      "label": "s1",
+      "meaning": "Symbolic state visited while following the old policy."
+    },
+    {
+      "id": "a1",
+      "label": "a1",
+      "meaning": "Symbolic action sampled from the old policy at state s1."
+    },
+    {
+      "id": "q1",
+      "label": "Qhat1",
+      "meaning": "Symbolic Monte Carlo estimate of the old-policy action value for (s1,a1)."
+    },
+    {
+      "id": "l-fn",
+      "label": "Lhat",
+      "meaning": "Sample-estimated surrogate objective as a function of candidate parameters."
+    },
+    {
+      "id": "d-fn",
+      "label": "Dbar",
+      "meaning": "Sample-estimated average KL from the old policy to a candidate policy."
+    },
+    {
+      "id": "delta",
+      "label": "δ",
+      "meaning": "Upper bound imposed on the sampled average KL divergence."
+    },
+    {
+      "id": "search-dir",
+      "label": "sdir",
+      "meaning": "Search direction obtained by approximately solving the local Fisher system."
+    },
+    {
+      "id": "theta-prop",
+      "label": "θprop",
+      "meaning": "Hypothetical maximal-step trial along search direction sdir."
+    },
+    {
+      "id": "l-prop",
+      "label": "Lprop",
+      "meaning": "Hypothetical surrogate value at θprop used in its acceptance check."
+    },
+    {
+      "id": "d-prop",
+      "label": "Dprop",
+      "meaning": "Hypothetical average KL at θprop used in its acceptance check."
+    },
+    {
+      "id": "theta-short",
+      "label": "θtry",
+      "meaning": "Hypothetical shorter trial along the unchanged search direction sdir."
+    },
+    {
+      "id": "l-short",
+      "label": "Ltry",
+      "meaning": "Hypothetical surrogate value at θtry, assumed to improve on the old value."
+    },
+    {
+      "id": "d-short",
+      "label": "Dtry",
+      "meaning": "Hypothetical average KL at θtry, assumed not to exceed δ."
+    },
+    {
+      "id": "theta-next",
+      "label": "θnew",
+      "meaning": "Next policy parameters, equal to θtry after both sampled checks pass."
+    }
+  ],
+  "objects": [
+    {
+      "id": "old-policy",
+      "form": "module",
+      "label": "Old policy",
+      "detail": "Fixed sampling policy",
+      "sourceIds": [
+        "section-4",
+        "section-5",
+        "section-6"
+      ],
+      "claimIds": [
+        "c7",
+        "c8"
+      ]
+    },
+    {
+      "id": "sample-batch",
+      "form": "bank",
+      "label": "Sample batch",
+      "detail": "Old-policy trajectory evidence",
+      "sourceIds": [
+        "section-5",
+        "section-6"
+      ],
+      "claimIds": [
+        "c8"
+      ]
+    },
+    {
+      "id": "surrogate",
+      "form": "vector",
+      "label": "Sampled surrogate",
+      "detail": "Candidate improvement estimate",
+      "sourceIds": [
+        "section-5",
+        "section-6"
+      ],
+      "claimIds": [
+        "c8",
+        "c10"
+      ]
+    },
+    {
+      "id": "kl-constraint",
+      "form": "vector",
+      "label": "Average KL constraint",
+      "detail": "Sampled policy-change limit",
+      "sourceIds": [
+        "section-4",
+        "section-6"
+      ],
+      "claimIds": [
+        "c7",
+        "c10"
+      ]
+    },
+    {
+      "id": "optimizer",
+      "form": "module",
+      "label": "Constrained solver",
+      "detail": "Direction and backtracking",
+      "sourceIds": [
+        "section-6",
+        "appendix-3"
+      ],
+      "claimIds": [
+        "c9"
+      ]
+    },
+    {
+      "id": "candidate",
+      "form": "vector",
+      "label": "Candidate parameters",
+      "detail": "Trials on one search direction",
+      "sourceIds": [
+        "section-4",
+        "section-6",
+        "appendix-3"
+      ],
+      "claimIds": [
+        "c7",
+        "c9",
+        "c10"
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "id": "r-collect",
+      "from": "old-policy",
+      "to": "sample-batch",
+      "label": "collect trajectories",
+      "dashed": false,
+      "sourceIds": [
+        "section-5",
+        "section-6"
+      ],
+      "claimIds": [
+        "c8"
+      ]
+    },
+    {
+      "id": "r-estimate-objective",
+      "from": "sample-batch",
+      "to": "surrogate",
+      "label": "estimate surrogate",
+      "dashed": false,
+      "sourceIds": [
+        "section-5",
+        "section-6"
+      ],
+      "claimIds": [
+        "c8"
+      ]
+    },
+    {
+      "id": "r-reference-objective",
+      "from": "old-policy",
+      "to": "surrogate",
+      "label": "fix sampling reference",
+      "dashed": false,
+      "sourceIds": [
+        "section-5"
+      ],
+      "claimIds": [
+        "c8"
+      ]
+    },
+    {
+      "id": "r-reference-kl",
+      "from": "old-policy",
+      "to": "kl-constraint",
+      "label": "anchor KL direction",
+      "dashed": false,
+      "sourceIds": [
+        "section-4",
+        "section-6"
+      ],
+      "claimIds": [
+        "c7"
+      ]
+    },
+    {
+      "id": "r-objective-signal",
+      "from": "surrogate",
+      "to": "optimizer",
+      "label": "supply objective geometry",
+      "dashed": false,
+      "sourceIds": [
+        "section-6"
+      ],
+      "claimIds": [
+        "c9"
+      ]
+    },
+    {
+      "id": "r-constraint-signal",
+      "from": "kl-constraint",
+      "to": "optimizer",
+      "label": "supply trust region",
+      "dashed": false,
+      "sourceIds": [
+        "section-6"
+      ],
+      "claimIds": [
+        "c7",
+        "c9"
+      ]
+    },
+    {
+      "id": "r-propose",
+      "from": "optimizer",
+      "to": "candidate",
+      "label": "form trial on direction",
+      "dashed": false,
+      "sourceIds": [
+        "section-6",
+        "appendix-3"
+      ],
+      "claimIds": [
+        "c9"
+      ]
+    },
+    {
+      "id": "r-submit",
+      "from": "candidate",
+      "to": "optimizer",
+      "label": "submit trial to line search",
+      "dashed": false,
+      "sourceIds": [
+        "section-6",
+        "appendix-3"
+      ],
+      "claimIds": [
+        "c9",
+        "c10"
+      ]
+    },
+    {
+      "id": "r-score",
+      "from": "candidate",
+      "to": "surrogate",
+      "label": "evaluate sampled objective",
+      "dashed": false,
+      "sourceIds": [
+        "section-4",
+        "section-6",
+        "appendix-3"
+      ],
+      "claimIds": [
+        "c7",
+        "c10"
+      ]
+    },
+    {
+      "id": "r-measure",
+      "from": "candidate",
+      "to": "kl-constraint",
+      "label": "measure average KL",
+      "dashed": false,
+      "sourceIds": [
+        "section-4",
+        "section-6",
+        "appendix-3"
+      ],
+      "claimIds": [
+        "c7",
+        "c10"
+      ]
+    }
+  ],
+  "beats": [
+    {
+      "title": "Collect evidence with the reference policy",
+      "explanation": "The active policy $\\pi_{\\theta_{\\mathrm{old}}}$ generates trajectory evidence. The symbolic batch gains $s_1$, $a_1$, and $\\hat Q_1$ while retaining $\\theta_{\\mathrm{old}}$ as sampling provenance. No candidate, surrogate, constraint, or search direction is available yet.",
+      "sourceIds": [
+        "section-5",
+        "section-6"
+      ],
+      "claimIds": [
+        "c8"
+      ],
+      "objects": [
+        {
+          "objectId": "old-policy",
+          "status": "active",
+          "entityIds": [
+            "theta-old"
+          ]
+        },
+        {
+          "objectId": "sample-batch",
+          "status": "active",
+          "entityIds": [
+            "theta-old",
+            "s1",
+            "a1",
+            "q1"
+          ]
+        },
+        {
+          "objectId": "surrogate",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "kl-constraint",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "optimizer",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "candidate",
+          "status": "pending",
+          "entityIds": []
+        }
+      ],
+      "relationships": [
+        {
+          "relationshipId": "r-collect",
+          "entityIds": [
+            "theta-old"
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Construct the sampled constrained problem",
+      "explanation": "The batch remains available. Its state, action, and return estimate define $\\hat L(\\theta)$, while the sampled state and reference policy define $\\bar D_{\\mathrm{KL}}(\\theta_{\\mathrm{old}},\\theta)$ with limit $\\delta$. These parallel constructions still describe an unspecified candidate.",
+      "sourceIds": [
+        "section-4",
+        "section-5",
+        "section-6"
+      ],
+      "claimIds": [
+        "c7",
+        "c8",
+        "c10"
+      ],
+      "objects": [
+        {
+          "objectId": "old-policy",
+          "status": "retained",
+          "entityIds": [
+            "theta-old"
+          ]
+        },
+        {
+          "objectId": "sample-batch",
+          "status": "retained",
+          "entityIds": [
+            "theta-old",
+            "s1",
+            "a1",
+            "q1"
+          ]
+        },
+        {
+          "objectId": "surrogate",
+          "status": "active",
+          "entityIds": [
+            "theta-old",
+            "s1",
+            "a1",
+            "q1",
+            "l-fn"
+          ]
+        },
+        {
+          "objectId": "kl-constraint",
+          "status": "active",
+          "entityIds": [
+            "theta-old",
+            "s1",
+            "d-fn",
+            "delta"
+          ]
+        },
+        {
+          "objectId": "optimizer",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "candidate",
+          "status": "pending",
+          "entityIds": []
+        }
+      ],
+      "relationships": [
+        {
+          "relationshipId": "r-estimate-objective",
+          "entityIds": [
+            "s1",
+            "a1",
+            "q1"
+          ]
+        },
+        {
+          "relationshipId": "r-reference-objective",
+          "entityIds": [
+            "theta-old"
+          ]
+        },
+        {
+          "relationshipId": "r-reference-kl",
+          "entityIds": [
+            "theta-old"
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Produce and submit the maximal trial",
+      "explanation": "Let $g$ be the surrogate gradient and $A$ the average-KL Hessian at the old parameters. Conjugate gradient approximately solves $As=g$, producing the persistent direction $s_{\\mathrm{dir}}$. The solver forms $\\theta_{\\mathrm{prop}}=\\theta_{\\mathrm{old}}+\\beta_{\\max}s_{\\mathrm{dir}}$, where $\\beta_{\\max}=\\sqrt{2\\delta/(s_{\\mathrm{dir}}^TAs_{\\mathrm{dir}})}$, then submits that trial to line search before either nonlinear check.",
+      "sourceIds": [
+        "section-6",
+        "section-7",
+        "appendix-3"
+      ],
+      "claimIds": [
+        "c7",
+        "c9"
+      ],
+      "objects": [
+        {
+          "objectId": "old-policy",
+          "status": "retained",
+          "entityIds": [
+            "theta-old"
+          ]
+        },
+        {
+          "objectId": "sample-batch",
+          "status": "retained",
+          "entityIds": [
+            "theta-old",
+            "s1",
+            "a1",
+            "q1"
+          ]
+        },
+        {
+          "objectId": "surrogate",
+          "status": "retained",
+          "entityIds": [
+            "theta-old",
+            "s1",
+            "a1",
+            "q1",
+            "l-fn"
+          ]
+        },
+        {
+          "objectId": "kl-constraint",
+          "status": "retained",
+          "entityIds": [
+            "theta-old",
+            "s1",
+            "d-fn",
+            "delta"
+          ]
+        },
+        {
+          "objectId": "optimizer",
+          "status": "active",
+          "entityIds": [
+            "l-fn",
+            "d-fn",
+            "delta",
+            "search-dir",
+            "theta-prop"
+          ]
+        },
+        {
+          "objectId": "candidate",
+          "status": "active",
+          "entityIds": [
+            "search-dir",
+            "theta-prop"
+          ]
+        }
+      ],
+      "relationships": [
+        {
+          "relationshipId": "r-objective-signal",
+          "entityIds": [
+            "l-fn"
+          ]
+        },
+        {
+          "relationshipId": "r-constraint-signal",
+          "entityIds": [
+            "d-fn",
+            "delta"
+          ]
+        },
+        {
+          "relationshipId": "r-propose",
+          "entityIds": [
+            "search-dir",
+            "theta-prop"
+          ]
+        },
+        {
+          "relationshipId": "r-submit",
+          "entityIds": [
+            "search-dir",
+            "theta-prop"
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Reject the nonlinear trial",
+      "explanation": "The submitted trial is evaluated with the sampled nonlinear functions. For this symbolic path, $L_{\\mathrm{prop}}$ and $D_{\\mathrm{prop}}$ do not jointly satisfy surrogate improvement and $D_{\\mathrm{prop}}\\le\\delta$. The optimizer retains $s_{\\mathrm{dir}}$ for backtracking; rejection changes the trial outcome, not the direction.",
+      "sourceIds": [
+        "section-4",
+        "section-6",
+        "appendix-3"
+      ],
+      "claimIds": [
+        "c7",
+        "c9",
+        "c10"
+      ],
+      "objects": [
+        {
+          "objectId": "old-policy",
+          "status": "retained",
+          "entityIds": [
+            "theta-old"
+          ]
+        },
+        {
+          "objectId": "sample-batch",
+          "status": "retained",
+          "entityIds": [
+            "theta-old",
+            "s1",
+            "a1",
+            "q1"
+          ]
+        },
+        {
+          "objectId": "surrogate",
+          "status": "active",
+          "entityIds": [
+            "l-fn",
+            "theta-prop",
+            "l-prop"
+          ]
+        },
+        {
+          "objectId": "kl-constraint",
+          "status": "active",
+          "entityIds": [
+            "theta-old",
+            "d-fn",
+            "delta",
+            "theta-prop",
+            "d-prop"
+          ]
+        },
+        {
+          "objectId": "optimizer",
+          "status": "active",
+          "entityIds": [
+            "search-dir",
+            "theta-prop",
+            "l-prop",
+            "d-prop",
+            "delta"
+          ]
+        },
+        {
+          "objectId": "candidate",
+          "status": "active",
+          "entityIds": [
+            "search-dir",
+            "theta-prop",
+            "l-prop",
+            "d-prop"
+          ]
+        }
+      ],
+      "relationships": [
+        {
+          "relationshipId": "r-score",
+          "entityIds": [
+            "theta-prop",
+            "l-prop"
+          ]
+        },
+        {
+          "relationshipId": "r-measure",
+          "entityIds": [
+            "theta-prop",
+            "d-prop"
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Submit and check a shorter trial",
+      "explanation": "Backtracking shrinks $\\beta$ while preserving $s_{\\mathrm{dir}}$, so $\\theta_{\\mathrm{try}}=\\theta_{\\mathrm{old}}+\\beta_{\\mathrm{try}}s_{\\mathrm{dir}}$ lies on the same direction as $\\theta_{\\mathrm{prop}}$. The shorter trial is submitted before reevaluation. In this symbolic example, the resulting values satisfy $L_{\\mathrm{try}}>L(\\theta_{\\mathrm{old}})$ and $D_{\\mathrm{try}}\\le\\delta$; these are illustrative assumptions, not measurements.",
+      "sourceIds": [
+        "section-4",
+        "section-6",
+        "appendix-3"
+      ],
+      "claimIds": [
+        "c7",
+        "c9",
+        "c10"
+      ],
+      "objects": [
+        {
+          "objectId": "old-policy",
+          "status": "retained",
+          "entityIds": [
+            "theta-old"
+          ]
+        },
+        {
+          "objectId": "sample-batch",
+          "status": "retained",
+          "entityIds": [
+            "theta-old",
+            "s1",
+            "a1",
+            "q1"
+          ]
+        },
+        {
+          "objectId": "surrogate",
+          "status": "active",
+          "entityIds": [
+            "l-fn",
+            "theta-short",
+            "l-short"
+          ]
+        },
+        {
+          "objectId": "kl-constraint",
+          "status": "active",
+          "entityIds": [
+            "theta-old",
+            "d-fn",
+            "delta",
+            "theta-short",
+            "d-short"
+          ]
+        },
+        {
+          "objectId": "optimizer",
+          "status": "active",
+          "entityIds": [
+            "search-dir",
+            "theta-short",
+            "l-short",
+            "d-short",
+            "delta"
+          ]
+        },
+        {
+          "objectId": "candidate",
+          "status": "active",
+          "entityIds": [
+            "search-dir",
+            "theta-short",
+            "l-short",
+            "d-short"
+          ]
+        }
+      ],
+      "relationships": [
+        {
+          "relationshipId": "r-propose",
+          "entityIds": [
+            "search-dir",
+            "theta-short"
+          ]
+        },
+        {
+          "relationshipId": "r-submit",
+          "entityIds": [
+            "search-dir",
+            "theta-short"
+          ]
+        },
+        {
+          "relationshipId": "r-score",
+          "entityIds": [
+            "theta-short",
+            "l-short"
+          ]
+        },
+        {
+          "relationshipId": "r-measure",
+          "entityIds": [
+            "theta-short",
+            "d-short"
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Accept the checked policy",
+      "explanation": "Because both sampled checks pass in the symbolic example, set $\\theta_{\\mathrm{new}}=\\theta_{\\mathrm{try}}$. The accepted parameters therefore remain on the same retained direction $s_{\\mathrm{dir}}$ chosen by conjugate gradient. Acceptance concerns the sampled surrogate and sampled average KL, so finite data and the average rather than maximum KL still limit its meaning.",
+      "sourceIds": [
+        "section-4",
+        "section-6",
+        "appendix-3"
+      ],
+      "claimIds": [
+        "c7",
+        "c9",
+        "c10"
+      ],
+      "objects": [
+        {
+          "objectId": "old-policy",
+          "status": "retained",
+          "entityIds": [
+            "theta-old"
+          ]
+        },
+        {
+          "objectId": "sample-batch",
+          "status": "retained",
+          "entityIds": [
+            "theta-old",
+            "s1",
+            "a1",
+            "q1"
+          ]
+        },
+        {
+          "objectId": "surrogate",
+          "status": "retained",
+          "entityIds": [
+            "l-fn",
+            "theta-short",
+            "l-short"
+          ]
+        },
+        {
+          "objectId": "kl-constraint",
+          "status": "retained",
+          "entityIds": [
+            "theta-old",
+            "d-fn",
+            "delta",
+            "theta-short",
+            "d-short"
+          ]
+        },
+        {
+          "objectId": "optimizer",
+          "status": "active",
+          "entityIds": [
+            "search-dir",
+            "theta-short",
+            "l-short",
+            "d-short",
+            "theta-next"
+          ]
+        },
+        {
+          "objectId": "candidate",
+          "status": "active",
+          "entityIds": [
+            "search-dir",
+            "theta-short",
+            "l-short",
+            "d-short",
+            "theta-next"
+          ]
+        }
+      ],
+      "relationships": [
+        {
+          "relationshipId": "r-propose",
+          "entityIds": [
+            "search-dir",
+            "theta-next"
+          ]
+        }
+      ]
+    }
+  ],
+  "takeaway": "TRPO backtracks along one retained search direction until a trial improves the sampled surrogate and satisfies the sampled average-KL limit.",
+  "sourceIds": [
+    "section-4",
+    "section-5",
+    "section-6",
+    "appendix-3"
+  ],
+  "claimIds": [
+    "c7",
+    "c8",
+    "c9",
+    "c10"
+  ],
+  "lessonId": "trust-region-policy-optimization",
+  "parentContentDigest": "42b1036c8af032ab8e1f6ca6bf5c1e8ce891e0a9a885714f14aff6b9fc184f44",
+  "review": {
+    "status": "source-passed",
+    "reviewedAt": "2026-10-02T01:50:36.916Z",
+    "contentDigest": "9c54eb1461ac140fc40e88f53f4372a23f59db976b5003fb05d64d115854b2e4",
+    "rendererDigest": "2cc690a7105c5faca75e22053e83674a2cf2e227ae22afe88cc4662d09c98bb4",
+    "visualReviewedAt": null
+  }
+}

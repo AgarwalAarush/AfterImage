@@ -150,7 +150,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       lastLoaded.current = 0;
       setState(null);
       setError("");
-    } else if (!pathname.startsWith("/documents") && (!stateRef.current || Date.now() - lastLoaded.current > 30000)) void refresh();
+    } else if (!pathname.startsWith("/documents") && !pathname.startsWith("/subjects") && (!stateRef.current || Date.now() - lastLoaded.current > 30000)) void refresh();
   }, [refresh, pathname]);
   useEffect(() => () => { requestRef.current?.abort(); }, []);
   useEffect(() => {
@@ -166,7 +166,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [pathname]);
   const activeJobs = state?.jobs.some(j => ["queued", "running"].includes(j.status)) || false;
   useEffect(() => {
-    if (pathname === "/login" || pathname.startsWith("/documents")) return;
+    if (pathname === "/login" || pathname.startsWith("/documents") || pathname.startsWith("/subjects")) return;
     const poll = () => {
       if (document.visibilityState === "visible" && navigator.onLine) void refresh();
     };
@@ -243,11 +243,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
             {[
               ["/", "For you"],
               ["/library", "Library"],
+              ["/subjects", "Subjects"],
               ["/documents", "Documents"],
             ].map(([href, label]) => (
               <Link
                 href={href}
-                className={pathname === href || (href === "/documents" && pathname.startsWith("/documents/")) ? "active" : ""}
+                className={pathname === href || (["/documents", "/subjects"].includes(href) && pathname.startsWith(href + "/")) ? "active" : ""}
                 key={href}
               >
                 {label}
@@ -268,7 +269,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         </div>
       </header>
       <main>
-        <LibraryContent loaded={pathname.startsWith("/documents") || !!state} error={pathname.startsWith("/documents") ? "" : error} retry={refresh} loading={
+        <LibraryContent loaded={pathname.startsWith("/documents") || pathname.startsWith("/subjects") || !!state} error={pathname.startsWith("/documents") || pathname.startsWith("/subjects") ? "" : error} retry={refresh} loading={
           <div className="loading-state">
             <Mark />
             <LoadingStatus label="Opening your reading desk" detail="Fetching your private library. This is taking longer than usual; the connection will time out and offer a retry." />

@@ -1,0 +1,491 @@
+{
+  "title": "The Classifier Written in Language",
+  "summary": "CLIP learns a shared image–text space from paired web data, then turns class descriptions into classifier weights for zero-shot visual recognition.",
+  "prerequisites": [
+    "Vectors, dot products, and cosine similarity",
+    "Softmax probabilities and cross-entropy loss",
+    "Pre-training and downstream evaluation"
+  ],
+  "objectives": [
+    "Explain how CLIP learns from matched and mismatched image–text pairs.",
+    "Derive CLIP's symmetric batch contrastive objective.",
+    "Build a zero-shot classifier from natural-language prompts.",
+    "Interpret transfer results under their reported evaluation conditions.",
+    "Identify limits from prompts, distribution shifts, bias, and tasks."
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "mechanism",
+      "statement": "CLIP jointly trains an image encoder and a text encoder to distinguish the observed image–text pairings from the other pairings within each batch.",
+      "conditions": "For a minibatch of N paired image and text examples used during contrastive pre-training.",
+      "sourceIds": [
+        "section-1",
+        "section-2"
+      ]
+    },
+    {
+      "id": "c2",
+      "kind": "equation",
+      "statement": "The training objective applies cross-entropy in both image-to-text and text-to-image directions to temperature-scaled cosine-similarity logits.",
+      "conditions": "After linearly projecting both encoder outputs into one embedding space and L2-normalizing them.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c3",
+      "kind": "mechanism",
+      "statement": "A batch of N observed pairs supplies N positive pairings and N squared minus N in-batch incorrect pairings.",
+      "conditions": "Pair identity within the sampled minibatch defines positives; all off-diagonal pairings are treated as incorrect for this objective.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c4",
+      "kind": "mechanism",
+      "statement": "At zero-shot evaluation, text embeddings of prompted class descriptions act as normalized linear-classifier weights for normalized image features.",
+      "conditions": "For a fixed downstream label set whose classes can be expressed as text.",
+      "sourceIds": [
+        "section-1",
+        "section-3"
+      ]
+    },
+    {
+      "id": "c5",
+      "kind": "result",
+      "statement": "The pre-training dataset contained 400 million internet-collected image–text pairs, and the reported models were trained from scratch.",
+      "conditions": "For the WIT construction and CLIP training setup described in the paper.",
+      "sourceIds": [
+        "abstract",
+        "section-2"
+      ]
+    },
+    {
+      "id": "c6",
+      "kind": "result",
+      "statement": "The best reported CLIP model achieved 76.2 percent ImageNet top-1 accuracy in the zero-shot evaluation and matched the original ResNet-50 result without using ImageNet's 1.28 million training examples for adaptation.",
+      "conditions": "For the paper's best model, class prompting procedure, and ImageNet zero-shot evaluation.",
+      "sourceIds": [
+        "abstract",
+        "section-3"
+      ]
+    },
+    {
+      "id": "c7",
+      "kind": "result",
+      "statement": "Prompt engineering and prompt ensembling improved ImageNet accuracy by almost five percentage points over embedding contextless class names.",
+      "conditions": "The default prompt contributed 1.3 points, and an ensemble of 80 context prompts added 3.5 more points in the reported ImageNet setup.",
+      "sourceIds": [
+        "section-3",
+        "section-3-part-2"
+      ]
+    },
+    {
+      "id": "c8",
+      "kind": "result",
+      "statement": "Zero-shot CLIP outperformed a supervised linear classifier on ResNet-50 features on 16 of 27 evaluated datasets, but performance varied substantially by task.",
+      "conditions": "Against the paper's regularized logistic-regression baseline across its 27-dataset evaluation suite.",
+      "sourceIds": [
+        "section-3-part-2"
+      ]
+    },
+    {
+      "id": "c9",
+      "kind": "result",
+      "statement": "Across five ResNet CLIP models, average zero-shot error followed an approximately log-log linear trend over a 44-fold compute range, while individual evaluations were noisier.",
+      "conditions": "For 39 evaluations on 36 datasets; the observation does not establish monotonic improvement on every task.",
+      "sourceIds": [
+        "section-3-part-3"
+      ]
+    },
+    {
+      "id": "c10",
+      "kind": "result",
+      "statement": "Zero-shot CLIP reduced the measured robustness gap on seven natural ImageNet distribution shifts by as much as 75 percent.",
+      "conditions": "Relative to the paper's fitted relationship for conventional ImageNet models; shared pre-training and evaluation correlations can still exist.",
+      "sourceIds": [
+        "section-3-part-4",
+        "section-3-part-5"
+      ]
+    },
+    {
+      "id": "c11",
+      "kind": "caveat",
+      "statement": "CLIP remained weak on several specialized, fine-grained, abstract, and truly out-of-distribution tasks, including counting and handwritten-digit recognition.",
+      "conditions": "For the evaluated zero-shot configurations; performance on MNIST was 88 percent and was below a raw-pixel logistic-regression baseline.",
+      "sourceIds": [
+        "section-3-part-2",
+        "section-6"
+      ]
+    },
+    {
+      "id": "c12",
+      "kind": "caveat",
+      "statement": "The paper's methodology repeatedly used full validation sets during development and relied on an evaluation collection partly co-adapted with CLIP's development.",
+      "conditions": "When interpreting the evaluations as evidence about genuine unseen-task transfer.",
+      "sourceIds": [
+        "section-6"
+      ]
+    },
+    {
+      "id": "c13",
+      "kind": "caveat",
+      "statement": "Internet image–text pre-training can transmit social biases, and freely chosen downstream class definitions can change harmful classification behavior.",
+      "conditions": "For deployment-sensitive uses, especially classifications of people and surveillance-related applications.",
+      "sourceIds": [
+        "section-6",
+        "section-7"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "s1",
+      "title": "Why replace a fixed label vocabulary?",
+      "markdown": "A conventional supervised image classifier learns a feature extractor plus a fixed output head: if its training labels contain 1,000 categories, those categories define what the head can directly predict. Adding a new concept usually requires labeled examples and another adaptation step. CLIP asks whether language itself can provide the interface to visual concepts.\n\nIts pre-training data consists of images paired with naturally occurring text. The paper assembled 400 million such pairs from public internet sources and trained both encoders from scratch. This supervision is broad, but it is not magically clean: nearby text can be incomplete, indirect, or socially biased. The central move is therefore not to treat every caption as an exact symbolic label. Instead, CLIP learns which complete text item belongs with which image.\n\nThree prerequisites will recur. An encoder maps an input to a vector; cosine similarity measures vector alignment after normalization; and softmax converts a set of scores into competing probabilities. Together these let language specify a classifier without fitting a new dataset-specific output head.",
+      "sourceIds": [
+        "section-1",
+        "section-2",
+        "section-7"
+      ],
+      "claimIds": [
+        "c1",
+        "c5",
+        "c13"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s2",
+      "title": "The batch becomes the classification problem",
+      "markdown": "Take a minibatch of $N$ observed pairs $(x_i,t_i)$, where $x_i$ is image $i$ and $t_i$ is its associated text. Let the image encoder be $f_\\theta$ and the text encoder be $g_\\phi$. Linear projections $W_I$ and $W_T$ map their outputs into a shared space, after which each vector is normalized:\n\n$$v_i=\\frac{W_I f_\\theta(x_i)}{\\lVert W_I f_\\theta(x_i)\\rVert_2},\\qquad u_j=\\frac{W_T g_\\phi(t_j)}{\\lVert W_T g_\\phi(t_j)\\rVert_2}.$$\n\nHere $v_i$ is the normalized image embedding, $u_j$ is the normalized text embedding, and $\\lVert\\cdot\\rVert_2$ is Euclidean norm. Their logit is\n\n$$z_{ij}=\\frac{v_i^\\top u_j}{\\tau},$$\n\nwhere $v_i^\\top u_j$ is cosine similarity and $\\tau>0$ is a learned temperature. The diagonal entries $z_{ii}$ represent the $N$ observed pairings. The other $N^2-N$ entries are treated as incorrect in-batch pairings.\n\nThe illustrative matrix below fixes three image–text similarities and changes only temperature. Predict how lowering temperature affects each row's probability assigned to its diagonal match. The display computes row-wise softmax probabilities; it is useful for seeing how score gaps are sharpened, but it is not a measurement of CLIP embeddings or a reproduction of training.",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c1",
+        "c2",
+        "c3"
+      ],
+      "figureId": "fig-contrastive"
+    },
+    {
+      "id": "s3",
+      "title": "Why the loss looks in both directions",
+      "markdown": "For image $i$, CLIP asks which text belongs to it. With $p_{i\\to j}=\\exp(z_{ij})/\\sum_{k=1}^{N}\\exp(z_{ik})$, the image-to-text loss is $-\\log p_{i\\to i}$. It also asks, for text $j$, which image belongs to it. Defining $q_{j\\to i}=\\exp(z_{ij})/\\sum_{k=1}^{N}\\exp(z_{kj})$, the symmetric objective is\n\n$$\\mathcal{L}=\\frac{1}{2N}\\sum_{i=1}^{N}\\left[-\\log p_{i\\to i}-\\log q_{i\\to i}\\right].$$\n\nThe first term normalizes across texts in a row; the second normalizes across images in a column. Both encourage matched embeddings to align relative to the batch's alternatives.\n\nConsider an illustrative two-pair batch with image-to-text logits in one row equal to $[2,0]$. The matched-text probability is\n\n$$\\frac{e^2}{e^2+e^0}\\approx\\frac{7.389}{7.389+1}=0.881,$$\n\nso that row contributes $-\\log(0.881)\\approx0.127$ to the directional loss. This arithmetic is illustrative, not a reported training observation. It shows that the objective rewards a positive example only relative to its competitors; it does not require generating every word of a caption. The paper reports that switching its bag-of-words baseline to this contrastive proxy improved the rate of zero-shot ImageNet learning by a further factor of four in that comparison.",
+      "sourceIds": [
+        "section-1",
+        "section-2"
+      ],
+      "claimIds": [
+        "c2",
+        "c3"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s4",
+      "title": "Language writes the downstream classifier",
+      "markdown": "After pre-training, suppose a dataset has classes $c_1,\\ldots,c_K$. For each class, write a prompt such as “A photo of a {label}.” and encode it to a normalized vector $w_k$. For a new image with normalized embedding $v$, predict\n\n$$P(y=k\\mid x)=\\frac{\\exp(v^\\top w_k/\\tau)}{\\sum_{r=1}^{K}\\exp(v^\\top w_r/\\tau)}.$$\n\nHere $K$ is the number of candidate classes, $y$ is the predicted class index, and $w_k$ is generated by the text encoder rather than fitted from labeled examples in the downstream dataset. In this sense, the text encoder acts as a hypernetwork that writes the weights of a bias-free multinomial linear classifier.\n\nThe temperature toy below uses four fixed scores $[2,1,0,-1]$ and applies ordinary softmax after dividing them by a positive temperature. Predict whether increasing temperature concentrates or flattens the resulting weights. This mirrors only the final score normalization: the scores are invented, not learned token similarities or a measured attention head.\n\nA common misconception is that “zero-shot” means the model has never encountered related visual concepts. It means no labeled examples from the target dataset are used to fit the evaluated classifier. Pre-training may still contain related imagery and language. The paper also uses zero-shot broadly for transfer to unseen datasets, sometimes testing distribution generalization as much as genuinely new tasks.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c4"
+      ],
+      "figureId": "fig-attention"
+    },
+    {
+      "id": "s5",
+      "title": "Prompts are part of the model interface",
+      "markdown": "Class names alone can be ambiguous. “Crane” may name a bird or a machine, while “boxer” may name a dog breed or an athlete. A sentence-shaped prompt both resolves word sense and resembles the text distribution seen during pre-training more closely than an isolated label.\n\nOn ImageNet, the default “A photo of a {label}.” prompt improved accuracy by 1.3 percentage points over contextless names. Averaging text embeddings from 80 context prompts added another 3.5 points, producing almost a five-point combined improvement. Because averaged class embeddings can be cached, their construction cost is amortized over subsequent images.\n\nThis is not a cosmetic post-processing detail. Natural-language wording determines the classifier weights, so prompt design is part of task specification. It also creates a limitation: a poorly named, ambiguous, or socially inappropriate label set can produce a poorly specified classifier. Prompt ensembling reduces sensitivity in the reported settings, but it does not prove that an intended concept has been captured or that a taxonomy is suitable for deployment.",
+      "sourceIds": [
+        "section-3",
+        "section-3-part-2",
+        "section-7"
+      ],
+      "claimIds": [
+        "c4",
+        "c7",
+        "c13"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s6",
+      "title": "What the reported evidence establishes",
+      "markdown": "The best reported model obtained 76.2% ImageNet top-1 accuracy in the paper's zero-shot setup, matching the original ResNet-50 result without adapting on ImageNet's 1.28 million training images. Across a separate 27-dataset comparison, zero-shot CLIP beat a supervised linear classifier on ResNet-50 features on 16 datasets. Those results support broad transfer, not universal superiority: performance differed sharply across datasets.\n\nScaling evidence was aggregate. Across five ResNet CLIP models, average zero-shot error over 39 evaluations followed an approximately straight trend on log-log axes across a 44-fold compute range. Individual evaluations were noisier, and the authors did not know whether that reflected run variance or genuinely non-monotonic task behavior. A smooth average curve therefore does not guarantee that more compute improves every capability.\n\nRobustness also depends on the comparison. On seven natural ImageNet distribution shifts, zero-shot CLIP reduced the fitted robustness gap by as much as 75%. Yet adapting CLIP with an ImageNet-trained linear classifier raised ImageNet accuracy by 9.2 points while slightly lowering average shifted-distribution accuracy. This associates reduced distribution-specific adaptation with effective robustness in these experiments; it does not isolate whether language supervision, data diversity, zero-shot evaluation, or another factor caused the advantage.",
+      "sourceIds": [
+        "abstract",
+        "section-3",
+        "section-3-part-2",
+        "section-3-part-3",
+        "section-3-part-4",
+        "section-3-part-5"
+      ],
+      "claimIds": [
+        "c6",
+        "c8",
+        "c9",
+        "c10"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s7",
+      "title": "Where the interface breaks",
+      "markdown": "CLIP's flexibility is bounded by the candidate texts supplied at inference: it selects among them rather than producing an unrestricted description. The paper reports weak zero-shot behavior on counting, specialized satellite and medical imagery, distance estimation, and some fine-grained categories. On handwritten MNIST digits, zero-shot CLIP reached 88% but lost to a simple logistic regression on raw pixels; broad internet training had not eliminated truly out-of-distribution failure.\n\nMethodological limits narrow the conclusions further. Full validation sets were repeatedly consulted during development, and the main dataset suite was partly assembled alongside CLIP's development. Thus “zero-shot” describes the absence of downstream fitting, not a development process untouched by target evaluations. The overlap detector also could not guarantee recall across all 400 million pre-training examples, although the detected-overlap analysis found generally small changes in overall accuracy.\n\nFinally, flexible class creation increases responsibility rather than removing it. Internet data can encode social bias, and changing a label set can change harmful outputs. Performance must be evaluated for the precise population, taxonomy, distribution, and consequences of a proposed use. CLIP demonstrates that language can write a useful visual classifier; it does not show that every describable classification is scientifically valid or socially appropriate.",
+      "sourceIds": [
+        "section-5",
+        "section-6",
+        "section-7"
+      ],
+      "claimIds": [
+        "c11",
+        "c12",
+        "c13"
+      ],
+      "figureId": null
+    }
+  ],
+  "figures": [
+    {
+      "id": "fig-contrastive",
+      "kind": "contrastive",
+      "title": "Temperature in a paired similarity matrix",
+      "question": "As temperature decreases, how does the row-softmax probability of a uniquely highest diagonal score change?",
+      "caption": "A fixed illustrative 3-by-3 image–text similarity matrix is converted into row-wise match probabilities; the diagonal denotes the declared pairs, and temperature controls softmax sharpness.",
+      "limitation": "The matrix is constructed for teaching and contains no actual CLIP embeddings, measured similarities, or training dynamics.",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c1",
+        "c2",
+        "c3"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "fig-attention",
+      "kind": "attention",
+      "title": "Temperature reshapes competing class scores",
+      "question": "With fixed scores, does a higher positive temperature make the four normalized weights flatter or more concentrated?",
+      "caption": "The fixed illustrative scores 2, 1, 0, and -1 are divided by a positive temperature and normalized with softmax to expose the effect of temperature alone.",
+      "limitation": "This shows normalized weights for invented scores, not a measured attention head, learned token similarity, or complete CLIP classifier.",
+      "sourceIds": [
+        "section-2",
+        "section-3"
+      ],
+      "claimIds": [
+        "c2",
+        "c4"
+      ],
+      "illustrative": true
+    }
+  ],
+  "quiz": [
+    {
+      "question": "A dataset contains two classes named “crane,” one a bird and one a machine. Under CLIP's zero-shot mechanism, which change most directly disambiguates the classifier weights?",
+      "options": [
+        {
+          "text": "Use contextual prompts such as “a photo of a crane bird” and “a photo of a construction crane.”",
+          "explanation": "Correct. The text encoder generates class weights, so contextual wording can distinguish the intended senses."
+        },
+        {
+          "text": "Increase the number of output classes without changing their text.",
+          "explanation": "Incorrect. More classes do not resolve two identical or ambiguous textual specifications."
+        },
+        {
+          "text": "Fit a new randomly initialized image encoder without labels.",
+          "explanation": "Incorrect. That abandons the learned image–language alignment and supplies no direct disambiguating signal."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-3",
+        "section-3-part-2"
+      ],
+      "claimIds": [
+        "c4",
+        "c7"
+      ]
+    },
+    {
+      "question": "For one fixed row of similarity scores with a unique maximum, what happens when the positive softmax temperature is increased?",
+      "options": [
+        {
+          "text": "The distribution becomes flatter.",
+          "explanation": "Correct. Dividing fixed score gaps by a larger positive temperature reduces their influence before softmax."
+        },
+        {
+          "text": "The largest score necessarily changes identity.",
+          "explanation": "Incorrect. Positive rescaling preserves score order, although probabilities change."
+        },
+        {
+          "text": "Every probability becomes zero.",
+          "explanation": "Incorrect. Softmax probabilities remain positive and sum to one."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-2",
+        "section-3"
+      ],
+      "claimIds": [
+        "c2",
+        "c4"
+      ]
+    },
+    {
+      "question": "Which conclusion is justified by the paper's aggregate scaling result?",
+      "options": [
+        {
+          "text": "Average zero-shot error followed a smooth log-log trend over the tested compute range, while individual tasks could be noisier.",
+          "explanation": "Correct. This preserves both the reported aggregate regularity and its task-level qualification."
+        },
+        {
+          "text": "Every downstream task improved monotonically whenever compute increased.",
+          "explanation": "Incorrect. The paper explicitly reports noisier individual evaluations and uncertainty about task-level monotonicity."
+        },
+        {
+          "text": "The trend proves compute alone will remove CLIP's systematic and out-of-distribution failures.",
+          "explanation": "Incorrect. The paper reports persistent task failures and says the compute needed for overall state-of-the-art zero-shot performance was infeasible under then-current hardware."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-3-part-3",
+        "section-6"
+      ],
+      "claimIds": [
+        "c9",
+        "c11"
+      ]
+    }
+  ],
+  "id": "clip",
+  "createdAt": "2026-10-02T00:41:31.866Z",
+  "pipelineVersion": "subjects-lessons-v1",
+  "sources": [
+    {
+      "id": "abstract",
+      "label": "Original paper · abstract",
+      "url": "https://arxiv.org/abs/2103.00020",
+      "digest": "cbd7cd3af3e3b86bd327c814ab180bf036f5afb984e152ea6235107689ff6644",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:39:24.182Z"
+    },
+    {
+      "id": "section-1",
+      "label": "1 Introduction and Motivating Work",
+      "url": "https://arxiv.org/html/2103.00020#S1",
+      "digest": "ab268ac74e87012783ed04d992c5a47f08f07a4c30f45274074a285c216a5b17",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:39:24.182Z"
+    },
+    {
+      "id": "section-2",
+      "label": "2 Approach",
+      "url": "https://arxiv.org/html/2103.00020#S2",
+      "digest": "b4cbcfcede0436676bdc51ce013f0a716f385fa07adef78c4f3dc11aaf811470",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:39:24.182Z"
+    },
+    {
+      "id": "section-2-part-2",
+      "label": "2 Approach · part 2",
+      "url": "https://arxiv.org/html/2103.00020#S2",
+      "digest": "2094e1c7343ec911ee7213dfdfc9cb573dd6879bb2e74e3fec4f38f5a4b6da24",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:39:24.182Z"
+    },
+    {
+      "id": "section-3",
+      "label": "3 Experiments",
+      "url": "https://arxiv.org/html/2103.00020#S3",
+      "digest": "66b9cd5b234518d96ab00ba332f36e28c1359c5216062cd471de94ce237f34ee",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:39:24.182Z"
+    },
+    {
+      "id": "section-3-part-2",
+      "label": "3 Experiments · part 2",
+      "url": "https://arxiv.org/html/2103.00020#S3",
+      "digest": "f26fb265420f9eafe3089761528951a307ac057be096eaaa3f383a2f13ac9f16",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:39:24.182Z"
+    },
+    {
+      "id": "section-3-part-3",
+      "label": "3 Experiments · part 3",
+      "url": "https://arxiv.org/html/2103.00020#S3",
+      "digest": "4889446f7bda94d09043f901f412e8caba399ed67906a89ace3c28f62d2adf2a",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:39:24.182Z"
+    },
+    {
+      "id": "section-3-part-4",
+      "label": "3 Experiments · part 4",
+      "url": "https://arxiv.org/html/2103.00020#S3",
+      "digest": "ce635e7648c6eb083089d9090a03e56ab6c200d69557546347036185fd7642ba",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:39:24.182Z"
+    },
+    {
+      "id": "section-3-part-5",
+      "label": "3 Experiments · part 5",
+      "url": "https://arxiv.org/html/2103.00020#S3",
+      "digest": "575f0f2b1804446194f58ec4d23e40eee5d802022acfbbc58b8f81807b3c2697",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:39:24.182Z"
+    },
+    {
+      "id": "section-3-part-6",
+      "label": "3 Experiments · part 6",
+      "url": "https://arxiv.org/html/2103.00020#S3",
+      "digest": "49d6834d0d025255d0599be884416d59f8e5b739a85d53e6125937c2af028d4d",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:39:24.182Z"
+    },
+    {
+      "id": "section-4",
+      "label": "4 Comparison to Human Performance",
+      "url": "https://arxiv.org/html/2103.00020#S4",
+      "digest": "2bc4a72b1f0c3ad160c9d58fcb6e1862126ef2290b9e2dcc0a3ede2a10b1bb49",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:39:24.182Z"
+    },
+    {
+      "id": "section-5",
+      "label": "5 Data Overlap Analysis",
+      "url": "https://arxiv.org/html/2103.00020#S5",
+      "digest": "c07cdb89afd8d6fd17805f1e4312c592e8a3abaa659438c8781a53ffdf04a909",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:39:24.182Z"
+    },
+    {
+      "id": "section-6",
+      "label": "6 Limitations",
+      "url": "https://arxiv.org/html/2103.00020#S6",
+      "digest": "0f412189f0a03fe232e7cdd36e9f8aeb6eb31f6b60c590f37dce546d1b969a9a",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:39:24.182Z"
+    },
+    {
+      "id": "section-7",
+      "label": "7 Broader Impacts",
+      "url": "https://arxiv.org/html/2103.00020#S7",
+      "digest": "f827c841d8edaff3c073f1d255d76f3d51d46c25db86cf9403be9e26e4590687",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:39:24.182Z"
+    }
+  ],
+  "review": {
+    "status": "passed",
+    "reviewedAt": "2026-10-02T00:41:31.870Z",
+    "contentDigest": "70d3b4b2088f9ef5569b1c7d4412463a620de9e9cae8b8cff187e05373b50bdc"
+  }
+}

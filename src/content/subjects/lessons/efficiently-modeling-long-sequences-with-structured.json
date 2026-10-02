@@ -1,0 +1,432 @@
+{
+  "title": "One System, Two Speeds: How S4 Makes Long Memory Practical",
+  "summary": "S4 turns a memory-oriented state space model into an efficient sequence layer by combining stable normal-plus-low-rank structure with recurrent and convolutional computation.",
+  "prerequisites": [
+    "Matrix multiplication and complex eigenvalues",
+    "Linear recurrences and one-dimensional convolution",
+    "Asymptotic notation, FFTs, and numerical conditioning"
+  ],
+  "objectives": [
+    "Derive an SSM convolution kernel by unrolling its recurrence.",
+    "Explain why direct diagonalization of the HiPPO matrix is unstable.",
+    "Trace S4 from NPLR structure through Woodbury correction to a Cauchy kernel.",
+    "Distinguish S4 representations for training and autoregressive inference.",
+    "Interpret the paper's empirical results under the reported conditions."
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "equation",
+      "statement": "A continuous-time SSM evolves an N-dimensional latent state linearly and projects it to an output; the direct input-output term is an optional skip connection.",
+      "conditions": "For a one-dimensional input and output, with learned matrices of compatible dimensions.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c2",
+      "kind": "mechanism",
+      "statement": "After bilinear discretization, an SSM can be evaluated sequentially as a recurrence over its latent state.",
+      "conditions": "For step size Δ and the bilinear discretization specified in equation (3).",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c3",
+      "kind": "equation",
+      "statement": "With zero initial state, the same linear recurrence is a causal convolution whose lag-i coefficient is C̄Ā^iB̄.",
+      "conditions": "For a linear time-invariant discrete SSM, initial state x_{-1}=0, and a kernel truncated to length L.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c4",
+      "kind": "caveat",
+      "statement": "Directly constructing the length-L kernel by repeated dense state transitions costs quadratic work in state size at every sequence position.",
+      "conditions": "For the naive LSSL-style evaluation using dense N-by-N matrix multiplication across L steps.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c5",
+      "kind": "caveat",
+      "statement": "Although diagonal state dynamics would simplify kernel construction, directly diagonalizing the HiPPO matrix is numerically infeasible because its change of basis becomes exponentially large.",
+      "conditions": "For the explicit diagonalization of the HiPPO matrix in equation (2) as state size N grows.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c6",
+      "kind": "mechanism",
+      "statement": "S4 exploits a normal-plus-low-rank decomposition: a unitary basis stably diagonalizes the normal part while retaining a small correction.",
+      "conditions": "For the HiPPO families covered by the paper's NPLR representation, with rank one or two.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c7",
+      "kind": "mechanism",
+      "statement": "S4 evaluates the truncated kernel-generating function at roots of unity, handles the low-rank inverse with Woodbury, reduces the diagonal computation to Cauchy operations, and recovers the kernel by inverse FFT.",
+      "conditions": "For an SSM whose state matrix has the paper's diagonal-plus-low-rank form and a kernel truncated to length L.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c8",
+      "kind": "result",
+      "statement": "The paper reduces construction of the SSM convolution filter to four Cauchy multiplies with near-linear arithmetic and linear space.",
+      "conditions": "Given any step size Δ, state size N, sequence length L, and the paper's structured parameterization; logarithmic factors are suppressed.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c9",
+      "kind": "result",
+      "statement": "In the reported parameter-matched efficiency benchmark, S4's speed and memory were competitive with two efficient Transformer variants.",
+      "conditions": "Under the practical layer sizes and parameter-matched protocol reported in Section 4 and Figure 3.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c10",
+      "kind": "result",
+      "statement": "The reported S4 model achieved 96.35 accuracy on the 16,384-step Path-X task in the displayed LRA table.",
+      "conditions": "On the paper's Long Range Arena evaluation and its reported Path-X configuration; this is not a universal long-sequence guarantee.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c11",
+      "kind": "result",
+      "statement": "S4 can switch to its recurrent representation for constant per-step computation and memory during autoregressive generation.",
+      "conditions": "At inference after the recurrent parameters are available; constant is with respect to accumulated context length, not state dimension.",
+      "sourceIds": [
+        "section-4-part-2"
+      ]
+    },
+    {
+      "id": "c12",
+      "kind": "caveat",
+      "statement": "The original S4 parameterization may become numerically unstable when learned state eigenvalues enter the right half-plane; follow-up work proposed a tied low-rank correction.",
+      "conditions": "For this version of S4 when A has eigenvalues in the right half-plane.",
+      "sourceIds": [
+        "section-3-part-2"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "s1",
+      "title": "The obstacle is not merely sequence length",
+      "markdown": "Long-range modeling asks a representation to preserve useful information across many steps without making training prohibitively sequential, expensive, or unstable. S4 begins from a linear state space model rather than attention. Let $u(t)\\in\\mathbb{R}$ be the input, $x(t)\\in\\mathbb{R}^{N}$ the latent state, and $y(t)\\in\\mathbb{R}$ the output. With $A\\in\\mathbb{R}^{N\\times N}$, $B\\in\\mathbb{R}^{N\\times 1}$, $C\\in\\mathbb{R}^{1\\times N}$, and scalar $D$, the system is\n\n$$x'(t)=Ax(t)+Bu(t),\\qquad y(t)=Cx(t)+Du(t).$$\n\nHere $x'(t)$ is the time derivative and $N$ is state size. The paper usually omits $D$ because $Du(t)$ is an easily computed skip connection. The attraction is conceptual economy: the state compresses past inputs, while the same system can later be viewed as either a recurrence or a convolution. The difficulty is computational. A memory-useful transition matrix does not automatically admit a fast, stable implementation. S4's contribution is therefore not simply “use an SSM”; it is a structured parameterization and algorithm that make a particular memory-oriented SSM practical.",
+      "sourceIds": [
+        "abstract",
+        "section-1",
+        "section-2"
+      ],
+      "claimIds": [
+        "c1",
+        "c4"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s2",
+      "title": "From continuous dynamics to discrete state updates",
+      "markdown": "Samples arrive at times $k\\Delta$, where $k$ is an integer index and $\\Delta>0$ is the sampling interval. The input sample $u_k=u(k\\Delta)$ therefore represents the underlying continuous signal at physical time $k\\Delta$. The paper applies the bilinear method:\n\n$$\\overline A=(I-\\tfrac{\\Delta}{2}A)^{-1}(I+\\tfrac{\\Delta}{2}A),$$\n$$\\overline B=(I-\\tfrac{\\Delta}{2}A)^{-1}\\Delta B,\\qquad \\overline C=C.$$\n\n$I$ is the $N\\times N$ identity, and bars mark parameters after discretization. The resulting sequence update is\n\n$$x_k=\\overline A x_{k-1}+\\overline B u_k,\\qquad y_k=\\overline Cx_k.$$\n\nThus $\\overline A$ advances the latent state by one sampling interval, while $\\overline B$ maps the current input into that state. Both depend on the chosen resolution $\\Delta$, even when that dependence is suppressed in the notation. This discrete system can be evaluated recurrently like an RNN: each new output requires the preceding $N$-dimensional state and the current sample.\n\nThe figure isolates repeated state retention with the constructed scalar recurrence\n\n$$h_t=ah_{t-1}+u_t,$$\n\nusing the dimensionless impulse $u_0=1$, later inputs $u_t=0$, and twelve discrete updates. Starting from zero gives $h_t=a^t$. For $a=0.5$, the first four displayed states are $1,0.5,0.25,0.125$; increasing $a$ toward one slows the decay, so more of the initial impulse remains at later steps. The control therefore changes the per-step retention factor and directly changes the visible impulse-response timescale. This scalar calculation explains how repeated multiplication can preserve or attenuate past input, while S4 applies the same recurrence principle to a learned multidimensional state obtained by discretizing its continuous dynamics.",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c1",
+        "c2"
+      ],
+      "figureId": "f-state"
+    },
+    {
+      "id": "s3",
+      "title": "One operator, two computational views",
+      "markdown": "Assume $x_{-1}=0$. Unrolling the recurrence gives $x_0=\\overline Bu_0$ and $x_1=\\overline A\\overline Bu_0+\\overline Bu_1$. Continuing shows that every output is a weighted sum of present and past inputs. Define the length-$L$ kernel\n\n$$\\overline K_i=\\overline C\\overline A^i\\overline B,\\qquad i=0,\\ldots,L-1.$$\n\nThen $y=\\overline K*u$, where $*$ denotes non-circular causal convolution. Consider an illustrative scalar case with $\\overline A=0.5$, $\\overline B=2$, $\\overline C=3$, and $u=(1,2,0)$. The kernel is $\\overline K=(6,3,1.5)$. Thus\n\n$$y_0=6,$$\n$$y_1=3\\cdot1+6\\cdot2=15,$$\n$$y_2=1.5\\cdot1+3\\cdot2+6\\cdot0=7.5.$$\n\nThe recurrence gives the same result: $x_0=2$, $x_1=5$, $x_2=2.5$, followed by $y_k=3x_k$. This equality is central. Convolution exposes parallel training with FFTs once $\\overline K$ is known; recurrence supports streaming inference. However, producing $\\overline K$ naively still requires $L$ dense matrix transitions, so merely recognizing the convolution does not solve the bottleneck.",
+      "sourceIds": [
+        "section-2",
+        "section-3"
+      ],
+      "claimIds": [
+        "c2",
+        "c3",
+        "c4"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s4",
+      "title": "Why the obvious diagonalization fails",
+      "markdown": "If $A$ were diagonal, powers of it would be elementwise powers, making the kernel easier to construct. More generally, a change of coordinates $x=V\\widetilde x$ transforms $(A,B,C)$ into $(V^{-1}AV,V^{-1}B,CV)$ without changing the input-output operator. This suggests diagonalizing the HiPPO transition.\n\nThe trap is numerical conditioning. The paper's explicit diagonalizer for the HiPPO matrix contains entries as large as $2^{4N/3}$. Consequently, transformed quantities such as $CV$ may not be numerically computable at useful state sizes. Algebraic equivalence is not the same as a stable algorithm.\n\nThis corrects a common misconception: S4 is not fast merely because it diagonalizes $A$. The authors first expose a normal component, which can be diagonalized by a unitary matrix. A unitary basis is perfectly conditioned in the spectral norm. They then preserve the remaining non-normal behavior as a low-rank correction. That separation—stable diagonal structure plus a small correction—is what makes the later inverse-based method possible without naively diagonalizing the original HiPPO matrix.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c5",
+        "c6"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s5",
+      "title": "Normal plus low rank is the structural hinge",
+      "markdown": "The paper writes the continuous state matrix as\n\n$$A=V\\Lambda V^*-PQ^\\top\n =V\\left(\\Lambda-(V^*P)(V^*Q)^*\\right)V^*.$$\n\nHere $V\\in\\mathbb{C}^{N\\times N}$ is unitary, $V^*$ is its conjugate transpose, $\\Lambda\\in\\mathbb{C}^{N\\times N}$ is diagonal, and $P,Q\\in\\mathbb{R}^{N\\times r}$ contain a rank-$r$ correction. The covered HiPPO matrices have $r=1$ or $r=2$. In the $V$ basis, this becomes diagonal plus low rank, abbreviated DPLR.\n\nThe low-rank experiment below teaches only the prerequisite idea that a matrix contribution can occupy a small number of singular directions. It fixes a diagonal $6\\times6$ matrix with singular values $(6,4,3,2,1,0.5)$ and retains its first $r$ components. At $r=2$, the retained squared energy is $(6^2+4^2)/(6^2+4^2+3^2+2^2+1^2+0.5^2)=52/66.25\\approx78.5\\%$. This is illustrative arithmetic. Changing $r$ reveals the approximation tradeoff, but S4 does not obtain its correction by truncating this toy matrix, and its rank-one or rank-two factor is used algebraically rather than as a reported compression ratio.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c5",
+        "c6"
+      ],
+      "figureId": "f-low-rank"
+    },
+    {
+      "id": "s6",
+      "title": "The frequency-domain route around matrix powers",
+      "markdown": "S4 avoids directly forming the sequence $\\overline C\\overline A^i\\overline B$. First it considers the truncated generating function\n\n$$G(\\zeta)=\\sum_{j=0}^{L-1}\\overline K_j\\zeta^j,$$\n\nwhere $\\zeta$ is evaluated at the $L$th roots of unity. These evaluations are the kernel's frequency samples, so an inverse FFT recovers $\\overline K$.\n\nWhy does this help? A generating function of matrix powers can be expressed through a resolvent, an inverse related to $(zI-A)^{-1}$ for complex evaluation point $z$. Inverting diagonal-plus-low-rank structure is easier than repeatedly powering it. The Woodbury identity expresses the inverse of a low-rank modification using the inverse of its diagonal part and an $r\\times r$ correction. The remaining sums take Cauchy form, with entries like $1/(\\omega_j-\\zeta_k)$ for diagonal locations $\\omega_j$ and evaluation points $\\zeta_k$.\n\nThus the chain is: truncate the kernel, evaluate its generating function, replace powers by an inverse, correct the low-rank term with Woodbury, perform Cauchy multiplies, then inverse FFT. The theorem reduces filter construction to four Cauchy multiplies in $\\widetilde O(N+L)$ work and $O(N+L)$ space, with logarithmic factors hidden by the tilde.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c7",
+        "c8"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s7",
+      "title": "Training in parallel, generating through state",
+      "markdown": "Once the kernel has been constructed, a layer can apply it across a full sequence as a convolution, which is parallelizable for training. For autoregressive generation, the equivalent recurrence updates a fixed-size state instead of revisiting the entire prefix. “Two views” does not mean two approximate models: bilinear discretization first defines a discrete approximation to the continuous-time SSM, and unrolling that discrete SSM then proves that its recurrent and convolutional evaluations compute exactly the same discrete input-output operator. Separately, conjugation preserves an SSM's input-output operator exactly when $A$, $B$, and $C$ are transformed consistently under the same change of state coordinates.\n\nAn S4 module is linear, just as a convolutional layer is linear. The complete deep network is not linear because it stacks modules with nonlinear activations and position-wise feature mixing. The paper describes $H$ independent SSM copies for $H$ features, followed by a linear layer that mixes those features. Its reported constant inference cost is constant with respect to context length; it still depends on hidden and state dimensions.\n\nThis also explains why the scalar state illustration is only a foundation. It visualizes an impulse response, but it omits feature mixing, nonlinear depth, HiPPO initialization, DPLR arithmetic, and the frequency-domain kernel algorithm. S4's achievement lies in making all these compatible with both efficient full-sequence training and recurrent inference.",
+      "sourceIds": [
+        "section-1",
+        "section-3",
+        "section-3-part-2",
+        "section-4-part-2"
+      ],
+      "claimIds": [
+        "c2",
+        "c3",
+        "c8",
+        "c11"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s8",
+      "title": "What the evidence establishes—and what it does not",
+      "markdown": "The empirical evidence supports S4 under the paper’s reported model, benchmark, and implementation conditions. In the parameter-matched efficiency comparison, S4’s speed and memory use were competitive with Linear Transformer and Performer. At sequence length $4096$, for example, the table reports relative speed of $5.19\\times$ for S4, $5.35\\times$ for Linear Transformer, and $3.79\\times$ for Performer, with relative memory of $0.091\\times$, $0.067\\times$, and $0.086\\times$, respectively, against the displayed Transformer baseline. These measurements complement—but do not follow solely from—the near-linear filter-construction complexity, because actual runtime and memory also depend on layer sizes, implementation, and hardware.\n\nOn the displayed Long Range Arena table, S4 scored $96.35$ on Path-X, whose flattened $128\\times128$ input has length $16{,}384$. The learned convolution kernels span that full context, with lower layers showing comparatively local structure and higher layers aggregating across columns at different spatial frequencies. This connects the structured SSM computation to a concrete long-context result, but it remains evidence for the evaluated configuration and task rather than a guarantee that every S4 model will learn every long-range dependency.\n\nThe method also retains an important numerical qualification. This version of S4 can become unstable when learned eigenvalues of $A$ enter the right half-plane. The cited follow-up changes the DPLR correction from $\\Lambda-PQ^*$ to the tied form $\\Lambda-PP^*$ to address that potential failure mode. The supported conclusion is therefore specific: S4 provides an efficient structured route between convolutional training and recurrent inference and achieves strong reported results under the tested conditions, while numerical stability, parameterization, optimization, and implementation choices remain consequential.",
+      "sourceIds": [
+        "section-3",
+        "section-3-part-2",
+        "section-4"
+      ],
+      "claimIds": [
+        "c9",
+        "c10",
+        "c12"
+      ],
+      "figureId": null
+    }
+  ],
+  "figures": [
+    {
+      "id": "f-state",
+      "kind": "state",
+      "title": "How retention changes an impulse response",
+      "question": "As the retention coefficient approaches one, how does the visible impulse persist across the 12 updates?",
+      "caption": "An illustrative scalar recurrence $h_t=ah_{t-1}+u_t$ shows twelve states after the single impulse $u_0=1$; changing $a$ changes only the decay rate.",
+      "limitation": "This is a scalar, fixed-coefficient impulse response, not S4's learned multidimensional, complex-valued, HiPPO-initialized state or its kernel-construction algorithm.",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c1",
+        "c2",
+        "c3"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "f-low-rank",
+      "kind": "low-rank",
+      "title": "What retaining a few matrix directions means",
+      "question": "How do retained rank and retained squared singular-value energy change as $r$ increases?",
+      "caption": "A fixed diagonal $6\\times6$ example retains the first $r$ singular components from $(6,4,3,2,1,0.5)$ and displays their retained energy.",
+      "limitation": "This is a diagonal singular-value decomposition example, not S4's learned NPLR correction, not a LoRA update, and not a reported compression result.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c6"
+      ],
+      "illustrative": true
+    }
+  ],
+  "quiz": [
+    {
+      "question": "Assume an LTI discrete SSM starts from zero and its convolution kernel is already known. Which pairing best matches the paper's two computational views?",
+      "options": [
+        {
+          "text": "Convolution for parallel full-sequence training; recurrence for stepwise generation.",
+          "explanation": "Correct. Both compute the same linear operator, while exposing different computational schedules."
+        },
+        {
+          "text": "Recurrence for parallel full-sequence training; convolution for constant-state generation.",
+          "explanation": "Incorrect. Recurrence is sequential across time, while convolution exposes full-sequence parallelism."
+        },
+        {
+          "text": "Convolution and recurrence require independently learned transition matrices.",
+          "explanation": "Incorrect. They are equivalent representations derived from the same SSM parameters."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-2",
+        "section-4-part-2"
+      ],
+      "claimIds": [
+        "c2",
+        "c3",
+        "c11"
+      ]
+    },
+    {
+      "question": "Why does S4 not simply diagonalize the original HiPPO matrix and compute elementwise powers?",
+      "options": [
+        {
+          "text": "The explicit change of basis can contain exponentially large entries and be numerically unusable.",
+          "explanation": "Correct. The paper identifies severe conditioning problems in the naive HiPPO diagonalization."
+        },
+        {
+          "text": "A diagonal matrix cannot represent a linear recurrence.",
+          "explanation": "Incorrect. Diagonal transitions do define linear recurrences and are computationally convenient."
+        },
+        {
+          "text": "FFT convolution requires the state matrix to remain real and triangular.",
+          "explanation": "Incorrect. S4's efficient basis is complex, and triangularity is not the stated FFT requirement."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c5",
+        "c6"
+      ]
+    },
+    {
+      "question": "Under the paper's stated scope, what is the most defensible interpretation of its Path-X result?",
+      "options": [
+        {
+          "text": "The evaluated S4 configuration handled a 16,384-step benchmark instance strongly, but this does not guarantee success on every long-range task.",
+          "explanation": "Correct. It preserves the reported condition without turning one benchmark result into a universal guarantee."
+        },
+        {
+          "text": "Any state space model will solve every task once the sequence exceeds 16,000 steps.",
+          "explanation": "Incorrect. The paper emphasizes special structure, training, and benchmark-specific evidence."
+        },
+        {
+          "text": "The Path-X score proves near-linear filter construction has zero numerical error.",
+          "explanation": "Incorrect. Predictive accuracy neither proves exact arithmetic nor removes the paper's stability caveat."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-3-part-2",
+        "section-4"
+      ],
+      "claimIds": [
+        "c10",
+        "c12"
+      ]
+    }
+  ],
+  "id": "efficiently-modeling-long-sequences-with-structured",
+  "createdAt": "2026-10-02T00:03:37.531Z",
+  "pipelineVersion": "subjects-lessons-v1",
+  "sources": [
+    {
+      "id": "abstract",
+      "label": "Original paper · abstract",
+      "url": "https://arxiv.org/abs/2111.00396",
+      "digest": "03f91629232757673208e00e34b55ca576e6e818b1a2691a62d7c2e278978368",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-02T00:01:37.027Z"
+    },
+    {
+      "id": "section-1",
+      "label": "1 Introduction",
+      "url": "https://arxiv.org/html/2111.00396#S1",
+      "digest": "157875dcf294ad8d5d7d7e079edf176dd0338edfe252f2a0a72714b81967c359",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-02T00:01:37.027Z"
+    },
+    {
+      "id": "section-2",
+      "label": "2 Background: State Spaces",
+      "url": "https://arxiv.org/html/2111.00396#S2",
+      "digest": "02ad3005b1272bd7906d846ce1819c65605725cbe00424c76f9ee49d84f727a1",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-02T00:01:37.027Z"
+    },
+    {
+      "id": "section-3",
+      "label": "3 Method: Structured State Spaces (S4)",
+      "url": "https://arxiv.org/html/2111.00396#S3",
+      "digest": "a8c21a689703eedbac3d22f6d25aba1834b0b94232403a2893a2b56d6dc750fb",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-02T00:01:37.027Z"
+    },
+    {
+      "id": "section-3-part-2",
+      "label": "3 Method: Structured State Spaces (S4) · part 2",
+      "url": "https://arxiv.org/html/2111.00396#S3",
+      "digest": "f425b70b35b4332e7bc042d6769d0694cb9def31c5fbdc67dee1756e7a23b595",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-02T00:01:37.027Z"
+    },
+    {
+      "id": "section-4",
+      "label": "4 Experiments",
+      "url": "https://arxiv.org/html/2111.00396#S4",
+      "digest": "a58ffc1120ac00d0175b057bc4ab9419e519ca3ad9d5e0c61e83792e4baa2862",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-02T00:01:37.027Z"
+    },
+    {
+      "id": "section-4-part-2",
+      "label": "4 Experiments · part 2",
+      "url": "https://arxiv.org/html/2111.00396#S4",
+      "digest": "4a49598512fb3e673a790f74d4bee7a4a7008713cfaf38019ce0b2bc0713dda3",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-02T00:01:37.027Z"
+    },
+    {
+      "id": "section-5",
+      "label": "5 Conclusion",
+      "url": "https://arxiv.org/html/2111.00396#S5",
+      "digest": "cbf7a65009043921e3aeef130774913d09fba0104e115782791b93b2ada8070f",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-02T00:01:37.027Z"
+    }
+  ],
+  "review": {
+    "status": "passed",
+    "reviewedAt": "2026-10-02T02:12:49.035Z",
+    "contentDigest": "3e03a0f4296b1b984968074e3cf8056a1ce07fbe80fd4c73f52eecef2973a93f"
+  }
+}

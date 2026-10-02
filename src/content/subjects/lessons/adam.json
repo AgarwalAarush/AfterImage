@@ -1,0 +1,478 @@
+{
+  "title": "Two Memories, One Step: Reconstructing Adam",
+  "summary": "Adam turns noisy gradients into coordinate-wise updates by combining bias-corrected moving averages of the gradient and its square.",
+  "prerequisites": [
+    "Gradients of differentiable objectives",
+    "Stochastic gradients from random samples or minibatches",
+    "Exponential moving averages with decaying history"
+  ],
+  "objectives": [
+    "Derive Adam's update from its two moving averages.",
+    "Explain why zero initialization requires bias correction.",
+    "Calculate one Adam step for a small gradient vector.",
+    "Distinguish empirical evidence from the conditional convex guarantee.",
+    "Identify when gradient-scale invariance is only approximate."
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "mechanism",
+      "statement": "Adam maintains exponential moving averages of the gradient and the elementwise squared gradient, then uses them to form coordinate-specific updates.",
+      "conditions": "For a differentiable stochastic objective, with all vector operations performed elementwise.",
+      "sourceIds": [
+        "page-1",
+        "page-2"
+      ]
+    },
+    {
+      "id": "c2",
+      "kind": "equation",
+      "statement": "The Adam recurrences are m_t=β_1m_{t-1}+(1-β_1)g_t and v_t=β_2v_{t-1}+(1-β_2)g_t^2, followed by division by 1-β_1^t and 1-β_2^t before the parameter update.",
+      "conditions": "With m_0=v_0=0, β_1 and β_2 in [0,1), and elementwise squaring and division.",
+      "sourceIds": [
+        "page-2"
+      ]
+    },
+    {
+      "id": "c3",
+      "kind": "mechanism",
+      "statement": "Zero initialization biases both uncorrected moving averages toward zero, particularly at early timesteps and when a decay coefficient is close to one.",
+      "conditions": "When the moment accumulators begin at zero rather than at their unknown population moments.",
+      "sourceIds": [
+        "page-2",
+        "page-3"
+      ]
+    },
+    {
+      "id": "c4",
+      "kind": "equation",
+      "statement": "Under a stationary second raw gradient moment, E[v_t]=(1-β_2^t)E[g_t^2], which motivates the correction v_t/(1-β_2^t).",
+      "conditions": "The gradient's second raw moment is stationary; under nonstationarity the paper includes a residual term.",
+      "sourceIds": [
+        "page-3"
+      ]
+    },
+    {
+      "id": "c5",
+      "kind": "result",
+      "statement": "Ignoring ε, rescaling every gradient by a common positive factor leaves Adam's normalized direction unchanged because the first moment scales linearly and the second raw moment quadratically.",
+      "conditions": "The same positive scale factor applies consistently, ε=0, and the moving-average states are correspondingly scaled.",
+      "sourceIds": [
+        "page-3"
+      ]
+    },
+    {
+      "id": "c6",
+      "kind": "caveat",
+      "statement": "The paper's regret guarantee is an online convex result with bounded gradients, bounded iterate distances, a decaying stepsize, a decaying first-moment coefficient, and β_1^2/√β_2<1.",
+      "conditions": "For the theorem's sequence of convex costs and its stated schedules and boundedness assumptions.",
+      "sourceIds": [
+        "page-4"
+      ]
+    },
+    {
+      "id": "c7",
+      "kind": "result",
+      "statement": "Under the paper's stated online-convex assumptions, its analysis gives O(√T) cumulative regret and therefore O(1/√T) average regret.",
+      "conditions": "Under the assumptions of Theorem 4.1 and Corollary 4.2, not for arbitrary nonconvex training.",
+      "sourceIds": [
+        "page-4"
+      ]
+    },
+    {
+      "id": "c8",
+      "kind": "result",
+      "statement": "In the reported MNIST logistic-regression experiment, Adam and momentum SGD showed similar convergence and both converged faster than AdaGrad.",
+      "conditions": "L2-regularized multiclass logistic regression on MNIST, minibatches of 128, a 1/√t stepsize decay, common initialization, and each optimizer reported at its best densely searched hyperparameters.",
+      "sourceIds": [
+        "page-5"
+      ]
+    },
+    {
+      "id": "c9",
+      "kind": "result",
+      "statement": "In the reported sparse IMDB bag-of-words experiment, Adam converged as fast as AdaGrad and both outperformed Nesterov momentum SGD by a large margin.",
+      "conditions": "Logistic regression on 10,000-dimensional sparse bag-of-words features, including the paper's comparisons with and without 50% feature dropout.",
+      "sourceIds": [
+        "page-5",
+        "page-6"
+      ]
+    },
+    {
+      "id": "c10",
+      "kind": "result",
+      "statement": "The paper reports that removing bias correction produced training instabilities when β_2 was close to one, especially in the first few epochs.",
+      "conditions": "The variational-autoencoder experiment varying β_1, β_2, and stepsize across the ranges stated in Section 6.4.",
+      "sourceIds": [
+        "page-8"
+      ]
+    },
+    {
+      "id": "c11",
+      "kind": "caveat",
+      "statement": "The paper explicitly states that its convergence analysis does not apply to the nonconvex multilayer-network experiments.",
+      "conditions": "For the multilayer neural networks evaluated in Section 6.2.",
+      "sourceIds": [
+        "page-6"
+      ]
+    },
+    {
+      "id": "c12",
+      "kind": "mechanism",
+      "statement": "AdaMax replaces Adam's second-moment denominator with an exponentially weighted infinity norm satisfying u_t=max(β_2u_{t-1},|g_t|).",
+      "conditions": "For the p-to-infinity limit derived in the paper, with operations applied elementwise.",
+      "sourceIds": [
+        "page-8",
+        "page-9"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "s1",
+      "title": "The problem Adam is trying to solve",
+      "markdown": "Let $f_t(\\theta)$ be a stochastic realization of a scalar objective at step $t$, and let $\\theta$ be its parameter vector. The observed gradient is\n\n$$g_t=\\nabla_\\theta f_t(\\theta_{t-1}).$$\n\nA minibatch can make $g_t$ cheaper to obtain than the full-data gradient, but it also makes the direction noisy. Different coordinates may have very different gradient scales or may be active only rarely. A single global learning rate therefore has two jobs that can conflict: choosing an overall pace and accommodating coordinate-specific gradient histories.\n\nAdam separates those jobs. Its scalar hyperparameter $\\alpha$ sets the overall step scale, while two histories summarize each coordinate. The first history tracks signed gradients; the second tracks squared gradients. Their ratio supplies an adaptive, coordinate-wise direction. This remains a first-order method: it uses gradients rather than a Hessian. The paper targets stochastic objectives with large datasets or high-dimensional parameter spaces and presents the method as combining ideas useful for sparse gradients and nonstationary settings.",
+      "sourceIds": [
+        "page-1",
+        "page-2"
+      ],
+      "claimIds": [
+        "c1"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s2",
+      "title": "A moving average is a memory with a half-life",
+      "markdown": "Before combining two memories, consider the scalar recurrence\n\n$$h_t=a h_{t-1}+u_t,$$\n\nwhere $h_t$ is stored state, $u_t$ is the new input, and $0\\leq a<1$ is retention. Expanding it reveals geometrically decaying weights: recent inputs count more, but older inputs persist. Adam uses this pattern twice, with $a=\\beta_1$ for gradients and $a=\\beta_2$ for squared gradients.\n\nThe illustrative control below injects one impulse, $u_0=1$, and then zero input for 12 steps. Increasing $a$ makes the displayed scalar state decay more slowly. Predict which setting preserves more of the impulse at step 12 before moving the control. This isolates the meaning of a decay coefficient: it is not an Adam optimizer, contains no objective or parameter update, and has only one scalar state. Its value is conceptual—once a coefficient is near one, information accumulates slowly and zero initialization remains visible for longer.",
+      "sourceIds": [
+        "page-2",
+        "page-3"
+      ],
+      "claimIds": [
+        "c1",
+        "c3"
+      ],
+      "figureId": "fig-state"
+    },
+    {
+      "id": "s3",
+      "title": "The complete update, symbol by symbol",
+      "markdown": "Starting from $m_0=0$ and $v_0=0$, Adam computes\n\n$$m_t=\\beta_1m_{t-1}+(1-\\beta_1)g_t,$$\n\n$$v_t=\\beta_2v_{t-1}+(1-\\beta_2)g_t^2,$$\n\n$$\\hat m_t=\\frac{m_t}{1-\\beta_1^t},\\qquad \\hat v_t=\\frac{v_t}{1-\\beta_2^t},$$\n\n$$\\theta_t=\\theta_{t-1}-\\alpha\\frac{\\hat m_t}{\\sqrt{\\hat v_t}+\\epsilon}.$$\n\nHere $t$ is the positive timestep; $g_t^2$ means elementwise squaring; $m_t$ is the uncorrected first-moment estimate; $v_t$ is the uncorrected second raw-moment estimate; hats mark bias-corrected estimates; $\\beta_1,\\beta_2\\in[0,1)$ are retention coefficients; $\\alpha$ is the stepsize; and $\\epsilon$ is a small denominator stabilizer. Every vector operation is coordinate-wise.\n\nThe numerator preserves sign and averages direction. The denominator reflects recent squared magnitude, so a coordinate with persistently large gradients is divided by a larger number. Calling $v_t$ a variance is imprecise: it estimates an uncentered second moment, not $E[(g-E[g])^2]$. Adam's defining step is thus not merely momentum plus a changing global rate; it couples a signed first moment to a separate, coordinate-wise scale estimate.",
+      "sourceIds": [
+        "page-2"
+      ],
+      "claimIds": [
+        "c1",
+        "c2"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s4",
+      "title": "Why the hats matter",
+      "markdown": "Because the accumulators start at zero, their early values omit the infinite prehistory that a stationary moving average would otherwise represent. For the second moment, expansion gives\n\n$$v_t=(1-\\beta_2)\\sum_{i=1}^{t}\\beta_2^{t-i}g_i^2.$$\n\nIf $E[g_i^2]$ is stationary, taking expectations and summing the geometric series yields\n\n$$E[v_t]=(1-\\beta_2^t)E[g_t^2].$$\n\nDivision by $1-\\beta_2^t$ removes that initialization factor. The first-moment argument is analogous. Under nonstationarity, the paper includes a residual term rather than claiming exact equality; the approximation is useful when sufficiently old gradients receive little weight.\n\nA common misconception is that bias correction is a cosmetic warm-up. At $t=1$, it changes the algebra exactly. Without correction, both memories are shrunken, but not by the same factor after the square root. The paper's variational-autoencoder study found instability without correction when $\\beta_2$ was close to one, especially early in training. That observation belongs to the stated architecture and hyperparameter sweep; it is not proof that every uncorrected optimizer must diverge.",
+      "sourceIds": [
+        "page-2",
+        "page-3",
+        "page-8"
+      ],
+      "claimIds": [
+        "c3",
+        "c4",
+        "c10"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s5",
+      "title": "One calculated step",
+      "markdown": "Consider an illustrative two-coordinate gradient $g_1=(2,-1)$, initial parameter $\\theta_0=(1,1)$, $\\beta_1=0.9$, $\\beta_2=0.99$, $\\alpha=0.1$, and, solely to keep the arithmetic transparent, $\\epsilon=0$. These are constructed values, not a reported experiment.\n\nThe uncorrected memories are\n\n$$m_1=0.1(2,-1)=(0.2,-0.1),$$\n\n$$v_1=0.01(4,1)=(0.04,0.01).$$\n\nBias correction gives\n\n$$\\hat m_1=\\frac{(0.2,-0.1)}{0.1}=(2,-1),$$\n\n$$\\hat v_1=\\frac{(0.04,0.01)}{0.01}=(4,1).$$\n\nTherefore\n\n$$\\frac{\\hat m_1}{\\sqrt{\\hat v_1}}=\\frac{(2,-1)}{(2,1)}=(1,-1),$$\n\nand\n\n$$\\theta_1=(1,1)-0.1(1,-1)=(0.9,1.1).$$\n\nAt the first step, bias-corrected moment magnitudes cancel for each nonzero coordinate when $\\epsilon=0$, leaving its sign. Later steps depend on history: inconsistent signs can reduce $\\hat m_t$, while large squared gradients keep $\\hat v_t$ elevated. That temporal interaction—not this special first-step simplification—is the mechanism of interest.",
+      "sourceIds": [
+        "page-2",
+        "page-3"
+      ],
+      "claimIds": [
+        "c2",
+        "c5"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s6",
+      "title": "Scale cancellation and its boundary",
+      "markdown": "Ignoring $\\epsilon$, multiply a coordinate's entire gradient history by a positive constant $c$. Then $\\hat m_t$ scales by $c$ and $\\hat v_t$ by $c^2$, so\n\n$$\\frac{c\\hat m_t}{\\sqrt{c^2\\hat v_t}}=\\frac{\\hat m_t}{\\sqrt{\\hat v_t}}.$$\n\nThis is the paper's diagonal gradient-rescaling invariance. The qualifications matter. A nonzero $\\epsilon$ does not scale with the gradients, so exact cancellation can fail when the denominator is comparable to $\\epsilon$. The argument also assumes the stored histories are rescaled consistently; abruptly changing units after state has accumulated is a different operation.\n\nContrast this with the illustrative optimizer below: it performs ordinary gradient descent on $f(x)=x^2/2$ from $x=3$ for 12 iterations. Its learning-rate control directly changes every update $x\\leftarrow x-\\eta x$. Predict whether a larger $\\eta$ approaches zero faster or overshoots. The display teaches what a single global stepsize does, providing a baseline for understanding why Adam normalizes by history. It does not simulate Adam, RMSProp, stochastic noise, or coordinate-wise moments.",
+      "sourceIds": [
+        "page-2",
+        "page-3"
+      ],
+      "claimIds": [
+        "c2",
+        "c5"
+      ],
+      "figureId": "fig-optimizer"
+    },
+    {
+      "id": "s7",
+      "title": "What the theory actually guarantees",
+      "markdown": "The paper evaluates online convex optimization through regret\n\n$$R(T)=\\sum_{t=1}^{T}\\left[f_t(\\theta_t)-f_t(\\theta^*)\\right],$$\n\nwhere $T$ is the horizon and $\\theta^*$ is the best fixed parameter in the feasible set for the full observed sequence. Under bounded gradients, bounded distances between iterates, $\\beta_1^2/\\sqrt{\\beta_2}<1$, a stepsize $\\alpha_t=\\alpha/\\sqrt{t}$, and an exponentially decaying $\\beta_{1,t}$, the paper derives $O(\\sqrt{T})$ cumulative regret. Dividing by $T$ gives $O(1/\\sqrt{T})$ average regret.\n\nThis is not an unconditional theorem that fixed-hyperparameter Adam converges on every objective. It is also not the theorem used to certify the paper's nonconvex neural-network runs; the authors explicitly say that their convergence analysis does not apply there. The distinction is essential: a conditional convex guarantee and encouraging nonconvex experiments are different forms of evidence.",
+      "sourceIds": [
+        "page-4",
+        "page-6"
+      ],
+      "claimIds": [
+        "c6",
+        "c7",
+        "c11"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s8",
+      "title": "Reading the experiments without overreaching",
+      "markdown": "The comparisons were controlled by sharing parameter initialization and searching each optimizer's hyperparameters over a dense grid, then reporting its best setting. On L2-regularized MNIST logistic regression with minibatches of 128 and $1/\\sqrt{t}$ stepsize decay, Adam and Nesterov-momentum SGD had similar convergence and both were faster than AdaGrad. On sparse 10,000-dimensional IMDB bag-of-words features, Adam converged as fast as AdaGrad, while both substantially outperformed Nesterov momentum SGD in the reported comparison.\n\nThose results support the paper's claim that adaptive histories can be useful under the tested dense and sparse conditions. They do not establish universal optimizer rankings: architectures, objectives, schedules, tuning budgets, and evaluation criteria can change the outcome. The CNN study itself illustrates context dependence—the authors report that its second-moment estimate eventually became dominated by $\\epsilon$, weakening its role as a geometry approximation.\n\nThe paper also derives AdaMax, which replaces the second-moment denominator with $u_t=\\max(\\beta_2u_{t-1},|g_t|)$. That extension reinforces the central design idea: retain a signed history for direction, choose a history-based coordinate scale, and state precisely which norm and assumptions define the resulting update.",
+      "sourceIds": [
+        "page-5",
+        "page-6",
+        "page-7",
+        "page-8",
+        "page-9"
+      ],
+      "claimIds": [
+        "c8",
+        "c9",
+        "c12"
+      ],
+      "figureId": null
+    }
+  ],
+  "figures": [
+    {
+      "id": "fig-state",
+      "kind": "state",
+      "title": "How long does a moving average remember?",
+      "question": "As retention increases, how much of the initial impulse remains after 12 steps?",
+      "caption": "A scalar recurrence shows the decay of one initial impulse as the retention coefficient changes.",
+      "limitation": "This is a fixed scalar impulse response, not Adam, a selective or complex state-space model, or a learned rollout.",
+      "sourceIds": [
+        "page-2",
+        "page-3"
+      ],
+      "claimIds": [
+        "c1",
+        "c3"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "fig-optimizer",
+      "kind": "optimizer",
+      "title": "A global learning rate on a quadratic",
+      "question": "How does changing the learning rate alter the 12 gradient-descent iterates from x=3?",
+      "caption": "Ordinary gradient descent follows the slope of the illustrative quadratic f(x)=x^2/2 as its learning rate changes.",
+      "limitation": "This control is plain gradient descent, not an Adam or RMSProp simulation, and contains no stochastic gradients.",
+      "sourceIds": [
+        "page-1",
+        "page-2"
+      ],
+      "claimIds": [
+        "c1",
+        "c2"
+      ],
+      "illustrative": true
+    }
+  ],
+  "quiz": [
+    {
+      "question": "Assume ε=0 and all stored moment histories are rescaled consistently. If every gradient is multiplied by 5, what happens to Adam's normalized update direction?",
+      "options": [
+        {
+          "text": "It is unchanged.",
+          "explanation": "Correct. The first moment gains a factor of 5 and the square root of the second moment also gains a factor of 5."
+        },
+        {
+          "text": "It becomes five times larger.",
+          "explanation": "This ignores the quadratic scaling of the second raw moment and its square root in the denominator."
+        },
+        {
+          "text": "It becomes twenty-five times smaller.",
+          "explanation": "The second moment scales by 25, but its square root scales by 5, which cancels the numerator's factor."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "page-3"
+      ],
+      "claimIds": [
+        "c5"
+      ]
+    },
+    {
+      "question": "Which statement best distinguishes Adam from momentum-style use of only a signed gradient average?",
+      "options": [
+        {
+          "text": "Adam also divides by a coordinate-wise estimate derived from squared gradients.",
+          "explanation": "Correct. Adam combines a first-moment numerator with a second raw-moment denominator."
+        },
+        {
+          "text": "Adam computes an exact Hessian inverse at every step.",
+          "explanation": "Adam is a first-order method and does not require an exact Hessian."
+        },
+        {
+          "text": "Adam removes all stochasticity from minibatch gradients.",
+          "explanation": "Moving averages can smooth noisy observations, but they do not make stochastic gradients exact."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "page-1",
+        "page-2"
+      ],
+      "claimIds": [
+        "c1",
+        "c2"
+      ]
+    },
+    {
+      "question": "What is the defensible interpretation of the paper's O(√T) regret result?",
+      "options": [
+        {
+          "text": "It holds under the theorem's online-convex, boundedness, and decay-schedule assumptions.",
+          "explanation": "Correct. The stated rate is conditional on the theorem's specific setting and assumptions."
+        },
+        {
+          "text": "It proves fixed-hyperparameter Adam converges on every nonconvex neural network.",
+          "explanation": "The paper explicitly says its convergence analysis does not apply to its nonconvex multilayer-network experiments."
+        },
+        {
+          "text": "It proves Adam always beats every other optimizer in training loss.",
+          "explanation": "A regret bound is not a universal empirical ranking, and the reported comparisons are tied to particular experiments."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "page-4",
+        "page-6"
+      ],
+      "claimIds": [
+        "c6",
+        "c7",
+        "c11"
+      ]
+    }
+  ],
+  "id": "adam",
+  "createdAt": "2026-10-02T00:04:43.313Z",
+  "pipelineVersion": "subjects-lessons-v1",
+  "sources": [
+    {
+      "id": "abstract",
+      "label": "Original paper · abstract",
+      "url": "https://arxiv.org/abs/1412.6980",
+      "digest": "c5eb4db28270bf7ad397219b44b7829629eac8b984f4cd1b3a6bcf0a6d7134f6",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:02:41.706Z"
+    },
+    {
+      "id": "page-1",
+      "label": "Original paper · page 1",
+      "url": "https://arxiv.org/pdf/1412.6980#page=1",
+      "digest": "f9aaf6aeebaba77fdd8a4f2b76aaa4cca22aca10617a3062a16cfe2af62f3ade",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:02:41.706Z"
+    },
+    {
+      "id": "page-2",
+      "label": "Original paper · page 2",
+      "url": "https://arxiv.org/pdf/1412.6980#page=2",
+      "digest": "7f782759e5a53961c687c8aa9348c30c2503c88a6c243bdaada14c7c5a5411ec",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:02:41.706Z"
+    },
+    {
+      "id": "page-3",
+      "label": "Original paper · page 3",
+      "url": "https://arxiv.org/pdf/1412.6980#page=3",
+      "digest": "8e756fe7c7a4543f581d8d4c131404cf7151a832f8763730addf314d0841d0e5",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:02:41.706Z"
+    },
+    {
+      "id": "page-4",
+      "label": "Original paper · page 4",
+      "url": "https://arxiv.org/pdf/1412.6980#page=4",
+      "digest": "18171161eebb5f55444e132c19260f58943780e95a23a60f38f5eba39c378c5e",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:02:41.706Z"
+    },
+    {
+      "id": "page-5",
+      "label": "Original paper · page 5",
+      "url": "https://arxiv.org/pdf/1412.6980#page=5",
+      "digest": "69435c102c608d68d233b43e407dae5df088a0b2048541d43a2c0345b0edaba1",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:02:41.706Z"
+    },
+    {
+      "id": "page-6",
+      "label": "Original paper · page 6",
+      "url": "https://arxiv.org/pdf/1412.6980#page=6",
+      "digest": "e1ad626374269998f266ce58c9df30e9b5b0f0b85f0608c5084001464d317b36",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:02:41.706Z"
+    },
+    {
+      "id": "page-7",
+      "label": "Original paper · page 7",
+      "url": "https://arxiv.org/pdf/1412.6980#page=7",
+      "digest": "bf1021195436fc45f9caf34f4b2d31619df9859bfcd9c04786f51d4b10d8553e",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:02:41.706Z"
+    },
+    {
+      "id": "page-8",
+      "label": "Original paper · page 8",
+      "url": "https://arxiv.org/pdf/1412.6980#page=8",
+      "digest": "616002e6acb3368611ec8b2efe72fdde37368792b4f3c42ec7cdea5b0699acad",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:02:41.706Z"
+    },
+    {
+      "id": "page-9",
+      "label": "Original paper · page 9",
+      "url": "https://arxiv.org/pdf/1412.6980#page=9",
+      "digest": "d3f4ef3c1091ae0c6696393d1de2737b6a5ff50dda436dd8785c5651922515e4",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:02:41.706Z"
+    },
+    {
+      "id": "page-10",
+      "label": "Original paper · page 10",
+      "url": "https://arxiv.org/pdf/1412.6980#page=10",
+      "digest": "97d8163987bf0436897c208cff280b5aac971da4c42daedc122b8f458f2e19fc",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:02:41.706Z"
+    },
+    {
+      "id": "page-11",
+      "label": "Original paper · page 11",
+      "url": "https://arxiv.org/pdf/1412.6980#page=11",
+      "digest": "b667fbdaacd0534dc9b4a2289f10d8b59433f00f127e78eaa24123ede666dc33",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:02:41.706Z"
+    },
+    {
+      "id": "page-12",
+      "label": "Original paper · page 12",
+      "url": "https://arxiv.org/pdf/1412.6980#page=12",
+      "digest": "6ae81a72467b9f901214f2a3b124406215ddc9286c54a47d6b1b376886c3b960",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:02:41.706Z"
+    }
+  ],
+  "review": {
+    "status": "passed",
+    "reviewedAt": "2026-10-02T00:04:43.324Z",
+    "contentDigest": "d747571d90970b0e0f318d0f8c30ea8cf617947b2de22da08496b89d3613aedb"
+  }
+}

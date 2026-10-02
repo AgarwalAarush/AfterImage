@@ -1,0 +1,438 @@
+{
+  "title": "The Critic That Teaches a Sampler",
+  "summary": "Goodfellow et al. turn generative modeling into a two-player game whose ideal equilibrium matches the data distribution without requiring an explicit likelihood or Markov-chain sampling.",
+  "prerequisites": [
+    "Probability distributions and expectations",
+    "Binary classification and log-likelihood",
+    "Gradient-based optimization and backpropagation",
+    "Divergences between probability distributions"
+  ],
+  "objectives": [
+    "Define the generator, discriminator, latent prior, and model distribution.",
+    "Reconstruct the minimax objective and its alternating optimization process.",
+    "Derive the optimal discriminator for a fixed generator.",
+    "Explain why matching the data distribution minimizes the ideal objective.",
+    "Distinguish the ideal theorem from guarantees about practical neural-network training."
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "mechanism",
+      "statement": "The framework jointly trains a generator that models the data distribution and a discriminator that estimates whether a sample is real rather than generated.",
+      "conditions": "For the adversarial framework introduced in the paper.",
+      "sourceIds": [
+        "abstract"
+      ]
+    },
+    {
+      "id": "c2",
+      "kind": "mechanism",
+      "statement": "In the paper's adversarial-net instance, both generator and discriminator are multilayer perceptrons, and generation maps sampled noise into data space.",
+      "conditions": "For the multilayer-perceptron special case studied in the paper.",
+      "sourceIds": [
+        "section-1"
+      ]
+    },
+    {
+      "id": "c3",
+      "kind": "equation",
+      "statement": "The minimax value rewards the discriminator for assigning high probability to real data and low probability to generated samples, while the generator minimizes that value.",
+      "conditions": "With samples drawn from the data distribution and latent prior, using the original minimax objective.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c4",
+      "kind": "mechanism",
+      "statement": "Practical training alternates several discriminator updates with one generator update rather than solving the discriminator inner problem completely.",
+      "conditions": "For the iterative numerical procedure proposed for finite models and datasets.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c5",
+      "kind": "caveat",
+      "statement": "The original minimax generator loss can saturate when an initially strong discriminator confidently rejects poor generated samples.",
+      "conditions": "Early in training when generated samples are clearly distinguishable from training data.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c6",
+      "kind": "mechanism",
+      "statement": "The paper proposes maximizing log discriminator probability on generated samples as a stronger-gradient generator objective with the same fixed point.",
+      "conditions": "Used as a practical alternative to minimizing the saturating minimax generator term.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c7",
+      "kind": "equation",
+      "statement": "For a fixed generator, the pointwise optimal discriminator is the data density divided by the sum of data and model densities.",
+      "conditions": "In the non-parametric density analysis, wherever the combined density has support.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c8",
+      "kind": "result",
+      "statement": "After substituting the optimal discriminator, the virtual criterion equals a constant plus twice the Jensen–Shannon divergence.",
+      "conditions": "In the paper's non-parametric analysis with the discriminator optimized for the current generator.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c9",
+      "kind": "result",
+      "statement": "The virtual criterion has its unique global minimum when the generator distribution equals the data distribution.",
+      "conditions": "In distribution space under the non-parametric assumptions of the theoretical analysis.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c10",
+      "kind": "caveat",
+      "statement": "The convergence analysis assumes enough capacity and an optimal discriminator at every generator update.",
+      "conditions": "For the convergence proposition about updates in distribution space.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c11",
+      "kind": "result",
+      "statement": "The paper evaluated adversarial nets on MNIST, the Toronto Face Database, and CIFAR-10.",
+      "conditions": "For the experiments reported in the paper.",
+      "sourceIds": [
+        "section-5"
+      ]
+    },
+    {
+      "id": "c12",
+      "kind": "caveat",
+      "statement": "The paper warns that its Parzen-window likelihood estimator is high-variance and performs poorly in high-dimensional spaces.",
+      "conditions": "For the reported indirect likelihood evaluation based on generated samples.",
+      "sourceIds": [
+        "section-5"
+      ]
+    },
+    {
+      "id": "c13",
+      "kind": "caveat",
+      "statement": "The framework lacks an explicit model density and requires the discriminator and generator to remain coordinated during training.",
+      "conditions": "For the adversarial framework compared with the alternative generative approaches discussed by the authors.",
+      "sourceIds": [
+        "section-6"
+      ]
+    },
+    {
+      "id": "c14",
+      "kind": "mechanism",
+      "statement": "Sampling from the trained generator requires neither a Markov chain nor an approximate inference procedure.",
+      "conditions": "For the multilayer-perceptron adversarial nets described in the paper.",
+      "sourceIds": [
+        "section-1"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "s1",
+      "title": "The estimation problem is turned sideways",
+      "markdown": "A generative model should produce samples distributed like observed data. Let $\\bm{x}$ denote a data-space sample and let $p_{\\text{data}}(\\bm{x})$ denote the unknown distribution that produced the training examples. A traditional likelihood-based method asks the model to assign usable probabilities to observations. Goodfellow et al. instead propose learning through discrimination: make generated samples, ask another model to distinguish them from data, and send its gradient back into the generator.\n\nThe two learned functions have different jobs. The generator $G(\\bm{z};\\theta_g)$ maps a noise vector $\\bm{z}$, drawn from a chosen prior $p_{\\bm{z}}$, into a synthetic sample. Its parameters are $\\theta_g$. Repeated sampling and mapping induce a distribution $p_g$ over $G(\\bm{z})$ even when no tractable formula for $p_g(\\bm{x})$ is available. The discriminator $D(\\bm{x};\\theta_d)\\in[0,1]$, with parameters $\\theta_d$, estimates the probability that $\\bm{x}$ came from the data rather than $G$.\n\nThis is the paper's particular conceptual move: a classifier supplies the learning signal for an implicit sampler. It does not mean the discriminator is the final product, nor that $G$ reconstructs each training example. After training, generation is simply a draw of $\\bm{z}$ followed by a forward pass through $G$.",
+      "sourceIds": [
+        "abstract",
+        "section-1",
+        "section-3"
+      ],
+      "claimIds": [
+        "c1",
+        "c2",
+        "c14"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s2",
+      "title": "Noise becomes a distribution through a map",
+      "markdown": "The prior $p_{\\bm z}$ supplies the generator with variability. A draw $\\bm z\\sim p_{\\bm z}$ is mapped to data space by $G(\\bm z;\\theta_g)$, and the distribution of those mapped samples is $p_g$. In this sense, $G$ reshapes probability mass: latent regions with greater prior probability, or regions that the map sends to similar outputs, contribute more mass to the corresponding parts of the model distribution. This defines a sampler even though the model does not provide an explicit normalized value for $p_g(\\bm x)$ at an arbitrary point.\n\nThe figure examines this prerequisite geometry with a constructed isotropic Gaussian prior, $\\bm z\\sim\\mathcal N(\\bm 0,\\sigma^2 I_D)$. Because\n\n$$\n\\mathbb E\\lVert\\bm z\\rVert^2=D\\sigma^2,\n$$\n\nits root-mean-square radius is $\\sigma\\sqrt D$. Here $D$ is the number of latent coordinates and $\\sigma$ has the same units as each coordinate, so the radius is measured in latent-space units. At $D=4$ and $\\sigma=0.5$, for example, the RMS radius is $0.5\\sqrt4=1$. This is a declared illustrative calculation rather than a parameter reported by the paper.\n\nChanging $\\sigma$ rescales every sampled vector: doubling $\\sigma$ doubles both the norm distribution's horizontal scale and the reference RMS radius. Changing $D$ instead changes how many squared coordinates contribute to each norm, moving the characteristic radius according to $\\sqrt D$ and altering the histogram's relative spread. The measured mean norm shown by the figure need not equal $\\sigma\\sqrt D$, because the latter is $\\sqrt{\\mathbb E\\lVert\\bm z\\rVert^2}$ rather than $\\mathbb E\\lVert\\bm z\\rVert$.\n\nThis calculation clarifies what the noise input contributes to the adversarial method: it is a distribution of starting points whose mass is transformed by the learned map, not a single fixed seed. The Gaussian choice belongs to the constructed exercise; the framework itself only requires a chosen noise prior, and the generator—not the latent norm alone—determines the resulting distribution in data space.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c2"
+      ],
+      "figureId": "f1"
+    },
+    {
+      "id": "s3",
+      "title": "Reading the two-player objective",
+      "markdown": "The value function is\n\n$$\n\\min_G\\max_D V(G,D)=\\mathbb{E}_{\\bm{x}\\sim p_{\\text{data}}}[\\log D(\\bm{x})]+\\mathbb{E}_{\\bm{z}\\sim p_{\\bm{z}}}[\\log(1-D(G(\\bm{z})))].\n$$\n\nHere $\\mathbb{E}$ means an average under the indicated distribution. The discriminator maximizes both terms. On real $\\bm{x}$, a larger $D(\\bm{x})$ raises $\\log D(\\bm{x})$. On generated $G(\\bm{z})$, a smaller discriminator output raises $\\log(1-D(G(\\bm{z})))$. The generator minimizes the second term because the first contains no generated sample; it tries to move its outputs toward values that $D$ labels as real.\n\nA small illustrative calculation clarifies the signs. Suppose one real example receives $D(\\bm{x})=0.8$ and one generated example receives $D(G(\\bm{z}))=0.25$. Their discriminator score is $\\log 0.8+\\log 0.75=\\log 0.6\\approx-0.511$. If the discriminator improves the assignments to $0.9$ and $0.1$, the score becomes $\\log 0.9+\\log 0.9=\\log 0.81\\approx-0.211$, which is larger, as discriminator maximization requires. These numbers are illustrative and are not experimental measurements.\n\nThe word “simultaneously” describes one coupled game, not literal same-instant parameter writes. The proposed numerical procedure alternates $k$ discriminator steps with one generator step; the reported experiments used $k=1$.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c3",
+        "c4"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s4",
+      "title": "Why the generator sometimes needs a different loss",
+      "markdown": "The formal minimax generator minimizes $\\log(1-D(G(\\bm{z})))$. Early in training, however, generated samples may be easy to reject. When $D(G(\\bm{z}))$ is near zero, this expression is in a saturated region and can provide a weak learning signal. The paper therefore suggests training $G$ to maximize $\\log D(G(\\bm{z}))$. This non-saturating alternative pushes generated samples toward higher “real” probability and has the same stated fixed point, while supplying stronger early gradients.\n\nThe optimizer figure isolates one prerequisite behind this discussion. It performs ordinary gradient descent on the invented scalar function $f(x)=x^2/2$, starting at $x=3$, for 12 updates. Because $f'(x)=x$, a learning rate $\\eta$ gives $x_{t+1}=x_t-\\eta x_t=(1-\\eta)x_t$. With the illustrative choice $\\eta=0.25$, $x_1=2.25$ and $x_2=1.6875$. Use the control to predict whether larger steps approach zero faster or begin to oscillate.\n\nThis toy exposes how gradient magnitude and step size govern numerical progress, but it is deliberately not GAN training: it has one convex objective, one scalar parameter, and no alternating opponent. Real adversarial training changes each player's objective landscape as the other player changes.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c4",
+        "c5",
+        "c6"
+      ],
+      "figureId": "f2"
+    },
+    {
+      "id": "s5",
+      "title": "Solve the discriminator before judging the generator",
+      "markdown": "The theoretical analysis first freezes $G$, hence freezes $p_g$, and optimizes $D$. At one location $\\bm{x}$, write $a=p_{\\text{data}}(\\bm{x})$ and $b=p_g(\\bm{x})$. The discriminator's pointwise contribution is\n\n$$\na\\log y+b\\log(1-y),\n$$\n\nwhere $y=D(\\bm{x})$. When $a>0$ and $b>0$, the optimum is interior: differentiating gives $a/y-b/(1-y)$, and setting this to zero yields\n\n$$\nD_G^*(\\bm{x})=\\frac{p_{\\text{data}}(\\bm{x})}{p_{\\text{data}}(\\bm{x})+p_g(\\bm{x})}.\n$$\n\nThe zero-density cases are boundary optima rather than stationary points. If $a>0$ and $b=0$, maximizing $a\\log y$ gives $D_G^*(\\bm{x})=1$. If $a=0$ and $b>0$, maximizing $b\\log(1-y)$ gives $D_G^*(\\bm{x})=0$. These cases agree with the same density-ratio formula wherever $a+b>0$. When $a=b=0$, the point lies outside the combined support and the objective does not constrain $D(\\bm{x})$.\n\nEvery symbol is local and interpretable: $D_G^*$ is the best discriminator for fixed $G$; the numerator is real-data density; the denominator is total density from the equally represented real and generated sources in the criterion.\n\nFor an illustrative discrete point with $p_{\\text{data}}(\\bm{x})=0.3$ and $p_g(\\bm{x})=0.1$, the optimum is $0.3/(0.3+0.1)=0.75$. If the two densities are equal and nonzero, it is $1/2$. Thus $D=1/2$ at equilibrium does not mean the discriminator learned nothing. Under the ideal analysis, it means the sample's source cannot be inferred because the two distributions agree.",
+      "sourceIds": [
+        "section-4"
+      ],
+      "claimIds": [
+        "c7"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s6",
+      "title": "The equilibrium theorem—and its boundary",
+      "markdown": "Substitute $D_G^*$ into the value function and call the result $C(G)=\\max_D V(G,D)$. The paper rewrites it as\n\n$$\nC(G)=-\\log 4+2\\,\\operatorname{JSD}(p_{\\text{data}}\\|p_g),\n$$\n\nwhere $\\operatorname{JSD}$ is the Jensen–Shannon divergence. It is nonnegative and equals zero only when its two distributions agree. Consequently, the global minimum is $-\\log 4$, achieved uniquely in distribution space at $p_g=p_{\\text{data}}$. At that point, the optimal discriminator outputs $1/2$ wherever the shared distribution has support.\n\nA common misconception is that this theorem guarantees that any neural GAN trained by alternating gradient steps will converge. It does not. The convergence proposition assumes enough capacity, an optimal discriminator for the current generator at every step, and sufficiently small improvements to $p_g$ in the non-parametric distribution space. The implemented generator instead represents a restricted family through $G(\\bm{z};\\theta_g)$ and updates parameters $\\theta_g$. The paper explicitly notes that this introduces multiple critical points and removes the theoretical guarantee.\n\nThe theorem therefore identifies the desired ideal equilibrium and validates the population objective. It is not a certificate for finite data, finite networks, noisy minibatches, or practical optimization trajectories.",
+      "sourceIds": [
+        "section-4"
+      ],
+      "claimIds": [
+        "c8",
+        "c9",
+        "c10"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s7",
+      "title": "Evidence, tradeoffs, and what remains unresolved",
+      "markdown": "The paper trained models on MNIST, the Toronto Face Database, and CIFAR-10. It presented generated samples and estimated test-data probability using Gaussian Parzen windows fitted to generated samples, selecting the Gaussian width by validation. The reported table gives an MNIST estimate of $225\\pm2$ and a TFD estimate of $2057\\pm26$ for adversarial nets, under the table's dataset-specific procedures. Those values should not be detached from their estimator: the authors warn that it has high variance and performs poorly in high-dimensional spaces. They also make no claim that their displayed samples surpass existing methods.\n\nThe framework's computational attraction is direct sampling by forward propagation, without a generation-time Markov chain. Its corresponding cost is that $p_g(\\bm{x})$ is not explicitly represented. Training also requires coordination: if $G$ moves too far while $D$ becomes stale, its gradients may cease to provide a useful current comparison. The paper specifically warns about collapsing many latent values to the same output, which sacrifices diversity.\n\nThese boundaries matter. The lesson and cited results do not establish claims that depend on unspecified architecture, optimizer, or preprocessing choices. Nor do the results establish universal convergence, calibrated likelihood evaluation, or dominance over other generators. The durable contribution is narrower and more important: a differentiable discriminator can train an implicit generator through an adversarial game, with a precisely characterized ideal solution.",
+      "sourceIds": [
+        "section-5",
+        "section-6"
+      ],
+      "claimIds": [
+        "c11",
+        "c12",
+        "c13",
+        "c14"
+      ],
+      "figureId": null
+    }
+  ],
+  "figures": [
+    {
+      "id": "f1",
+      "kind": "noise",
+      "title": "Where latent samples sit before generation",
+      "question": "When the Gaussian scale doubles at fixed dimension, how should the norm histogram and RMS radius change?",
+      "caption": "A seeded Gaussian norm histogram compares measured radii with the illustrative reference $\\sigma\\sqrt{D}$ as scale and dimension change.",
+      "limitation": "This shows Gaussian input geometry only; the paper excerpt does not require a Gaussian prior, and the control does not train or simulate $G$.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c2"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "f2",
+      "kind": "optimizer",
+      "title": "Step size in a one-parameter descent",
+      "question": "For $f(x)=x^2/2$, which learning rates approach zero smoothly, oscillate, or fail to contract over 12 steps?",
+      "caption": "Ordinary gradient descent updates an illustrative scalar quadratic from $x=3$, exposing how learning rate changes the iterates.",
+      "limitation": "This is a single convex objective, not alternating GAN optimization, an adaptive optimizer, or a measured training curve.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c4",
+        "c5",
+        "c6"
+      ],
+      "illustrative": true
+    }
+  ],
+  "quiz": [
+    {
+      "question": "Assume the discriminator is optimal for a fixed generator and, at one supported point, $p_{\\text{data}}(\\bm{x})=p_g(\\bm{x})>0$. What is $D_G^*(\\bm{x})$?",
+      "options": [
+        {
+          "text": "$1/2$",
+          "explanation": "Correct. Equal numerator and model density make the data density half of their sum."
+        },
+        {
+          "text": "$1$",
+          "explanation": "Incorrect. That would require zero generated density while the data density remained positive."
+        },
+        {
+          "text": "$0$",
+          "explanation": "Incorrect. That would require zero data density while generated density remained positive."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-4"
+      ],
+      "claimIds": [
+        "c7"
+      ]
+    },
+    {
+      "question": "Early in training, $D$ confidently rejects generated samples. Which generator update does the paper propose to obtain stronger gradients?",
+      "options": [
+        {
+          "text": "Maximize $\\log D(G(\\bm{z}))$",
+          "explanation": "Correct. The paper presents this non-saturating alternative as having the same fixed point and stronger early gradients."
+        },
+        {
+          "text": "Maximize $\\log(1-D(G(\\bm{z})))$",
+          "explanation": "Incorrect. This moves in the discriminator's preferred direction rather than making generated samples look real."
+        },
+        {
+          "text": "Freeze $G$ permanently after optimizing $D$",
+          "explanation": "Incorrect. Alternation requires generator updates; freezing it would prevent its distribution from improving."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c5",
+        "c6"
+      ]
+    },
+    {
+      "question": "Which conclusion is justified by the paper's convergence analysis?",
+      "options": [
+        {
+          "text": "The ideal distribution-space criterion has its unique global minimum at $p_g=p_{\\text{data}}$ under the stated assumptions.",
+          "explanation": "Correct. This matches the non-parametric result with an optimal discriminator and sufficient capacity."
+        },
+        {
+          "text": "Every finite neural GAN trained with minibatches must converge to the data distribution.",
+          "explanation": "Incorrect. The theorem does not guarantee convergence for finite parameterized networks or practical optimization."
+        },
+        {
+          "text": "The reported Parzen estimates provide an exact likelihood for the implicit generator.",
+          "explanation": "Incorrect. The density is not explicit, and the paper describes the estimator as high-variance and weak in high dimensions."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-4",
+        "section-5"
+      ],
+      "claimIds": [
+        "c9",
+        "c10",
+        "c12"
+      ]
+    }
+  ],
+  "id": "gan",
+  "createdAt": "2026-10-01T23:52:34.390Z",
+  "pipelineVersion": "subjects-lessons-v1",
+  "sources": [
+    {
+      "id": "abstract",
+      "label": "Original paper · abstract",
+      "url": "https://arxiv.org/abs/1406.2661",
+      "digest": "c5ed9fa42739e3e843db525500b5db2eb219b164b625c500fe89125b988aea88",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:50:31.345Z"
+    },
+    {
+      "id": "main-text",
+      "label": "Original paper · unsectioned main text",
+      "url": "https://arxiv.org/html/1406.2661",
+      "digest": "1826acef46c3017ffd187bf8d570fd479106840256c56ef4d48667b9ca0c8d27",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:50:31.345Z"
+    },
+    {
+      "id": "section-1",
+      "label": "1 Introduction",
+      "url": "https://arxiv.org/html/1406.2661#S1",
+      "digest": "014ea477886700d211022e8baa413ef46f723fdd36bbb0f40b2ec39c978445f3",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:50:31.345Z"
+    },
+    {
+      "id": "section-2",
+      "label": "2 Related work",
+      "url": "https://arxiv.org/html/1406.2661#S2",
+      "digest": "6c50dc413581f1aca26239ed1d38080ae5ddbf4f2960d76e6b5285542ec2d7ce",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:50:31.345Z"
+    },
+    {
+      "id": "section-3",
+      "label": "3 Adversarial nets",
+      "url": "https://arxiv.org/html/1406.2661#S3",
+      "digest": "d04f28917d3aaf2e4ed18c1eab9a4e4c51af57ebec0fe3561c1f4df6ffb92f38",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:50:31.345Z"
+    },
+    {
+      "id": "section-4",
+      "label": "4 Theoretical Results",
+      "url": "https://arxiv.org/html/1406.2661#S4",
+      "digest": "4a3ffda2b6f5d950c2ebbbe58ed3b8525db5b8c92973cca065855a18b3cdbebb",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:50:31.345Z"
+    },
+    {
+      "id": "section-5",
+      "label": "5 Experiments",
+      "url": "https://arxiv.org/html/1406.2661#S5",
+      "digest": "1d12c076b3c076186a0af1f4747f8f9562c490aeca80bd8d95d01c9aba1433a9",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:50:31.345Z"
+    },
+    {
+      "id": "section-6",
+      "label": "6 Advantages and disadvantages",
+      "url": "https://arxiv.org/html/1406.2661#S6",
+      "digest": "01c6a04d60b233e9c6af3f5ee82f0b4df2ae7bca38f69f95f2d6aa26f60b9057",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:50:31.345Z"
+    },
+    {
+      "id": "section-7",
+      "label": "7 Conclusions and future work",
+      "url": "https://arxiv.org/html/1406.2661#S7",
+      "digest": "44f7c765d8725065703f2bf439a5b6da19a68fa6aa1bece338f37f870b0fa093",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:50:31.345Z"
+    }
+  ],
+  "review": {
+    "status": "passed",
+    "reviewedAt": "2026-10-02T01:57:17.708Z",
+    "contentDigest": "92e1d81b5e95866f377d885936a652fc9533534432f4763c3eec35bec598603f"
+  }
+}

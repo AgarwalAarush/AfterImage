@@ -1,0 +1,455 @@
+{
+  "title": "The Narrow Bridge: How BLIP-2 Teaches Frozen Models to Communicate",
+  "summary": "BLIP-2 trains a compact query bottleneck in two stages so frozen vision and language models can exchange useful visual information without end-to-end retraining.",
+  "prerequisites": [
+    "Transformer attention and embedding representations",
+    "Contrastive learning with positive and negative pairs",
+    "Autoregressive and encoder-decoder language models",
+    "Frozen and trainable model parameters"
+  ],
+  "objectives": [
+    "Explain why frozen unimodal models need a learned cross-modal bridge.",
+    "Trace information through Q-Former and both pre-training stages.",
+    "Distinguish ITC, ITG, and ITM objectives and attention masks.",
+    "Interpret BLIP-2 results under the reported evaluation conditions.",
+    "Identify what freezing model components does and does not guarantee."
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "mechanism",
+      "statement": "BLIP-2 keeps its pre-trained image encoder and large language model frozen while learning a smaller cross-modal bridge.",
+      "conditions": "During BLIP-2 vision-language pre-training, rather than every downstream fine-tuning setup.",
+      "sourceIds": [
+        "abstract"
+      ]
+    },
+    {
+      "id": "c2",
+      "kind": "mechanism",
+      "statement": "Training is divided into representation learning against the frozen image encoder and generative learning against the frozen language model.",
+      "conditions": "The two-stage pre-training procedure described for BLIP-2.",
+      "sourceIds": [
+        "abstract"
+      ]
+    },
+    {
+      "id": "c3",
+      "kind": "mechanism",
+      "statement": "Q-Former uses learned queries to extract a fixed-size representation even when the input image resolution changes.",
+      "conditions": "At the Q-Former interface to the frozen image encoder.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c4",
+      "kind": "result",
+      "statement": "The reported configuration uses 32 query vectors of width 768, producing a much smaller representation than the cited ViT-L/14 feature array.",
+      "conditions": "The experimental Q-Former configuration and the ViT-L/14 example in the paper.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c5",
+      "kind": "equation",
+      "statement": "For ITC, BLIP-2 computes the pairwise similarity between each query output $z_q$ and the text [CLS] embedding $t$, then selects the highest value: $s(I,T)=\\max_{q\\in\\{1,\\ldots,Q\\}}\\operatorname{sim}(z_q,t)$.",
+      "conditions": "Image-text contrastive learning, with one text [CLS] representation and multiple output queries.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c6",
+      "kind": "mechanism",
+      "statement": "ITC blocks query-text communication inside Q-Former so their independently formed representations can be contrasted without leakage.",
+      "conditions": "The unimodal self-attention mask used for the first-stage ITC objective.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c7",
+      "kind": "mechanism",
+      "statement": "ITG uses a causal interaction pattern: queries cannot inspect the text, while each text token can use every query and earlier text tokens.",
+      "conditions": "The multimodal causal self-attention mask used for first-stage image-grounded text generation.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c8",
+      "kind": "mechanism",
+      "statement": "ITM uses a bidirectional self-attention mask in which all queries and text tokens can attend to one another, then classifies each image-text pair as matched or unmatched.",
+      "conditions": "The first-stage image-text matching objective.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c9",
+      "kind": "mechanism",
+      "statement": "In stage two, a fully connected layer linearly projects the query outputs to the selected LLM's text-embedding width, and the projected embeddings are prepended as soft visual prompts.",
+      "conditions": "The generative pre-training connection from Q-Former to the selected frozen LLM.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c10",
+      "kind": "result",
+      "statement": "The strongest listed BLIP-2 configuration scored 65.0 on VQAv2 test-dev, versus 56.3 for Flamingo80B, while the paper reports 54 times fewer trainable parameters.",
+      "conditions": "Zero-shot VQAv2 comparison in Table 2; this is not a claim about every vision-language benchmark.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c11",
+      "kind": "result",
+      "statement": "Removing stage-one representation learning substantially reduced zero-shot VQA performance for both tested LLM types.",
+      "conditions": "The ablation summarized by Figure 5 under the paper's zero-shot VQA evaluation.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c12",
+      "kind": "result",
+      "statement": "Adding ITG to ITC and ITM improved every reported retrieval recall entry in the cited ablation.",
+      "conditions": "COCO fine-tuning objectives in Table 6, using its image-to-text and text-to-image R@1 and R@5 columns.",
+      "sourceIds": [
+        "section-4-part-2"
+      ]
+    },
+    {
+      "id": "c13",
+      "kind": "caveat",
+      "statement": "The reported BLIP-2 experiments did not gain VQA performance from supplying in-context VQA examples.",
+      "conditions": "The tested few-shot prompting setup; the authors associate the result with training samples containing only one image-text pair.",
+      "sourceIds": [
+        "section-5"
+      ]
+    },
+    {
+      "id": "c14",
+      "kind": "caveat",
+      "statement": "Freezing a language model does not remove its inherited safety, bias, or privacy risks.",
+      "conditions": "Image-to-text generation with frozen pre-trained models.",
+      "sourceIds": [
+        "section-5"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "s1",
+      "title": "The problem is an interface, not an empty model",
+      "markdown": "A vision encoder already maps an image into visual features, while a language model already maps token embeddings into linguistic predictions. BLIP-2 asks whether those expensive components can remain frozen and a smaller module can learn the interface between them. This matters because an LLM trained only on text does not automatically know what an image encoder's vectors mean.\n\nCall the frozen image encoder $E_v$, the frozen language model $L$, and the trainable bridge $Q_\\theta$. For image $I$, the encoder produces $X=E_v(I)$. BLIP-2 does not merely hand all of $X$ to $L$. Q-Former converts it into a compact set $Z=Q_\\theta(X)$, and a learned projection later converts $Z$ into the LLM's embedding width.\n\nHere, *frozen* means that optimization does not update a component's parameters during the stated pre-training stage. It does not mean the component is small, infallible, unbiased, or absent from computation. The expensive frozen networks still run forward passes. The contribution is therefore a training and interface strategy, not a claim that large models cost nothing to execute.",
+      "sourceIds": [
+        "abstract",
+        "section-1",
+        "section-3"
+      ],
+      "claimIds": [
+        "c1",
+        "c2"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s2",
+      "title": "Q-Former compresses by asking learned questions",
+      "markdown": "Q-Former compresses the frozen image encoder’s output through a fixed set of learned query embeddings. It contains two transformer submodules that share their self-attention layers: an image transformer that extracts visual information and a text transformer that can operate as an encoder or decoder. Q-Former is initialized from BERT-base, while its cross-attention layers are randomly initialized. Those cross-attention layers appear in every other transformer block and connect the learned queries to the frozen image features.\n\nFor an image $I$, let the frozen encoder produce a sequence\n\n$$\nX=E_v(I)\\in\\mathbb{R}^{N\\times d_v}.\n$$\n\nQ-Former maintains $Q$ learned query vectors. Through self-attention, the queries exchange information with one another; through cross-attention, each query forms a weighted combination of information in $X$. After the stack of transformer blocks, their outputs form\n\n$$\nZ=[z_1,\\ldots,z_Q]\\in\\mathbb{R}^{Q\\times d_q}.\n$$\n\nThe queries are model parameters rather than words supplied by a user. Their identities persist across images, but their output states $z_q$ depend on the current image. Training determines what visual evidence is useful to extract: the representation objectives reward query outputs that align with, generate, and discriminate the associated text. The bottleneck therefore emerges from both the fixed query interface and the losses applied to it.\n\nIn the reported configuration, $Q=32$ and $d_q=768$, giving\n\n$$\n|Z|=Qd_q=32\\cdot768=24{,}576\n$$\n\nscalar positions. The paper’s ViT-L/14 example produces a $257\\times1024$ feature array, containing\n\n$$\n257\\cdot1024=263{,}168\n$$\n\nscalar positions. Comparing these reported shapes gives\n\n$$\n\\frac{263{,}168}{24{,}576}\\approx10.71.\n$$\n\nThis ratio describes the number of scalar entries at the two interfaces. It is not a runtime or memory measurement, because those quantities also depend on data types, attention operations, intermediate activations, layer count, and implementation details.\n\nThe fixed value of $Q$ is the important architectural constraint. If the image encoder emits more visual tokens because its input resolution or patch grid changes, Q-Former still returns 32 query vectors in this configuration. The downstream language model consequently receives a fixed-length visual interface rather than the encoder’s entire variable-length feature sequence. This makes the connection to the language model predictable, but it also creates an information bottleneck: evidence not preserved in $Z$ is unavailable to later language generation.\n\nCompression here is learned selection, not simple pooling. Different queries can place different cross-attention weights over the frozen visual features, while shared self-attention lets the query states coordinate before producing $Z$. The architecture does not require a predetermined mapping such as one query per patch or one query per object. Instead, the three first-stage objectives provide distinct training pressures, and their attention masks control when queries and text may exchange information. That combination teaches a compact, language-relevant visual representation before the query outputs are projected into the frozen language model’s embedding space.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c3",
+        "c4"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s3",
+      "title": "Stage one gives the bridge three complementary tests",
+      "markdown": "Stage one connects Q-Former to the frozen image encoder and jointly applies three objectives to image-text pairs.\n\n**ITC: global compatibility.** Let $z_q$ be query output $q$, $t$ the text transformer's [CLS] embedding, $Q$ the query count, and $\\operatorname{sim}$ a pairwise similarity. The image-text score is\n\n$$\ns(I,T)=\\max_{1\\le q\\le Q}\\operatorname{sim}(z_q,t).\n$$\n\nA positive pair is contrasted against negatives. Queries and text cannot see one another under this objective, preventing a trivial leak before comparison.\n\n**ITG: sufficient information for generation.** Queries see one another and the image features but not text tokens. A text token may attend to all queries and only earlier text tokens. Predicting the caption therefore pressures queries to carry language-relevant image evidence.\n\n**ITM: fine-grained joint inspection.** Queries and text interact bidirectionally, and the model classifies a pair as matched or unmatched. Each query receives a two-class logit and the logits are averaged.\n\nThe contrastive control below uses a fixed $3\\times3$ similarity matrix. Temperature $\\tau>0$ changes row probabilities through $p_{ij}=\\exp(S_{ij}/\\tau)/\\sum_k\\exp(S_{ik}/\\tau)$. Predict how decreasing $\\tau$ changes confidence when the declared paired entry is already the row maximum. This teaches normalization and negative competition, but its numbers are illustrative: it is not BLIP-2's learned embeddings, max-over-queries aggregation, or measured loss.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c5",
+        "c6",
+        "c7",
+        "c8"
+      ],
+      "figureId": "fig-contrastive"
+    },
+    {
+      "id": "s4",
+      "title": "Why three masks can share one bridge",
+      "markdown": "A common misconception is that ITC, ITG, and ITM are three separate bridges. They share Q-Former parameters and input conventions; attention masks change the information paths for each training objective.\n\nThe distinction is functional. ITC asks whether independently encoded image and text representations agree. ITG asks whether visual queries preserve enough information to predict a text sequence. ITM allows full interaction to judge fine-grained correspondence. The objectives therefore reward alignment at different resolutions without permitting the same shortcut in every task.\n\nA tiny ITC example makes the max aggregation concrete. Suppose one image has three query-to-text similarities $[0.20,0.75,0.40]$. Then $s(I,T)=0.75$. If a negative caption gives $[0.60,0.10,0.30]$, its score is $0.60$, so the positive leads by $0.15$. These invented values are illustrative only. They show that one query can supply the pair score; they do not establish how queries specialize, and the max alone does not prove that all image content survives the bottleneck.\n\nEvidence from the retrieval ablation supports complementarity under one specific condition: after COCO fine-tuning, adding ITG to ITC and ITM raised the four displayed recall values from $84.5,96.2,67.2,87.1$ to $85.4,97.0,68.3,87.7$. That result supports the usefulness of language-grounded extraction there, not a universal guarantee for every dataset.",
+      "sourceIds": [
+        "section-3",
+        "section-4-part-2"
+      ],
+      "claimIds": [
+        "c5",
+        "c6",
+        "c7",
+        "c8",
+        "c12"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s5",
+      "title": "Stage two turns selected vision into a language prefix",
+      "markdown": "After stage one, Q-Former is attached to the frozen image encoder and connected to a frozen LLM. If $Z\\in\\mathbb{R}^{Q\\times d_q}$ and the LLM token width is $d_L$, a trainable affine projection can be written\n\n$$\nP=ZW+b,\n$$\n\nwhere $W\\in\\mathbb{R}^{d_q\\times d_L}$, $b\\in\\mathbb{R}^{d_L}$ is broadcast across queries, and $P\\in\\mathbb{R}^{Q\\times d_L}$. The rows of $P$ are prepended as soft visual prompt embeddings. They are continuous vectors, not generated caption words.\n\nFor a decoder-only LLM, training uses language modeling conditioned on this visual prefix. For an encoder-decoder LLM, the text is split: visual representations and prefix text enter the encoder, while suffix text is the decoder target. In both cases, the frozen LLM supplies an established language-generation system while the bridge learns inputs that it can interpret.\n\nThis explains why stage one is not decorative. In the reported ablation, skipping representation learning left generative training to bridge the modality gap alone and substantially reduced zero-shot VQA performance for both tested LLM types. The result supports the staged curriculum under those experiments; it does not isolate every possible cause or prove that no alternative one-stage objective could work.",
+      "sourceIds": [
+        "section-3",
+        "section-4"
+      ],
+      "claimIds": [
+        "c2",
+        "c9",
+        "c11"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s6",
+      "title": "Read the headline numbers with their conditions attached",
+      "markdown": "## Read the headline numbers with their conditions attached\n\nFor zero-shot VQA, the paper evaluates generated answers using fixed prompting and decoding conditions. OPT models receive the prompt “Question: {} Answer:”, FlanT5 models receive “Question: {} Short answer:”, and generation uses beam search with width 5 and a length penalty of $-1$. Under those conditions, BLIP-2 with ViT-g and FlanT5-XXL scores $65.0$ on VQAv2 test-dev, while Flamingo80B scores $56.3$. The reported margin is\n\n$$\n65.0-56.3=8.7\n$$\n\nVQA accuracy points. The accompanying 54-fold comparison concerns the number of trainable parameters during vision-language pre-training. It is not a ratio of total parameters or a measurement of inference latency or energy use.\n\nThe attention control illustrates how a temperature changes selection among four fixed alternatives. For constructed scores $a=[2,1,0,-1]$ and temperature $\\tau>0$, the displayed weights are\n\n$$\nw_i(\\tau)=\\frac{\\exp(a_i/\\tau)}{\\sum_j\\exp(a_j/\\tau)}.\n$$\n\nThe scores are dimensionless illustrative quantities, and the weights are normalized proportions summing to one. Lowering $\\tau$ enlarges the relative exponential advantage of the highest score, so the entry with score $2$ gains weight while the others lose weight; increasing $\\tau$ flattens the distribution. This calculation captures the generic control effect of sharpening or broadening a soft selection. In BLIP-2, learned attention helps queries select information from frozen image features, although these constructed values are explanatory rather than measurements from a Q-Former head.\n\nAcross the configurations in Table 2, replacing ViT-L with ViT-g improves all listed OPT results and three of the four listed FlanT5-XL results; for FlanT5-XL, GQA test-dev instead decreases slightly from $44.4$ to $44.2$. Larger models improve results within the same LLM family, and the instruction-tuned FlanT5 variants outperform the tested OPT variants on VQA. These comparisons support the claim that BLIP-2 can benefit from stronger unimodal components within the evaluated model families, but not that every metric must improve. They do not establish a universal scaling law, and the paper itself reports an important exception to any across-the-board superiority claim: on OK-VQA, BLIP-2 remains below Flamingo80B, which the authors associate with that benchmark's greater dependence on open-world knowledge.",
+      "sourceIds": [
+        "section-4"
+      ],
+      "claimIds": [
+        "c10",
+        "c11"
+      ],
+      "figureId": "fig-attention"
+    },
+    {
+      "id": "s7",
+      "title": "What the bridge cannot promise",
+      "markdown": "## What the bridge cannot promise\n\nFreezing components preserves their parameters during BLIP-2 pre-training, but it does not certify their outputs. The paper attributes unsatisfactory image-to-text generations to inaccurate knowledge inherited from the LLM, activation of an incorrect reasoning path, and knowledge that is too stale for new image content. It also identifies inherited risks such as offensive language, social bias, and leakage of private information. The learned bridge can make visual features interpretable to the language model; it does not correct everything already encoded in that model.\n\nAnother boundary concerns in-context learning. In the reported experiments, supplying in-context VQA examples did not improve VQA performance. The authors associate this result with pre-training samples that contain only one image-text pair, rather than interleaved sequences containing several related pairs. This is a qualified empirical result for the tested setup: using an LLM does not ensure that its text-only in-context capabilities transfer unchanged through a visual interface.\n\nThe bottleneck itself also imposes a scientific limit. A fixed set of query vectors must select language-relevant information from a larger visual representation, so information that is not retained cannot later be recovered by the frozen LLM. Likewise, a correct generated answer or a high image-text matching score establishes task performance under the corresponding evaluation, not that the model followed a grounded or reliable reasoning process.\n\nBLIP-2 therefore supports a focused conclusion: staged representation learning and generative alignment can make frozen vision and language models cooperate efficiently in the reported tasks, while the knowledge limitations, safety risks, and failure modes of those components remain part of the combined system.",
+      "sourceIds": [
+        "section-5",
+        "section-6"
+      ],
+      "claimIds": [
+        "c13",
+        "c14"
+      ],
+      "figureId": null
+    }
+  ],
+  "figures": [
+    {
+      "id": "fig-contrastive",
+      "kind": "contrastive",
+      "title": "Temperature and contrastive competition",
+      "question": "When the diagonal entry is already largest in a row, what happens to its row-softmax probability as temperature decreases?",
+      "caption": "A fixed illustrative 3 by 3 image-text similarity matrix shows how temperature changes row-softmax probabilities for declared paired diagonal entries.",
+      "limitation": "The matrix is invented and does not represent BLIP-2 embeddings, max-over-query scoring, or measured training behavior.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c5",
+        "c6"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "fig-attention",
+      "kind": "attention",
+      "title": "Softmax sharpness over fixed alternatives",
+      "question": "Which fixed score receives more normalized weight as positive temperature decreases?",
+      "caption": "Four illustrative scores [2,1,0,-1] are divided by a positive temperature and normalized with softmax to show sharpening and flattening.",
+      "limitation": "This is not a learned attention head, a Q-Former query interaction, or an empirical result from BLIP-2.",
+      "sourceIds": [
+        "section-3",
+        "section-4"
+      ],
+      "claimIds": [
+        "c3",
+        "c10"
+      ],
+      "illustrative": true
+    }
+  ],
+  "quiz": [
+    {
+      "question": "Assume the fixed contrastive row has one unique largest diagonal score. What happens to that entry's softmax probability as positive temperature approaches zero?",
+      "options": [
+        {
+          "text": "It approaches 1.",
+          "explanation": "Correct. With a unique maximum, dividing by an increasingly small positive temperature makes its exponential dominate the row."
+        },
+        {
+          "text": "It approaches one third.",
+          "explanation": "Incorrect. One third is the uniform probability for three entries, associated with flattening rather than extreme sharpening."
+        },
+        {
+          "text": "It must approach 0.",
+          "explanation": "Incorrect. A uniquely maximal score gains relative probability as temperature decreases."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c5",
+        "c6"
+      ]
+    },
+    {
+      "question": "Which statement best distinguishes BLIP-2's two pre-training stages?",
+      "options": [
+        {
+          "text": "Stage one learns language-relevant visual representations; stage two makes them usable by a frozen LLM.",
+          "explanation": "Correct. Representation learning precedes projected visual-prefix training against the frozen language model."
+        },
+        {
+          "text": "Stage one trains the LLM; stage two freezes and replaces the image encoder.",
+          "explanation": "Incorrect. The stated strategy keeps both unimodal models frozen during pre-training."
+        },
+        {
+          "text": "Stage one performs only caption generation; stage two performs only image classification.",
+          "explanation": "Incorrect. Stage one jointly uses ITC, ITG, and ITM, while stage two performs vision-to-language generative learning."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "abstract",
+        "section-3"
+      ],
+      "claimIds": [
+        "c1",
+        "c2",
+        "c9"
+      ]
+    },
+    {
+      "question": "Under the paper's reported evidence, which conclusion is justified?",
+      "options": [
+        {
+          "text": "Fewer trainable parameters prove lower inference latency on every device.",
+          "explanation": "Incorrect. Trainable-parameter count does not by itself measure total inference cost or device-specific latency."
+        },
+        {
+          "text": "Frozen components eliminate inherited language-model safety risks.",
+          "explanation": "Incorrect. The paper explicitly says BLIP-2 inherits risks from frozen models."
+        },
+        {
+          "text": "The tested model did not improve VQA from in-context VQA examples.",
+          "explanation": "Correct. This is the narrow empirical limitation reported by the authors for their experiments."
+        }
+      ],
+      "answer": 2,
+      "sourceIds": [
+        "section-4",
+        "section-5"
+      ],
+      "claimIds": [
+        "c10",
+        "c13",
+        "c14"
+      ]
+    }
+  ],
+  "id": "blip-2-bootstrapping-language-image-pre",
+  "createdAt": "2026-10-02T00:00:09.387Z",
+  "pipelineVersion": "subjects-lessons-v1",
+  "sources": [
+    {
+      "id": "abstract",
+      "label": "Original paper · abstract",
+      "url": "https://arxiv.org/abs/2301.12597",
+      "digest": "acafb45de060a7f1555d8b397b376a0359a265122a605d78b7390282f9916635",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:57:57.080Z"
+    },
+    {
+      "id": "main-text",
+      "label": "Original paper · unsectioned main text",
+      "url": "https://arxiv.org/html/2301.12597",
+      "digest": "117708e5e0194a79d92abf7755f662ee6916019b875d8a46c3d9a8c03131b584",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:57:57.080Z"
+    },
+    {
+      "id": "section-1",
+      "label": "1 Introduction",
+      "url": "https://arxiv.org/html/2301.12597#S1",
+      "digest": "b7a9ef16043c0d26b2201c293b7d798f101e2411064155d598f4551439b810dc",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:57:57.080Z"
+    },
+    {
+      "id": "section-2",
+      "label": "2 Related Work",
+      "url": "https://arxiv.org/html/2301.12597#S2",
+      "digest": "8be4dd32c6a90edae5b2b28599eb50abd433522622896f84c961eb87af697bf0",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:57:57.080Z"
+    },
+    {
+      "id": "section-3",
+      "label": "3 Method",
+      "url": "https://arxiv.org/html/2301.12597#S3",
+      "digest": "facfaa345290d1ff598da8aca2254f37007f8a4ebf324569aecb98f9457c6958",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:57:57.080Z"
+    },
+    {
+      "id": "section-3-part-2",
+      "label": "3 Method · part 2",
+      "url": "https://arxiv.org/html/2301.12597#S3",
+      "digest": "38a51397ea27118f452c42d4413e1d19ef50266dd7075a28762409b6cfe69691",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:57:57.080Z"
+    },
+    {
+      "id": "section-4",
+      "label": "4 Experiment",
+      "url": "https://arxiv.org/html/2301.12597#S4",
+      "digest": "991471130742d7cc7704539fcbd1b860d6074a7f59a0e1fc2ba154ce049faba4",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:57:57.080Z"
+    },
+    {
+      "id": "section-4-part-2",
+      "label": "4 Experiment · part 2",
+      "url": "https://arxiv.org/html/2301.12597#S4",
+      "digest": "ecf3e6fff653eea0131bcdddb91a79a6a243790f3cea2a628255a210e032d868",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:57:57.080Z"
+    },
+    {
+      "id": "section-5",
+      "label": "5 Limitation",
+      "url": "https://arxiv.org/html/2301.12597#S5",
+      "digest": "471612f795056c4e5836285fbf38f4a87f5e353c8ae496d96df59c2f3709b57c",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:57:57.080Z"
+    },
+    {
+      "id": "section-6",
+      "label": "6 Conclusion",
+      "url": "https://arxiv.org/html/2301.12597#S6",
+      "digest": "c7089c1e2366b867c051df17b72c5bfe5c7317a79ba320af7ddf9bdc754bcdfa",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:57:57.080Z"
+    }
+  ],
+  "review": {
+    "status": "passed",
+    "reviewedAt": "2026-10-02T02:15:12.024Z",
+    "contentDigest": "ac686317ca7fdbef441d25e1b4438fcd7085570a2f462789ca7d11bb87a67936"
+  }
+}

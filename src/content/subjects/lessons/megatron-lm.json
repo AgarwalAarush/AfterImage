@@ -1,0 +1,407 @@
+{
+  "title": "Split Where the Transformer Stays Local",
+  "summary": "Megatron-LM partitions transformer matrix operations so nonlinearities and attention heads remain local, concentrating communication at a few deliberate reductions.",
+  "prerequisites": [
+    "Partitioning matrix multiplication by rows and columns",
+    "Transformer attention, MLPs, residuals, and normalization",
+    "Data, tensor, and pipeline parallelism",
+    "All-reduce collective communication",
+    "Perplexity and accuracy metrics"
+  ],
+  "objectives": [
+    "Explain why the first MLP matrix is partitioned by columns.",
+    "Trace communication through a tensor-parallel transformer layer.",
+    "Distinguish tensor parallelism from data and pipeline parallelism.",
+    "Interpret reported scaling and task results within their conditions.",
+    "Separate the paper's findings from implementation-specific details."
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "mechanism",
+      "statement": "Megatron-LM uses intra-layer model parallelism through a small number of synchronization primitives rather than introducing a new compiler.",
+      "conditions": "For the transformer implementation described in the paper using native PyTorch.",
+      "sourceIds": [
+        "abstract"
+      ]
+    },
+    {
+      "id": "c2",
+      "kind": "caveat",
+      "statement": "Data parallelism alone cannot train a model whose complete parameters and required state do not fit on one worker.",
+      "conditions": "For the data-parallel and checkpointing approaches discussed in the paper.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c3",
+      "kind": "equation",
+      "statement": "The MLP begins with a matrix product followed by an elementwise GeLU: $Y=\\operatorname{GeLU}(XA)$.",
+      "conditions": "For the first transformation in the paper's two-layer transformer MLP block.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c4",
+      "kind": "mechanism",
+      "statement": "A row split of the first MLP weight forces partial products to be combined before GeLU because GeLU is nonlinear.",
+      "conditions": "When $X$ is split by columns and $A$ by matching rows across workers.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c5",
+      "kind": "mechanism",
+      "statement": "Column-partitioning the first MLP weight produces independent feature partitions on which GeLU can run locally.",
+      "conditions": "When every worker receives the same input $X$ and owns distinct columns of $A$.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c6",
+      "kind": "mechanism",
+      "statement": "Pairing a column-parallel first MLP projection with a row-parallel second projection postpones communication until the second projection's partial outputs are reduced.",
+      "conditions": "For the paired GEMMs in the paper's model-parallel MLP construction.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c7",
+      "kind": "mechanism",
+      "statement": "Attention is partitioned by heads so each worker can compute assigned heads locally before the row-parallel output projection.",
+      "conditions": "When key, query, and value projection GEMMs are column-partitioned so complete heads reside locally.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c8",
+      "kind": "result",
+      "statement": "The resulting transformer layer uses two all-reduces in its forward pass and two in its backward pass.",
+      "conditions": "For the paper's combined model-parallel MLP and self-attention construction.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c9",
+      "kind": "mechanism",
+      "statement": "Vocabulary-parallel cross-entropy avoids gathering the full vocabulary logits by reducing the result to per-token losses first.",
+      "conditions": "For the partitioned tied embedding and output layer, with batch size $b$, sequence length $s$, and vocabulary size $v$.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c10",
+      "kind": "result",
+      "statement": "The largest reported combined model-and-data-parallel scaling case reached 74% of ideal linear scaling relative to the stated single-GPU baseline.",
+      "conditions": "For the 8.3-billion-parameter configuration on 512 V100 GPUs, compared with the 1.2-billion-parameter single-GPU baseline.",
+      "sourceIds": [
+        "section-5"
+      ]
+    },
+    {
+      "id": "c11",
+      "kind": "result",
+      "statement": "Under the reported zero-shot evaluation, larger GPT-2 configurations improved both WikiText103 perplexity and LAMBADA accuracy.",
+      "conditions": "For the 355M, 2.5B, and 8.3B models trained and evaluated by the procedure referenced in Sections 4 and 5.",
+      "sourceIds": [
+        "section-5"
+      ]
+    },
+    {
+      "id": "c12",
+      "kind": "result",
+      "statement": "Reordering layer normalization and residual connections stabilized the paper's larger BERT-style training configuration.",
+      "conditions": "For the original and rearranged BERT architectures compared in the experiments surrounding Figure 7.",
+      "sourceIds": [
+        "section-5-part-2"
+      ]
+    },
+    {
+      "id": "c13",
+      "kind": "caveat",
+      "statement": "The paper identifies hybrid intra-layer, inter-layer, and inter-node parallelism as a future direction beyond the demonstrated scale.",
+      "conditions": "For models exceeding the memory available within 16 GPUs of the described DGX-2H hardware.",
+      "sourceIds": [
+        "section-6"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "s1",
+      "title": "The constraint is a model, not merely a batch",
+      "markdown": "A data-parallel worker ordinarily holds a complete model and processes a slice of the minibatch. Gradients are then combined across replicas. This raises throughput, but it does not remove the requirement that one complete model, its activations, and relevant optimizer state fit on each worker. Activation checkpointing saves activation memory by recomputation, yet it does not partition the parameters themselves.\n\nMegatron-LM addresses that different constraint: divide computations *within* each transformer layer. The aim is not simply to distribute arithmetic. A careless split can add communication beside every nonlinear operation, losing much of the benefit. The paper's central design question is therefore: where can a tensor be partitioned while several consecutive operations remain local?\n\nThis distinction prevents a common misconception. “Training on many GPUs” does not imply model parallelism. Data parallelism replicates the model; intra-layer model parallelism shards selected weight matrices and their computation. Pipeline parallelism is different again: it assigns groups of layers or operations to stages. The paper presents its intra-layer method as orthogonal to pipeline methods, not as another name for them.",
+      "sourceIds": [
+        "abstract",
+        "section-1",
+        "section-2"
+      ],
+      "claimIds": [
+        "c1",
+        "c2"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s2",
+      "title": "The MLP split follows the nonlinearity",
+      "markdown": "Let $X\\in\\mathbb{R}^{m\\times h}$ be a batch of $m$ token representations with hidden width $h$. Let $A\\in\\mathbb{R}^{h\\times p}$ be the first MLP weight and let $Y\\in\\mathbb{R}^{m\\times p}$. The first operation is\n\n$$Y=\\operatorname{GeLU}(XA).$$\n\nSuppose two workers instead split the contraction dimension: $X=[X_1,X_2]$ and $A=[A_1^\\top,A_2^\\top]^\\top$. They form partial products $X_1A_1$ and $X_2A_2$. Those must be summed before GeLU because, generally,\n\n$$\\operatorname{GeLU}(X_1A_1+X_2A_2)\\ne\n\\operatorname{GeLU}(X_1A_1)+\\operatorname{GeLU}(X_2A_2).$$\n\nThat split creates an early synchronization. Megatron-LM instead partitions the output features: $A=[A_1,A_2]$. Each worker receives $X$ and computes\n\n$$Y_i=\\operatorname{GeLU}(XA_i).$$\n\nBecause GeLU acts elementwise, each $Y_i$ is complete for its feature subset. The next MLP weight is split by rows aligned with those subsets. Worker $i$ computes its partial second-projection output; one all-reduce sums the partial outputs.\n\nIllustrative worked example: take the identity activation only to make the arithmetic transparent—not as a replacement for GeLU. Let $X=[2,1]$ and\n\n$$A=\\begin{bmatrix}1&3\\\\4&-1\\end{bmatrix}=[A_1,A_2].$$\n\nWorker 1 gets $A_1=[1,4]^\\top$ and computes $XA_1=2(1)+1(4)=6$. Worker 2 gets $A_2=[3,-1]^\\top$ and computes $XA_2=2(3)+1(-1)=5$. Concatenation gives $XA=[6,5]$. With the actual elementwise GeLU, each worker could transform its own scalar without communicating. The example demonstrates partition geometry, not measured performance.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c3",
+        "c4",
+        "c5",
+        "c6"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s3",
+      "title": "Attention heads are natural local units",
+      "markdown": "Multi-head attention already separates work into heads. Let $Q$, $K$, and $V$ denote query, key, and value projections. Megatron-LM column-partitions their projection matrices so a worker receives all the projected features needed for its assigned heads. It can compute those heads' score matrices, normalized attention weights, and value mixtures locally. The following output projection is row-partitioned, mirroring the second MLP projection, and its partial outputs are reduced.\n\nThe interactive attention figure isolates one prerequisite. It starts from fixed illustrative scores $[2,1,0,-1]$, divides them by a positive temperature $T$, and applies\n\n$$p_j=\\frac{\\exp(s_j/T)}{\\sum_k\\exp(s_k/T)},$$\n\nwhere $s_j$ is score $j$ and $p_j$ its normalized weight. Predict what happens as $T$ decreases: the largest fixed score receives more mass. This helps clarify that a head's normalization couples positions *inside that head*, while distinct complete heads can still reside on different workers. The control does not reproduce a measured Megatron head, learned similarities, projection sharding, or inter-GPU communication.\n\nBy pairing two GEMMs around local work in both attention and the MLP, the construction requires two forward all-reduces and their two backward counterparts per transformer layer. “Only two” does not mean communication disappears; it means communication is deliberately concentrated after useful local computation.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c7",
+        "c8"
+      ],
+      "figureId": "fig-attention"
+    },
+    {
+      "id": "s4",
+      "title": "Vocabulary logits are too large to gather casually",
+      "markdown": "The embedding matrix has hidden dimension $H$ and vocabulary dimension $v$. Megatron-LM partitions the tied input/output embedding along the vocabulary axis. At the output, each worker consequently produces logits only for its vocabulary shard.\n\nA straightforward implementation could all-gather every shard into a full tensor containing $bsv$ values, where $b$ is batch size, $s$ is sequence length, and $v$ is vocabulary size. The paper instead fuses vocabulary-parallel logits with cross-entropy, reducing the communicated result to the $bs$ token-loss dimension. The exact distributed softmax requires global information such as reductions used to normalize across shards, but it need not materialize every full-vocabulary logit on every worker.\n\nFor scale intuition only, suppose $b=2$, $s=3$, and $v=8$. A gathered logit tensor has $2\\times3\\times8=48$ scalar entries, whereas one scalar loss per token has $2\\times3=6$. That illustrative ratio is $48/6=8$, exactly $v$ in this tiny case. It is arithmetic, not a reported communication measurement.\n\nThis embodies the broader method: communicate the smallest sufficient aggregate. The paper also duplicates inexpensive operations such as dropout, residual connections, and layer normalization rather than assigning them to one worker and broadcasting their results.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c9"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s5",
+      "title": "Layer normalization is a separate scaling lesson",
+      "markdown": "Tensor partitioning is the systems contribution, but the experiments also expose an architectural issue in scaling BERT-style models. The authors report that rearranging layer normalization and residual connections removed instabilities seen with the original architecture and yielded lower training loss in their comparison. Thus, adding devices and parameters is not sufficient if the optimization behavior of the architecture deteriorates.\n\nThe normalization control uses five fixed activations $[-2,-1,0,2,6]$. An offset changes the raw values, after which the display subtracts their mean $\\mu$ and divides by the population standard deviation $\\sigma$:\n\n$$z_i=\\frac{x_i-\\mu}{\\sigma}.$$\n\nPredict whether adding the same offset to every activation changes the standardized outputs; in exact arithmetic, it does not. This toy makes centering and rescaling tangible, but it neither implements transformer LayerNorm over a real hidden vector nor shows the paper's residual/normalization ordering. Most importantly, invariance to a common offset does not explain the reported training stability by itself. The paper's evidence is an empirical architecture comparison, not a general proof that one ordering must always win.",
+      "sourceIds": [
+        "section-2",
+        "section-5-part-2"
+      ],
+      "claimIds": [
+        "c12"
+      ],
+      "figureId": "fig-normalization"
+    },
+    {
+      "id": "s6",
+      "title": "Read scaling numbers with their denominator attached",
+      "markdown": "The scaling study used a strong stated baseline: a 1.2-billion-parameter configuration on one V100 sustaining 39 TeraFLOPs. In model-parallel weak scaling, larger models were assigned more GPUs. In the combined study, data parallelism was added while the global batch size was fixed at 512. The reported 8.3-billion-parameter, 512-GPU case reached 74% of ideal linear scaling relative to that baseline. The abstract reports 76% in its summary; the experiment passage reports 74% for the largest combined configuration, so these values should not be silently collapsed into one context-free number.\n\nThe actual GPT-2 evidence is conditional on the paper's datasets, schedules, architectures, and zero-shot evaluations. Across 355M, 2.5B, and 8.3B configurations, WikiText103 perplexity decreased and LAMBADA accuracy increased. That is an observed association along a coordinated experimental scaling path, not a theorem that every larger transformer improves.",
+      "sourceIds": [
+        "abstract",
+        "section-1",
+        "section-4",
+        "section-5"
+      ],
+      "claimIds": [
+        "c10",
+        "c11"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s7",
+      "title": "What the paper establishes—and leaves open",
+      "markdown": "The paper establishes a specific algebraic rule for placing communication. In the MLP, the first weight is split by output columns, so each worker owns complete feature values through $Y_i=\\operatorname{GeLU}(XA_i)$. The aligned row shard of the second weight then produces a partial output $Z_i=Y_iB_i$ locally, and the shared result is formed only at the boundary:\n\n$$Z=\\sum_i Z_i.$$\n\nThe same pattern keeps complete attention heads local between column-parallel query, key, and value projections and the row-parallel output projection. Together, the attention and MLP blocks require two all-reduces in the forward pass and two corresponding collectives in the backward pass. Vocabulary-parallel cross-entropy applies the same principle to a different axis: instead of gathering a $b\\times s\\times v$ logit tensor, it reduces the computation toward one loss per token, with shape $b\\times s$.\n\nThese choices establish where synchronization is required for correctness, but their performance depends on the surrounding system. The reported scaling used up to 512 Tesla V100 SXM3 32GB GPUs, with 300 GB/s intra-server NVSwitch bandwidth and 100 GB/s inter-server bandwidth, and compared the largest run with a 1.2-billion-parameter single-GPU baseline sustaining 39 TeraFLOPs. Consequently, the reported 74% efficiency for the 8.3-billion-parameter combined model-and-data-parallel configuration is evidence for that model, parallel arrangement, baseline, and interconnect hierarchy; it does not determine efficiency on accelerators or networks with different computation-to-communication ratios. Likewise, the task results depend on the stated training recipe and data. The GPT-2 runs used sequences of 1024 subword units, batch size 512, 300,000 iterations, mixed precision, and activation checkpointing, so their WikiText103 and LAMBADA results should be interpreted within those conditions.\n\nThe demonstrated design also has a capacity boundary. The largest model used eight-way intra-layer model parallelism, while the authors anticipated that models exceeding the memory available within 16 GPUs of a DGX-2H would require a hybrid of intra-layer, inter-layer, and inter-node model parallelism. That extension changes the communication structure: tensor-parallel reductions would coexist with transfers between layer groups and communication across nodes. The paper therefore supports a durable design discipline rather than a universal hardware result: preserve complete local subcomputations across nonlinearities or per-head attention, align the next matrix partition with those local values, and introduce a collective only when multiple workers hold partial contributions to the same mathematical output.",
+      "sourceIds": [
+        "section-3",
+        "section-4",
+        "section-5",
+        "section-6"
+      ],
+      "claimIds": [
+        "c1",
+        "c8",
+        "c9",
+        "c13"
+      ],
+      "figureId": null
+    }
+  ],
+  "figures": [
+    {
+      "id": "fig-attention",
+      "kind": "attention",
+      "title": "Temperature inside one illustrative attention head",
+      "question": "As positive temperature decreases, how does the weight on the largest fixed score change?",
+      "caption": "Fixed scores [2,1,0,-1] are divided by a positive temperature and passed through softmax, showing how normalization redistributes attention weight.",
+      "limitation": "This is not a measured Megatron-LM head or learned token similarity, and it does not simulate head partitioning or communication.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c7"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "fig-normalization",
+      "kind": "normalization",
+      "title": "Centering and scaling a fixed activation vector",
+      "question": "If the same offset is added to all five activations, what changes after standardization?",
+      "caption": "The control offsets [-2,-1,0,2,6], then subtracts the resulting mean and divides by the population standard deviation.",
+      "limitation": "This single vector is not a full LayerNorm implementation and does not model the residual-order change or its training stability.",
+      "sourceIds": [
+        "section-5-part-2"
+      ],
+      "claimIds": [
+        "c12"
+      ],
+      "illustrative": true
+    }
+  ],
+  "quiz": [
+    {
+      "question": "Two workers split the first MLP weight by output columns, and GeLU is elementwise. What can happen before synchronization?",
+      "options": [
+        {
+          "text": "Each worker can apply GeLU to its own complete output-feature partition.",
+          "explanation": "Correct: every owned output feature has its full contraction over the input dimension."
+        },
+        {
+          "text": "Each worker must first sum its activations with the other worker's partition.",
+          "explanation": "Incorrect: the partitions contain different output features, not partial sums of the same features."
+        },
+        {
+          "text": "The two workers can add independently computed GeLU values to recover GeLU of a summed input.",
+          "explanation": "Incorrect: nonlinear GeLU does not generally distribute over addition."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c3",
+        "c4",
+        "c5"
+      ]
+    },
+    {
+      "question": "Why fuse vocabulary-parallel logits with cross-entropy rather than all-gather all logits first?",
+      "options": [
+        {
+          "text": "It converts every vocabulary logit into an identical value.",
+          "explanation": "Incorrect: cross-entropy still depends on the distributed logits; they are not made identical."
+        },
+        {
+          "text": "It reduces communication from the full b by s by v logit shape toward the b by s loss shape.",
+          "explanation": "Correct under the paper's partitioned-output setup: the vocabulary dimension need not be gathered as a full tensor."
+        },
+        {
+          "text": "It removes every collective operation from the embedding and loss computation.",
+          "explanation": "Incorrect: the method reduces communicated volume, not all need for cross-worker aggregation."
+        }
+      ],
+      "answer": 1,
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c9"
+      ]
+    },
+    {
+      "question": "Which conclusion is justified by the reported 74% scaling result?",
+      "options": [
+        {
+          "text": "Every 512-GPU transformer will attain at least 74% efficiency.",
+          "explanation": "Incorrect: the number is conditional on the reported model, hardware, parallel arrangement, and baseline."
+        },
+        {
+          "text": "The task improvements were caused solely by model parallelism.",
+          "explanation": "Incorrect: the result measures systems scaling, while task results also vary model size and training conditions."
+        },
+        {
+          "text": "The 8.3B combined model-and-data-parallel case reached 74% of ideal linear scaling relative to the stated 1.2B single-GPU baseline.",
+          "explanation": "Correct: this preserves the configuration and comparison denominator attached to the reported value."
+        }
+      ],
+      "answer": 2,
+      "sourceIds": [
+        "section-5"
+      ],
+      "claimIds": [
+        "c10"
+      ]
+    }
+  ],
+  "id": "megatron-lm",
+  "createdAt": "2026-10-01T23:33:47.678Z",
+  "pipelineVersion": "subjects-lessons-v1",
+  "sources": [
+    {
+      "id": "abstract",
+      "label": "Original paper · abstract",
+      "url": "https://arxiv.org/abs/1909.08053",
+      "digest": "99df71ab8c4cba7ae4c849c4bf8925a23e5d98208ff55ed108e3cbe834611dca"
+    },
+    {
+      "id": "section-1",
+      "label": "1 Introduction",
+      "url": "https://arxiv.org/html/1909.08053#S1",
+      "digest": "2d8ea79bd0b721de02ca094759247507f4aba23250bffa75d781dd686e0ca3ea"
+    },
+    {
+      "id": "section-2",
+      "label": "2 Background and Challenges",
+      "url": "https://arxiv.org/html/1909.08053#S2",
+      "digest": "bf78d88e0beab547e6bfcc14948b8e5a7d46a736265cf818a0f43e11fbfa829f"
+    },
+    {
+      "id": "section-3",
+      "label": "3 Model Parallel Transformers",
+      "url": "https://arxiv.org/html/1909.08053#S3",
+      "digest": "ee59e67b19e24801aa8393ba7abe49f296ec68717fd0b26d79d5caff597c96c5"
+    },
+    {
+      "id": "section-4",
+      "label": "4 Setup",
+      "url": "https://arxiv.org/html/1909.08053#S4",
+      "digest": "7c0a688380c73a6ab0453bf11282fe1387866fa6a31d7045840bf4542a08ec4a"
+    },
+    {
+      "id": "section-5",
+      "label": "5 Experiments",
+      "url": "https://arxiv.org/html/1909.08053#S5",
+      "digest": "57aecf9dd3c6197d724b2d4238a5351af58a10dde6d46e60b3ae5b46e38e479f"
+    },
+    {
+      "id": "section-5-part-2",
+      "label": "5 Experiments · part 2",
+      "url": "https://arxiv.org/html/1909.08053#S5",
+      "digest": "0b073074c0b90b9314ff6aad36f1df876de582fcb2e8b859dd314d711bc6daa4"
+    },
+    {
+      "id": "section-6",
+      "label": "6 Conclusion and Future Work",
+      "url": "https://arxiv.org/html/1909.08053#S6",
+      "digest": "47e9a5b92195eb3e10e9464b42bbf0e0992ae1388ebf0c2962c5fa6eb4f91840"
+    }
+  ],
+  "review": {
+    "status": "passed",
+    "reviewedAt": "2026-10-02T02:01:12.989Z",
+    "contentDigest": "0441dd9abda9ac8804db4eff5f6c00bae4137233636fcd4ce11dc3c3ae867e57"
+  }
+}

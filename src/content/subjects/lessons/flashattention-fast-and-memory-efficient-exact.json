@@ -1,0 +1,437 @@
+{
+  "title": "The Square Matrix That Never Has to Exist",
+  "summary": "FlashAttention computes the same dense softmax attention as the standard algorithm while using tiled, online normalization and recomputation to reduce costly GPU-memory traffic.",
+  "prerequisites": [
+    "Matrix multiplication and transposition",
+    "Row-wise softmax",
+    "Basic GPU memory hierarchy: HBM versus on-chip SRAM",
+    "Asymptotic notation such as $O(\\cdot)$ and $\\Theta(\\cdot)$"
+  ],
+  "objectives": [
+    "Derive the paper’s attention equation and identify its quadratic intermediates.",
+    "Explain how online softmax combines score tiles without changing the mathematical result.",
+    "Trace how FlashAttention tiles $Q$, $K$, and $V$ through SRAM while retaining only row statistics and output accumulators.",
+    "Distinguish exact FlashAttention from its approximate block-sparse extension.",
+    "Interpret the paper’s IO, runtime, memory, and training results under their reported conditions."
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "equation",
+      "statement": "For one attention head, standard attention forms $S=QK^\\top$, applies row-wise softmax to obtain $P$, and returns $O=PV$.",
+      "conditions": "For $Q,K,V\\in\\mathbb{R}^{N\\times d}$, where $N$ is sequence length and $d$ is head dimension; the displayed equation omits the commonly used score-scaling factor.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c2",
+      "kind": "mechanism",
+      "statement": "The standard implementation sends both quadratic score and probability matrices to HBM, making intermediate storage quadratic in sequence length.",
+      "conditions": "For the standard implementation described in the paper, which materializes both $S$ and $P$.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c3",
+      "kind": "mechanism",
+      "statement": "FlashAttention uses IO-aware tiling: blocks of $Q$, $K$, and $V$ are processed in SRAM so the full attention matrix need not be materialized in HBM.",
+      "conditions": "Forward computation on a GPU with inputs initially in HBM and tiles sized to fit available on-chip SRAM.",
+      "sourceIds": [
+        "abstract",
+        "section-3"
+      ]
+    },
+    {
+      "id": "c4",
+      "kind": "equation",
+      "statement": "A stable softmax block can be summarized by its maximum $m$ and shifted-exponential sum $\\ell$; successive summaries can be rescaled to a shared maximum and combined exactly.",
+      "conditions": "For finite score vectors partitioned into blocks, using the stable softmax definitions in the paper.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c5",
+      "kind": "mechanism",
+      "statement": "For backpropagation, FlashAttention stores the output and row-normalization statistics, then reconstructs score and probability tiles from $Q$, $K$, and $V$ instead of loading stored quadratic intermediates.",
+      "conditions": "Training with the paper’s recomputation strategy; the complete backward procedure is deferred to Appendix B.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c6",
+      "kind": "result",
+      "statement": "The algorithm preserves dense attention exactly while using quadratic arithmetic and linear additional memory beyond inputs and output.",
+      "conditions": "For Algorithm 1 as analyzed by the authors, with sequence length $N$ and head dimension $d$.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c7",
+      "kind": "result",
+      "statement": "Under the paper’s memory model, standard attention has $\\Theta(Nd+N^2)$ HBM accesses, whereas FlashAttention has $\\Theta(N^2d^2/M)$ accesses.",
+      "conditions": "For sequence length $N$, head dimension $d$, and SRAM capacity $M$ measured in stored elements, satisfying $d\\le M\\le Nd$.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c8",
+      "kind": "caveat",
+      "statement": "The lower bound is not a pointwise optimality theorem for every SRAM size; it excludes one exact algorithm that asymptotically beats the stated count across the whole allowed range of $M$.",
+      "conditions": "For exact attention and all SRAM sizes $M\\in[d,Nd]$ considered jointly by the theorem.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c9",
+      "kind": "result",
+      "statement": "In the paper’s GPT-2-medium attention benchmark, FlashAttention performed more FLOPs but substantially fewer HBM reads and writes and had lower runtime than standard attention.",
+      "conditions": "Forward plus backward; sequence length 1024, head dimension 64, 16 heads, batch size 64, on an A100 GPU.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c10",
+      "kind": "result",
+      "statement": "The reported BERT-large comparison reduced mean time to the target accuracy from 20.0 to 17.4 minutes.",
+      "conditions": "Same MLPerf initialization; target masked-language-modeling accuracy 72.0%; Wikipedia; eight A100 GPUs; averages over ten runs.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c11",
+      "kind": "caveat",
+      "statement": "Exact FlashAttention remains quadratic in runtime growth with sequence length, and approximate methods may overtake it at sufficiently long sequences.",
+      "conditions": "Single-A100 benchmark with 40 GB HBM, dropout, and a padding mask; approximate-method crossover reported between lengths 512 and 1024.",
+      "sourceIds": [
+        "section-4-part-2"
+      ]
+    },
+    {
+      "id": "c12",
+      "kind": "caveat",
+      "statement": "The original implementation demanded attention-specific low-level CUDA engineering and was not guaranteed to transfer across GPU architectures.",
+      "conditions": "Limitation of the implementation approach reported in the paper, not a universal limitation of every later implementation.",
+      "sourceIds": [
+        "section-5"
+      ]
+    },
+    {
+      "id": "c13",
+      "kind": "mechanism",
+      "statement": "Block-sparse FlashAttention is an approximate extension that skips zero blocks selected by a predefined block mask; it is distinct from exact dense FlashAttention.",
+      "conditions": "For a mask with the block structure and block sizes $B_r,B_c$ required by the paper.",
+      "sourceIds": [
+        "section-3-part-2"
+      ]
+    },
+    {
+      "id": "c14",
+      "kind": "result",
+      "statement": "The measured attention-memory footprint grew linearly with sequence length and was reported as much smaller than exact-attention baselines.",
+      "conditions": "One A100 GPU with 40 GB HBM, dropout, and a padding mask, across the reported sequence-length benchmark.",
+      "sourceIds": [
+        "section-4-part-2"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "s1",
+      "title": "The real bottleneck is movement",
+      "markdown": "Dense self-attention is usually introduced as algebra, but FlashAttention begins with a hardware question: **where do the intermediate numbers travel?** A GPU has large, relatively slow high-bandwidth memory (HBM) and much smaller, faster on-chip SRAM. A kernel loads data from HBM, computes using registers and SRAM, and writes results back.\n\nAn operation can therefore be slow even when its arithmetic count looks modest. Arithmetic intensity means arithmetic operations per byte moved. Large matrix multiplication can be compute-bound, whereas reductions such as softmax are often memory-bound. This distinction explains why merely reducing FLOPs does not guarantee a wall-clock improvement.\n\nThe paper’s contribution is not a new dense-attention function. It schedules the existing function around the memory hierarchy. Its main target is traffic caused by the $N\\times N$ attention intermediates. FlashAttention accepts recomputation—and thus sometimes more FLOPs—to avoid expensive HBM traffic. That inversion of priorities is the lesson’s organizing idea.",
+      "sourceIds": [
+        "section-1",
+        "section-2"
+      ],
+      "claimIds": [
+        "c2",
+        "c3"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s2",
+      "title": "What exact attention promises",
+      "markdown": "Let $N$ be sequence length and $d$ the dimension of one attention head. Let $Q,K,V\\in\\mathbb{R}^{N\\times d}$ contain query, key, and value rows. The paper writes\n\n$$S=QK^\\top,\\qquad P=\\operatorname{softmax}(S),\\qquad O=PV,$$\n\nwhere $S,P\\in\\mathbb{R}^{N\\times N}$, $O\\in\\mathbb{R}^{N\\times d}$, and softmax acts independently on every row. Thus\n\n$$P_{ij}=\\frac{e^{S_{ij}}}{\\sum_{k=1}^{N}e^{S_{ik}}},\\qquad O_i=\\sum_{j=1}^{N}P_{ij}V_j.$$\n\nHere $i$ indexes a query row and $j,k$ index key/value rows. “Exact” means that FlashAttention evaluates this same dense function, subject to ordinary finite-precision effects. It neither deletes query–key interactions nor substitutes an approximate normalization. The commonly used score factor $1/\\sqrt d$ is omitted from the paper’s displayed equation; including such a fixed factor changes the scores supplied to softmax, not the distinction between standard and tiled evaluation.\n\nThe attention control isolates the normalization step using the declared scores $[2,1,0,-1]$. At positive temperature $T$, it computes\n\n$$p_j(T)=\\frac{e^{s_j/T}}{\\sum_k e^{s_k/T}}.$$\n\nLowering $T$ enlarges score differences before exponentiation, so more probability mass moves toward the largest score, $2$; increasing $T$ makes the four weights more even. The scores are a constructed row used to expose competition under one shared denominator. FlashAttention preserves those globally normalized weights while changing when and where their sufficient statistics are accumulated.",
+      "sourceIds": [
+        "section-2",
+        "section-3"
+      ],
+      "claimIds": [
+        "c1",
+        "c6"
+      ],
+      "figureId": "f1"
+    },
+    {
+      "id": "s3",
+      "title": "The quadratic intermediate is optional",
+      "markdown": "A conventional implementation computes all of $S$, writes it to HBM, reads it for softmax, writes $P$, and later reads $P$ for multiplication by $V$. Because $S$ and $P$ each contain $N^2$ entries, materializing them costs quadratic storage and traffic.\n\nThat does **not** imply that exact dense attention becomes subquadratic arithmetic in FlashAttention. Every dense query–key interaction still contributes, and the paper gives $O(N^2d)$ FLOPs. What disappears is the requirement that the entire $N\\times N$ intermediate reside in HBM.\n\nFlashAttention achieves this by processing score and value tiles while retaining only compact state for each query row. The next section derives that state and shows why independently normalizing tiles would be wrong: each new tile must be merged with the preceding tiles under one shared softmax denominator.",
+      "sourceIds": [
+        "section-2",
+        "section-3"
+      ],
+      "claimIds": [
+        "c2",
+        "c3",
+        "c6"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s4",
+      "title": "Online softmax: carrying a row through tiles",
+      "markdown": "Softmax appears to require every score in a row at once because its denominator couples all columns. FlashAttention instead carries a mergeable summary while visiting score tiles.\n\nFor the scores and corresponding value vectors visited so far, maintain\n\n$$m=\\max_j s_j,$$\n\n$$\\ell=\\sum_j e^{s_j-m},$$\n\n$$u=\\sum_j e^{s_j-m}v_j.$$\n\nHere $m$ is the running maximum, $\\ell$ is the shifted softmax normalizer, and $u$ is the shifted, unnormalized weighted-value accumulator. The current attention output is\n\n$$o=\\frac{u}{\\ell}.$$\n\nSuppose a new tile contains score–value pairs $(s_j,v_j)$. Set\n\n$$m'=\\max\\!\\left(m,\\max_{j\\in\\text{tile}}s_j\\right),\\qquad r=e^{m-m'},$$\n\nand update\n\n$$\\ell'=r\\ell+\\sum_{j\\in\\text{tile}}e^{s_j-m'},$$\n\n$$u'=ru+\\sum_{j\\in\\text{tile}}e^{s_j-m'}v_j.$$\n\nFor the initial empty state, take $\\ell=u=0$ and $r=0$. When a larger score raises the maximum, $r$ converts the previously accumulated terms to the new shifted scale. If the maximum does not change, $r=1$.\n\nConsider the constructed scalar row with scores\n\n$$[2,1,0,-1]$$\n\nand corresponding values\n\n$$[3,5,-2,1].$$\n\nThe scores are dimensionless inputs to the exponential, and the scalar output has the same units as the values. With tile width two and forward order, the first tile contains indices $[0,1]$. It gives\n\n$$m=2,$$\n\n$$\\ell=1+e^{-1}\\approx1.367879,$$\n\n$$u=3+5e^{-1}\\approx4.839397,$$\n\n$$o=\\frac{u}{\\ell}\\approx3.537883.$$\n\nThe second tile contains indices $[2,3]$. Its scores do not exceed the carried maximum, so $m'=2$ and $r=1$. The final state is\n\n$$\\ell'=1+e^{-1}+e^{-2}+e^{-3}\\approx1.553002,$$\n\n$$u'=3+5e^{-1}-2e^{-2}+e^{-3}\\approx4.618514,$$\n\n$$o'=\\frac{u'}{\\ell'}\\approx2.973927.$$\n\nReverse the tile order and the intermediate state changes. Visiting indices $[3,2]$ first gives\n\n$$m=0,\\qquad \\ell=1+e^{-1}\\approx1.367879,$$\n\n$$u=-2+e^{-1}\\approx-1.632121,\n\\qquad o\\approx-1.193176.$$\n\nThe final tile, with indices $[1,0]$, raises the maximum from $0$ to $2$, so the carried state is rescaled by\n\n$$r=e^{0-2}=e^{-2}\\approx0.135335.$$\n\nAfter adding the new tile, the final state is again\n\n$$m'=2,\\qquad \\ell'\\approx1.553002,\n\\qquad u'\\approx4.618514,$$\n\nand therefore\n\n$$o'\\approx2.973927.$$\n\nThe visit order changes which maximum is known at each intermediate step and therefore when rescaling occurs. It cannot change the exact final result because every term is ultimately expressed relative to the same global maximum and included once in the same numerator and denominator. Direct dense softmax gives\n\n$$\\frac{3e^2+5e^1-2e^0+e^{-1}}{e^2+e^1+e^0+e^{-1}}\n\\approx2.973927,$$\n\nwhich matches both tiled orders. Changing tile width from 1 through 4 likewise changes only the partition and the intermediate summaries. This invariance is the key control: online softmax changes the evaluation schedule while preserving the dense row output.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c4",
+        "c6"
+      ],
+      "figureId": "f2"
+    },
+    {
+      "id": "s5",
+      "title": "The tiled forward pass",
+      "markdown": "Now apply that merge row by row. FlashAttention partitions $Q$ into row tiles and $K,V$ into column tiles. A conceptual forward pass is:\n\n1. Load one $K,V$ tile from HBM into SRAM.\n2. For each $Q$ tile, load $Q$ plus its current row maxima, denominators, and output accumulators.\n3. Compute the local score tile $Q_iK_j^\\top$ in SRAM, where $i$ and $j$ identify query and key/value tiles.\n4. Compute the tile’s stable softmax statistics and merge them with the running summaries.\n5. Write the updated output and row statistics, then continue through $K,V$ tiles.\n\nThe loop organization lets resident data be reused while respecting SRAM capacity. Kernel fusion keeps matrix multiplication, softmax, optional masking or dropout, and multiplication by values inside one CUDA kernel, reducing round trips to HBM.\n\nA common misconception is that tiling makes softmax local. It does not. Normalizing each tile independently and simply adding its result would be wrong because tiles can have different maxima and denominators. The exponential rescaling factors in the merge equations preserve global row-wise normalization.",
+      "sourceIds": [
+        "section-1",
+        "section-3"
+      ],
+      "claimIds": [
+        "c3",
+        "c4"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s6",
+      "title": "Backward by remembering less",
+      "markdown": "Training normally needs information derived from $S$ and $P$ to differentiate with respect to $Q$, $K$, and $V$. Saving those matrices would restore quadratic storage. FlashAttention instead retains $O$ and the per-row softmax statistics $(m,\\ell)$. During backward, it reloads blocks of $Q,K,V$ and reconstructs the needed score and probability tiles on-chip.\n\nThis is selective recomputation: spend arithmetic to save data movement. Extra FLOPs do not universally make a program faster; the trade works when avoided HBM traffic dominates the added computation on the target hardware. In the reported GPT-2-medium case, standard attention used 66.6 GFLOPs, 40.3 GB of HBM reads/writes, and 41.7 ms; FlashAttention used 75.2 GFLOPs, 4.4 GB, and 7.3 ms. Those measurements are specifically for forward plus backward at length 1024, head dimension 64, 16 heads, batch size 64, on an A100. They are evidence for the IO-aware argument under that setup, not universal ratios.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c5",
+        "c9"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s7",
+      "title": "IO analysis—and keeping the units straight",
+      "markdown": "Let $M$ denote SRAM capacity measured in **stored scalar elements**, not bytes, with $d\\le M\\le Nd$. In this model, standard attention requires\n\n$$\\Theta(Nd+N^2)$$\n\nHBM accesses, while FlashAttention requires\n\n$$\\Theta\\!\\left(\\frac{N^2d^2}{M}\\right).$$\n\nThe dependence on $M$ follows from the tiled schedule. A $K,V$ tile can contain $\\Theta(M)$ elements, so covering all keys and values requires $\\Theta(Nd/M)$ such tiles. For every $K,V$ tile, the algorithm makes a pass over the $\\Theta(Nd)$ elements of $Q$. Multiplying the number of passes by the data loaded per pass gives $\\Theta(N^2d^2/M)$ HBM accesses. More usable SRAM permits larger tiles and fewer passes over $Q$.\n\nThe units are important when relating this expression to hardware. The paper describes $M$ as an element count, whereas physical SRAM is specified in bytes. Converting a byte capacity to $M$ therefore requires the stored scalar size and the portion of SRAM available to the kernel. For example, a constructed budget of 100 KiB holding 2-byte scalars corresponds to\n\n$$M=\\frac{100\\times1024\\ \\text{bytes}}{2\\ \\text{bytes/element}}=51{,}200\\ \\text{elements},$$\n\nwhereas 4-byte scalars under the same byte budget give $M=25{,}600$ elements. These declared conversions explain the units; they are not measured kernel allocations. For typical head dimensions $d=64$ or $128$, the corresponding values $d^2=4096$ and $16{,}384$ illustrate why the regime $d^2\\ll M$ can substantially reduce the leading HBM-traffic term.\n\nThe lower-bound wording also matters. The paper proves that no exact-attention algorithm achieves $o(N^2d^2/M)$ HBM accesses **for every** $M\\in[d,Nd]$. This is a statement across the full allowed range of SRAM sizes, not a pointwise optimality theorem for each particular device and value of $M$.\n\nIO complexity is also not a universal runtime guarantee. Increasing tile size initially reduces passes over the input and therefore HBM traffic, but the reported forward benchmark improves only up to a point: beyond a block size of 256, other costs such as arithmetic become limiting, and still larger tiles may not fit in SRAM. Runtime consequently depends on the interaction among traffic, arithmetic, occupancy, and the target architecture.",
+      "sourceIds": [
+        "section-2",
+        "section-3"
+      ],
+      "claimIds": [
+        "c7",
+        "c8"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s8",
+      "title": "Evidence, variants, and boundaries",
+      "markdown": "The empirical results support a conditional systems claim: reducing HBM traffic can improve training time and memory use on the tested hardware without changing the dense-attention model definition. In the BERT-large experiment, training from the same MLPerf initialization to 72.0% masked-language-modeling accuracy on Wikipedia took $17.4\\pm1.4$ minutes with FlashAttention, compared with $20.0\\pm1.5$ minutes for Nvidia MLPerf 1.1. Both values are averages over ten runs on eight A100 GPUs.\n\nThe attention benchmark provides a complementary view of scaling. On one A100 with 40 GB HBM, dropout, and a padding mask, FlashAttention’s forward-plus-backward runtime still grew quadratically with sequence length because exact dense attention retains all pairwise interactions. It was nevertheless reported as up to $3\\times$ faster than the PyTorch exact-attention implementation over the tested range. Approximate methods with linear runtime growth began to cross FlashAttention between sequence lengths 512 and 1024, illustrating that a lower arithmetic growth rate can become decisive at sufficiently long sequences even when its overhead is less favorable at shorter lengths.\n\nUnder the same benchmark conditions, FlashAttention’s measured attention-memory footprint grew linearly with sequence length and was reported as up to $20\\times$ smaller than exact-attention baselines. This is consistent with retaining outputs and row-normalization statistics instead of stored $N\\times N$ score and probability matrices. The factor is a result for the reported implementations and setup, while the linear storage behavior follows the algorithm analyzed in the paper.\n\nExact FlashAttention must be distinguished from **block-sparse FlashAttention**. Given a predefined block mask, the block-sparse extension follows the tiled algorithm but skips masked blocks. If $s$ is the fraction of nonzero blocks, its stated HBM-access complexity is\n\n$$\\Theta\\!\\left(Nd+\\frac{N^2d^2}{M}s\\right).$$\n\nThe improvement in the larger term is proportional to sparsity because fewer score tiles are evaluated. This extension is approximate relative to unrestricted dense attention: the mask changes which query–key interactions can contribute, whereas exact FlashAttention evaluates every dense interaction and changes only the schedule.\n\nThe original implementation also had an engineering boundary. Supporting a new attention variant required a new low-level CUDA kernel, with substantial implementation effort and no guarantee that the same kernel design would transfer across GPU architectures. FlashAttention therefore establishes that IO-aware tiling and recomputation can outperform materialization under the reported conditions; it does not imply subquadratic dense computation or universally fastest execution on every accelerator.",
+      "sourceIds": [
+        "section-3-part-2",
+        "section-4",
+        "section-4-part-2",
+        "section-5"
+      ],
+      "claimIds": [
+        "c10",
+        "c11",
+        "c12",
+        "c13",
+        "c14"
+      ],
+      "figureId": null
+    }
+  ],
+  "figures": [
+    {
+      "id": "f1",
+      "kind": "attention",
+      "title": "Temperature changes concentration, not the tiling algorithm",
+      "question": "As the positive temperature decreases, which of the four fixed scores receives a larger share of the normalized weight?",
+      "caption": "Illustrative softmax of fixed scores $[2,1,0,-1]$ divided by a positive temperature. It exposes row normalization and concentration before the same kind of normalization is evaluated tile by tile.",
+      "limitation": "This is not a measured attention head, learned token similarity, GPU-memory model, or full simulation of FlashAttention; it displays only normalized weights for one fixed score vector.",
+      "sourceIds": [
+        "section-2",
+        "section-3"
+      ],
+      "claimIds": [
+        "c1",
+        "c4"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "f2",
+      "kind": "streaming-attention",
+      "title": "Exact attention, one tile at a time",
+      "question": "How can forward and reverse tile order produce different intermediate states but the same final attention output?",
+      "caption": "For fixed scores $[2,1,0,-1]$ and scalar values $[3,5,-2,1]$, vary tile width and visit order to trace the carried maximum $m$, normalizer $\\ell$, weighted accumulator $u$, and output $u/\\ell$.",
+      "limitation": "This is an illustrative arithmetic instance of the online-softmax recurrence, not a measurement of memory traffic, runtime, or GPU performance.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c4",
+        "c6"
+      ],
+      "illustrative": true
+    }
+  ],
+  "quiz": [
+    {
+      "question": "Assume exact dense attention, the same $Q,K,V$, and sufficiently precise arithmetic. What should change when standard attention is replaced by FlashAttention?",
+      "options": [
+        {
+          "text": "The mathematical output changes because each tile receives its own permanent softmax normalization.",
+          "explanation": "Incorrect. Tile statistics are rescaled and merged so normalization remains global across the row."
+        },
+        {
+          "text": "The output remains the same, while intermediate storage and HBM traffic can decrease.",
+          "explanation": "Correct. FlashAttention changes the evaluation schedule while returning $\\operatorname{softmax}(QK^\\top)V$."
+        },
+        {
+          "text": "The arithmetic complexity becomes linear in sequence length.",
+          "explanation": "Incorrect. The exact dense algorithm still has $O(N^2d)$ FLOPs in the paper’s analysis."
+        }
+      ],
+      "answer": 1,
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c3",
+        "c4",
+        "c6"
+      ]
+    },
+    {
+      "question": "An old score block has $(m,\\ell)=(2,3)$ and a new block has $(m_t,\\ell_t)=(4,5)$. Which merged denominator is correct?",
+      "options": [
+        {
+          "text": "$3+5=8$",
+          "explanation": "Incorrect. The partial sums use different shifted maxima and cannot be added directly."
+        },
+        {
+          "text": "$e^{-2}\\cdot3+5$",
+          "explanation": "Correct. The shared maximum is $4$, so the old sum is rescaled by $e^{2-4}=e^{-2}$ and the new sum by $e^{4-4}=1$."
+        },
+        {
+          "text": "$e^2\\cdot3+e^4\\cdot5$",
+          "explanation": "Incorrect. This reverses the stable shifted representation and does not apply the merge rule."
+        }
+      ],
+      "answer": 1,
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c4"
+      ]
+    },
+    {
+      "question": "Which conclusion is justified by the paper’s stated limitations and results?",
+      "options": [
+        {
+          "text": "FlashAttention is guaranteed to be the fastest attention implementation on every accelerator.",
+          "explanation": "Incorrect. Runtime depends on hardware and implementation, and the original CUDA approach may not transfer across GPU architectures."
+        },
+        {
+          "text": "FlashAttention eliminates quadratic dense-attention computation.",
+          "explanation": "Incorrect. Exact FlashAttention retains $O(N^2d)$ FLOPs, and measured runtime still grows quadratically with sequence length."
+        },
+        {
+          "text": "Reduced HBM traffic can outweigh added recomputation on the reported GPU setup, but the tradeoff is conditional.",
+          "explanation": "Correct. The A100 benchmark shows more FLOPs alongside much lower HBM traffic and runtime under explicitly reported conditions."
+        }
+      ],
+      "answer": 2,
+      "sourceIds": [
+        "section-3",
+        "section-4-part-2",
+        "section-5"
+      ],
+      "claimIds": [
+        "c9",
+        "c11",
+        "c12"
+      ]
+    }
+  ],
+  "id": "flashattention-fast-and-memory-efficient-exact",
+  "createdAt": "2026-10-01T22:55:26.942Z",
+  "pipelineVersion": "subjects-lessons-v1",
+  "sources": [
+    {
+      "id": "abstract",
+      "label": "Original paper · abstract",
+      "url": "https://arxiv.org/abs/2205.14135",
+      "digest": "d77d1b2ddcb59a27325d021256458ef960a4b8b7d8c2c7d27c064611b87dfd32"
+    },
+    {
+      "id": "section-1",
+      "label": "1 Introduction",
+      "url": "https://arxiv.org/html/2205.14135#S1",
+      "digest": "bd0bdcb613c6d9b88886f1b1e1980d55849e6dafa1dc572141d360a2cdb6e52d"
+    },
+    {
+      "id": "section-2",
+      "label": "2 Background",
+      "url": "https://arxiv.org/html/2205.14135#S2",
+      "digest": "28b336846cacc8d44189c3fb4c5c552da08c9115376daff758567751c9928316"
+    },
+    {
+      "id": "section-3",
+      "label": "3 FlashAttention: Algorithm, Analysis, and Extensions",
+      "url": "https://arxiv.org/html/2205.14135#S3",
+      "digest": "5e78132f363d790dbb38c367ea6e08c1cbc4744e9ea6de81ca8a5788ea26a22a"
+    },
+    {
+      "id": "section-3-part-2",
+      "label": "3 FlashAttention: Algorithm, Analysis, and Extensions · part 2",
+      "url": "https://arxiv.org/html/2205.14135#S3",
+      "digest": "e29b85b97980c6fe18ded694dd581b95c63a0760b08a002f6490ed1f5ed13270"
+    },
+    {
+      "id": "section-4",
+      "label": "4 Experiments",
+      "url": "https://arxiv.org/html/2205.14135#S4",
+      "digest": "b0ed25d59f74e7679418fe94cac991dad2e260e9d4a17cb3245284179d1f58e5"
+    },
+    {
+      "id": "section-4-part-2",
+      "label": "4 Experiments · part 2",
+      "url": "https://arxiv.org/html/2205.14135#S4",
+      "digest": "dc15e0dd90f1381db912dbc0cce24ba2725c84d16a4e76b71bceedf84b0c282e"
+    },
+    {
+      "id": "section-5",
+      "label": "5 Limitations and Future Directions",
+      "url": "https://arxiv.org/html/2205.14135#S5",
+      "digest": "66f5d2f7731b41d1ea705c014d99dcb6e9b76590f75eec4887f7b5f8360ad7dc"
+    }
+  ],
+  "review": {
+    "status": "passed",
+    "reviewedAt": "2026-10-02T01:56:22.598Z",
+    "contentDigest": "7950fe99b046d560305ba3def2bd0017816a4e7b17cca9baf943f3f3d739bc19"
+  }
+}

@@ -1,0 +1,477 @@
+{
+  "title": "The Frozen Bridge: How Flamingo Teaches a Language Model to See",
+  "summary": "Flamingo connects frozen vision and language models through resampled visual tokens and gated cross-attention, enabling multimodal tasks to be specified by examples in the prompt.",
+  "prerequisites": [
+    "Autoregressive next-token prediction",
+    "Attention-weighted value mixtures",
+    "Prompt-based in-context learning",
+    "Contrastive vision-language representations"
+  ],
+  "objectives": [
+    "Trace how Flamingo transforms images or videos into generated text.",
+    "Explain why the Perceiver Resampler emits a fixed token count.",
+    "Interpret image-causal masking in an interleaved prompt.",
+    "Explain how zero-initialized gates preserve the language model.",
+    "Distinguish in-context adaptation from gradient-based fine-tuning."
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "mechanism",
+      "statement": "Flamingo is an autoregressive text generator conditioned on an interleaved sequence of text and visual inputs.",
+      "conditions": "For prompts containing text plus images or videos, with text as the generated output modality.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c2",
+      "kind": "equation",
+      "statement": "Its conditional likelihood factorizes over text positions, with each token conditioned on preceding text and eligible preceding visual inputs.",
+      "conditions": "Under the paper's image-causal autoregressive formulation for a sequence of L text tokens.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c3",
+      "kind": "mechanism",
+      "statement": "The vision encoder is a frozen contrastively pretrained NFNet-F6 whose spatial features are flattened; videos add time by independently encoding frames and adding temporal embeddings.",
+      "conditions": "For the vision pipeline described in the main approach; video frames are sampled at 1 FPS.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c4",
+      "kind": "mechanism",
+      "statement": "A Perceiver Resampler converts a variable-length visual feature sequence into exactly 64 visual tokens.",
+      "conditions": "For each encoded image or video before language-model cross-attention.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c5",
+      "kind": "mechanism",
+      "statement": "Fresh cross-attention and feed-forward blocks are inserted among frozen language-model blocks and trained to inject visual information.",
+      "conditions": "During Flamingo multimodal training, while the original pretrained language-model blocks remain frozen.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c6",
+      "kind": "equation",
+      "statement": "Each new residual branch is multiplied by tanh of a learned scalar initialized at zero, so the branch initially contributes exactly zero.",
+      "conditions": "At initialization, before the layer-specific scalar alpha moves away from zero.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c7",
+      "kind": "mechanism",
+      "statement": "At a text position, direct visual cross-attention is restricted to the most recently preceding image, while language-model self-attention can carry earlier-image information forward.",
+      "conditions": "Under the paper's single-image image-causal attention mask for interleaved sequences.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c8",
+      "kind": "mechanism",
+      "statement": "Training minimizes a weighted mixture of per-dataset autoregressive negative log-likelihood objectives.",
+      "conditions": "Across the paper's mixture of interleaved webpage, image-text, and video-text datasets.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c9",
+      "kind": "result",
+      "statement": "Removing the interleaved M3W dataset produced the largest data-mixture ablation decline reported in the accompanying discussion.",
+      "conditions": "Flamingo-3B ablations on validation subsets of five development benchmarks, using four shots, smaller batches, and a shorter schedule than final models.",
+      "sourceIds": [
+        "section-3-part-2"
+      ]
+    },
+    {
+      "id": "c10",
+      "kind": "result",
+      "statement": "Zero-initialized tanh gating improved the reported aggregate ablation score and was associated with greater training stability.",
+      "conditions": "Flamingo-3B four-shot ablations on the five development benchmarks; this is not a controlled claim about every architecture or dataset.",
+      "sourceIds": [
+        "section-3-part-2"
+      ]
+    },
+    {
+      "id": "c11",
+      "kind": "result",
+      "statement": "Removing zero-initialized tanh gating lowered the reported Overall ablation score from 70.7 to 66.5, a 4.2-point decrease, and was associated with greater training instability.",
+      "conditions": "Flamingo-3B ablations on validation subsets of the five development benchmarks with four shots, using smaller batches and a shorter training schedule than the final models; the Overall score normalizes each benchmark score by its Table 1 state-of-the-art value and averages across the five benchmarks.",
+      "sourceIds": [
+        "section-3-part-2"
+      ]
+    },
+    {
+      "id": "c12",
+      "kind": "result",
+      "statement": "The paper reports that 32-shot Flamingo surpassed fine-tuned state of the art on six of sixteen tasks, despite retaining one shared set of weights.",
+      "conditions": "For the largest Flamingo model evaluated with 32 task-specific prompt examples across 16 multimodal benchmarks, without task-specific weight updates; the six-task comparison excludes RareAct because no fine-tuned result was available.",
+      "sourceIds": [
+        "section-1",
+        "section-3"
+      ]
+    },
+    {
+      "id": "c13",
+      "kind": "caveat",
+      "statement": "Generative breadth does not imply best-in-class classification: the paper reports weaker classification than specialized contrastive models.",
+      "conditions": "Compared with state-of-the-art contrastive models that directly optimize text-image retrieval.",
+      "sourceIds": [
+        "section-5"
+      ]
+    },
+    {
+      "id": "c14",
+      "kind": "caveat",
+      "statement": "The reported experiments are not fully reproducible from released artifacts, and the results omit random-seed error bars.",
+      "conditions": "For the paper's main experimental results and largest training runs.",
+      "sourceIds": [
+        "section-6"
+      ]
+    },
+    {
+      "id": "c15",
+      "kind": "caveat",
+      "statement": "Flamingo can inherit language-model failure modes, including hallucination and ungrounded guessing.",
+      "conditions": "When pretrained language priors dominate or insufficiently constrain generation from visual evidence.",
+      "sourceIds": [
+        "section-5"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "s1",
+      "title": "The problem is an interface, not merely a larger model",
+      "markdown": "A contrastive vision-language model commonly returns a compatibility score between an image and text. That is useful for retrieval or classification over supplied labels, but it does not naturally produce an open-ended caption or answer. An autoregressive language model does generate text and can infer a task from demonstrations, yet an ordinary text-only model cannot ingest pixels.\n\nFlamingo's particular contribution is an interface between these capabilities. It retains pretrained visual perception and pretrained language generation, then learns a comparatively narrow bridge that converts varying visual inputs into tokens the language model can consult. The resulting system accepts sequences such as image, question, answer, image, question and generates the next textual continuation. A “shot” is one support input/output example in that prompt. Adaptation here normally means changing the context, not updating weights.\n\nThis distinction prevents a common misconception: Flamingo is not simply a contrastive image classifier with more labels. It is a visually conditioned autoregressive generator, so captioning, dialogue, question answering, and closed-choice scoring can share a text-prediction interface.",
+      "sourceIds": [
+        "section-1",
+        "section-2",
+        "section-4"
+      ],
+      "claimIds": [
+        "c1"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s2",
+      "title": "Prerequisite: what an attention weight actually means",
+      "markdown": "Attention converts scores into nonnegative weights summing to one. For scores $s_1,\\ldots,s_n$ and positive temperature $\\tau$,\n\n$$\na_i=\\frac{\\exp(s_i/\\tau)}{\\sum_{j=1}^{n}\\exp(s_j/\\tau)},\\qquad o=\\sum_{i=1}^{n}a_i v_i.\n$$\n\nHere $a_i$ is the normalized attention weight, $v_i$ is a value vector, and $o$ is their weighted mixture. Lowering $\\tau$ sharpens a fixed score distribution; it does not make the scores more truthful.\n\nThe interactive figure uses the fixed illustrative scores $[2,1,0,-1]$. Predict how the weight on the first item changes as temperature falls, then inspect the result. This toy explains the normalization used inside attention, which matters when Flamingo's text-derived queries consult visual keys and values. It does not display a measured Flamingo head, learned similarity, image-causal mask, or paper result.",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c5"
+      ],
+      "figureId": "f1"
+    },
+    {
+      "id": "s3",
+      "title": "Pixels become a bounded visual vocabulary",
+      "markdown": "For an image, the frozen NFNet-F6 vision encoder produces a two-dimensional grid of features, which is flattened into a sequence. For video, frames sampled at 1 FPS are encoded independently, learned temporal embeddings are added, and the resulting space-time grid is likewise flattened. Let this variable-length sequence be $F=(f_1,\\ldots,f_P)$, where $P$ depends on the input and each $f_i$ is a visual feature vector.\n\nThe Perceiver Resampler uses a predefined set of learned latent queries that cross-attend to $F$. It converts the variable number of encoder features into exactly 64 visual tokens:\n\n$$\nF\\in\\mathbb{R}^{P\\times d_v}\\longmapsto Z\\in\\mathbb{R}^{64\\times d_z},\n$$\n\nwhere $d_v$ and $d_z$ are feature widths and $Z$ is the representation passed to the language model's cross-attention blocks. Because the later interface always contains 64 tokens, its cross-attention cost does not grow directly with the number $P$ of flattened image or video features.\n\nThe 64 tokens are learned summaries rather than a lossless encoding. Each latent query forms attention-weighted mixtures of the visual features, allowing the resampler to preserve information useful for next-token prediction while compressing spatial or spatiotemporal detail into a bounded interface. Under the paper's Flamingo-3B four-shot ablation conditions, replacing the Perceiver Resampler with an MLP or a vanilla Transformer reduced the normalized Overall score from 70.7 to 66.6 or 66.7, respectively, while also producing longer reported step times. This comparison supports the chosen resampler within that model, parameter budget, and shortened ablation schedule; it does not establish that every visual detail survives compression or that the architecture is optimal in all settings.",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c3",
+        "c4"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s4",
+      "title": "A zero-open gate protects the language model",
+      "markdown": "Flamingo freezes the original language-model blocks and inserts newly initialized cross-attention-and-dense blocks between them. A text hidden state supplies the query; resampled visual tokens supply keys and values. If $h$ is the residual-stream input and $B(h,Z)$ is a new visual-conditioning branch, the gated update can be written schematically as\n\n$$\nh'=h+\\tanh(\\alpha)B(h,Z),\n$$\n\nwhere $\\alpha$ is a learned scalar specific to the layer. Initially $\\alpha=0$, so $\\tanh(0)=0$ and $h'=h$. Thus the newly assembled model initially reproduces the frozen language model rather than injecting arbitrary visual-branch noise.\n\nA small worked example is illustrative. Suppose one coordinate has $h=2$, the new branch returns $B(h,Z)=3$, and training has moved the gate to a value satisfying $\\tanh(\\alpha)=0.2$. Then $h'=2+0.2\\times3=2.6$. At initialization the same coordinate is $2+0\\times3=2$. This arithmetic demonstrates the gate, not a reported activation or learned Flamingo parameter.\n\nUnder the paper's four-shot Flamingo-3B ablation conditions, the Overall score is constructed by dividing each of five development-benchmark scores by its state-of-the-art value from Table 1 and averaging the normalized results. Removing zero-initialized gating changed that score from 70.7 to 66.5, a decrease of 4.2 score points, or about 5.9% relative to the 70.7 baseline. The paper also associated removal with training instability. This evidence supports the design in the tested setting, not a universal theorem about residual adapters.",
+      "sourceIds": [
+        "section-2",
+        "section-3-part-2"
+      ],
+      "claimIds": [
+        "c5",
+        "c6",
+        "c10",
+        "c11"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s5",
+      "title": "Image-causal masking keeps interleaved prompts coherent",
+      "markdown": "Let $y_\\ell$ be text token $\\ell$, $y_{<\\ell}$ the earlier text tokens, and $x_{\\leq\\ell}$ the visual inputs preceding that token. Flamingo factorizes\n\n$$\np(y\\mid x)=\\prod_{\\ell=1}^{L}p(y_\\ell\\mid y_{<\\ell},x_{\\leq\\ell}),\n$$\n\nwhere $L$ is the number of predicted text positions and $p$ is the model's conditional distribution. Operationally, however, a text token directly cross-attends only to the visual tokens belonging to the image immediately before it—not every earlier image. Earlier visual information can still influence the token indirectly because text states carrying that information remain available through causal language-model self-attention.\n\nConsider an illustrative prompt: image A, “animal: cat,” image B, “animal:”. Tokens in the second answer directly consult image B. The textual record of the first demonstration can still convey the requested output format. This separation helps the same masking rule operate with a variable number of demonstrations.\n\nFor M3W training, each sampled 256-token subsequence retained at most five images, with additional images discarded to save compute. In evaluation, the paper reports that Flamingo could still benefit from prompts containing up to 32 image- or video-text pairs. This is a reported sequence-length result under the paper's training and evaluation setup, not a guarantee of unlimited-context generalization; the paper separately warns that language models can generalize poorly to sequences longer than those used in training.",
+      "sourceIds": [
+        "section-2",
+        "section-3",
+        "section-5"
+      ],
+      "claimIds": [
+        "c2",
+        "c7"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s6",
+      "title": "Training teaches both alignment and interleaving",
+      "markdown": "The training mixture contains interleaved webpages, image-text pairs, and video-text pairs. For dataset $m$, let $\\mathcal{D}_m$ be its distribution, $\\lambda_m$ its weight, $x$ the visual inputs, and $y$ the text. The objective is\n\n$$\n\\sum_{m=1}^{M}\\lambda_m\\,\\mathbb{E}_{(x,y)\\sim\\mathcal{D}_m}\\left[-\\sum_{\\ell=1}^{L}\\log p(y_\\ell\\mid y_{<\\ell},x_{\\leq\\ell})\\right],\n$$\n\nwith $M$ datasets. This is weighted next-token negative log-likelihood, not a downstream task-specific classifier loss.\n\nContrastive pretraining also matters upstream: the vision encoder was trained to align image-text pairs. In the illustrative figure, a fixed $3\\times3$ similarity matrix represents three declared matching image/text pairs on its diagonal. Temperature only changes row-softmax probabilities; it cannot improve the fixed similarities or simulate Flamingo training. Use it to distinguish paired alignment from Flamingo's later generative objective.\n\nInterleaving is not cosmetic. In the specified Flamingo-3B four-shot development ablation, the Overall score is the average of five benchmark scores after each is divided by its state-of-the-art value from Table 1. Removing M3W changed this normalized aggregate from 70.7 to 53.4, a decrease of 17.3 score points, or about 24.5% relative to the baseline. Removing paired image-text data changed it to 60.9, a decrease of 9.8 points, or about 13.9% relative. These point differences should not be read as relative percentage decreases. The conditional results suggest complementary roles for sequence structure and paired alignment; they do not isolate every possible dataset confound.",
+      "sourceIds": [
+        "section-2",
+        "section-3-part-2"
+      ],
+      "claimIds": [
+        "c3",
+        "c8",
+        "c9"
+      ],
+      "figureId": "f2"
+    },
+    {
+      "id": "s7",
+      "title": "Inference specifies a task without rewriting the weights",
+      "markdown": "At evaluation, support examples are interleaved as image/text or video/text pairs, followed by a query visual input. Open-ended tasks use beam search; closed-ended tasks score candidate answers with model log-likelihood. The demonstrations communicate such things as the question pattern, answer vocabulary, or caption style through the context.\n\nThis is in-context learning, not few-example fine-tuning. No gradient update is required for the ordinary few-shot result, and every task can use the same model weights. Under the paper's benchmark protocols, the authors report that 32-shot Flamingo exceeded the then fine-tuned state of the art on six tasks. That statement must retain its conditions: it aggregates distinct task metrics, belongs to the paper's comparison set, and does not mean Flamingo won every benchmark. Five benchmarks were used for development decisions, while eleven were reserved from such validation; this separation makes the latter group a stronger check against design-selection bias.\n\nNor does “32-shot” describe training-set size. It describes task-specific examples placed in the inference prompt after large-scale multimodal pretraining.",
+      "sourceIds": [
+        "section-2-part-2",
+        "section-3"
+      ],
+      "claimIds": [
+        "c12"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s8",
+      "title": "What the bridge does not solve",
+      "markdown": "Flamingo's language prior is both an asset and a source of error. It enables fluent generation and lets demonstrations specify a task through context, but those same learned priors can outweigh the available visual evidence and produce hallucinations or ungrounded guesses. Visual conditioning therefore changes what the language model can consult; it does not guarantee that every generated statement is grounded in the input.\n\nIts broad generative interface also involves a specialization trade-off. Flamingo can express captioning, question answering, dialogue, and classification as text prediction, whereas contrastive models directly optimize text-image retrieval and perform better on the classification comparisons reported by the paper. More demonstrations can improve task adaptation in the evaluated low-shot regime, but they lengthen inference context, increase computation, and may change results depending on their content and presentation. The reported benefit from prompts of up to 32 visual-text pairs is consequently an empirical result under the evaluated setup, not a guarantee for arbitrary context lengths or demonstration choices.\n\nThe experimental numbers have corresponding evidential limits. The authors did not release the proprietary code and data needed to reproduce the main results, and they did not report random-seed error bars. Reported benchmark differences should therefore be interpreted as outcomes of the stated training and evaluation conditions, not as independently reproducible uncertainty estimates or universal performance guarantees.\n\nThe resulting scientific picture is a frozen generative language backbone equipped with learned visual access: a contrastively pretrained encoder extracts visual features, a Perceiver Resampler compresses them to 64 tokens, gated cross-attention injects those tokens into the frozen language model, and image-causal prompting supplies task demonstrations. This bridge expands the tasks one model can address, but it does not by itself ensure grounded generation, match specialized classifiers, or remove the computational and sensitivity costs of in-context learning.",
+      "sourceIds": [
+        "section-5",
+        "section-6",
+        "section-7"
+      ],
+      "claimIds": [
+        "c13",
+        "c14",
+        "c15"
+      ],
+      "figureId": null
+    }
+  ],
+  "figures": [
+    {
+      "id": "f1",
+      "kind": "attention",
+      "title": "Temperature and a fixed attention distribution",
+      "question": "As temperature decreases, how does the normalized weight on the score 2 compare with the other three weights?",
+      "caption": "Illustrative softmax over fixed scores [2, 1, 0, -1]; temperature changes sharpness while the scores remain unchanged.",
+      "limitation": "This shows normalized attention weights, not a measured Flamingo head, learned token similarity, or image-causal attention mask.",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c5"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "f2",
+      "kind": "contrastive",
+      "title": "Paired alignment before generative conditioning",
+      "question": "When temperature decreases, which declared image-text matches gain row-softmax probability under the fixed similarity matrix?",
+      "caption": "Illustrative 3-by-3 image/text similarity matrix whose diagonal denotes declared pairs; temperature changes row-softmax match probabilities.",
+      "limitation": "The similarities are fixed and illustrative; this is neither an actual embedding measurement nor Flamingo's generative training objective.",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c3",
+        "c8"
+      ],
+      "illustrative": true
+    }
+  ],
+  "quiz": [
+    {
+      "question": "Assume a new gated branch outputs a nonzero vector, but its scalar has just been initialized to zero. What does that branch add to the residual stream?",
+      "options": [
+        {
+          "text": "Exactly zero",
+          "explanation": "Correct. The multiplier is tanh(0)=0, so the branch initially contributes nothing."
+        },
+        {
+          "text": "The full branch output",
+          "explanation": "Incorrect. That would omit the zero-initialized tanh gate."
+        },
+        {
+          "text": "Half the branch output",
+          "explanation": "Incorrect. No one-half multiplier follows from the stated initialization."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c6"
+      ]
+    },
+    {
+      "question": "In the prompt image A, text A, image B, text B, which visual tokens does text B directly cross-attend to under Flamingo's single-image mask?",
+      "options": [
+        {
+          "text": "Only image B's tokens",
+          "explanation": "Correct. Direct cross-attention uses the immediately preceding image, while earlier dependencies can travel through text self-attention."
+        },
+        {
+          "text": "Images A and B equally",
+          "explanation": "Incorrect. The paper reports that direct cross-attention is not over all previous images."
+        },
+        {
+          "text": "Only image A's tokens",
+          "explanation": "Incorrect. Image A is not the immediately preceding visual input for text B."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c7"
+      ]
+    },
+    {
+      "question": "Which conclusion is justified by the reported 32-shot result?",
+      "options": [
+        {
+          "text": "Flamingo beat every fine-tuned comparator on all sixteen tasks",
+          "explanation": "Incorrect. The reported superiority over fine-tuned state of the art applied to six tasks, not all sixteen."
+        },
+        {
+          "text": "Prompt examples can adapt one fixed model without task-specific weight updates",
+          "explanation": "Correct. The few-shot evaluation uses interleaved demonstrations while retaining a single set of model weights."
+        },
+        {
+          "text": "Thirty-two examples are sufficient for every future multimodal task",
+          "explanation": "Incorrect. The result is conditional on the evaluated tasks, prompts, metrics, and model; it is not a universal guarantee."
+        }
+      ],
+      "answer": 1,
+      "sourceIds": [
+        "section-1",
+        "section-3"
+      ],
+      "claimIds": [
+        "c12"
+      ]
+    }
+  ],
+  "id": "flamingo-a-visual-language-model-for",
+  "createdAt": "2026-10-01T23:50:33.964Z",
+  "pipelineVersion": "subjects-lessons-v1",
+  "sources": [
+    {
+      "id": "abstract",
+      "label": "Original paper · abstract",
+      "url": "https://arxiv.org/abs/2204.14198",
+      "digest": "5b1f80d51b90449cfded96f79faa145f4c3b4fad25c3ee71ae4c3e9e0ef10943",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:36:17.168Z"
+    },
+    {
+      "id": "main-text",
+      "label": "Original paper · unsectioned main text",
+      "url": "https://arxiv.org/html/2204.14198",
+      "digest": "3604fceefdedafc0cc0c48ef545a6d7f1ebb304ba3a0de3531d9d75048565f82",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:36:17.168Z"
+    },
+    {
+      "id": "section-1",
+      "label": "1 Introduction",
+      "url": "https://arxiv.org/html/2204.14198#S1",
+      "digest": "9de31af481e74896b79d3b4b0d9bf771e2598e0f1f1ad1d186f8d0b3f1d55622",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:36:17.168Z"
+    },
+    {
+      "id": "section-2",
+      "label": "2 Approach",
+      "url": "https://arxiv.org/html/2204.14198#S2",
+      "digest": "5be235d6b91a4eec374ad76194ba427bb5a12379096003f1a7d10934cd6e5f64",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:36:17.168Z"
+    },
+    {
+      "id": "section-2-part-2",
+      "label": "2 Approach · part 2",
+      "url": "https://arxiv.org/html/2204.14198#S2",
+      "digest": "8b2b2a891da054583629596341f4e9517bf341d589cd0d4a5d1ad7a7dc342ca8",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:36:17.168Z"
+    },
+    {
+      "id": "section-3",
+      "label": "3 Experiments",
+      "url": "https://arxiv.org/html/2204.14198#S3",
+      "digest": "611ec7ba78ccbf6d85ac2cd92badf57067345bbfe52c4bffccd86179f20ca593",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:36:17.168Z"
+    },
+    {
+      "id": "section-3-part-2",
+      "label": "3 Experiments · part 2",
+      "url": "https://arxiv.org/html/2204.14198#S3",
+      "digest": "fbec23a60b4de8f21f217a989feec20fc4e348a28d9767bcf185c7ce28d860a4",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:36:17.168Z"
+    },
+    {
+      "id": "section-4",
+      "label": "4 Related work",
+      "url": "https://arxiv.org/html/2204.14198#S4",
+      "digest": "6e49432a6aba2af1ba3ba01c23dc6ea31de934de1e705f4675bed1975f7eb938",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:36:17.168Z"
+    },
+    {
+      "id": "section-5",
+      "label": "5 Discussion",
+      "url": "https://arxiv.org/html/2204.14198#S5",
+      "digest": "34ab3a1588d938822ecd1c20d1d7874007b7b08a783db449e8e748bbfb9353f1",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:36:17.168Z"
+    },
+    {
+      "id": "section-6",
+      "label": "Checklist",
+      "url": "https://arxiv.org/html/2204.14198#Sx1",
+      "digest": "e7a90072c3d27b431cd7b7d141a47623b540a73d24ce32a70994a30bee8a98bd",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:36:17.168Z"
+    },
+    {
+      "id": "section-7",
+      "label": "Appendix",
+      "url": "https://arxiv.org/html/2204.14198#Sx2",
+      "digest": "a557884a257fdfc9009e2a36a46b1460d838197a2aed03b3eb412db061ffcca7",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:36:17.168Z"
+    }
+  ],
+  "review": {
+    "status": "passed",
+    "reviewedAt": "2026-10-02T02:15:01.213Z",
+    "contentDigest": "1ee69259a66a245dfb6344860bde5d68e15c8daa2d10bfbf8302ee98691eb3e7"
+  }
+}

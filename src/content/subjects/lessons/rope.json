@@ -1,0 +1,426 @@
+{
+  "title": "Turning Position into Phase: A Working Guide to RoPE",
+  "summary": "RoPE rotates paired query and key coordinates by position-dependent angles, making their attention score depend on relative displacement while preserving vector norms.",
+  "prerequisites": [
+    "Vector operations and matrix multiplication",
+    "Introductory softmax attention",
+    "Trigonometry and two-dimensional rotations"
+  ],
+  "objectives": [
+    "Explain why content-only self-attention needs positional information.",
+    "Derive how paired rotations convert absolute positions into relative offsets.",
+    "Calculate a two-dimensional RoPE attention score by hand.",
+    "Distinguish RoPE from additive position embeddings and softmax.",
+    "Interpret the paper's evidence without overstating its scope."
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "mechanism",
+      "statement": "The paper frames self-attention as position-agnostic and therefore in need of an explicit positional mechanism.",
+      "conditions": "For the transformer-based language models discussed in the introduction.",
+      "sourceIds": [
+        "section-1"
+      ]
+    },
+    {
+      "id": "c2",
+      "kind": "equation",
+      "statement": "Standard scaled dot-product attention normalizes exponentiated query–key scores and uses the resulting weights to sum value vectors.",
+      "conditions": "For a sequence of N tokens and query/key dimension d in the paper’s background formulation.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c3",
+      "kind": "mechanism",
+      "statement": "RoPE seeks query and key transformations whose inner product depends on token content and only the relative position m-n.",
+      "conditions": "For query position m and key position n under the formulation in Equation 11.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c4",
+      "kind": "equation",
+      "statement": "In two dimensions, RoPE multiplies projected queries and keys by complex phases whose angles grow linearly with their positions.",
+      "conditions": "For d=2, a preset nonzero frequency theta, and the paper’s complex-number representation.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c5",
+      "kind": "mechanism",
+      "statement": "The general even-dimensional construction partitions coordinates into two-dimensional pairs and rotates each pair at its own frequency.",
+      "conditions": "For even hidden dimension d and d/2 predefined angular frequencies.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c6",
+      "kind": "equation",
+      "statement": "The dot product of two position-rotated vectors contains the relative rotation R at offset n-m rather than two independent absolute-position terms.",
+      "conditions": "For the block-diagonal orthogonal rotary matrices defined by the paper.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c7",
+      "kind": "result",
+      "statement": "Rotary matrices preserve norms because they are orthogonal.",
+      "conditions": "For the exact block-diagonal rotations in the RoPE construction.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c8",
+      "kind": "mechanism",
+      "statement": "RoPE is multiplicative, unlike approaches that add positional vectors to contextual representations.",
+      "conditions": "Relative to the additive position-encoding formulations reviewed in the paper.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c9",
+      "kind": "mechanism",
+      "statement": "The paper gives a RoPE variant for linear attention by rotating feature-mapped queries and keys in the numerator.",
+      "conditions": "For the linear-attention formulation in Equation 19, with its denominator left unrotated.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c10",
+      "kind": "caveat",
+      "statement": "In the paper’s linear-attention variant, value coefficients need not be nonnegative normalized probabilities.",
+      "conditions": "For Equation 19, whose numerator may contain negative terms while its denominator remains unchanged.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c11",
+      "kind": "result",
+      "statement": "On WMT 2014 English-to-German translation, the reported RoFormer score was 27.5 BLEU versus 27.3 for the Transformer-base baseline.",
+      "conditions": "Under the paper’s shared training setup, checkpoint averaging, beam size 4, and length penalty 0.6.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c12",
+      "kind": "result",
+      "statement": "On CAIL2019-SCM, RoFormer with a 1024-token cutoff reported 69.79% test accuracy, while WoBERT-512 reported 68.10%.",
+      "conditions": "For the paper’s 6:2:2 split and the listed maximum input cutoffs; model and cutoff both differ in this comparison.",
+      "sourceIds": [
+        "section-4-part-2"
+      ]
+    },
+    {
+      "id": "c13",
+      "kind": "caveat",
+      "statement": "RoPE supports sequence-length flexibility because its position-dependent rotations are generated from predefined frequencies rather than selected from a learned finite position table.",
+      "conditions": "This is a structural property of the paper’s RoPE formulation; it permits computing rotations at additional indices but does not guarantee accuracy when extrapolating to sequence lengths unseen during training.",
+      "sourceIds": [
+        "section-1",
+        "section-3"
+      ]
+    },
+    {
+      "id": "c14",
+      "kind": "caveat",
+      "statement": "The paper bounds the magnitude of the rotary inner-product sum using partial phase sums and reports that their average magnitude decays with increasing relative distance for its chosen frequency schedule.",
+      "conditions": "For Equations 35–37 with theta_i=10000^{-2i/d}; the analysis and Figure 2 do not prove that every individual attention score decreases monotonically with distance.",
+      "sourceIds": [
+        "section-3-part-2"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "s1",
+      "title": "The missing coordinate system",
+      "markdown": "A transformer receives content vectors, but content alone does not say where a token occurred. Let $N$ be the sequence length, $w_i$ the token at position $i$, and $\\boldsymbol{x}_i\\in\\mathbb{R}^d$ its $d$-dimensional embedding without position information. A query $\\boldsymbol{q}_m$, key $\\boldsymbol{k}_n$, and value $\\boldsymbol{v}_n$ are produced for query position $m$ and candidate position $n$.\n\nStandard attention uses the score $s_{m,n}=\\boldsymbol{q}_m^{\\intercal}\\boldsymbol{k}_n/\\sqrt d$, then\n\n$$\na_{m,n}=\\frac{\\exp(s_{m,n})}{\\sum_{j=1}^{N}\\exp(s_{m,j})},\\qquad \\boldsymbol{o}_m=\\sum_{n=1}^{N}a_{m,n}\\boldsymbol{v}_n.\n$$\n\nHere $a_{m,n}$ is the normalized attention weight and $\\boldsymbol{o}_m$ is the output at position $m$. If the query and key transformations see only content, swapping two equal content vectors leaves their scores indistinguishable. Position encoding supplies the missing coordinate system.\n\nThe illustrative control below isolates only the normalization step. It fixes four scores at $[2,1,0,-1]$, divides them by a positive temperature $T$, and applies softmax. Predict what happens as $T$ decreases: the largest score should receive more mass. This teaches how a score difference becomes a weight difference, but the scores are invented; the control neither learns queries and keys nor applies RoPE.",
+      "sourceIds": [
+        "section-1",
+        "section-2"
+      ],
+      "claimIds": [
+        "c1",
+        "c2"
+      ],
+      "figureId": "fig-attention"
+    },
+    {
+      "id": "s2",
+      "title": "The design target: relative position from absolute rotations",
+      "markdown": "The paper’s central constraint is more precise than “add order somehow.” It asks for transformations $f_q$ and $f_k$ satisfying\n\n$$\n\\left\\langle f_q(\\boldsymbol{x}_m,m),f_k(\\boldsymbol{x}_n,n)\\right\\rangle\n=g(\\boldsymbol{x}_m,\\boldsymbol{x}_n,m-n).\n$$\n\nThe function $g$ may depend on both token embeddings, but its positional argument is only the displacement $m-n$. Thus the transformed vectors can individually encode absolute indices $m$ and $n$, while their interaction exposes a relative offset.\n\nThis distinction matters. An absolute encoding answers “where is this token?” A relative attention interaction answers “how far and in which direction is this key from this query?” RoPE achieves both through a group property of rotations: composing the inverse rotation at one position with the rotation at another leaves a rotation by their angle difference.\n\nA common misconception is that RoPE simply adds sinusoidal vectors. It does not. Sinusoids still appear, but as entries of a matrix that multiplies projected queries and keys. Values are not part of the paper’s basic rotary query–key derivation.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c3",
+        "c8"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s3",
+      "title": "One coordinate pair at a time",
+      "markdown": "Start in two dimensions. Define\n\n$$\nR(\\alpha)=\n\\begin{pmatrix}\n\\cos\\alpha&-\\sin\\alpha\\\\\n\\sin\\alpha&\\cos\\alpha\n\\end{pmatrix}.\n$$\n\nLet $\\boldsymbol{W}_q$ and $\\boldsymbol{W}_k$ be learned projection matrices, $\\theta\\ne0$ a preset angular frequency, and $\\boldsymbol{u}=\\boldsymbol{W}_q\\boldsymbol{x}_m$, $\\boldsymbol{v}=\\boldsymbol{W}_k\\boldsymbol{x}_n$. RoPE forms\n\n$$\n\\boldsymbol{q}_m=R(m\\theta)\\boldsymbol{u},\\qquad\n\\boldsymbol{k}_n=R(n\\theta)\\boldsymbol{v}.\n$$\n\nBecause $R(\\alpha)^{\\intercal}=R(-\\alpha)$ and $R(\\alpha)R(\\beta)=R(\\alpha+\\beta)$,\n\n$$\n\\boldsymbol{q}_m^{\\intercal}\\boldsymbol{k}_n\n=\\boldsymbol{u}^{\\intercal}R((n-m)\\theta)\\boldsymbol{v}.\n$$\n\nOnly the relative offset remains in the matrix between the content vectors.\n\nWorked example, entirely illustrative: choose $\\boldsymbol{u}=(1,0)$, $\\boldsymbol{v}=(1,0)$, $\\theta=\\pi/2$, $m=1$, and $n=2$. Then $\\boldsymbol{q}_1=(0,1)$ and $\\boldsymbol{k}_2=(-1,0)$, so their dot product is $0$. The relative form agrees: $(n-m)\\theta=\\pi/2$, and $(1,0)^{\\intercal}R(\\pi/2)(1,0)=0$. If both positions increase by five, the offset remains one and the score remains zero. This verifies shift invariance of the positional contribution, not a prediction about a trained model’s attention.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c3",
+        "c4",
+        "c6"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s4",
+      "title": "From a plane to a hidden vector",
+      "markdown": "For even $d$, RoPE partitions each projected query or key into $d/2$ adjacent coordinate pairs. At position $m$, pair $i$ is rotated through the angle $m\\theta_i$. With $\\Theta$ denoting the set of frequencies, the complete transformation is\n\n$$\nf_{\\{q,k\\}}(\\boldsymbol{x}_m,m)=\\boldsymbol{R}^{d}_{\\Theta,m}\\boldsymbol{W}_{\\{q,k\\}}\\boldsymbol{x}_m,\n$$\n\nwhere $\\boldsymbol{R}^{d}_{\\Theta,m}$ is block diagonal and every $2\\times2$ block is an ordinary planar rotation. The paper defines\n\n$$\n\\theta_i=10000^{-2(i-1)/d},\\qquad i=1,\\ldots,d/2.\n$$\n\nThus different coordinate pairs accumulate phase at different rates. For projected vectors $\\boldsymbol{u}=\\boldsymbol{W}_q\\boldsymbol{x}_m$ and $\\boldsymbol{v}=\\boldsymbol{W}_k\\boldsymbol{x}_n$, orthogonality and the rotation composition law give\n\n$$\n(\\boldsymbol{R}^{d}_{\\Theta,m}\\boldsymbol{u})^{\\intercal}\n(\\boldsymbol{R}^{d}_{\\Theta,n}\\boldsymbol{v})\n=\\boldsymbol{u}^{\\intercal}\\boldsymbol{R}^{d}_{\\Theta,n-m}\\boldsymbol{v}.\n$$\n\nThe query and key therefore carry absolute phases, while their dot product depends on the relative displacement $n-m$. Because every block is orthogonal,\n\n$$\n\\|\\boldsymbol{R}^{d}_{\\Theta,m}\\boldsymbol{z}\\|_2=\\|\\boldsymbol{z}\\|_2.\n$$\n\nRoPE changes the direction of each coordinate pair without changing its Euclidean norm. This norm preservation does not make attention invariant: relative rotations can change query–key dot products, and the later softmax can turn those score changes into different attention weights.\n\nThe block structure also yields a direct elementwise calculation. For a pair $(z_{2i},z_{2i+1})$ with angle $m\\theta_i$, the rotated coordinates are\n\n$$\n\\bigl(z_{2i}\\cos(m\\theta_i)-z_{2i+1}\\sin(m\\theta_i),\\;\n z_{2i+1}\\cos(m\\theta_i)+z_{2i}\\sin(m\\theta_i)\\bigr).\n$$\n\nApplying this rule pair by pair is algebraically identical to multiplying by the block-diagonal rotary matrix.\n\n### Sequence-length flexibility and long-term decay\n\nThe rotation at a position is generated from its index and predefined frequencies rather than selected from a learned finite position table. Rotations can therefore be evaluated at additional indices without learning additional position vectors. This is structural sequence-length flexibility, not a guarantee of accurate extrapolation to lengths absent from training.\n\nTo analyze relative distance, the paper writes the rotary inner product as the real part of\n\n$$\n\\sum_{i=0}^{d/2-1}h_i e^{i(m-n)\\theta_i},\n$$\n\nwhere $h_i$ is the complex contribution of query–key coordinate pair $i$. Defining the partial phase sums\n\n$$\nS_j=\\sum_{i=0}^{j-1}e^{i(m-n)\\theta_i},\n$$\n\nwith $h_{d/2}=0$ and $S_0=0$, Abel transformation gives\n\n$$\n\\sum_{i=0}^{d/2-1}h_i e^{i(m-n)\\theta_i}\n=-\\sum_{i=0}^{d/2-1}S_{i+1}(h_{i+1}-h_i).\n$$\n\nConsequently,\n\n$$\n\\left|\\sum_{i=0}^{d/2-1}h_i e^{i(m-n)\\theta_i}\\right|\n\\leq\n\\left(\\max_i|h_{i+1}-h_i|\\right)\n\\sum_{i=0}^{d/2-1}|S_{i+1}|.\n$$\n\nFor the schedule $\\theta_i=10000^{-2i/d}$ used in this analysis, the paper reports that the average partial-sum magnitude $\\frac{1}{d/2}\\sum_i|S_i|$ decreases as relative distance grows. This describes a distance-dependent envelope arising from phase cancellation. It does not require every individual rotary dot product or normalized attention weight to decrease monotonically: the content terms $h_i$, their variation across coordinate pairs, and the subsequent attention normalization still affect each result.",
+      "sourceIds": [
+        "section-1",
+        "section-3",
+        "section-3-part-2"
+      ],
+      "claimIds": [
+        "c5",
+        "c6",
+        "c7"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s5",
+      "title": "What rotation changes—and what softmax still does",
+      "markdown": "RoPE changes the query–key logits before attention normalization. Softmax then compares those logits and converts them into weights on the value vectors. Keeping these two operations separate makes the mechanism precise.\n\nFor query position $m$ and key position $n$, first define the content projections before rotation:\n\n$$\n\\boldsymbol{u}_m=\\boldsymbol{W}_q\\boldsymbol{x}_m,\n\\qquad\n\\boldsymbol{k}^{(0)}_n=\\boldsymbol{W}_k\\boldsymbol{x}_n.\n$$\n\nRoPE partitions each projection into adjacent coordinate pairs. Pair $i$ is rotated by $m\\theta_i$ in the query and by $n\\theta_i$ in the key, giving\n\n$$\n\\widetilde{\\boldsymbol{q}}_m\n=\\boldsymbol{R}^{d}_{\\Theta,m}\\boldsymbol{u}_m,\n\\qquad\n\\widetilde{\\boldsymbol{k}}_n\n=\\boldsymbol{R}^{d}_{\\Theta,n}\\boldsymbol{k}^{(0)}_n.\n$$\n\nThe corresponding scaled attention logit is\n\n$$\n\\begin{aligned}\ns_{m,n}\n&=\\frac{\\widetilde{\\boldsymbol{q}}_m^{\\intercal}\n\\widetilde{\\boldsymbol{k}}_n}{\\sqrt d}\\\\\n&=\\frac{\\boldsymbol{u}_m^{\\intercal}\n(\\boldsymbol{R}^{d}_{\\Theta,m})^{\\intercal}\n\\boldsymbol{R}^{d}_{\\Theta,n}\n\\boldsymbol{k}^{(0)}_n}{\\sqrt d}\\\\\n&=\\frac{\\boldsymbol{u}_m^{\\intercal}\n\\boldsymbol{R}^{d}_{\\Theta,n-m}\n\\boldsymbol{k}^{(0)}_n}{\\sqrt d}.\n\\end{aligned}\n$$\n\nThe last equality is the essential RoPE identity. Each vector is transformed using its absolute index, yet the positional transformation remaining inside their dot product depends only on the displacement $n-m$. Shifting both positions by the same integer $c$ leaves this term unchanged because\n\n$$\n(n+c)-(m+c)=n-m.\n$$\n\nThis relative-position property does not reduce the score to a function of distance alone. Position and content interact within every coordinate pair. Write one unrotated query pair as $(a,b)$ and the corresponding key pair as $(c,e)$. If their relative angle is $\\delta=(n-m)\\theta_i$, that pair contributes\n\n$$\n(ac+be)\\cos\\delta+(bc-ae)\\sin\\delta\n$$\n\nto the unscaled dot product. The quantities $ac+be$ and $bc-ae$ are determined by the projected token content, while the sine and cosine terms are determined by the relative offset at frequency $\\theta_i$. Two query–key pairs at the same displacement can therefore have different logits, and the same projected pair can produce different logits at different displacements.\n\nBecause every rotary block is orthogonal, rotation preserves each vector’s Euclidean norm:\n\n$$\n\\|\\widetilde{\\boldsymbol{q}}_m\\|_2=\\|\\boldsymbol{u}_m\\|_2,\n\\qquad\n\\|\\widetilde{\\boldsymbol{k}}_n\\|_2=\\|\\boldsymbol{k}^{(0)}_n\\|_2.\n$$\n\nNorm preservation does not imply that the query–key dot product is preserved. The query and key generally receive different rotations, so their relative orientation changes. RoPE can therefore alter a logit while leaving the lengths of both participating vectors unchanged.\n\nAfter the logits for all eligible keys have been computed, ordinary attention applies a row-wise softmax:\n\n$$\na_{m,n}\n=\\frac{\\exp(s_{m,n})}\n{\\sum_{j\\in\\mathcal{E}(m)}\\exp(s_{m,j})},\n\\qquad\n\\boldsymbol{o}_m\n=\\sum_{n\\in\\mathcal{E}(m)}a_{m,n}\\boldsymbol{v}^{\\mathrm{value}}_n,\n$$\n\nwhere $\\mathcal{E}(m)$ is the set of positions permitted by the attention mask. The notation $\\boldsymbol{v}^{\\mathrm{value}}_n$ keeps the value vector distinct from the unrotated key projection used above. In the paper’s standard construction, RoPE is applied to queries and keys; the resulting logits determine how the value vectors are combined.\n\nSoftmax makes every $a_{m,n}$ nonnegative and makes the weights over $\\mathcal{E}(m)$ sum to one. It also couples all eligible keys in the row: a weight is determined not only by its own logit but by every logit in the denominator. Raising one logit generally increases that key’s share and decreases the shares of the others even when their logits remain fixed. RoPE supplies the content-dependent relative phase in each logit; softmax performs the subsequent competition among logits.\n\nThis separation also clarifies the role of the temperature illustration introduced earlier. Dividing the fixed scores $[2,1,0,-1]$ by a positive temperature and applying softmax demonstrates only how the concentration of normalized weights changes. Those fixed scores contain no rotary query or key coordinates. The illustration therefore represents the normalization stage after logits are available, while the equations above describe how RoPE constructs the positional dependence of the logits themselves.",
+      "sourceIds": [
+        "section-2",
+        "section-3"
+      ],
+      "claimIds": [
+        "c2",
+        "c6"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s6",
+      "title": "The linear-attention extension has a boundary",
+      "markdown": "The paper also considers attention written with a similarity function and then factorized through feature maps $\\phi$ and $\\varphi$. Here $\\phi(\\boldsymbol{q}_m)$ and $\\varphi(\\boldsymbol{k}_n)$ are typically nonnegative transformed features. Its RoPE variant rotates those features in the numerator:\n\n$$\n\\frac{\\sum_{n=1}^{N}\n(\\boldsymbol{R}_{\\Theta,m}^{d}\\phi(\\boldsymbol{q}_m))^{\\intercal}\n(\\boldsymbol{R}_{\\Theta,n}^{d}\\varphi(\\boldsymbol{k}_n))\\boldsymbol{v}_n}\n{\\sum_{n=1}^{N}\\phi(\\boldsymbol{q}_m)^{\\intercal}\\varphi(\\boldsymbol{k}_n)}.\n$$\n\nThe denominator is deliberately left unchanged. Since rotated numerator terms can be negative, the resulting coefficients are not necessarily a probability distribution: they need not all be nonnegative even though the denominator normalizes the unrotated feature interaction. Therefore “attention weight” here should not automatically be interpreted as a categorical probability.\n\nThe paper argues that this construction retains the factorized computation associated with linear attention and reports a Performer-based experiment under its stated settings. Those results establish empirical behavior in that setting, not a general guarantee for every linear-attention feature map, architecture, or dataset.",
+      "sourceIds": [
+        "section-3",
+        "section-4"
+      ],
+      "claimIds": [
+        "c9",
+        "c10"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s7",
+      "title": "Reading the reported evidence with restraint",
+      "markdown": "The translation comparison is narrow but cleanly stated: on WMT 2014 English-to-German, RoFormer reported 27.5 BLEU and Transformer-base 27.3 under the same described setup. That is a 0.2 BLEU difference, not evidence that every architecture or dataset must improve.\n\nThe downstream GLUE table is mixed rather than uniformly dominant: RoFormer exceeds the listed BERT result on some tasks and falls below it on others. This matters because the introduction’s broad language about consistently overcoming alternatives should be read alongside the task-level numbers.\n\nFor long Chinese legal texts, RoFormer-1024 reported 69.79% test accuracy, compared with 68.10% for WoBERT-512 and 68.29% for RoFormer-512. The 1.69-point difference from WoBERT-512 combines an architecture change with a longer cutoff; even the within-RoFormer comparison changes the allowed input length. These results support performance under the reported conditions, not a controlled proof that rotation alone causes the gain.\n\nThe paper’s long-term-decay argument is also narrower than a universal claim about attention. Equations 35–37 express the rotary inner product as a frequency sum, introduce partial phase sums $S_j$, and use Abel transformation to bound the sum by a content-difference factor times $\\sum_j|S_j|$. Figure 2 reports that the average magnitude of those partial sums decays with relative distance for the paper’s frequency schedule. This supports a decaying bound or envelope under that construction; it does not establish that every individual attention score decreases monotonically as two tokens move apart.\n\nLikewise, sequence-length flexibility means that RoPE’s predefined rotations can be evaluated beyond a learned finite position table. It does not by itself guarantee successful extrapolation to unseen lengths. The reported long-text results therefore remain empirical evidence under their stated training stages, cutoffs, and datasets rather than a consequence guaranteed by either structural flexibility or the decay analysis.\n\nFinally, the authors explicitly leave two causal explanations unresolved: why the method converges faster than the compared position strategies, and why it performs better on long text despite the analyzed decay property. RoFormer also remains based on Transformer infrastructure and requires substantial hardware for pre-training. RoPE’s algebraic relative-position property is exact, but the paper does not establish that this property alone causes every reported empirical improvement or guarantees the same outcomes beyond the evaluated settings.",
+      "sourceIds": [
+        "section-1",
+        "section-3-part-2",
+        "section-4",
+        "section-4-part-2"
+      ],
+      "claimIds": [
+        "c11",
+        "c12",
+        "c13",
+        "c14"
+      ],
+      "figureId": null
+    }
+  ],
+  "figures": [
+    {
+      "id": "fig-attention",
+      "kind": "attention",
+      "title": "Temperature reshapes fixed attention scores",
+      "question": "As the positive temperature decreases, which of the four fixed scores receives more of the normalized attention mass?",
+      "caption": "An illustrative softmax over fixed scores [2, 1, 0, -1]; temperature changes concentration while the scores themselves remain fixed.",
+      "limitation": "This shows normalized weights for invented scores, not a measured attention head, learned similarity, or RoPE rotation.",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c2"
+      ],
+      "illustrative": true
+    }
+  ],
+  "quiz": [
+    {
+      "question": "Assume identical projected content vectors, one RoPE frequency, and no masking. If both token positions increase by the same integer offset, what happens to their RoPE dot product?",
+      "options": [
+        {
+          "text": "It stays unchanged.",
+          "explanation": "Correct: the score’s positional term depends on n-m, which a shared shift preserves."
+        },
+        {
+          "text": "It must increase.",
+          "explanation": "Incorrect: absolute angles increase, but their relative angle does not."
+        },
+        {
+          "text": "It becomes zero.",
+          "explanation": "Incorrect: zero occurs only for particular content vectors and relative angles."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c3",
+        "c6"
+      ]
+    },
+    {
+      "question": "Which statement correctly distinguishes RoPE from attention softmax?",
+      "options": [
+        {
+          "text": "RoPE rotates queries and keys; softmax normalizes their scores.",
+          "explanation": "Correct: they operate at different stages of standard attention."
+        },
+        {
+          "text": "RoPE normalizes values into probabilities.",
+          "explanation": "Incorrect: the basic mechanism rotates projected query and key coordinate pairs."
+        },
+        {
+          "text": "Softmax creates the relative rotation matrix.",
+          "explanation": "Incorrect: the rotation is applied before softmax normalization."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-2",
+        "section-3"
+      ],
+      "claimIds": [
+        "c2",
+        "c8"
+      ]
+    },
+    {
+      "question": "What is the most defensible interpretation of the reported RoFormer-1024 versus WoBERT-512 test result?",
+      "options": [
+        {
+          "text": "It proves rotation alone caused the improvement.",
+          "explanation": "Incorrect: architecture and maximum input cutoff differ, so the comparison does not isolate rotation."
+        },
+        {
+          "text": "It reports higher accuracy under two differing model and cutoff conditions.",
+          "explanation": "Correct: 69.79% exceeds 68.10%, but the conditions do not isolate a single cause."
+        },
+        {
+          "text": "It proves RoPE always improves long-text models.",
+          "explanation": "Incorrect: one reported task cannot establish a universal guarantee."
+        }
+      ],
+      "answer": 1,
+      "sourceIds": [
+        "section-4-part-2"
+      ],
+      "claimIds": [
+        "c12"
+      ]
+    }
+  ],
+  "id": "rope",
+  "createdAt": "2026-10-02T00:03:54.781Z",
+  "pipelineVersion": "subjects-lessons-v1",
+  "sources": [
+    {
+      "id": "abstract",
+      "label": "Original paper · abstract",
+      "url": "https://arxiv.org/abs/2104.09864",
+      "digest": "69fe13a2373ddc401db45e73a7403e52beca2db195f193a54b1660f45bb0bcc7",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-02T00:00:09.687Z"
+    },
+    {
+      "id": "main-text",
+      "label": "Original paper · unsectioned main text",
+      "url": "https://arxiv.org/html/2104.09864",
+      "digest": "d6c0f96302c9693d979ab07204943b7f2adf8824b58a8a06d77af859fcd8da1c",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-02T00:00:09.687Z"
+    },
+    {
+      "id": "section-1",
+      "label": "1 Introduction",
+      "url": "https://arxiv.org/html/2104.09864#S1",
+      "digest": "7a6cce33132d3b8e006fc62965a6a272621c808d756bc1199e64f2569026f995",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-02T00:00:09.687Z"
+    },
+    {
+      "id": "section-2",
+      "label": "2 Background and Related Work",
+      "url": "https://arxiv.org/html/2104.09864#S2",
+      "digest": "1a5f6b16644f82706cbcb902a9bd019a505325704fe34b4666aafb29089eec27",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-02T00:00:09.687Z"
+    },
+    {
+      "id": "section-3",
+      "label": "3 Proposed approach",
+      "url": "https://arxiv.org/html/2104.09864#S3",
+      "digest": "29d0b709558f90076d5b15a5beec96ac7083a302406fb471b8ff5c3dcc9c110c",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-02T00:00:09.687Z"
+    },
+    {
+      "id": "section-3-part-2",
+      "label": "3 Proposed approach · part 2",
+      "url": "https://arxiv.org/html/2104.09864#S3",
+      "digest": "b7ffac17c1f4b764d8de76625b5c06ec149e0e96d8fa50e6672dcca6b7c066fe",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-02T00:00:09.687Z"
+    },
+    {
+      "id": "section-4",
+      "label": "4 Experiments and Evaluation",
+      "url": "https://arxiv.org/html/2104.09864#S4",
+      "digest": "957630c28d61dfb80748607efaa76fde4b03670b050708f9e4ac76ee6c3af2e0",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-02T00:00:09.687Z"
+    },
+    {
+      "id": "section-4-part-2",
+      "label": "4 Experiments and Evaluation · part 2",
+      "url": "https://arxiv.org/html/2104.09864#S4",
+      "digest": "abc04ad3329e102dba31f936d61ce2ed240923a575cb619c319eb01520102235",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-02T00:00:09.687Z"
+    },
+    {
+      "id": "section-5",
+      "label": "5 Conclusions",
+      "url": "https://arxiv.org/html/2104.09864#S5",
+      "digest": "fa9d0e01f874f1fda704fa8cb640dd6394d626168bfdeda6cc9984e32235be91",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-02T00:00:09.687Z"
+    }
+  ],
+  "review": {
+    "status": "passed",
+    "reviewedAt": "2026-10-02T02:21:29.730Z",
+    "contentDigest": "57a8c1141f17e4a680a1df8061acee12343da13db6cf1f0214e5999212a1a3d9"
+  }
+}

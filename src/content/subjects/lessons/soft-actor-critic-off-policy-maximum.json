@@ -1,0 +1,444 @@
+{
+  "title": "The Critic, the Coin Flip, and the Replay Buffer",
+  "summary": "Soft actor-critic combines replay-based learning, a stochastic actor, and entropy-aware value estimates to pursue efficient, stable continuous control.",
+  "prerequisites": [
+    "Basic probability distributions and expectations",
+    "Markov decision processes and discounted returns",
+    "Policies, value functions, and gradient descent"
+  ],
+  "objectives": [
+    "Explain how entropy changes the policy objective and soft value.",
+    "Trace SAC updates through replay data.",
+    "Distinguish exact soft policy iteration from neural SAC.",
+    "Interpret the reported benchmarks and ablations cautiously.",
+    "Predict how temperature, reward scale, and target smoothing affect learning."
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "mechanism",
+      "statement": "SAC combines an actor-critic architecture, off-policy reuse of past experience, and entropy maximization.",
+      "conditions": "For the soft actor-critic algorithm presented in the paper.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c2",
+      "kind": "equation",
+      "statement": "The maximum-entropy objective adds an entropy bonus, weighted by temperature, to expected reward.",
+      "conditions": "For trajectories induced by policy pi over the paper's finite-horizon presentation of the objective.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c3",
+      "kind": "result",
+      "statement": "Ordinary maximum-reward reinforcement learning is recovered as the entropy temperature approaches zero.",
+      "conditions": "In the limiting objective as alpha tends to zero.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c4",
+      "kind": "equation",
+      "statement": "A soft state value averages Q minus log policy probability under the current policy.",
+      "conditions": "For the paper's temperature-suppressed formulation, where temperature has been absorbed into reward scaling.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c5",
+      "kind": "mechanism",
+      "statement": "Soft policy improvement projects an exponentiated-Q distribution into the allowed policy family using reverse KL divergence.",
+      "conditions": "For each state and a tractable policy class Pi in exact soft policy iteration.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c6",
+      "kind": "result",
+      "statement": "Exact repeated soft evaluation and improvement converges to the best policy in the selected policy class.",
+      "conditions": "In the tabular analysis with a finite action set; this is not a convergence guarantee for neural SAC.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c7",
+      "kind": "mechanism",
+      "statement": "Practical SAC approximates soft policy iteration with parameterized value, Q, and policy functions updated by stochastic gradients.",
+      "conditions": "In large continuous domains where exact tabular iteration is unavailable.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c8",
+      "kind": "mechanism",
+      "statement": "The actor uses reparameterized noise so gradients can pass through sampled actions into policy parameters.",
+      "conditions": "When the stochastic policy is expressible as a differentiable transformation of fixed-distribution noise.",
+      "sourceIds": [
+        "section-4-part-2"
+      ]
+    },
+    {
+      "id": "c9",
+      "kind": "mechanism",
+      "statement": "The presented implementation uses the smaller of two independently trained Q estimates to reduce positive bias during policy improvement.",
+      "conditions": "For the two-critic practical SAC variant evaluated in the paper.",
+      "sourceIds": [
+        "section-4-part-2"
+      ]
+    },
+    {
+      "id": "c10",
+      "kind": "result",
+      "statement": "The benchmark comparison used five seeds and evaluation rollouts every 1,000 environment steps.",
+      "conditions": "For the reported continuous-control comparison in Figure 1.",
+      "sourceIds": [
+        "section-5"
+      ]
+    },
+    {
+      "id": "c11",
+      "kind": "result",
+      "statement": "SAC was comparable on easier tasks and substantially better on harder tasks in the reported suite.",
+      "conditions": "For the paper's OpenAI Gym and rllab continuous-control experiments and their stated baselines.",
+      "sourceIds": [
+        "section-5"
+      ]
+    },
+    {
+      "id": "c12",
+      "kind": "result",
+      "statement": "The deterministic ablation varied much more across seeds than entropy-maximizing SAC.",
+      "conditions": "For five runs of each variant on the Humanoid rllab benchmark with hard target updates.",
+      "sourceIds": [
+        "section-5"
+      ]
+    },
+    {
+      "id": "c13",
+      "kind": "caveat",
+      "statement": "Reward scaling materially changes effective policy stochasticity and required task-specific tuning in this version of SAC.",
+      "conditions": "For the fixed-temperature formulation and Ant-v1 sensitivity experiment reported in the paper.",
+      "sourceIds": [
+        "section-5"
+      ]
+    },
+    {
+      "id": "c14",
+      "kind": "caveat",
+      "statement": "Target-network smoothing trades faster tracking against instability and slower learning.",
+      "conditions": "For the target value network sensitivity study in the reported SAC implementation.",
+      "sourceIds": [
+        "section-5-part-2"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "s1",
+      "title": "Why SAC joins three ideas",
+      "markdown": "SAC addresses continuous-control learning through three coupled choices: an actor-critic decomposition, reuse of stored experience, and an entropy-aware objective. The actor is a stochastic policy $\\pi_\\phi(\\mathbf a\\mid\\mathbf s)$; the critics estimate long-term desirability; and a replay buffer $\\mathcal D$ stores transitions collected earlier. Here $\\mathbf s$ is a state, $\\mathbf a$ an action, and $\\phi$ the actor parameters.\n\n“Off-policy” means an update need not use only transitions produced by the actor's latest parameters. Sampling old state-action transitions from $\\mathcal D$ can extract more optimization work from an environment interaction. This is different from claiming that arbitrary data are always safe or useful: the paper's mechanism still learns bootstrapped targets and remains dependent on function approximation.\n\nA common misconception is that SAC is simply a deterministic actor with random exploration noise attached. Its randomness belongs to the learned policy and its objective. Entropy affects both action selection and value estimation, so deleting it changes the optimization problem rather than merely changing data collection.",
+      "sourceIds": [
+        "abstract",
+        "section-1",
+        "section-2"
+      ],
+      "claimIds": [
+        "c1"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s2",
+      "title": "Maximum entropy as an objective, not decoration",
+      "markdown": "For a policy-induced trajectory, the paper begins with\n\n$$J(\\pi)=\\sum_{t=0}^{T}\\mathbb E_{(\\mathbf s_t,\\mathbf a_t)\\sim\\rho_\\pi}\\left[r(\\mathbf s_t,\\mathbf a_t)+\\alpha\\mathcal H(\\pi(\\cdot\\mid\\mathbf s_t))\\right].$$\n\nHere $t$ indexes time, $T$ is the horizon in this presentation, $\\rho_\\pi$ is the state-action marginal induced by $\\pi$, $r$ is reward, $\\mathcal H$ is policy entropy, and $\\alpha>0$ is temperature. Larger $\\alpha$ makes entropy more important relative to reward; as $\\alpha\\to0$, the conventional expected-reward objective returns.\n\nThe attention control offers a clean mathematical analogy, not an RL simulation. It divides fixed scores $[2,1,0,-1]$ by a positive temperature and applies softmax. Predict how raising temperature redistributes probability before moving the control: the weights should flatten, just as temperature can favor a broader distribution. The pictured quantities are normalized attention weights for invented fixed scores, not SAC action probabilities, learned similarities, returns, or evidence about training.\n\nEntropy is not a command to choose bad actions uniformly. Reward still shapes the distribution. The tradeoff favors randomness among sufficiently attractive actions while allowing clearly poor actions to receive little mass.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c2",
+        "c3"
+      ],
+      "figureId": "f1"
+    },
+    {
+      "id": "s3",
+      "title": "Soft evaluation and improvement",
+      "markdown": "Exact soft policy iteration alternates policy evaluation with policy improvement. For a fixed policy $\\pi$, evaluation repeatedly applies the soft Bellman operator\n\n$$\\mathcal T^\\pi Q(\\mathbf s_t,\\mathbf a_t)=r(\\mathbf s_t,\\mathbf a_t)+\\gamma\\mathbb E_{\\mathbf s_{t+1}\\sim p}[V(\\mathbf s_{t+1})],$$\n\nwhere\n\n$$V(\\mathbf s)=\\mathbb E_{\\mathbf a\\sim\\pi}\\left[Q(\\mathbf s,\\mathbf a)-\\alpha\\log\\pi(\\mathbf a\\mid\\mathbf s)\\right].$$\n\nHere $Q(\\mathbf s,\\mathbf a)$ is the soft action value, $V(\\mathbf s)$ is the soft state value, $p$ is the environment's transition density, and $\\gamma\\in[0,1)$ discounts future terms. The paper writes these equations with $\\alpha$ absorbed into reward scaling; displaying it explicitly makes the reward–entropy balance visible. Because $\\mathcal H(\\pi(\\cdot\\mid\\mathbf s))=-\\mathbb E_{\\mathbf a\\sim\\pi}[\\log\\pi(\\mathbf a\\mid\\mathbf s)]$, the second term rewards probability distributions with greater entropy.\n\nConsider one state with two actions, $Q_1=4$ and $Q_2=2$, under the equal-probability policy $\\pi_1=\\pi_2=0.5$ and temperature $\\alpha=0.5$. Substitution gives\n\n$$V=\\tfrac12(4-0.5\\log0.5)+\\tfrac12(2-0.5\\log0.5)=3+0.5\\log2\\approx3.347.$$\n\nThe expected action value alone is $3$. The remaining $0.5\\log2\\approx0.347$ is the entropy contribution for this policy. Changing the temperature changes that contribution without changing the two stipulated $Q$-values or probabilities: at $\\alpha=0$ it vanishes, while increasing $\\alpha$ increases the value assigned to retaining uncertainty. If the probabilities change, both the Q-weighted average and the entropy term must be recomputed; the bonus is therefore a property of the entire action distribution, not a fixed increment attached to each state.\n\nPolicy improvement uses the evaluated $Q$ to define the normalized target density\n\n$$q_Q(\\mathbf a\\mid\\mathbf s)=\\frac{\\exp(Q(\\mathbf s,\\mathbf a)/\\alpha)}{Z(\\mathbf s)},$$\n\nthen chooses the member of the permitted policy family $\\Pi$ that minimizes\n\n$$D_{\\mathrm{KL}}\\!\\left(\\pi'(\\cdot\\mid\\mathbf s)\\,\\middle\\|\\,q_Q(\\cdot\\mid\\mathbf s)\\right).$$\n\nThe partition function $Z(\\mathbf s)$ makes the exponentiated values integrate or sum to one. Temperature controls the sharpness of this improvement target: reducing $\\alpha$ concentrates mass more strongly on the largest Q-values, whereas increasing it spreads mass more broadly across actions with competitive values. For the two illustrative values above, the target odds are $\\exp((4-2)/\\alpha)$, so the control changes how decisively improvement prefers the first action rather than changing which action has the larger evaluated Q.\n\nThe convergence result applies when these evaluation and improvement operations are performed exactly in the paper's finite-action tabular analysis. Under those assumptions, repeated application converges to the best maximum-entropy policy in $\\Pi$. Practical SAC instead uses continuous actions, neural approximators, sampled expectations, and interleaved partial optimization, so the tabular theorem does not guarantee convergence of the implemented networks.",
+      "sourceIds": [
+        "section-3",
+        "section-4"
+      ],
+      "claimIds": [
+        "c4",
+        "c5",
+        "c6"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s4",
+      "title": "Turning the proof sketch into trainable networks",
+      "markdown": "Practical SAC replaces exact tables with $V_\\psi(\\mathbf s)$, $Q_\\theta(\\mathbf s,\\mathbf a)$, and $\\pi_\\phi(\\mathbf a\\mid\\mathbf s)$, whose parameters are $\\psi$, $\\theta$, and $\\phi$. A value loss fits\n\n$$V_\\psi(\\mathbf s)\\approx\\mathbb E_{\\mathbf a\\sim\\pi_\\phi}[Q_\\theta(\\mathbf s,\\mathbf a)-\\log\\pi_\\phi(\\mathbf a\\mid\\mathbf s)],$$\n\nwhile a critic loss regresses toward\n\n$$\\hat Q=r+\\gamma V_{\\bar\\psi}(\\mathbf s'),$$\n\nwhere $\\mathbf s'$ is the observed next state and $\\bar\\psi$ denotes target-value parameters. States and transitions come from replay, but the action inside the value target is newly sampled from the current actor.\n\nThe optimizer control isolates one modest prerequisite: ordinary gradient descent on the illustrative quadratic $f(x)=x^2/2$, beginning at $x=3$, for 12 steps. Predict whether a larger learning rate reaches zero smoothly or oscillates. SAC uses stochastic gradients on neural losses, not this scalar quadratic, and the control is neither Adam nor a model of SAC convergence. Its point is narrower: alternating objectives still require step sizes that can make an otherwise sensible update slow or unstable.\n\nA slowly moving target network makes the critic chase a less rapidly changing quantity. That is an engineering stabilization device, not part of the exact tabular theorem.",
+      "sourceIds": [
+        "section-4",
+        "section-5-part-2"
+      ],
+      "claimIds": [
+        "c7",
+        "c14"
+      ],
+      "figureId": "f2"
+    },
+    {
+      "id": "s5",
+      "title": "How the stochastic actor learns",
+      "markdown": "The policy-improvement objective can be written, up to a policy-independent normalizer, as\n\n$$J_\\pi(\\phi)=\\mathbb E_{\\mathbf s\\sim\\mathcal D,\\epsilon\\sim\\mathcal N}\\left[\\log\\pi_\\phi(f_\\phi(\\epsilon;\\mathbf s)\\mid\\mathbf s)-Q_\\theta(\\mathbf s,f_\\phi(\\epsilon;\\mathbf s))\\right].$$\n\nThe action is reparameterized as $\\mathbf a=f_\\phi(\\epsilon;\\mathbf s)$, where $\\epsilon$ is noise from a fixed distribution and $f_\\phi$ is differentiable. This exposes a path from the critic's action gradient through the sampled action to $\\phi$. Minimizing the first term rewards greater entropy; minimizing the negative-Q term favors valuable actions.",
+      "sourceIds": [
+        "section-4-part-2",
+        "section-5"
+      ],
+      "claimIds": [
+        "c8"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s6",
+      "title": "Why two critics and replay matter",
+      "markdown": "The practical algorithm collects a transition, stores it, and then performs one or more gradient steps on replayed batches. Its two Q-functions, $Q_{\\theta_1}$ and $Q_{\\theta_2}$, are trained independently. The smaller estimate is used in the value and policy gradients to mitigate positive estimation bias. This is a conservative choice between two learned estimates; it does not imply that the minimum is unbiased or always accurate.\n\nReplay supports efficiency because value estimators and the actor objective can use states and transitions gathered by earlier policies. Yet replay does not erase distribution shift, approximation error, or bootstrapping error. Likewise, two critics do not alone explain the whole method: the paper's deterministic comparison retained two Q-functions but removed entropy maximization and learned stochasticity, and its seed variability became much larger.\n\nOne useful mental loop is: collect with the current stochastic actor; sample old transitions; fit critics to a target value; fit the value estimate to critic-minus-log-probability; improve the actor through reparameterized samples; then update the target network. These are interleaved approximations rather than exact evaluation followed by exact improvement.",
+      "sourceIds": [
+        "section-4-part-2",
+        "section-5"
+      ],
+      "claimIds": [
+        "c9",
+        "c12"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s7",
+      "title": "What the experiments establish—and what they do not",
+      "markdown": "The main experiment compared SAC with DDPG, PPO, SQL, and TD3 on continuous-control tasks from OpenAI Gym and on the rllab Humanoid task. The harder rllab Humanoid benchmark has 21 action dimensions. For the reported comparison, five independently seeded instances of each algorithm were trained, and each instance performed one evaluation rollout every 1,000 environment steps. The plotted solid curve was the mean across those five trials, while the shaded region extended from the minimum to the maximum return. These conventions make the horizontal axis an environment-interaction count and the spread a five-run range; neither is a confidence interval.\n\nUnder those benchmark and evaluation conditions, SAC performed comparably to the baselines on the easier tasks and substantially better on the harder tasks in learning speed and final return. Evaluation policy also matters when interpreting the curves: SAC used the mean action during evaluation, whereas the stochastic policy was trained with a maximum-entropy objective. The plotted training return is the sum of rewards, not the complete reward-plus-entropy objective optimized during learning. Consequently, a higher deterministic evaluation return does not mean that the stochastic training objective has become irrelevant; it means that action selection for reporting differs from action sampling during training.\n\nThe Humanoid rllab ablation gives narrower evidence about stability. It compared five runs of entropy-maximizing stochastic SAC with five runs of a specified deterministic variant. That variant retained two Q-functions but removed entropy maximization and learned policy stochasticity; it also used hard target updates, no separate target actor, and fixed exploration noise. Its outcomes varied much more across seeds. The comparison therefore supports the claim that stochastic policy learning with entropy maximization contributed to consistency in this setup. Because several implementation properties differ together, it does not identify a numerical effect attributable to entropy alone.\n\nReward scale directly changes the effective balance between reward and entropy in this fixed-temperature formulation. Multiplying rewards by a larger scale makes Q differences dominate the log-probability term, corresponding to a sharper, lower-effective-temperature policy. In the Ant-v1 sensitivity experiment, very small reward magnitudes produced a nearly uniform policy that failed to exploit reward differences, while very large magnitudes drove the policy toward near-determinism and inadequate exploration. The best scale varied across environments, so transferring one value unchanged can alter the optimization problem enough to degrade learning.\n\nTarget-network smoothing controls a different tradeoff. With the exponential update\n\n$$\\bar\\psi\\leftarrow(1-\\tau)\\bar\\psi+\\tau\\psi,$$\n\n$\\psi$ denotes the current value-network parameters and $\\bar\\psi$ the target parameters. At $\\tau=1$, the target is copied from the current network on every update; at $\\tau=0$, it never changes. Increasing $\\tau$ makes the target track current estimates more quickly but can make the bootstrapped regression target unstable. Decreasing $\\tau$ makes the target change more slowly but can slow learning. The experiments used $\\tau=0.005$ across the tasks and reported a relatively wide suitable range, while also observing the instability-versus-speed tradeoff in the Ant-v1 sensitivity study.\n\nThese results establish performance and sensitivity only for the named tasks, baselines, implementations, evaluation choices, and finite set of seeds. They do not extend the exact soft-policy-iteration guarantee to continuous-action neural SAC: that theorem assumes finite actions and exact evaluation and improvement, whereas the benchmark algorithm learns approximations through stochastic-gradient updates. Nor do the benchmark returns determine behavior in safety-critical control, physical robots, or environments outside the evaluated suite. The consequence is practical: claims about sample efficiency, stability, or preferred hyperparameters should remain tied to the reported protocol rather than treated as universal properties of every SAC implementation.",
+      "sourceIds": [
+        "section-4",
+        "section-5",
+        "section-5-part-2",
+        "section-6"
+      ],
+      "claimIds": [
+        "c6",
+        "c10",
+        "c11",
+        "c12",
+        "c13",
+        "c14"
+      ],
+      "figureId": null
+    }
+  ],
+  "figures": [
+    {
+      "id": "f1",
+      "kind": "attention",
+      "title": "Temperature redistributes fixed softmax mass",
+      "question": "As temperature rises, do the four normalized weights become sharper or flatter?",
+      "caption": "Illustrative softmax of fixed scores [2,1,0,-1] divided by a positive temperature; the control shows how temperature changes normalized mass.",
+      "limitation": "This displays attention weights for invented scores, not SAC action probabilities, a learned policy, or measured reinforcement-learning behavior.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c2",
+        "c3"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "f2",
+      "kind": "optimizer",
+      "title": "Step size on a scalar loss",
+      "question": "Which learning rates approach the quadratic minimum smoothly, and which oscillate across it?",
+      "caption": "Illustrative ordinary gradient descent performs 12 updates on f(x)=x^2/2 from x=3 while the learning rate changes.",
+      "limitation": "This is plain scalar gradient descent, not SAC's neural optimization, Adam, RMSProp, or evidence of convergence.",
+      "sourceIds": [
+        "section-4",
+        "section-5-part-2"
+      ],
+      "claimIds": [
+        "c7",
+        "c14"
+      ],
+      "illustrative": true
+    }
+  ],
+  "quiz": [
+    {
+      "question": "At one state, two actions have equal Q-values and the permitted categorical policy class contains the equal-probability distribution over them. Under a positive entropy temperature, which policy best matches soft improvement?",
+      "options": [
+        {
+          "text": "Place equal probability on both actions.",
+          "explanation": "Correct. Equal Q-values give equal exponentiated weights, and positive entropy favors retaining both modes."
+        },
+        {
+          "text": "Choose the first action deterministically.",
+          "explanation": "Incorrect. Nothing in the stated assumptions distinguishes the first action, and determinism discards entropy."
+        },
+        {
+          "text": "Choose whichever action appeared most recently in replay.",
+          "explanation": "Incorrect. Replay recency is not the soft policy-improvement criterion."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-3",
+        "section-4"
+      ],
+      "claimIds": [
+        "c2",
+        "c5"
+      ]
+    },
+    {
+      "question": "Which statement correctly distinguishes practical SAC from the exact convergence result?",
+      "options": [
+        {
+          "text": "The theorem directly guarantees convergence of the neural continuous-action implementation.",
+          "explanation": "Incorrect. The proof concerns exact soft policy iteration under finite-action tabular assumptions."
+        },
+        {
+          "text": "Practical SAC approximates evaluation and improvement with interleaved stochastic-gradient updates.",
+          "explanation": "Correct. Function approximators and partial alternating optimization replace exact iteration in continuous domains."
+        },
+        {
+          "text": "Practical SAC is on-policy because its actor is stochastic.",
+          "explanation": "Incorrect. Stochasticity and whether stored off-policy experience is reused are separate properties."
+        }
+      ],
+      "answer": 1,
+      "sourceIds": [
+        "section-4"
+      ],
+      "claimIds": [
+        "c6",
+        "c7"
+      ]
+    },
+    {
+      "question": "What is the narrowest defensible interpretation of the deterministic Humanoid ablation?",
+      "options": [
+        {
+          "text": "Entropy-maximizing SAC was more consistent across the five reported seeds under that comparison.",
+          "explanation": "Correct. This matches the reported condition and does not generalize beyond it."
+        },
+        {
+          "text": "Every stochastic policy is more stable than every deterministic policy on every task.",
+          "explanation": "Incorrect. A task-specific finite-seed ablation cannot establish a universal rule."
+        },
+        {
+          "text": "Two critics alone caused all of SAC's stability.",
+          "explanation": "Incorrect. The deterministic comparison also used two Q-functions yet showed greater seed variability."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-5"
+      ],
+      "claimIds": [
+        "c9",
+        "c12"
+      ]
+    }
+  ],
+  "id": "soft-actor-critic-off-policy-maximum",
+  "createdAt": "2026-10-01T23:41:30.632Z",
+  "pipelineVersion": "subjects-lessons-v1",
+  "sources": [
+    {
+      "id": "abstract",
+      "label": "Original paper · abstract",
+      "url": "https://arxiv.org/abs/1801.01290",
+      "digest": "6ab237a32abae3cd7543dcb4cf87dbc5e87b8df510a6b3f7e83669fb7a347702",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:39:04.476Z"
+    },
+    {
+      "id": "section-1",
+      "label": "1 Introduction",
+      "url": "https://arxiv.org/html/1801.01290#S1",
+      "digest": "0fa53c228ad374b45d67bb17e636fc8af825b9443f92b501fbc088903457f9b9",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:39:04.476Z"
+    },
+    {
+      "id": "section-2",
+      "label": "2 Related Work",
+      "url": "https://arxiv.org/html/1801.01290#S2",
+      "digest": "01626e06ee08f4d72db3591f10ad34eda15d98480d89df44788eba4b252a9d29",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:39:04.476Z"
+    },
+    {
+      "id": "section-3",
+      "label": "3 Preliminaries",
+      "url": "https://arxiv.org/html/1801.01290#S3",
+      "digest": "8930329b4b9e2afc0c6bdbcde62d224cf69516452240d3bd6df610d84112affb",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:39:04.476Z"
+    },
+    {
+      "id": "section-4",
+      "label": "4 From Soft Policy Iteration to Soft Actor-Critic",
+      "url": "https://arxiv.org/html/1801.01290#S4",
+      "digest": "95a42aaac8530f7272f4e55073cb409195d374fb8089aa3b1be59d7028114bb5",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:39:04.476Z"
+    },
+    {
+      "id": "section-4-part-2",
+      "label": "4 From Soft Policy Iteration to Soft Actor-Critic · part 2",
+      "url": "https://arxiv.org/html/1801.01290#S4",
+      "digest": "ef329f0e01823230f1fce4601bfd1a9895ce3658b7e36a26796e08655498ae73",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:39:04.476Z"
+    },
+    {
+      "id": "section-5",
+      "label": "5 Experiments",
+      "url": "https://arxiv.org/html/1801.01290#S5",
+      "digest": "2e455d84e2ee12a2c6233e9b39d3c7a45a979ba8b25934e7ed137be48f342322",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:39:04.476Z"
+    },
+    {
+      "id": "section-5-part-2",
+      "label": "5 Experiments · part 2",
+      "url": "https://arxiv.org/html/1801.01290#S5",
+      "digest": "d4c6ccd73fba878c54dbd46cbf17788ab12215c33d93165e6fde6b4867572329",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:39:04.476Z"
+    },
+    {
+      "id": "section-6",
+      "label": "6 Conclusion",
+      "url": "https://arxiv.org/html/1801.01290#S6",
+      "digest": "404088e1c44b6c550b643ef6c4dfece44cbb6d0f833c5127b080b79e166aade5",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:39:04.476Z"
+    }
+  ],
+  "review": {
+    "status": "passed",
+    "reviewedAt": "2026-10-02T02:06:08.897Z",
+    "contentDigest": "05a05ad0501d9310f9c1213529683a1f2b17f4982be2a5dbc8577efca1c00cb2"
+  }
+}

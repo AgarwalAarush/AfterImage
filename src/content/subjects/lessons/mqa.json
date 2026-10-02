@@ -1,0 +1,400 @@
+{
+  "title": "The Shared Memory Behind Faster Transformer Decoding",
+  "summary": "Multi-query attention preserves multiple query heads while sharing one key-value memory, reducing bandwidth demands during incremental decoding with a small observed quality tradeoff.",
+  "prerequisites": [
+    "Vector dot products",
+    "Softmax probabilities",
+    "Autoregressive decoding",
+    "Asymptotic cost analysis"
+  ],
+  "objectives": [
+    "Explain why incremental attention can be limited by memory bandwidth.",
+    "Distinguish multi-head attention from multi-query attention.",
+    "Calculate attention weights in a small illustrative example.",
+    "Interpret the reported speed and quality results within their test conditions.",
+    "Identify the limitations of multi-query attention."
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "mechanism",
+      "statement": "Dot-product attention compares one query with a collection of keys and returns a weighted sum of the corresponding values.",
+      "conditions": "For the neural-attention formulation used in the paper, with softmax applied to query-key dot products.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c2",
+      "kind": "mechanism",
+      "statement": "Standard multi-head attention learns separate query, key, value, and output projections for each attention head.",
+      "conditions": "For the paper's review of Transformer multi-head attention.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c3",
+      "kind": "mechanism",
+      "statement": "Autoregressive generation prevents positions from being decoded in parallel because each generated token affects the next position's computation.",
+      "conditions": "During incremental inference in an autoregressive Transformer.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c4",
+      "kind": "equation",
+      "statement": "Under the paper's simplifying assumptions, incremental multi-head attention has a memory-access-to-arithmetic ratio of order $\\Theta(n/d+1/b)$.",
+      "conditions": "Across $n$ calls, assuming $m=n$, $k=v=d/h$, and $n\\leq d$.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c5",
+      "kind": "mechanism",
+      "statement": "The $n/d$ term arises from repeatedly loading cached keys and values as decoding advances.",
+      "conditions": "For incremental multi-head self-attention under the paper's cost model.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c6",
+      "kind": "mechanism",
+      "statement": "Multi-query attention retains multiple query heads but makes every head attend through one shared set of keys and values.",
+      "conditions": "For the architectural variation introduced in the paper.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c7",
+      "kind": "equation",
+      "statement": "The paper derives an incremental multi-query memory-access-to-arithmetic ratio of $\\Theta(1/d+n/(dh)+1/b)$.",
+      "conditions": "Across $n$ calls under the same simplifying assumptions used for the multi-head analysis.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c8",
+      "kind": "result",
+      "statement": "Sharing keys and values reduces the sequence-length-related ratio term from $n/d$ to $n/(dh)$, a factor of $h$ in the theoretical analysis.",
+      "conditions": "Within the paper's asymptotic model and with the query-head count $h$ retained.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c9",
+      "kind": "result",
+      "statement": "On the reported WMT14 test evaluation, the multi-query model scored 27.5 BLEU with greedy decoding and 28.5 BLEU with beam-4 decoding, versus 27.7 and 28.4 for the baseline.",
+      "conditions": "Six-layer, parameter-matched models; sacrebleu WMT14 English-German evaluation; beam search used beam 4 and $\\alpha=0.6$.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c10",
+      "kind": "result",
+      "statement": "The reported TPUv2 decoder cost for multi-query greedy inference was 3.8 microseconds per output token, compared with 46 microseconds for the multi-head baseline.",
+      "conditions": "Batch of 1024 sequences, source and target lengths of 128, fixed-shape padded memory, greedy incremental WMT translation inference on one TPUv2.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c11",
+      "kind": "result",
+      "statement": "On the Billion-Word benchmark, multi-query attention obtained dev perplexity 30.2 versus 29.9 for the multi-head baseline.",
+      "conditions": "Parameter-matched, six-layer decoder language models evaluated by per-word perplexity.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c12",
+      "kind": "caveat",
+      "statement": "The paper's multi-query translation model widened its feed-forward hidden layers so its total parameter count matched the baseline.",
+      "conditions": "All attention layers were replaced by multi-query attention in the WMT14 experiment, and $d_{ff}$ increased from 4096 to 5440.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c13",
+      "kind": "caveat",
+      "statement": "The reported inference timing used fixed shapes, so decoder memory was padded to length 128, or to 32 for local attention, making every decoding step take the same time.",
+      "conditions": "The TPUv2 incremental-inference implementation reported in the paper.",
+      "sourceIds": [
+        "section-4"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "s1",
+      "title": "Why decoding stresses memory",
+      "markdown": "Transformer training can process many known sequence positions together, but generation has a serial dependency: the token chosen now becomes part of the input used to produce the next token. That dependency does not eliminate parallel arithmetic within one step, yet it prevents all future positions from being evaluated at once.\n\nA decoder therefore preserves keys and values from earlier positions. At every new position, its fresh query must interact with that growing cache. The paper argues that repeatedly loading this cache can dominate incremental inference on hardware whose arithmetic capacity is much greater than its memory bandwidth. This is a data-movement problem, not merely a count of multiplications.\n\nLet $b$ be batch size, $n$ sequence length, $d$ model width, $h$ the number of heads, and $k$ and $v$ the key and value widths per head. The paper analyzes the common simplifying case $m=n$, $k=v=d/h$, and $n\\leq d$, where $m$ is the number of remembered positions. Across $n$ incremental calls, multi-head attention performs $\\Theta(bnd^2)$ arithmetic but accesses $\\Theta(bn^2d+nd^2)$ memory. Dividing gives\n\n$$\n\\Theta\\!\\left(\\frac{n}{d}+\\frac{1}{b}\\right).\n$$\n\nA larger batch can reduce the $1/b$ contribution, subject to available memory. It does not remove the $n/d$ contribution caused by repeatedly reading the expanding key-value history.",
+      "sourceIds": [
+        "section-1",
+        "section-2"
+      ],
+      "claimIds": [
+        "c3",
+        "c4",
+        "c5"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s2",
+      "title": "The attention calculation underneath the cache",
+      "markdown": "For one attention operation, let $q\\in\\mathbb{R}^k$ be a query, let $K\\in\\mathbb{R}^{m\\times k}$ contain $m$ key vectors, and let $V\\in\\mathbb{R}^{m\\times v}$ contain their value vectors. Ignoring the constant logit scaling that the paper folds into a projection, define\n\n$$\ns_i=q^\\top K_i,\\qquad a_i=\\frac{e^{s_i}}{\\sum_{j=1}^{m}e^{s_j}},\\qquad y=\\sum_{i=1}^{m}a_iV_i.\n$$\n\nHere $s_i$ is the score for position $i$, $a_i$ is its normalized attention weight, $K_i$ and $V_i$ are its key and value, and $y\\in\\mathbb{R}^v$ is the output. Softmax makes every $a_i$ nonnegative and ensures $\\sum_i a_i=1$.\n\nFor an illustrative calculation, use scores $[2,1,0,-1]$ at temperature one. Subtracting the largest score for numerical stability gives exponentials $[1,e^{-1},e^{-2},e^{-3}]$. Their sum is approximately $1.553$, producing weights approximately\n\n$$\n[0.644,\\ 0.237,\\ 0.087,\\ 0.032].\n$$\n\nThe accompanying control divides these fixed scores by a positive temperature before softmax. Increasing temperature makes the weights flatter; decreasing it makes the largest score more dominant. This teaches normalization and competition among positions, but the scores are constructed—not learned similarities, measured attention heads, or evidence about translation quality.",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c1"
+      ],
+      "figureId": "fig-attention"
+    },
+    {
+      "id": "s3",
+      "title": "What multiple heads duplicate",
+      "markdown": "Multi-head attention repeats that basic calculation through $h$ learned views. For head $r$, an input vector $x\\in\\mathbb{R}^d$ produces a query $q_r=xP_{q,r}$. A memory matrix $M\\in\\mathbb{R}^{m\\times d}$ produces $K_r=MP_{k,r}$ and $V_r=MP_{v,r}$. Each head computes its own weighted output, which is transformed by $P_{o,r}$ before the transformed head outputs are summed. The symbols $P_{q,r}$, $P_{k,r}$, $P_{v,r}$, and $P_{o,r}$ denote learned linear projections for head $r$.\n\nDuring incremental decoding, the projected $K_r$ and $V_r$ from prior positions can be cached rather than recomputed. Standard multi-head attention nevertheless stores separate cached keys and values for every head. Roughly speaking, the cache carries dimensions for batch, head, position, and per-head feature. As the position dimension grows, all those head-specific memories must be revisited.\n\nIt is easy to misdiagnose the bottleneck as attention's quadratic training cost. The paper's narrower point is about incremental execution: even though the total arithmetic across a generated sequence remains $\\Theta(bnd^2)$ in its analysis, each serial step reloads past state. Fast matrix arithmetic cannot by itself compensate when data arrives too slowly from memory.",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c2",
+        "c3",
+        "c5"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s4",
+      "title": "One shared write path, many read perspectives",
+      "markdown": "Multi-query attention changes which projections are head-specific. Queries and output projections retain a head index, but keys and values do not:\n\n$$\nq_r=xP_{q,r},\\qquad K=MP_k,\\qquad V=MP_v,\n$$\n\n$$\ny_r=\\operatorname{softmax}(q_rK^\\top)V,\\qquad y=\\sum_{r=1}^{h}y_rP_{o,r}.\n$$\n\nHere $r\\in\\{1,\\ldots,h\\}$ identifies a query head; $P_k$ and $P_v$ are shared key and value projections; $y_r$ is one head's result; and $y$ is the layer output. Thus heads can ask different questions through distinct $q_r$, yet all consult the same stored key-value representation. “One write-head” should not be read as reducing the entire layer to one attention head: the multiplicity of query heads remains.\n\nUnder the earlier assumptions, the paper gives multi-query memory access across $n$ calls as\n\n$$\n\\Theta(bnd+bn^2k+nd^2).\n$$\n\nDividing by $\\Theta(bnd^2)$ arithmetic yields\n\n$$\n\\Theta\\!\\left(\\frac{1}{d}+\\frac{n}{dh}+\\frac{1}{b}\\right).\n$$\n\nThe sequence-dependent term is now $n/(dh)$ rather than $n/d$, a factor-$h$ reduction inside this model. This does not claim that every runtime improves by exactly $h$: kernels, padding, batch size, projections, and other layers also contribute to elapsed time.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c6",
+        "c7",
+        "c8"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s5",
+      "title": "A concrete cache-allocation picture",
+      "markdown": "At incremental decoding step $t$, each attention layer receives the new hidden state $x_t$. Standard multi-head attention projects it into a separate key and value for every head,\n\n$$\nk_{t,r}=x_tP_{k,r},\\qquad v_{t,r}=x_tP_{v,r},\n$$\n\nand appends those vectors to that head’s cache. Head $r$ then forms its query $q_{t,r}$ and attends to its own history:\n\n$$\ny_{t,r}=\\operatorname{softmax}\\!\\left(q_{t,r}K_{\\leq t,r}^{\\top}\\right)V_{\\leq t,r}.\n$$\n\nThe logical cache therefore contains a head dimension: for every remembered position, it stores $h$ independently projected keys and $h$ independently projected values. Generation remains serial, so the decoder repeatedly reads these growing histories—once for each successive token.\n\nMulti-query attention removes the head index from the key and value projections. The new state produces one pair\n\n$$\nk_t=x_tP_k,\\qquad v_t=x_tP_v,\n$$\n\nwhich is appended once to shared caches $K_{\\leq t}$ and $V_{\\leq t}$. The query projections remain distinct, so every head can assign different attention weights to the same stored positions:\n\n$$\ny_{t,r}=\\operatorname{softmax}\\!\\left(q_{t,r}K_{\\leq t}^{\\top}\\right)V_{\\leq t}.\n$$\n\nThus sharing does not make all heads produce the same result. Their queries differ, their score vectors can differ, and their output projections remain head-specific. What disappears is the duplication of the remembered keys and values. With $k=v=d/h$, this changes the cache-related term in the paper’s incremental memory analysis from $n/d$ to $n/(dh)$.\n\nThis factor-$h$ result concerns the paper’s asymptotic data-access model. It does not determine an implementation’s exact memory footprint or elapsed time, because tensor layout, kernels, padding, batch size, projections, and the rest of the network also contribute. Nor does sharing preserve exactly the same representational freedom as independently projected per-head memories: all query heads must now compare against one common key space and combine one common value representation. The experiments test the resulting speed–quality tradeoff rather than assuming that the architectural reduction is free.",
+      "sourceIds": [
+        "section-2",
+        "section-3"
+      ],
+      "claimIds": [
+        "c5",
+        "c6",
+        "c8"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s6",
+      "title": "Reading the experiments without overgeneralizing",
+      "markdown": "The translation comparison used six-layer WMT14 English-German models with $d_{model}=1024$, eight heads, and key and value widths of 128. All variants had 211 million parameters and trained for 100,000 steps. Because sharing keys and values removes projection parameters, the multi-query model widened its feed-forward hidden dimension from 4096 to 5440 to match the baseline's parameter count.\n\nQuality stayed close under these conditions. On the test set, baseline multi-head attention scored 27.7 BLEU greedily and 28.4 with beam 4; multi-query scored 27.5 and 28.5. The beam-4 result does not establish universal superiority: it is one reported decoding condition, while dev log-perplexity and dev BLEU were slightly worse for multi-query. On the Billion-Word language-modeling dev set, per-word perplexity changed from 29.9 to 30.2.\n\nThe largest reported distinction was decoding cost. On one TPUv2, greedy incremental translation used 46 microseconds per output token for the baseline decoder and 3.8 for multi-query. The test used a batch of 1024, source and target lengths of 128, and fixed-shape padding. The baseline and multi-query training costs, 13.2 and 13.0 microseconds per token, were nearly alike. The evidence therefore supports a large inference advantage in this particular bandwidth-sensitive setup, alongside a small and metric-dependent quality difference—not a general claim that training becomes dramatically faster.",
+      "sourceIds": [
+        "section-4"
+      ],
+      "claimIds": [
+        "c9",
+        "c10",
+        "c11",
+        "c12",
+        "c13"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s7",
+      "title": "Boundaries of the contribution",
+      "markdown": "Multi-query attention is orthogonal to shortening the attended history. The paper demonstrated this by also testing local decoder self-attention restricted to the current position and 31 previous positions. Local attention reduces how many positions are consulted; multi-query attention reduces key-value duplication across heads. They can be combined, but they solve different dimensions of the memory problem.\n\nSeveral limits matter. First, shared keys and values constrain representation compared with independently projected per-head memories, so some quality loss is plausible and was visible in certain reported metrics. Second, the asymptotic ratio is an explanatory model, not a hardware-independent latency law. Third, the fixed-length padded benchmark does not show the savings an incrementally growing cache might provide near the beginning of a sequence. Fourth, the experiments cover particular translation and language-model configurations rather than every architecture, sequence length, device, or decoding policy.\n\nThe central design lesson is consequently precise: when incremental attention is limited by repeatedly loading head-indexed key-value state, preserve diverse query heads while removing the cache's head dimension. Whether that trade is favorable must still be checked against the target model's quality requirements and its actual inference system.",
+      "sourceIds": [
+        "section-2",
+        "section-3",
+        "section-4",
+        "section-5"
+      ],
+      "claimIds": [
+        "c5",
+        "c6",
+        "c8",
+        "c9",
+        "c10",
+        "c11",
+        "c13"
+      ],
+      "figureId": null
+    }
+  ],
+  "figures": [
+    {
+      "id": "fig-attention",
+      "kind": "attention",
+      "title": "Temperature and softmax competition",
+      "question": "As temperature increases while the four scores stay fixed, how does the weight on the highest-scoring position change?",
+      "caption": "An illustrative softmax applies a positive temperature to fixed scores $[2,1,0,-1]$ and displays their normalized weights; higher temperature flattens the distribution.",
+      "limitation": "The scores are fixed illustrative values, not learned token similarities, a measured attention head, or a simulation of multi-query cache sharing.",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c1"
+      ],
+      "illustrative": true
+    }
+  ],
+  "quiz": [
+    {
+      "question": "Under the paper's assumptions, what architectural change directly turns the sequence-dependent ratio term from $n/d$ into $n/(dh)$?",
+      "options": [
+        {
+          "text": "Share keys and values across query heads.",
+          "explanation": "Correct. Removing the head dimension from cached keys and values produces the factor-$h$ reduction in the paper's analysis."
+        },
+        {
+          "text": "Increase the decoding batch size.",
+          "explanation": "A larger batch reduces the separate $1/b$ term, but it does not transform $n/d$ into $n/(dh)$."
+        },
+        {
+          "text": "Restrict attention to a local window.",
+          "explanation": "A local window reduces the number of remembered positions; it is an orthogonal strategy rather than the defining multi-query change."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-2",
+        "section-3"
+      ],
+      "claimIds": [
+        "c4",
+        "c6",
+        "c7",
+        "c8"
+      ]
+    },
+    {
+      "question": "Which statement best distinguishes multi-query attention from single-head attention?",
+      "options": [
+        {
+          "text": "It retains multiple query heads but gives them shared keys and values.",
+          "explanation": "Correct. Query and output projections remain head-specific while the key-value representation is shared."
+        },
+        {
+          "text": "It uses one query, one key projection, and one output projection for the whole layer.",
+          "explanation": "That describes collapsing the layer much further; multi-query attention retains the query-head dimension."
+        },
+        {
+          "text": "It assigns each head separate keys but forces all heads to use one query.",
+          "explanation": "This reverses the paper's design: queries differ across heads, whereas keys and values are shared."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c6"
+      ]
+    },
+    {
+      "question": "What conclusion is justified by the reported 46 versus 3.8 microsecond decoder costs?",
+      "options": [
+        {
+          "text": "Multi-query decoding was much faster in the paper's specified padded TPUv2 test.",
+          "explanation": "Correct. The comparison applies to the stated batch, sequence lengths, fixed shapes, device, and greedy incremental setup."
+        },
+        {
+          "text": "Every multi-query implementation will decode about twelve times faster.",
+          "explanation": "The observed ratio is not a universal law; hardware, kernels, shapes, batching, and model structure can change it."
+        },
+        {
+          "text": "Sharing keys and values guarantees better translation quality.",
+          "explanation": "Speed and quality are separate outcomes, and several reported quality metrics were slightly worse for multi-query attention."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-4"
+      ],
+      "claimIds": [
+        "c9",
+        "c10",
+        "c13"
+      ]
+    }
+  ],
+  "id": "mqa",
+  "createdAt": "2026-10-02T00:20:08.938Z",
+  "pipelineVersion": "subjects-lessons-v1",
+  "sources": [
+    {
+      "id": "abstract",
+      "label": "Original paper · abstract",
+      "url": "https://arxiv.org/abs/1911.02150",
+      "digest": "040466431321e1d30983403d98aa2d004b4b64c4111322937b85ef114e4c5a24",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:18:11.329Z"
+    },
+    {
+      "id": "section-1",
+      "label": "1 Introduction",
+      "url": "https://arxiv.org/html/1911.02150#S1",
+      "digest": "5f579843473eb0292cb0c5ef53ea0763f972ae26ddc47b12cfb9e0f27039edd1",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:18:11.329Z"
+    },
+    {
+      "id": "section-2",
+      "label": "2 Background: Neural Attention",
+      "url": "https://arxiv.org/html/1911.02150#S2",
+      "digest": "598b1d885be85dffdf136415cf4dba735ea00c2f7ea44c92a94d710637c49f11",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:18:11.329Z"
+    },
+    {
+      "id": "section-3",
+      "label": "3 Multi-Query Attention",
+      "url": "https://arxiv.org/html/1911.02150#S3",
+      "digest": "1a89e7b095ff10db8809578a917c2d9f6656ceb106555584b3b6e0c62332ebed",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:18:11.329Z"
+    },
+    {
+      "id": "section-4",
+      "label": "4 Experiments and Results",
+      "url": "https://arxiv.org/html/1911.02150#S4",
+      "digest": "eb0ca30a231f5d2e18f1cc82648717dcac69a0e5657c0d97f48797970675d1fe",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:18:11.329Z"
+    },
+    {
+      "id": "section-5",
+      "label": "5 Conclusion",
+      "url": "https://arxiv.org/html/1911.02150#S5",
+      "digest": "cd2eedf4a5299beaa31fa062d8e6ff219c03fc382afaf3ec5482512e55d5f8dd",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:18:11.329Z"
+    }
+  ],
+  "review": {
+    "status": "passed",
+    "reviewedAt": "2026-10-02T02:17:30.413Z",
+    "contentDigest": "0b02599df77413574ef9c77dff8848f6d9fe8d3f921bdab3414095ec565c24b0"
+  }
+}

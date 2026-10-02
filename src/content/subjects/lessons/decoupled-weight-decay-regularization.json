@@ -1,0 +1,427 @@
+{
+  "title": "The Shrinkage Step Adam Was Missing",
+  "summary": "This lesson shows why Adam’s adaptive scaling breaks the usual equivalence between L2 penalties and weight decay, and how AdamW restores uniform parameter shrinkage.",
+  "prerequisites": [
+    "Basic gradient descent and learning rates",
+    "Vector norms and element-wise operations",
+    "Coordinate-wise scaling in adaptive optimizers"
+  ],
+  "objectives": [
+    "Derive when L2 regularization and weight decay are equivalent in standard SGD.",
+    "Explain why coordinate-wise adaptive scaling breaks this equivalence.",
+    "Compare coupled L2 regularization with decoupled weight decay in a small example.",
+    "Interpret the evidence within the tested models, datasets, and training budgets.",
+    "Identify what the paper does not establish about other optimizers and tasks."
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "mechanism",
+      "statement": "The paper defines weight decay as a multiplicative shrinkage of the current parameters followed by the loss-gradient update.",
+      "conditions": "At training step t, with per-step decay rate lambda and learning rate alpha.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c2",
+      "kind": "equation",
+      "statement": "For ordinary SGD, adding an L2 coefficient lambda-prime to the loss reproduces per-step decay lambda when lambda-prime equals lambda divided by alpha.",
+      "conditions": "Standard SGD with a scalar base learning rate alpha applied uniformly to all coordinates.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c3",
+      "kind": "caveat",
+      "statement": "That SGD equivalence couples the L2 coefficient to the learning rate rather than making them independently meaningful controls.",
+      "conditions": "When a desired per-step shrinkage lambda is implemented through an L2 loss term.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c4",
+      "kind": "mechanism",
+      "statement": "A non-scalar preconditioner prevents any single L2 coefficient from reproducing uniform decoupled decay in every coordinate.",
+      "conditions": "For an optimizer whose update matrix M_t is not a scalar multiple of the identity and positive decay lambda is used.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c5",
+      "kind": "mechanism",
+      "statement": "AdamW leaves adaptive scaling on the loss-gradient path while moving parameter shrinkage outside that path.",
+      "conditions": "For the Adam variant introduced by the paper.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c6",
+      "kind": "mechanism",
+      "statement": "Under coupled L2 regularization, coordinates with larger typical gradient magnitudes receive less relative regularization.",
+      "conditions": "Adaptive gradient algorithms that normalize the combined loss and regularizer gradients by typical magnitudes.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c7",
+      "kind": "mechanism",
+      "statement": "Decoupled weight decay applies one shrinkage rate to all parameter coordinates before considering their differing gradient histories.",
+      "conditions": "The decoupled update uses scalar decay lambda across the parameter vector.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c8",
+      "kind": "caveat",
+      "statement": "The paper’s fixed-preconditioner analysis supplies intuition rather than a direct model of practical Adam, whose preconditioner changes over time.",
+      "conditions": "When interpreting the scale-adjusted regularized-loss proposition for practical adaptive optimizers.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c9",
+      "kind": "mechanism",
+      "statement": "In the Bayesian-filtering interpretation summarized by the paper, decoupled decay can be placed in the state transition rather than in the likelihood-gradient update.",
+      "conditions": "A Gaussian transition with A equal to lambda times the identity.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c10",
+      "kind": "result",
+      "statement": "In the paper’s 100-epoch ResNet comparison, AdamW beat Adam with L2 regularization under each of three tested learning-rate schedules.",
+      "conditions": "A 26 2x64d ResNet trained for 100 epochs under fixed, drop-step, or cosine-annealed learning rates.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c11",
+      "kind": "result",
+      "statement": "The reported hyperparameter landscapes made learning rate and decay more separable for AdamW than for coupled Adam.",
+      "conditions": "The CIFAR-10 26 2x64d ResNet search represented in Figure 2.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c12",
+      "kind": "result",
+      "statement": "At the tested default learning rate, the paper reports a 15% relative test-error improvement for AdamW over Adam on two image datasets.",
+      "conditions": "Initial learning rate 0.001; CIFAR-10 and ImageNet32x32 experiments reported with the paper’s models and protocols.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c13",
+      "kind": "caveat",
+      "statement": "The paper’s image-classification results require verification on a wider range of tasks, and its suggested extension specifically to AdaGrad and AMSGrad is not validated by the paper’s own experimental analysis.",
+      "conditions": "When generalizing beyond the tested tasks or from Adam to AdaGrad and AMSGrad.",
+      "sourceIds": [
+        "section-5"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "s1",
+      "title": "Two operations that happen to coincide",
+      "markdown": "Regularization can enter an optimizer in two superficially similar places. Let $\\boldsymbol{\\theta}_t$ be the parameter vector before step $t$, $f_t$ the current mini-batch loss, $\\nabla f_t(\\boldsymbol{\\theta}_t)$ its gradient, $\\alpha>0$ the learning rate, and $\\lambda\\ge 0$ the per-step decay rate. The paper’s weight-decay update is\n\n$$\n\\boldsymbol{\\theta}_{t+1}=(1-\\lambda)\\boldsymbol{\\theta}_t-\\alpha\\nabla f_t(\\boldsymbol{\\theta}_t).\n$$\n\nThe first term directly shrinks the existing parameters; the second follows the data-dependent loss gradient.\n\nBy contrast, L2 regularization changes the objective:\n\n$$\nf_t^{\\mathrm{reg}}(\\boldsymbol{\\theta})=f_t(\\boldsymbol{\\theta})+\\frac{\\lambda'}{2}\\lVert\\boldsymbol{\\theta}\\rVert_2^2,\n$$\n\nwhere $\\lambda'$ is the L2 coefficient and $\\lVert\\boldsymbol{\\theta}\\rVert_2^2=\\sum_i\\theta_i^2$. Its gradient is $\\nabla f_t(\\boldsymbol{\\theta})+\\lambda'\\boldsymbol{\\theta}$. Plain SGD therefore gives\n\n$$\n\\boldsymbol{\\theta}_{t+1}=(1-\\alpha\\lambda')\\boldsymbol{\\theta}_t-\\alpha\\nabla f_t(\\boldsymbol{\\theta}_t).\n$$\n\nSetting $\\lambda'=\\lambda/\\alpha$ makes this identical to weight decay. This algebraic coincidence is real—but its assumptions are the hinge of the paper.",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c1",
+        "c2"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s2",
+      "title": "A toy view of shrinkage over repeated steps",
+      "markdown": "Consider the illustrative scalar recurrence\n\n$$\nh_t=a h_{t-1}+u_t,\n$$\n\nwith a single initial impulse $u_0=1$ and $u_t=0$ afterward. If $h_t$ represents one parameter once its loss gradient is zero, setting $a=1-\\lambda$ gives\n\n$$\nh_t=(1-\\lambda)^t.\n$$\n\nThis is the parameter-only part of the paper’s weight-decay rule: every step retains the same fraction $1-\\lambda$ of the current value. The quantity $h_t$ has the same units as the parameter, while $a$ and the per-step decay rate $\\lambda$ are dimensionless. The 12-step control changes $a$, so it changes the contraction applied at every step and therefore the amount of the original parameter that remains.\n\nFor example, with $\\lambda=0.1$, the retained parameter values begin $1$, $0.9$, $0.81$, and $0.729$. These values are constructed arithmetic rather than experimental measurements. A larger decay rate produces faster exponential contraction; $\\lambda=0$ leaves the parameter unchanged along this isolated path. In a full AdamW update, the adaptive loss-gradient term is also present, but it is computed separately:\n\n$$\n\\boldsymbol{\\theta}_{t+1}=(1-\\lambda)\\boldsymbol{\\theta}_t-\\alpha\\mathbf{M}_t\\nabla f_t(\\boldsymbol{\\theta}_t).\n$$\n\nThe scalar calculation isolates the first term. Its scientific role is to show that decoupled decay specifies shrinkage directly and uniformly before any coordinate-dependent gradient history is considered.",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c1",
+        "c7"
+      ],
+      "figureId": "fig-state"
+    },
+    {
+      "id": "s3",
+      "title": "Why the SGD identity breaks under adaptation",
+      "markdown": "Represent an adaptive update with a matrix $\\mathbf{M}_t$:\n\n$$\n\\boldsymbol{\\theta}_{t+1}=\\boldsymbol{\\theta}_t-\\alpha\\mathbf{M}_t\\nabla f_t(\\boldsymbol{\\theta}_t).\n$$\n\nHere $\\mathbf{M}_t$ is a preconditioner: it rescales update directions using optimizer state. If L2 is inserted into the loss, the update becomes\n\n$$\n\\boldsymbol{\\theta}_{t+1}=\\boldsymbol{\\theta}_t-\\alpha\\mathbf{M}_t\\nabla f_t(\\boldsymbol{\\theta}_t)-\\alpha\\lambda'\\mathbf{M}_t\\boldsymbol{\\theta}_t.\n$$\n\nDecoupled decay instead gives\n\n$$\n\\boldsymbol{\\theta}_{t+1}=(1-\\lambda)\\boldsymbol{\\theta}_t-\\alpha\\mathbf{M}_t\\nabla f_t(\\boldsymbol{\\theta}_t).\n$$\n\nTo make the regularization terms equal for every possible parameter vector, one would need $\\alpha\\lambda'\\mathbf{M}_t=\\lambda\\mathbf{I}$, where $\\mathbf{I}$ is the identity matrix. A single scalar $\\lambda'$ can satisfy this only when $\\mathbf{M}_t$ is itself a scalar multiple of $\\mathbf{I}$. Adam’s coordinate-dependent scaling does not generally have that form.\n\nThis corrects a common misconception: adding an L2 penalty to Adam is not merely another spelling of AdamW. L2’s gradient passes through Adam’s adaptive machinery; AdamW’s shrinkage does not.",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c4",
+        "c5",
+        "c6",
+        "c7"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s4",
+      "title": "A two-coordinate worked example",
+      "markdown": "Consider the illustrative parameter vector $\\boldsymbol{\\theta}=(2,2)$, a zero loss gradient, learning rate $\\alpha=0.1$, L2 coefficient $\\lambda'=0.5$, and fixed preconditioner\n\n$$\n\\mathbf{M}=\\operatorname{diag}(1,0.1).\n$$\n\nHere $\\operatorname{diag}(1,0.1)$ means a diagonal matrix that preserves the first coordinate’s gradient but multiplies the second by $0.1$. Coupled L2 produces\n\n$$\n\\boldsymbol{\\theta}^{L2}_{+}=\\boldsymbol{\\theta}-\\alpha\\lambda'\\mathbf{M}\\boldsymbol{\\theta}\n=(2,2)-0.05(2,0.2)=(1.9,1.99).\n$$\n\nThe first coordinate shrinks by $5\\%$, while the second shrinks by only $0.5\\%$. For decoupled weight decay, choose $\\lambda=\\alpha\\lambda'=0.05$:\n\n$$\n\\boldsymbol{\\theta}^{WD}_{+}=(1-0.05)(2,2)=(1.9,1.9).\n$$\n\nBoth coordinates shrink by $5\\%$. No alternative single $\\lambda'$ can make the coupled rule apply the same nonzero shrinkage to both coordinates because the two diagonal entries of $\\mathbf{M}$ differ.\n\nThe optimizer experiment complements this calculation with plain scalar gradient descent on $f(x)=x^2/2$ from $x=3$. Its learning-rate control changes 12 iterates and shows how a scalar learning rate affects every ordinary gradient step. It does not implement Adam, L2, or weight decay; it supplies the scalar baseline against which coordinate-wise adaptation differs.",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c4",
+        "c6",
+        "c7",
+        "c8"
+      ],
+      "figureId": "fig-optimizer"
+    },
+    {
+      "id": "s5",
+      "title": "What decoupling buys conceptually",
+      "markdown": "AdamW separates two jobs. The adaptive optimizer determines how the loss gradient should move each coordinate; the decay operator applies a direct contraction to the parameters. This does not mean that learning rate and decay become causally unrelated in every training problem. It means their explicit algebraic roles no longer force the L2 coefficient to compensate for $\\alpha$ or for coordinate-dependent entries of $\\mathbf{M}_t$.\n\nThe paper also presents a Bayesian-filtering interpretation inherited from Aitchison’s framework. In that view, optimization tracks uncertain parameter optima over time. A state transition with mean $(\\mathbf{I}-\\mathbf{A})\\boldsymbol{\\theta}_t$ becomes decoupled decay when $\\mathbf{A}=\\lambda\\mathbf{I}$. Shrinkage then belongs to the transition prior and does not depend on parameter uncertainty. This is a justification and interpretation, not an independent benchmark.\n\nThe paper’s fixed-preconditioner proposition is similarly best treated as local intuition. Practical Adam changes its preconditioner at every step, so that proposition is not a complete static objective whose minimization exactly describes an entire Adam run.",
+      "sourceIds": [
+        "section-2",
+        "section-3"
+      ],
+      "claimIds": [
+        "c3",
+        "c5",
+        "c8",
+        "c9"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s6",
+      "title": "Reading the reported evidence at the right scale",
+      "markdown": "The experiments separate three empirical questions. First, Figure 1 compares Adam with coupled L2 regularization against AdamW on CIFAR-10 using a 26 2x64d ResNet trained for 100 epochs. Each method was tuned over initial learning rate and decay settings under three schedules: a fixed learning rate, a drop-step schedule, and cosine annealing. AdamW produced lower final test error under all three tested schedules, with larger differences under the better-performing schedules. Cosine annealing performed best and was used for the remaining experiments. These comparisons are specific to that model, dataset, training budget, and hyperparameter search; they do not guarantee the same ordering for every Adam training run.\n\nSecond, Figure 2 examines the hyperparameter landscapes after 100 epochs for the same CIFAR-10 26 2x64d ResNet. With coupled L2 regularization, the best settings lie along a diagonal tendency: changing the initial learning rate changes the effective shrinkage induced by a fixed L2 coefficient, so the two controls must be tuned together. AdamW largely removes that explicit coupling by applying decay directly to the parameters rather than sending the regularizer gradient through Adam’s adaptive scaling. Its best settings were substantially better than those of coupled Adam and rivaled the reported SGD and SGDW settings. The observed landscape is more separable, but problem-dependent interactions between learning rate and decay can still remain.\n\nThird, the paper studies longer-run generalization with a 26 2x96d ResNet trained on CIFAR-10 for 1800 epochs, using the initial learning rate $0.001$. It compares 12 L2 settings for Adam with 7 normalized-weight-decay settings for AdamW. Their learning curves often coincided during the first half of training, after which AdamW frequently reached lower training loss and test error. For the best settings, AdamW also achieved lower test error at similar training-loss values, supporting a generalization improvement rather than merely faster optimization. The paper reports the same qualitative conclusion for ImageNet32x32.\n\nThe anytime-performance experiment adds warm restarts to the decoupled methods, producing AdamWR and SGDWR. On CIFAR-10 and ImageNet32x32, AdamWR reached AdamW’s improved results sooner; at the first restart, the reported speedup in progress was as large as a factor of 10. At the default initial learning rate of $0.001$, AdamW achieved a reported 15% relative reduction in test error compared with Adam on both datasets. That percentage summarizes the tested image-classification comparisons and should not be interpreted as a universal effect size beyond the reported architectures, datasets, schedules, and training budgets.",
+      "sourceIds": [
+        "section-4"
+      ],
+      "claimIds": [
+        "c10",
+        "c11",
+        "c12"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s7",
+      "title": "Boundaries and practical conclusions",
+      "markdown": "The reliable implementation-level distinction is placement in the update equation: form both the decay term and the adaptive loss-gradient term from the pre-step parameters $\\boldsymbol{\\theta}_t$, then combine them as\n\n$$\n\\boldsymbol{\\theta}_{t+1}=(1-\\lambda)\\boldsymbol{\\theta}_t-\\alpha\\mathbf{M}_t\\nabla f_t(\\boldsymbol{\\theta}_t).\n$$\n\nEquivalently, the additive change is $-\\lambda\\boldsymbol{\\theta}_t-\\alpha\\mathbf{M}_t\\nabla f_t(\\boldsymbol{\\theta}_t)$. Here “outside the adaptive transformation” means that the decay term bypasses gradient preconditioning; it does not mean shrinking an already gradient-updated parameter value. Sequentially applying $(1-\\lambda)$ to $\\boldsymbol{\\theta}_t-\\alpha\\mathbf{M}_t\\nabla f_t(\\boldsymbol{\\theta}_t)$ would also shrink the gradient update and would not equal the paper’s cited rule. Calling a coupled L2 penalty “weight decay” conceals this distinction whenever the optimizer rescales coordinates differently.\n\nThis lesson focuses on the placement of weight decay in the update equation, the resulting inequivalence with L2 regularization under adaptive scaling, and the paper’s reported empirical comparisons. The paper experimentally concentrates on Adam and image classification; its suggestion that similar results may hold for AdaGrad or AMSGrad is not equivalent to validation. Its own conclusion asks for verification on a wider range of tasks.\n\nThe lasting contribution is therefore precise rather than universal: the familiar SGD equivalence between L2 and decay depends on scalar update scaling; Adam violates that condition; AdamW restores direct, uniform shrinkage by separating it from the adaptive loss-gradient path.",
+      "sourceIds": [
+        "section-2",
+        "section-5"
+      ],
+      "claimIds": [
+        "c2",
+        "c4",
+        "c5",
+        "c13"
+      ],
+      "figureId": null
+    }
+  ],
+  "figures": [
+    {
+      "id": "fig-state",
+      "kind": "state",
+      "title": "Multiplicative decay as a scalar recurrence",
+      "question": "As retention a decreases, how quickly does the impulse remaining after 12 steps shrink?",
+      "caption": "An illustrative scalar recurrence $h_t=a h_{t-1}+u_t$ shows 12 steps after one initial impulse; identifying $a=1-\\lambda$ isolates repeated multiplicative decay.",
+      "limitation": "This is a scalar impulse response, not Adam, a selective or complex state-space model, or a learned training trajectory.",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c1",
+        "c7"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "fig-optimizer",
+      "kind": "optimizer",
+      "title": "The scalar-learning-rate baseline",
+      "question": "For $f(x)=x^2/2$ from $x=3$, how does changing the learning rate alter the 12 plain-gradient-descent iterates?",
+      "caption": "Plain gradient descent repeatedly applies $x_{t+1}=x_t-\\alpha x_t$ on an illustrative scalar quadratic, exposing the uniform scalar scaling assumed by the SGD equivalence.",
+      "limitation": "The control simulates neither Adam nor regularization; it has no adaptive preconditioner, momentum, or weight-decay operation.",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c2",
+        "c4"
+      ],
+      "illustrative": true
+    }
+  ],
+  "quiz": [
+    {
+      "question": "Assume plain SGD uses learning rate $\\alpha=0.02$. Which L2 coefficient reproduces decoupled per-step decay $\\lambda=0.001$?",
+      "options": [
+        {
+          "text": "$\\lambda'=0.00002$",
+          "explanation": "Incorrect. This multiplies rather than divides the decay rate by the learning rate."
+        },
+        {
+          "text": "$\\lambda'=0.05$",
+          "explanation": "Correct. Under plain SGD, $\\lambda'=\\lambda/\\alpha=0.001/0.02=0.05$."
+        },
+        {
+          "text": "$\\lambda'=0.001$",
+          "explanation": "Incorrect. Reusing the decay value would yield effective shrinkage $\\alpha\\lambda'=0.00002$."
+        }
+      ],
+      "answer": 1,
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c2",
+        "c3"
+      ]
+    },
+    {
+      "question": "An adaptive optimizer has $\\mathbf{M}=\\operatorname{diag}(1,0.1)$. With a coupled L2 penalty and zero loss gradient, what happens relative to decoupled decay?",
+      "options": [
+        {
+          "text": "Both coordinates necessarily shrink by the same fraction.",
+          "explanation": "Incorrect. The L2 gradient is transformed by unequal diagonal entries of the preconditioner."
+        },
+        {
+          "text": "The second coordinate receives less relative shrinkage.",
+          "explanation": "Correct. Its regularizer gradient is multiplied by $0.1$, while the first coordinate’s is multiplied by $1$."
+        },
+        {
+          "text": "The preconditioner has no effect when the loss gradient is zero.",
+          "explanation": "Incorrect. Under coupled L2, the regularizer gradient still passes through the preconditioner."
+        }
+      ],
+      "answer": 1,
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c4",
+        "c6",
+        "c7"
+      ]
+    },
+    {
+      "question": "Which conclusion stays within the evidence supplied by the paper?",
+      "options": [
+        {
+          "text": "AdamW is guaranteed to outperform Adam on every task.",
+          "explanation": "Incorrect. The paper explicitly calls for verification on a wider range of tasks."
+        },
+        {
+          "text": "The experiments prove the same benefit for AdaGrad and AMSGrad.",
+          "explanation": "Incorrect. Similar behavior for those optimizers is presented as a belief, not established by the reported experimental focus."
+        },
+        {
+          "text": "AdamW improved the reported image-classification results under the tested conditions.",
+          "explanation": "Correct. This matches the paper’s bounded empirical claim without turning it into a universal guarantee."
+        }
+      ],
+      "answer": 2,
+      "sourceIds": [
+        "section-4",
+        "section-5"
+      ],
+      "claimIds": [
+        "c10",
+        "c12",
+        "c13"
+      ]
+    }
+  ],
+  "id": "decoupled-weight-decay-regularization",
+  "createdAt": "2026-10-01T23:53:43.677Z",
+  "pipelineVersion": "subjects-lessons-v1",
+  "sources": [
+    {
+      "id": "abstract",
+      "label": "Original paper · abstract",
+      "url": "https://arxiv.org/abs/1711.05101",
+      "digest": "4086cac48c1d3821e6c59443ef2c23b62ce4faf5a309c93e5673a1830cd53fee",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:41:31.500Z"
+    },
+    {
+      "id": "main-text",
+      "label": "Original paper · unsectioned main text",
+      "url": "https://arxiv.org/html/1711.05101",
+      "digest": "8030491911903fa2c9332e79b5638cf926d505e3872388c4a39fb0b95e7ee98b",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:41:31.500Z"
+    },
+    {
+      "id": "section-1",
+      "label": "1 Introduction",
+      "url": "https://arxiv.org/html/1711.05101#S1",
+      "digest": "dbf2e04703f949afd52c1c7d34f582b84b6d29d2fadf4f841ee9fa55715e9a66",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:41:31.500Z"
+    },
+    {
+      "id": "section-2",
+      "label": "2 Decoupling the Weight Decay from the Gradient-based Update",
+      "url": "https://arxiv.org/html/1711.05101#S2",
+      "digest": "dc565b6563ddf9f2457b098431e8bd1bfbbb1fbad53fa13cc86978e90137e425",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:41:31.500Z"
+    },
+    {
+      "id": "section-3",
+      "label": "3 Justification of Decoupled Weight Decay via a View of Adaptive Gradient Methods as Bayesian Filtering",
+      "url": "https://arxiv.org/html/1711.05101#S3",
+      "digest": "01ea263f6625f3b1043de8e76680cbde65013043d57f990f8022050a46af7191",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:41:31.500Z"
+    },
+    {
+      "id": "section-4",
+      "label": "4 Experimental Validation",
+      "url": "https://arxiv.org/html/1711.05101#S4",
+      "digest": "fa939e633794ca50e95cfbefbd89fe092369889c58673fdadc6c2a1661440ebc",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:41:31.500Z"
+    },
+    {
+      "id": "section-4-part-2",
+      "label": "4 Experimental Validation · part 2",
+      "url": "https://arxiv.org/html/1711.05101#S4",
+      "digest": "9eb4f572ea198c70ebd08fa0eb78d23f43ab3dd3e27c4c30ac629584b2f818c8",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:41:31.500Z"
+    },
+    {
+      "id": "section-5",
+      "label": "5 Conclusion and Future Work",
+      "url": "https://arxiv.org/html/1711.05101#S5",
+      "digest": "b90ee65767c9fb95a9ff6290c5ffd870e050f88f77ef2f4ac585e30d4c540254",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:41:31.500Z"
+    }
+  ],
+  "review": {
+    "status": "passed",
+    "reviewedAt": "2026-10-02T02:12:36.097Z",
+    "contentDigest": "e52c6f7b7ca1082ed889db18a0d3d1ab58002436a07bb8026ad1e887a8001882"
+  }
+}

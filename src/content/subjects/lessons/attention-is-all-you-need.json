@@ -1,0 +1,421 @@
+{
+  "title": "The Transformer’s Short Path Through a Sequence",
+  "summary": "The Transformer replaces sequence-aligned recurrence with parallel attention, while masking, positional signals, multiple heads, and pointwise layers preserve generation structure.",
+  "prerequisites": [
+    "Vector and matrix operations",
+    "Softmax normalization",
+    "Encoder-decoder sequence models",
+    "Residual connections and layer normalization"
+  ],
+  "objectives": [
+    "Compute scaled dot-product attention in a small example.",
+    "Distinguish encoder self-attention from masked decoder attention.",
+    "Explain why attention-only models require positional encodings.",
+    "Compare the Transformer's short paths and parallelism with their costs.",
+    "Interpret the reported translation results under their stated conditions."
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "mechanism",
+      "statement": "The Transformer removes sequence-aligned recurrence and convolution from its main architecture, using attention to connect sequence positions.",
+      "conditions": "For the sequence-transduction architecture introduced in the paper.",
+      "sourceIds": [
+        "abstract"
+      ]
+    },
+    {
+      "id": "c2",
+      "kind": "mechanism",
+      "statement": "In encoder-decoder attention, queries come from the preceding decoder layer, while keys and values come from the encoder output, allowing each decoder position to attend over all input positions.",
+      "conditions": "For the paper’s sequence-transduction architecture and its encoder-decoder attention layers.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c3",
+      "kind": "equation",
+      "statement": "Scaled dot-product attention applies softmax to query-key dot products divided by the square root of key dimension, then uses the resulting weights to average values.",
+      "conditions": "For matrices of queries Q, keys K, and values V, with key dimension d_k.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c4",
+      "kind": "mechanism",
+      "statement": "The square-root scaling counters growth in dot-product variance as key dimension increases.",
+      "conditions": "Assuming independent query and key components with mean 0 and variance 1.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c5",
+      "kind": "mechanism",
+      "statement": "Multi-head attention runs attention over multiple learned projections, concatenates their outputs, and projects the concatenation back into model space.",
+      "conditions": "For h learned query, key, and value projections and an output projection.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c6",
+      "kind": "mechanism",
+      "statement": "Causal masking prevents a decoder position from using later output positions.",
+      "conditions": "Inside decoder self-attention during autoregressive prediction.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c7",
+      "kind": "mechanism",
+      "statement": "Because attention alone does not encode token order, the model adds positional encodings to token embeddings.",
+      "conditions": "At the inputs to both encoder and decoder stacks.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c8",
+      "kind": "result",
+      "statement": "The paper found learned and sinusoidal positional representations nearly tied in its reported comparison.",
+      "conditions": "English-to-German newstest2013 development comparison in Table 3, evaluated with beam search but without checkpoint averaging, with other unlisted base-model values unchanged.",
+      "sourceIds": [
+        "section-3-part-2"
+      ]
+    },
+    {
+      "id": "c9",
+      "kind": "result",
+      "statement": "Full self-attention has constant sequential depth and constant maximum path length per layer, but quadratic dependence on sequence length.",
+      "conditions": "For a length-n sequence with representation dimension d, using the paper’s layer-level asymptotic comparison.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c10",
+      "kind": "result",
+      "statement": "Training the large Transformer configuration took 3.5 days on eight P100 GPUs.",
+      "conditions": "Large-model training duration reported for the paper’s WMT 2014 translation experiments.",
+      "sourceIds": [
+        "section-6"
+      ]
+    },
+    {
+      "id": "c11",
+      "kind": "result",
+      "statement": "In the controlled head-count variants, a single head underperformed the best reported setting, while excessive head counts also reduced quality.",
+      "conditions": "English-to-German newstest2013 development experiments in Table 3 rows A, evaluated with beam search but without checkpoint averaging; head count and per-head key/value dimensions changed together while computation was kept approximately constant as described by the paper.",
+      "sourceIds": [
+        "section-6"
+      ]
+    },
+    {
+      "id": "c12",
+      "kind": "caveat",
+      "statement": "The authors presented restricted attention for efficiently handling large inputs and making generation less sequential as future research goals, not solved properties of the reported model.",
+      "conditions": "Scope of the future-work statements in the original paper’s conclusion.",
+      "sourceIds": [
+        "section-7"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "s1",
+      "title": "The bottleneck the paper chose to remove",
+      "markdown": "Earlier sequence transducers commonly advanced a recurrent state from position to position. If $h_t$ is the hidden state at position $t$, recurrence makes $h_t$ depend on $h_{t-1}$. Even when training examples are batched, positions inside one example therefore form a sequential chain.\n\nThe Transformer’s particular contribution was not the invention of attention in isolation. Attention already appeared alongside recurrent networks. The architectural move was to make attention the principal mechanism for relating positions, eliminating sequence-aligned recurrence and convolution from the proposed encoder-decoder model. This permits representations for many positions to be computed together during training.\n\nThe model still solves conditional sequence generation. Given input symbols $(x_1,\\ldots,x_n)$, the encoder produces continuous vectors $\\mathbf{z}=(z_1,\\ldots,z_n)$. The decoder produces $(y_1,\\ldots,y_m)$ autoregressively: prediction $y_i$ may use earlier output symbols, but not future ones. Removing recurrent layers therefore does not mean removing the temporal constraint on generated outputs.",
+      "sourceIds": [
+        "abstract",
+        "section-1",
+        "section-3"
+      ],
+      "claimIds": [
+        "c1",
+        "c2"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s2",
+      "title": "Attention as differentiable retrieval",
+      "markdown": "An attention operation receives queries, keys, and values. A query represents what the current position is seeking; each key determines the compatibility of its associated value with that query; and the output combines the values according to those compatibilities. Let $Q\\in\\mathbb{R}^{n_q\\times d_k}$ contain $n_q$ queries, $K\\in\\mathbb{R}^{n_k\\times d_k}$ contain $n_k$ keys, and $V\\in\\mathbb{R}^{n_k\\times d_v}$ contain the corresponding values. The paper defines\n\n$$\n\\mathrm{Attention}(Q,K,V)=\\mathrm{softmax}\\left(\\frac{QK^T}{\\sqrt{d_k}}\\right)V.\n$$\n\nThe product $QK^T$ has shape $n_q\\times n_k$: each entry is the dot-product score between one query and one key. Dividing by $\\sqrt{d_k}$ controls the scale of those scores, and applying softmax across each row converts them into nonnegative weights that sum to one. Multiplication by $V$ then produces one $d_v$-dimensional weighted average for each query.\n\nConsider one constructed scalar example with unscaled scores $[2,1,0,-1]$ and $d_k=4$. The scaled scores are\n\n$$\n\\frac{[2,1,0,-1]}{\\sqrt{4}}=[1,0.5,0,-0.5].\n$$\n\nTheir exponentials are approximately $[2.718,1.649,1,0.607]$. Dividing by their sum, $5.974$, gives attention weights of approximately $[0.455,0.276,0.167,0.102]$. For corresponding scalar values $[10,0,-2,4]$, the retrieved output is\n\n$$\n0.455(10)+0.276(0)+0.167(-2)+0.102(4)\\approx4.62.\n$$\n\nThe interactive calculation uses the same fixed, dimensionless scores $[2,1,0,-1]$ and applies a positive temperature $T$ before softmax:\n\n$$\np_j(T)=\\frac{\\exp(s_j/T)}{\\sum_k\\exp(s_k/T)}.\n$$\n\nAt $T=2$, it exactly reproduces the numerical scaling above because $\\sqrt{d_k}=2$. Raising $T$ compresses the score differences, so the four weights move toward a uniform distribution; lowering $T$ expands those differences, concentrating more weight on the largest score. The control therefore isolates the effect of score scale on normalized retrieval. In the Transformer, the denominator is not a learned temperature sweep but the fixed dimension-dependent factor $\\sqrt{d_k}$, applied to learned query-key dot products.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c3"
+      ],
+      "figureId": "f1"
+    },
+    {
+      "id": "s3",
+      "title": "Why divide by the square root of key width?",
+      "markdown": "The scaling factor is a variance argument, not decorative notation. Write a query-key dot product as\n\n$$\nq\\cdot k=\\sum_{j=1}^{d_k}q_jk_j,\n$$\n\nwhere $q_j$ and $k_j$ are component $j$ of the query and key. Under the paper’s illustrative assumption that these components are independent, have mean zero, and have variance one, the dot product has mean zero and variance $d_k$. Its typical magnitude therefore grows on the order of $\\sqrt{d_k}$. Dividing by $\\sqrt{d_k}$ restores an order-one scale.\n\nWhy does that matter? Very large score gaps push softmax toward nearly one-hot weights. In those saturated regions, many derivatives become small, making optimization harder. The noise figure supplies only geometric intuition: it draws seeded Gaussian vectors in $D$ dimensions, shows a histogram of their norms, compares their measured mean radius with the RMS radius $\\sigma\\sqrt{D}$, and lets dimension or scale $\\sigma$ change concentration and length. It does not plot query-key products, learned representations, or three-dimensional physical points. Its useful lesson is narrower: aggregates of many random components acquire dimension-dependent scale, so dimension-aware normalization can be necessary.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c4"
+      ],
+      "figureId": "f2"
+    },
+    {
+      "id": "s4",
+      "title": "One attention rule, three information routes",
+      "markdown": "The architecture uses attention in three distinct routes. First, encoder self-attention takes $Q$, $K$, and $V$ from the preceding encoder layer, allowing every encoder position to draw from every input position. Second, decoder self-attention takes them from the preceding decoder layer but masks illegal future connections. Before softmax, a future-position score is replaced by $-\\infty$; its exponential is zero, so it contributes no weight. Together with output embeddings shifted by one position, this preserves autoregressive prediction.\n\nThird, encoder-decoder attention forms queries from the decoder and keys and values from the encoder output. This lets each output position retrieve information from anywhere in the encoded input.\n\nA frequent misconception is that the Transformer makes generation fully parallel. Training can evaluate known target positions together because the mask enforces the dependency rule algebraically. At inference, however, ordinary autoregressive decoding still needs previously generated symbols before producing the next symbol. The paper itself names making generation less sequential as future work.",
+      "sourceIds": [
+        "section-3",
+        "section-7"
+      ],
+      "claimIds": [
+        "c6",
+        "c12"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s5",
+      "title": "Multiple heads and position-wise transformation",
+      "markdown": "A single attention average compresses one pattern of relationships into one output. Multi-head attention instead applies learned projection matrices $W_i^Q$, $W_i^K$, and $W_i^V$ for head $i$. Formally,\n\n$$\n\\mathrm{head}_i=\\mathrm{Attention}(QW_i^Q,KW_i^K,VW_i^V),\n$$\n\n$$\n\\mathrm{MultiHead}(Q,K,V)=\\mathrm{Concat}(\\mathrm{head}_1,\\ldots,\\mathrm{head}_h)W^O.\n$$\n\nHere $h$ is the number of heads, $W_i^Q$ and $W_i^K$ map from model width $d_{\\text{model}}$ to $d_k$, $W_i^V$ maps to value width $d_v$, $\\mathrm{Concat}$ joins head outputs, and $W^O$ returns them to model width. Different projections can expose different compatibility patterns, although a head is not guaranteed to correspond to a clean linguistic concept.\n\nEach layer also contains a position-wise feed-forward network\n\n$$\n\\mathrm{FFN}(x)=\\max(0,xW_1+b_1)W_2+b_2,\n$$\n\nwhere $x$ is one position’s vector, $W_1,W_2$ are learned matrices, $b_1,b_2$ are biases, and $\\max(0,\\cdot)$ is ReLU. The same feed-forward parameters operate independently at every position within a layer. Residual connections and layer normalization surround each sublayer. The reported base model used six encoder and six decoder layers, model width 512, eight heads, and per-head key and value widths 64. Those are paper settings, not universal Transformer requirements.",
+      "sourceIds": [
+        "section-3",
+        "section-6"
+      ],
+      "claimIds": [
+        "c5",
+        "c11"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s6",
+      "title": "Order must be supplied explicitly",
+      "markdown": "Content-based self-attention by itself has no recurrence or convolutional offset telling it which token came first. The paper therefore adds a positional vector to each token embedding. For position $pos$ and dimension index $i$, it uses\n\n$$\nPE_{(pos,2i)}=\\sin\\left(pos/10000^{2i/d_{\\text{model}}}\\right),\n$$\n\n$$\nPE_{(pos,2i+1)}=\\cos\\left(pos/10000^{2i/d_{\\text{model}}}\\right).\n$$\n\nHere $PE_{(pos,j)}$ is component $j$ of the positional encoding, $pos$ is the token position, $i$ indexes sine-cosine pairs, and $d_{\\text{model}}$ is embedding width. Frequencies vary across dimensions, providing multiple scales of positional variation.\n\nThe authors hypothesized that fixed offsets could be represented conveniently from these sinusoids and that the scheme might extrapolate beyond training lengths. That is a motivation, not a reported proof of length generalization. Their actual comparison found learned positional embeddings and sinusoids produced nearly identical English-to-German newstest2013 development results: Table 3 reports BLEU 25.7 versus 25.8 for the base row. These variants were evaluated with beam search but without checkpoint averaging.",
+      "sourceIds": [
+        "section-3",
+        "section-3-part-2",
+        "section-6"
+      ],
+      "claimIds": [
+        "c7",
+        "c8"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s7",
+      "title": "Short paths are not free computation",
+      "markdown": "The paper compares layers using sequence length $n$, representation width $d$, convolution kernel width $k$, and restricted-attention neighborhood size $r$. Full self-attention has per-layer complexity $O(n^2d)$, $O(1)$ sequential operations, and $O(1)$ maximum path length between positions. A recurrent layer is listed as $O(nd^2)$ computation with $O(n)$ sequential operations and path length. The short path lets information from any position reach any other through one attention layer, and all query positions can be processed concurrently.\n\nBut constant sequential depth does not mean constant work or memory. The $n\\times n$ score matrix causes quadratic sequence-length scaling. The paper notes that self-attention is computationally favorable to recurrence when $n<d$, a condition it says commonly held for its sentence representations. It suggests restricted attention for very long inputs, but that raises maximum path length to $O(n/r)$. Thus the contribution trades the recurrent chain for direct global interaction; it does not abolish scaling constraints.",
+      "sourceIds": [
+        "section-4"
+      ],
+      "claimIds": [
+        "c9",
+        "c12"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s8",
+      "title": "What the experiments establish—and what they do not",
+      "markdown": "On WMT 2014 English-to-German, the reported large Transformer obtained 28.4 BLEU after 300,000 training steps over 3.5 days on eight NVIDIA P100 GPUs. For English-to-French, Table 2 and the abstract report 41.8 BLEU, whereas the surrounding results prose reports 41.0; the paper therefore contains an internal discrepancy between its tabulated and prose values.\n\nThese translation results belong to a specific experimental regime. English-to-German used about 4.5 million sentence pairs and a shared source-target byte-pair vocabulary of about 37,000 tokens; English-to-French used 36 million sentence pairs and a 32,000-token word-piece vocabulary. The large-model results used checkpoint averaging, beam search with beam size 4, length penalty $\\alpha=0.6$, and a maximum output length of the input length plus 50. The reported training-cost figures are estimates obtained from elapsed training time, GPU count, and assumed sustained single-precision throughput. They support a favorable comparison under the paper’s tasks, systems, and accounting method, not a universal claim that every Transformer is faster or more accurate than every recurrent or convolutional model.\n\nThe controlled English-to-German newstest2013 variants provide more focused evidence. They were evaluated with beam search but without checkpoint averaging. In the head-count variants, the number of heads and the per-head key and value dimensions changed together while attention computation was kept approximately constant. Under this coupled intervention, the single-head model reached 24.9 BLEU, 0.9 below the best reported head-count result of 25.8, while the 32-head variant reached 25.4. One possible interpretation is that multiple representation subspaces help relative to a single head and that very small per-head dimensions can become limiting, but this comparison does not isolate either explanation or establish that narrow heads themselves caused the decrease. Replacing sinusoidal positional encodings with learned positional embeddings changed development BLEU only from 25.8 to 25.7 under the same beam-search, no-checkpoint-averaging evaluation, so the comparison did not establish a meaningful advantage for either positional scheme.\n\nThe parsing experiments test a different scope. A four-layer Transformer with model width 1024 reached 91.3 F1 when trained on roughly 40,000 Wall Street Journal sentences and 92.7 F1 in the stated semi-supervised setting using approximately 17 million sentences. The authors performed only limited task-specific tuning, so these results demonstrate that the architecture could transfer beyond translation under the reported conditions; they do not establish task-independent superiority.\n\nThe architecture’s experimental strengths coexist with method-level constraints. Full self-attention directly connects all sequence positions but requires $O(n^2d)$ work per layer for sequence length $n$ and representation width $d$. Decoder generation remains autoregressive across output tokens. The paper accordingly presents restricted attention for large inputs and less sequential generation as future research directions rather than properties already achieved by the reported model.",
+      "sourceIds": [
+        "abstract",
+        "section-6",
+        "section-8"
+      ],
+      "claimIds": [
+        "c8",
+        "c10",
+        "c11",
+        "c12"
+      ],
+      "figureId": null
+    }
+  ],
+  "figures": [
+    {
+      "id": "f1",
+      "kind": "attention",
+      "title": "Softmax sharpness on fixed attention scores",
+      "question": "As positive temperature increases, how do the four normalized weights change?",
+      "caption": "Illustrative fixed scores [2,1,0,-1] are divided by a positive temperature and passed through softmax, showing how score scale changes normalized attention weights.",
+      "limitation": "This is not a measured head or learned token similarity, and temperature is only an analogy for the paper’s dimension-based score scaling.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c3",
+        "c4"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "f2",
+      "kind": "noise",
+      "title": "Dimension-dependent scale in random vectors",
+      "question": "At fixed sigma, how do typical norm and norm concentration change when dimension increases?",
+      "caption": "A seeded Gaussian sample in D dimensions displays a norm histogram, the measured mean radius, and the RMS radius sigma times the square root of D.",
+      "limitation": "The vectors are illustrative Gaussian samples, not learned queries or keys; D is not rendered as three physical dimensions, and the plot does not simulate dot products.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c4"
+      ],
+      "illustrative": true
+    }
+  ],
+  "quiz": [
+    {
+      "question": "For one query with d_k=4 and raw scores [2,0], what scores enter softmax before masking?",
+      "options": [
+        {
+          "text": "[1,0]",
+          "explanation": "Correct: scaled dot-product attention divides each raw score by sqrt(4)=2."
+        },
+        {
+          "text": "[4,0]",
+          "explanation": "This multiplies by sqrt(d_k), the opposite of the paper’s scaling."
+        },
+        {
+          "text": "[2,0]",
+          "explanation": "This omits the dimension-dependent scaling factor."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c3",
+        "c4"
+      ]
+    },
+    {
+      "question": "Which information route uses decoder-derived queries and encoder-derived keys and values?",
+      "options": [
+        {
+          "text": "Encoder self-attention",
+          "explanation": "Encoder self-attention obtains queries, keys, and values from the encoder’s preceding layer."
+        },
+        {
+          "text": "Masked decoder self-attention",
+          "explanation": "Decoder self-attention obtains all three from the decoder side and blocks future positions."
+        },
+        {
+          "text": "Encoder-decoder attention",
+          "explanation": "Correct: it lets a decoder position retrieve information from encoded input positions."
+        }
+      ],
+      "answer": 2,
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c2"
+      ]
+    },
+    {
+      "question": "Which conclusion follows from the paper’s complexity comparison for full self-attention?",
+      "options": [
+        {
+          "text": "It has constant path length but quadratic sequence-length work.",
+          "explanation": "Correct: the table lists O(1) maximum path length and O(n^2 d) per-layer complexity."
+        },
+        {
+          "text": "It makes autoregressive inference constant-depth across output tokens.",
+          "explanation": "The decoder still generates symbols autoregressively; constant layer path length does not remove that dependency."
+        },
+        {
+          "text": "It is computationally cheaper than recurrence for every n and d.",
+          "explanation": "The paper’s favorable comparison is conditional, notably when sequence length n is smaller than representation width d."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-4",
+        "section-7"
+      ],
+      "claimIds": [
+        "c9",
+        "c12"
+      ]
+    }
+  ],
+  "id": "attention-is-all-you-need",
+  "createdAt": "2026-10-01T23:18:33.059Z",
+  "pipelineVersion": "subjects-lessons-v1",
+  "sources": [
+    {
+      "id": "abstract",
+      "label": "Original paper · abstract",
+      "url": "https://arxiv.org/abs/1706.03762",
+      "digest": "062c384a940b00416e76c513973d595aeb1fbc6e0e09a433c18fddc5bdf529eb"
+    },
+    {
+      "id": "section-1",
+      "label": "1 Introduction",
+      "url": "https://arxiv.org/html/1706.03762#S1",
+      "digest": "3e9207303efea8512788ba2d52c9910a3bd274e55fa41631ae6c40a44dfde1d3"
+    },
+    {
+      "id": "section-2",
+      "label": "2 Background",
+      "url": "https://arxiv.org/html/1706.03762#S2",
+      "digest": "da313a2d95b43b8d5607148319521bf6c3607d0e0c5e34bd5ce7233e6401d62f"
+    },
+    {
+      "id": "section-3",
+      "label": "3 Model Architecture",
+      "url": "https://arxiv.org/html/1706.03762#S3",
+      "digest": "75f8c1add09b5661428fac683064c695f7d47584d0b0fee3fddf88554c589402"
+    },
+    {
+      "id": "section-3-part-2",
+      "label": "3 Model Architecture · part 2",
+      "url": "https://arxiv.org/html/1706.03762#S3",
+      "digest": "8b0e91804b8bc22ba2fb7255f5ebb3802aeaeb5a496081a4f93ca58ae3ca32f3"
+    },
+    {
+      "id": "section-4",
+      "label": "4 Why Self-Attention",
+      "url": "https://arxiv.org/html/1706.03762#S4",
+      "digest": "72d420d7505270422cd8a5b7c2572d1dfaedb219e1a1b302ab40928d1a9e71bf"
+    },
+    {
+      "id": "section-5",
+      "label": "5 Training",
+      "url": "https://arxiv.org/html/1706.03762#S5",
+      "digest": "cc99a6dc3d5c7721d4117c14cca9b31185906bbc80a73c6cef1c57e86d6b5503"
+    },
+    {
+      "id": "section-6",
+      "label": "6 Results",
+      "url": "https://arxiv.org/html/1706.03762#S6",
+      "digest": "c2e2a32d66d6839e487c65a62498ebbbca61e897d0254dfeddd9f0a699609a7d"
+    },
+    {
+      "id": "section-7",
+      "label": "7 Conclusion",
+      "url": "https://arxiv.org/html/1706.03762#S7",
+      "digest": "981e5679ee5c56392a1aa75a8b729d06e3d200caef7a15074a5fc2967e84a89d"
+    },
+    {
+      "id": "section-8",
+      "label": "Attention Visualizations",
+      "url": "https://arxiv.org/html/1706.03762#Sx1",
+      "digest": "6c536f2c02430edf0039f4b7b118c8575408a042054c7746f0b717f17c9f0000"
+    }
+  ],
+  "review": {
+    "status": "passed",
+    "reviewedAt": "2026-10-02T01:51:05.038Z",
+    "contentDigest": "3a5f75a7dbb45fa99e1a3d7a0972c780c3da8145d24df282997cf21b3e84d48c"
+  }
+}

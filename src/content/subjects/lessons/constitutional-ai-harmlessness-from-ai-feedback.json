@@ -1,0 +1,486 @@
+{
+  "title": "A Constitution Becomes a Training Signal",
+  "summary": "Constitutional AI turns written principles into self-revisions and AI preference labels, then uses supervised learning and reinforcement learning to train a less harmful, less evasive assistant.",
+  "prerequisites": [
+    "Fine-tuning language models with prompt-response examples",
+    "Pairwise preference modeling with normalized probabilities",
+    "Reinforcement learning from learned reward signals",
+    "Harmlessness, helpfulness, and evasiveness"
+  ],
+  "objectives": [
+    "Explain how constitutional principles guide critique and revision.",
+    "Trace revised examples into AI-generated preference labels.",
+    "Calculate a soft preference target from two model scores.",
+    "Distinguish AI feedback from the remaining human supervision.",
+    "Interpret reported results under their evaluation conditions."
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "mechanism",
+      "statement": "The paper's Constitutional AI procedure has a supervised critique-and-revision stage followed by reinforcement learning from AI-generated harmlessness preferences.",
+      "conditions": "For the two-stage training procedure studied in the paper.",
+      "sourceIds": [
+        "abstract",
+        "section-1-part-2",
+        "section-6"
+      ]
+    },
+    {
+      "id": "c2",
+      "kind": "mechanism",
+      "statement": "In the supervised stage, a helpful assistant answers a red-team prompt, critiques its answer under a sampled constitutional principle, and revises the answer before fine-tuning.",
+      "conditions": "For harmfulness prompts processed by the supervised Constitutional AI pipeline.",
+      "sourceIds": [
+        "section-1-part-2",
+        "section-3"
+      ]
+    },
+    {
+      "id": "c3",
+      "kind": "mechanism",
+      "statement": "Principles were sampled independently across repeated critique-revision steps, allowing different aspects of harmfulness to influence the resulting training examples.",
+      "conditions": "For the paper's repeated revision pipeline using its set of 16 research principles.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c4",
+      "kind": "result",
+      "statement": "Human-feedback preference-model scores assigned progressively higher harmlessness and combined helpful-harmless scores to later revisions, while pure helpfulness scores decreased.",
+      "conditions": "On the red-team prompts and 52B human-feedback preference models used for Figure 5; high preference-model scores may be poorly calibrated.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c5",
+      "kind": "result",
+      "statement": "Critiqued revisions outscored direct revisions on harmlessness for smaller models, while the difference was slight or not noticeable for larger models.",
+      "conditions": "Under the 52B harmlessness preference-model evaluation reported for Figure 7.",
+      "sourceIds": [
+        "section-3-part-2"
+      ]
+    },
+    {
+      "id": "c6",
+      "kind": "mechanism",
+      "statement": "The reinforcement-learning stage asks a feedback model to compare two assistant responses under a constitutional principle and converts its answer probabilities into preference-training targets.",
+      "conditions": "For harmlessness comparisons in the paper's RLAIF pipeline.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c7",
+      "kind": "equation",
+      "statement": "A two-response soft preference target can be represented as normalized exponentiated log-scores: $p_A=\\frac{e^{\\ell_A}}{e^{\\ell_A}+e^{\\ell_B}}$ and $p_B=1-p_A$.",
+      "conditions": "When $\\ell_A$ and $\\ell_B$ are the feedback model's log-probabilities for answer choices A and B.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c8",
+      "kind": "mechanism",
+      "statement": "The preference model mixes human-labeled helpfulness comparisons with AI-labeled harmlessness comparisons, and its score is then used as the reinforcement-learning reward signal.",
+      "conditions": "For the hybrid preference model and RLAIF policy training studied in the paper.",
+      "sourceIds": [
+        "abstract",
+        "section-1-part-2",
+        "section-4"
+      ]
+    },
+    {
+      "id": "c9",
+      "kind": "result",
+      "statement": "Soft targets worked better than hard zero-or-one labels for the non-chain-of-thought RLAIF variant in the authors' experiments.",
+      "conditions": "For RL-CAI without chain-of-thought under the reported training setup.",
+      "sourceIds": [
+        "section-4-part-2"
+      ]
+    },
+    {
+      "id": "c10",
+      "kind": "result",
+      "statement": "For chain-of-thought feedback, the authors used targets clamped to the 40–60 percent range in their main results because unclamped choices were overly confident and less robust.",
+      "conditions": "For the paper's main RL-CAI-with-chain-of-thought experiments.",
+      "sourceIds": [
+        "section-4",
+        "section-4-part-2"
+      ]
+    },
+    {
+      "id": "c11",
+      "kind": "result",
+      "statement": "Crowdworker comparisons rated RL-CAI as more harmless than the compared RLHF and SL-CAI models, with the chain-of-thought variant appearing slightly less helpful and slightly more harmless than the non-chain-of-thought variant.",
+      "conditions": "For the model sizes, snapshots, open-ended comparisons, and worker instructions represented in Figures 2, 3, and 8.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c12",
+      "kind": "caveat",
+      "statement": "The method removed human harmlessness labels but retained human helpfulness labels, human-written principles, few-shot examples, and human evaluation.",
+      "conditions": "For the experiments reported in this paper, not a fully human-free alignment system.",
+      "sourceIds": [
+        "section-1-part-2",
+        "section-4",
+        "section-6"
+      ]
+    },
+    {
+      "id": "c13",
+      "kind": "caveat",
+      "statement": "Extended optimization could produce Goodharting, including overly harsh or repetitive boilerplate responses to harmful prompts.",
+      "conditions": "For over-trained RL-CAI models observed qualitatively by the authors.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c14",
+      "kind": "caveat",
+      "statement": "The paper does not establish immunity to red-team attacks and identifies robustness to such attacks as an unresolved goal.",
+      "conditions": "For the constitutional methods and evaluations presented in the paper.",
+      "sourceIds": [
+        "section-6"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "s1",
+      "title": "The problem is not merely refusal",
+      "markdown": "A harmless assistant can be useless: it could answer every question with “I don't know.” The paper therefore treats **evasion** as a separate failure mode. For a harmful request, the desired assistant should decline the harmful part while still engaging, explaining its objection, and offering whatever safe help remains possible.\n\nThis framing changes the learning target. A label that rewards any refusal may accidentally teach canned shutdowns. The authors instead sought a model that was both helpful and harmless, using crowdworker evaluation instructions that preferred a thoughtful, non-evasive answer when two answers were similarly harmless. Consequently, reported harmlessness scores describe performance under that particular rule, not an evaluator-independent property.\n\nThe central contribution is a way to translate a short natural-language constitution into many training signals. It has two stages: first construct better demonstrations through self-critique and revision; then construct pairwise harmlessness labels with another model and use them for reinforcement learning. “AI feedback” describes who produces the harmlessness comparisons. It does not mean that every human choice disappears.",
+      "sourceIds": [
+        "abstract",
+        "section-1",
+        "section-1-part-2",
+        "section-4-part-2",
+        "section-6"
+      ],
+      "claimIds": [
+        "c1",
+        "c12"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s2",
+      "title": "Stage one: turn principles into revised demonstrations",
+      "markdown": "Begin with a helpful instruction-following assistant and a prompt intended to elicit harmful behavior. Let $x$ denote that prompt and let $y^{(0)}$ be the assistant's initial response. A constitutional principle $r_1$ is sampled, and the model is prompted to produce a critique $c^{(1)}$ of $y^{(0)}$ under that principle. It then produces a revision $y^{(1)}$ using the critique.\n\nThe same construction can be repeated:\n\n$$y^{(t-1)} \\xrightarrow{\\text{critique under }r_t} c^{(t)} \\xrightarrow{\\text{revise}} y^{(t)}.$$\n\nHere, $t$ is the revision index, $r_t$ is the sampled rule, $c^{(t)}$ is the critique, and $y^{(t)}$ is the new response. Because the final pair $(x,y^{(t)})$ has the ordinary prompt-response format, it can become supervised fine-tuning data. The paper sampled principles independently across steps and trained SL-CAI on revisions, while also including responses to helpfulness prompts to preserve useful behavior.\n\nThe critique is an intermediate scaffold, not guaranteed truth. The authors observed inaccurate or overstated critiques, even though the resulting revisions were generally less harmful. Their comparison also found a larger advantage for critiqued over direct revision in smaller models than in larger ones. Thus, an explicit critique can aid behavior without certifying that its explanation is faithful or correct.",
+      "sourceIds": [
+        "section-3",
+        "section-3-part-2"
+      ],
+      "claimIds": [
+        "c2",
+        "c3",
+        "c5"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s3",
+      "title": "Why supervised revision comes before reinforcement learning",
+      "markdown": "The supervised stage changes the response distribution before reinforcement learning begins. Instead of asking an initially harmful policy to discover good non-evasive answers through reward-driven exploration, SL-CAI supplies examples already shaped toward that region of behavior. The paper describes this as getting the model “on-distribution” and reducing the exploration burden and training length of the later RL stage.\n\nRepeated revision produced a revealing tradeoff in Figure 5. Human-trained harmlessness and combined helpful-harmless preference models gave later revisions progressively better scores, but a pure helpfulness preference model gave them worse scores. This does not prove that every additional revision improves real-world safety. The authors warn that preference-model scores are less calibrated at high values, and the measurements came from particular preference models on red-team prompts. It does show why optimizing a single proxy is delicate: removing harmful assistance may also remove genuinely useful content.\n\nNor did a larger collection of principles automatically increase the reported harmlessness score. The authors found no significant score improvement from increasing the number used, though they expected broader principles to diversify responses and thereby help later exploration; that diversity expectation was not quantitatively studied there.",
+      "sourceIds": [
+        "section-1",
+        "section-1-part-2",
+        "section-3"
+      ],
+      "claimIds": [
+        "c1",
+        "c4"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s4",
+      "title": "Stage two: turn judgments into soft targets",
+      "markdown": "For each harmful prompt $x$, the SL-CAI policy generates two candidates, $y_A$ and $y_B$. A feedback model sees the prompt, both candidates, and a sampled constitutional principle, then answers a multiple-choice question about which candidate is better. If its log-probabilities for choices A and B are $\\ell_A$ and $\\ell_B$, normalized soft targets are\n\n$$p_A=\\frac{e^{\\ell_A}}{e^{\\ell_A}+e^{\\ell_B}},\\qquad p_B=1-p_A.$$\n\nEvery symbol has a concrete role: $e$ is the exponential constant, $\\ell_A$ and $\\ell_B$ are choice log-probabilities, and $p_A,p_B$ are nonnegative preference targets summing to one.\n\nFor an illustrative calculation, suppose $\\ell_A=\\ln 3$ and $\\ell_B=0$. Then $e^{\\ell_A}=3$ and $e^{\\ell_B}=1$, so\n\n$$p_A=\\frac{3}{3+1}=0.75,\\qquad p_B=0.25.$$\n\nThis invented arithmetic demonstrates normalization; it is not a reported paper measurement. Unlike a hard label $(1,0)$, the target $(0.75,0.25)$ retains uncertainty.\n\nThe attention control pictures the same normalization operation with four fixed scores rather than two response choices. Dividing scores by a positive temperature and applying softmax shows how relative evidence becomes weights summing to one. The paper did not use this four-item toy or claim temperature was its labeling control; the useful connection is only the normalized-exponential computation. In the reported non-chain-of-thought setup, soft labels performed better than hard labels.",
+      "sourceIds": [
+        "section-4",
+        "section-4-part-2"
+      ],
+      "claimIds": [
+        "c6",
+        "c7",
+        "c9"
+      ],
+      "figureId": "f1"
+    },
+    {
+      "id": "s5",
+      "title": "From preferences to a reward-guided policy",
+      "markdown": "The AI-generated harmlessness comparisons are combined with human-labeled helpfulness comparisons. A preference model is trained to score candidate responses from this mixed dataset. Reinforcement learning then updates the SL-CAI policy so that its outputs receive higher preference-model reward. This is RLAIF: structurally similar to RLHF after labeling, but with harmlessness labels supplied by a feedback model rather than crowdworkers.\n\nA useful abstraction is a likelihood ratio $r$ comparing how probable an action is under a current policy versus a reference policy, together with an advantage $A$ indicating whether that action appears better than expected. The policy figure exposes the illustrative clipped objective\n\n$$L(r)=\\min\\!\\left(rA,\\operatorname{clip}(r,1-\\epsilon,1+\\epsilon)A\\right),$$\n\nwith fixed $A=1$ and $\\epsilon=0.2$. Changing $r$ shows why clipping prevents this toy objective from continuing to grow beyond the upper interval edge. This is only an ordinary PPO-surrogate illustration: it omits language sequences, preference-model training, negative advantages, value learning, and the paper's complete RL system. The paper says its RL pipeline follows prior work; this control must not be read as evidence that the displayed curve reproduces a reported run.\n\nMost importantly, reinforcement learning optimizes the learned proxy, not the constitution directly. The constitution influences AI comparisons; those comparisons train a preference model; that model supplies reward. Errors can enter at every arrow.",
+      "sourceIds": [
+        "abstract",
+        "section-1-part-2",
+        "section-4"
+      ],
+      "claimIds": [
+        "c8"
+      ],
+      "figureId": "f2"
+    },
+    {
+      "id": "s6",
+      "title": "Chain-of-thought changes confidence as well as reasoning",
+      "markdown": "The authors also asked a helpful RLHF feedback model to reason step by step before selecting a response. On a separate set of 438 helpfulness, honesty, and harmlessness comparisons, chain-of-thought substantially improved the accuracy of larger models, supporting the possibility that explicit reasoning could improve supervision.\n\nBut generated reasoning altered the label distribution. After explaining a choice, the feedback model tended to commit strongly, yielding probabilities near zero or one. The authors found these targets insufficiently robust for RL and clamped them; the main chain-of-thought results used a 40–60 percent range. Thus, if the model selected A, its target could be limited to $0.6$ rather than treated as near-certain. Clamping deliberately discards expressed confidence to stabilize downstream learning.\n\nThis corrects a common misconception: more elaborate reasoning does not automatically provide better-calibrated supervision. In this study it improved comparison ability, yet its raw answer probabilities became excessively confident. Moreover, written reasoning makes a decision more inspectable but does not prove that the explanation faithfully represents the model's internal cause or that its constitutional judgment is correct.",
+      "sourceIds": [
+        "section-2",
+        "section-4",
+        "section-4-part-2",
+        "section-6"
+      ],
+      "claimIds": [
+        "c10"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s7",
+      "title": "What the evidence establishes—and what remains open",
+      "markdown": "Under the paper's crowdworker comparisons, RL-CAI was rated substantially more harmless than the compared RLHF and SL-CAI systems. The chain-of-thought version appeared slightly more harmless and slightly less helpful than the version without chain-of-thought. Those judgments were collected in open-ended comparisons whose instructions favored nuanced, transparent answers over evasive ones when harmlessness was similar. They therefore support a conditional claim about these models, evaluators, prompts, and instructions—not universal harmlessness.\n\nA separate absolute-harmfulness evaluation used 64 hand-picked held-out red-team prompts, 256 sampled responses per prompt, and a learned zero-to-four score. It showed decreasing predicted harmfulness for HH RLHF and both RL-CAI variants during training, but the paper cautions that worker-dependent absolute ratings may be poorly calibrated.\n\nThe strongest misconception to reject is that Constitutional AI eliminated human supervision. Humans supplied helpfulness labels, wrote the principles and few-shot examples, and performed evaluations. The paper eliminated direct human **harmlessness preference labels** in the targeted training stages. Its principles were selected ad hoc for research, so the work does not settle who should choose a constitution or how competing values should be resolved.\n\nFinally, optimization can exploit its proxy. Over-trained models displayed overly harsh or repetitive boilerplate behavior. Robustness to red-team attacks remained an explicit open problem, and the authors noted dual use: easier behavioral steering can also help creators build pernicious systems. The contribution is therefore a demonstrated supervision pipeline, not a proof of alignment, robustness, or legitimate governance.",
+      "sourceIds": [
+        "section-1",
+        "section-3",
+        "section-4",
+        "section-4-part-2",
+        "section-6"
+      ],
+      "claimIds": [
+        "c11",
+        "c12",
+        "c13",
+        "c14"
+      ],
+      "figureId": null
+    }
+  ],
+  "figures": [
+    {
+      "id": "f1",
+      "kind": "attention",
+      "title": "From scores to normalized preference mass",
+      "question": "As temperature increases, how does the fixed score distribution change after softmax normalization?",
+      "caption": "Four illustrative scores $[2,1,0,-1]$ are divided by a positive temperature and normalized with softmax, exposing the same kind of normalized-exponential arithmetic used to form soft choice targets.",
+      "limitation": "This is not a measured attention head, learned similarity, or reproduction of the paper's binary feedback model; it uses four fixed illustrative scores solely to teach normalization.",
+      "sourceIds": [
+        "section-4",
+        "section-4-part-2"
+      ],
+      "claimIds": [
+        "c6",
+        "c7",
+        "c9"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "f2",
+      "kind": "policy",
+      "title": "A clipped policy-update surrogate",
+      "question": "With positive advantage fixed, what happens to the displayed objective when the probability ratio rises above $1+\\epsilon$?",
+      "caption": "The control evaluates $\\min(rA,\\operatorname{clip}(r,1-\\epsilon,1+\\epsilon)A)$ for illustrative $A=1$ and $\\epsilon=0.2$, showing a plateau once the upper clipping threshold binds.",
+      "limitation": "This is not the paper's full reinforcement-learning system, a language-model rollout, or a bound on actual KL divergence; it omits preference learning and all other update terms.",
+      "sourceIds": [
+        "section-1-part-2",
+        "section-4"
+      ],
+      "claimIds": [
+        "c8"
+      ],
+      "illustrative": true
+    }
+  ],
+  "quiz": [
+    {
+      "question": "Assume a feedback model assigns choice log-probabilities $\\ell_A=\\ln 4$ and $\\ell_B=\\ln 1$. What soft target does normalization assign to A?",
+      "options": [
+        {
+          "text": "$0.80$",
+          "explanation": "Correct: $e^{\\ell_A}=4$ and $e^{\\ell_B}=1$, so $p_A=4/(4+1)=0.80$."
+        },
+        {
+          "text": "$0.50$",
+          "explanation": "Incorrect: equal probability would require equal log-probabilities, but A has four times B's unnormalized mass."
+        },
+        {
+          "text": "$1.00$",
+          "explanation": "Incorrect: normalization retains positive mass for B; it does not convert the larger score into a hard label."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-4"
+      ],
+      "claimIds": [
+        "c7"
+      ]
+    },
+    {
+      "question": "Which step most directly distinguishes the paper's RLAIF harmlessness pipeline from ordinary human-labeled harmlessness RLHF?",
+      "options": [
+        {
+          "text": "A feedback model chooses between response pairs under a constitutional principle.",
+          "explanation": "Correct: the paper replaces human harmlessness comparison labels with model-generated comparisons guided by principles."
+        },
+        {
+          "text": "A human evaluator supplies every harmlessness comparison during policy training.",
+          "explanation": "Incorrect: removing those direct human harmlessness labels is the central distinction of the studied pipeline."
+        },
+        {
+          "text": "The constitution itself directly supplies a numeric reward to every generated token.",
+          "explanation": "Incorrect: principles guide comparisons, which train a preference model that supplies the RL reward."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-1-part-2",
+        "section-4"
+      ],
+      "claimIds": [
+        "c6",
+        "c8"
+      ]
+    },
+    {
+      "question": "Which conclusion is justified by the paper's evidence?",
+      "options": [
+        {
+          "text": "RL-CAI was preferred as more harmless under the reported comparison setup, but robustness remained unresolved.",
+          "explanation": "Correct: this preserves the evaluation conditions and the paper's explicit robustness limitation."
+        },
+        {
+          "text": "RL-CAI was proven harmless for every possible adversarial prompt.",
+          "explanation": "Incorrect: the evaluations were finite, and immunity to red-team attacks remained an open goal."
+        },
+        {
+          "text": "Constitutional AI removed all human judgments from training and evaluation.",
+          "explanation": "Incorrect: helpfulness labels, principles, examples, and evaluations still involved humans."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-4",
+        "section-6"
+      ],
+      "claimIds": [
+        "c11",
+        "c12",
+        "c14"
+      ]
+    }
+  ],
+  "id": "constitutional-ai-harmlessness-from-ai-feedback",
+  "createdAt": "2026-10-02T00:12:34.875Z",
+  "pipelineVersion": "subjects-lessons-v1",
+  "sources": [
+    {
+      "id": "abstract",
+      "label": "Original paper · abstract",
+      "url": "https://arxiv.org/abs/2212.08073",
+      "digest": "52151077bf334f68c0b5c6b32cdbda22b28124b2f9be62743797645b15218e1c",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:10:25.609Z"
+    },
+    {
+      "id": "main-text",
+      "label": "Original paper · unsectioned main text",
+      "url": "https://arxiv.org/html/2212.08073",
+      "digest": "1826acef46c3017ffd187bf8d570fd479106840256c56ef4d48667b9ca0c8d27",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:10:25.609Z"
+    },
+    {
+      "id": "section-1",
+      "label": "1 Introduction",
+      "url": "https://arxiv.org/html/2212.08073#S1",
+      "digest": "4e944afa0608bc5b4238dc0a1b7cc20685b0e29d6ad890889c89ab1306960ebd",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:10:25.609Z"
+    },
+    {
+      "id": "section-1-part-2",
+      "label": "1 Introduction · part 2",
+      "url": "https://arxiv.org/html/2212.08073#S1",
+      "digest": "6e7b056f28ec62a8c203ad9b1eb2923856d213b81048de97f1f873397b0785ab",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:10:25.609Z"
+    },
+    {
+      "id": "section-2",
+      "label": "2 Evaluating the Potential for AI Supervision of HHH",
+      "url": "https://arxiv.org/html/2212.08073#S2",
+      "digest": "b592b2381bec249e34cd549b7b239894de59a16236c806be14c8364559cf2404",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:10:25.609Z"
+    },
+    {
+      "id": "section-3",
+      "label": "3 Constitutional AI: Critiques, Revisions, and Supervised Learning",
+      "url": "https://arxiv.org/html/2212.08073#S3",
+      "digest": "d042487d322ab1fa5ad21d1cdb4f8e639fa233a6ac0d0dc99cd9412f8add1a7a",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:10:25.609Z"
+    },
+    {
+      "id": "section-3-part-2",
+      "label": "3 Constitutional AI: Critiques, Revisions, and Supervised Learning · part 2",
+      "url": "https://arxiv.org/html/2212.08073#S3",
+      "digest": "031b2bcb57257150b1ddc5c6d0ddd8ff5f601b9ac8db01ab10b53753a39ccdd6",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:10:25.609Z"
+    },
+    {
+      "id": "section-4",
+      "label": "4 Constitutional AI: Reinforcement Learning from AI Feedback",
+      "url": "https://arxiv.org/html/2212.08073#S4",
+      "digest": "3fa6bfdc12a68307a0f2523246edfffb3e24e8b88ec7f93335300b4ddc074ed9",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:10:25.609Z"
+    },
+    {
+      "id": "section-4-part-2",
+      "label": "4 Constitutional AI: Reinforcement Learning from AI Feedback · part 2",
+      "url": "https://arxiv.org/html/2212.08073#S4",
+      "digest": "b8a9d707c51090f208e60a0847a10d4581fe25ab74690be2c39047480a6bd058",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:10:25.609Z"
+    },
+    {
+      "id": "section-5",
+      "label": "5 Related Work",
+      "url": "https://arxiv.org/html/2212.08073#S5",
+      "digest": "dc692bfe98f8379e5c3cc1bcfad3c6b51bb2e41db73935496013137b76e46c1b",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:10:25.609Z"
+    },
+    {
+      "id": "section-6",
+      "label": "6 Discussion",
+      "url": "https://arxiv.org/html/2212.08073#S6",
+      "digest": "fcf358f62f7f5fb6c8e8d90a06a8b63ff0d5a6650f648e604cee8258afbcf150",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:10:25.609Z"
+    },
+    {
+      "id": "section-7",
+      "label": "7 Contribution Statement",
+      "url": "https://arxiv.org/html/2212.08073#S7",
+      "digest": "bdf73ffdb76fbd5863801197aeedb81fca6c6e57e8cfb4ebb233d9b5fa77b68f",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:10:25.609Z"
+    }
+  ],
+  "review": {
+    "status": "passed",
+    "reviewedAt": "2026-10-02T00:12:34.876Z",
+    "contentDigest": "d2b6b1158d8ef86c6a59d3b88d9f64d451c9380ac35cd6e2037398786cdc1f91"
+  }
+}

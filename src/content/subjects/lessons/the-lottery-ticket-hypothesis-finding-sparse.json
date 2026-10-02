@@ -1,0 +1,456 @@
+{
+  "title": "A Ticket Is a Mask Plus a Memory",
+  "summary": "The paper shows that magnitude pruning can uncover sparse subnetworks that trained markedly better with their original initialization than with fresh random reinitialization in the reported comparisons, rather than succeeding through surviving topology alone.",
+  "prerequisites": [
+    "Neural-network training and validation",
+    "Parameter masks and unstructured sparsity",
+    "Gradient descent, learning rates, and initialization",
+    "Training accuracy and test accuracy"
+  ],
+  "objectives": [
+    "Define a winning ticket as a sparse mask paired with its original weights.",
+    "Describe iterative magnitude pruning and resetting step by step.",
+    "Explain why random reinitialization isolates the role of initial weights.",
+    "Interpret results within the paper's tested architectures and datasets.",
+    "Distinguish fewer active parameters from guaranteed hardware speedups."
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "mechanism",
+      "statement": "The lottery ticket hypothesis concerns a subnetwork that retains both selected connections and their values from the dense network’s original initialization.",
+      "conditions": "For a randomly initialized dense feed-forward network trained in isolation on the same task.",
+      "sourceIds": [
+        "section-1"
+      ]
+    },
+    {
+      "id": "c2",
+      "kind": "equation",
+      "statement": "Formally, the hypothesis seeks a binary mask whose subnetwork uses no more training iterations, reaches at least the dense model’s test accuracy, and contains far fewer active parameters.",
+      "conditions": "With a fixed mask, the same training set, SGD, and performance evaluated at minimum validation loss.",
+      "sourceIds": [
+        "section-1"
+      ]
+    },
+    {
+      "id": "c3",
+      "kind": "mechanism",
+      "statement": "The central procedure trains a dense network, prunes low-magnitude trained weights, and resets every survivor to its own original value.",
+      "conditions": "For magnitude-based pruning after a completed training run.",
+      "sourceIds": [
+        "section-1"
+      ]
+    },
+    {
+      "id": "c4",
+      "kind": "mechanism",
+      "statement": "Iterative pruning repeats the train–prune–reset cycle, operating only on weights surviving the preceding round.",
+      "conditions": "Across multiple pruning rounds rather than a single one-shot removal.",
+      "sourceIds": [
+        "section-1"
+      ]
+    },
+    {
+      "id": "c5",
+      "kind": "equation",
+      "statement": "The paper denotes the retained parameter fraction by $P_m=\\lVert m\\rVert_0/|\\theta|$; despite calling it sparsity, it measures weights remaining, not weights removed.",
+      "conditions": "For a binary parameter mask $m$ over the original parameter vector $\\theta$.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c6",
+      "kind": "result",
+      "statement": "On the studied Lenet setting, moderate iterative pruning improved learning speed before extreme pruning reversed the trend.",
+      "conditions": "Lenet-300-100 on MNIST, iterative pruning by 20% per round, with speed proxied by the minimum-validation-loss iteration.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c7",
+      "kind": "result",
+      "statement": "Holding the discovered mask fixed while replacing its original surviving values substantially damaged the reported Lenet result.",
+      "conditions": "At $P_m=21\\%$ in the Lenet random-reinitialization comparison.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c8",
+      "kind": "result",
+      "statement": "The convolutional experiments reproduced the pattern that pruning could initially accelerate learning and improve test accuracy relative to the dense baseline.",
+      "conditions": "Conv-2, Conv-4, and Conv-6 on CIFAR10 using the paper’s iterative, per-layer pruning settings.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c9",
+      "kind": "result",
+      "statement": "For the deeper architectures, successful ticket discovery depended on learning-rate choices and warmup.",
+      "conditions": "VGG-19 and Resnet-18 on CIFAR10 under the paper’s iterative pruning experiments.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c10",
+      "kind": "caveat",
+      "statement": "The paper’s empirical scope was limited to relatively small vision-classification datasets.",
+      "conditions": "For the experiments reported in this paper; larger datasets were not tested.",
+      "sourceIds": [
+        "section-6"
+      ]
+    },
+    {
+      "id": "c11",
+      "kind": "caveat",
+      "statement": "Unstructured parameter sparsity does not by itself guarantee efficient execution on contemporary hardware.",
+      "conditions": "For the paper’s sparse-pruning method and the libraries and hardware available to the study.",
+      "sourceIds": [
+        "section-6"
+      ]
+    },
+    {
+      "id": "c12",
+      "kind": "caveat",
+      "statement": "The suggestion that SGD actively finds a well-initialized subnetwork is a conjecture, not an experimentally established mechanism.",
+      "conditions": "As an interpretation of why overparameterized networks may be easier to optimize.",
+      "sourceIds": [
+        "section-5"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "s1",
+      "title": "The puzzle behind pruning",
+      "markdown": "Pruning had already shown that a trained neural network could often lose most of its parameters without losing accuracy. That creates a sharper question than compression alone: if the final sparse architecture is adequate, why not train that architecture from the beginning?\n\nThe obstacle was empirical. Sparse architectures obtained by pruning were commonly harder to train after fresh initialization. Frankle and Carbin changed the object under investigation. Instead of asking whether a sparse **shape** can train, they asked whether a dense random initialization already contains a fortunate pairing of shape and numerical starting values. They called such a pairing a **winning ticket**.\n\nThis distinction is the lesson’s organizing idea: a ticket is not merely a small graph. It is a binary selection mask together with the selected weights’ original values. The work therefore links pruning, initialization, and optimization rather than treating parameter count as the whole explanation.",
+      "sourceIds": [
+        "section-1"
+      ],
+      "claimIds": [
+        "c1"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s2",
+      "title": "Formal target and notation",
+      "markdown": "Let $f(x;\\theta)$ be a feed-forward network mapping input $x$ to an output using parameter vector $\\theta$. Its random initialization is $\\theta_0\\sim\\mathcal{D}_\\theta$, where $\\mathcal{D}_\\theta$ is the initialization distribution. Suppose dense training reaches minimum validation loss at iteration $j$ and has test accuracy $a$ there.\n\nA mask $m\\in\\{0,1\\}^{|\\theta|}$ has one entry per parameter. Elementwise multiplication, written $m\\odot\\theta_0$, retains a weight when its mask entry is $1$ and removes it when the entry is $0$. The masked model is $f(x;m\\odot\\theta_0)$. Let its minimum-validation-loss iteration and corresponding test accuracy be $j'$ and $a'$.\n\nThe hypothesis asks whether some $m$ satisfies\n\n$$\nj'\\leq j,\\qquad a'\\geq a,\\qquad \\lVert m\\rVert_0\\ll |\\theta|.\n$$\n\nHere $\\lVert m\\rVert_0$ counts ones in the mask, and $|\\theta|$ is the dense parameter count. The retained fraction is\n\n$$\nP_m=\\frac{\\lVert m\\rVert_0}{|\\theta|}.\n$$\n\nFor an illustrative eight-weight mask $m=(1,0,1,0,0,1,0,1)$, $\\lVert m\\rVert_0=4$, so $P_m=4/8=0.5=50\\%$. This arithmetic explains retention only; it says nothing about accuracy or trainability.\n\nThe patches control makes this binary selection concrete: changing the hidden fraction changes which cells remain visible in a fixed $8\\times8$ grid. Read visible cells as retained parameters and masked cells as pruned parameters. It is useful for understanding $m$, but it neither trains a network nor ranks weights by magnitude.",
+      "sourceIds": [
+        "section-1",
+        "section-2"
+      ],
+      "claimIds": [
+        "c1",
+        "c2",
+        "c5"
+      ],
+      "figureId": "fig-mask"
+    },
+    {
+      "id": "s3",
+      "title": "How the ticket is uncovered",
+      "markdown": "The search begins with a dense network because the method uses training to discover what to retain.\n\n1. Sample $\\theta_0$ and save it.\n2. Train the dense network for $j$ iterations, producing $\\theta_j$.\n3. Rank trained weights by magnitude and prune the chosen percentage, producing mask $m$.\n4. Discard the surviving trained values from $\\theta_j$.\n5. Restore each survivor’s own value from $\\theta_0$, yielding $m\\odot\\theta_0$.\n6. Train that masked initialization in isolation and compare it with the dense baseline.\n\nThe reset in step 5 is easy to miss. The experiment is not ordinary post-training compression or fine-tuning: trained magnitudes choose the connections, but training restarts from the corresponding original values.\n\nIn one-shot pruning, this cycle occurs once. Iterative pruning repeats it, removing a portion of the current survivors in each round. If a constant retained fraction $q$ is applied for $n$ rounds, the remaining fraction is illustratively $q^n$. Retaining $80\\%$ twice leaves $0.8^2=0.64$, or $64\\%$, of the original weights. The paper reports that iterative pruning located smaller winning tickets than one-shot pruning, but repeated full training also made the search expensive.",
+      "sourceIds": [
+        "section-1",
+        "section-2"
+      ],
+      "claimIds": [
+        "c3",
+        "c4"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s4",
+      "title": "The experiment that separates topology from initialization",
+      "markdown": "Why compare with random reinitialization? A discovered mask could succeed simply because pruning found a good sparse topology. To test that explanation, the authors held the mask $m$ fixed but replaced its surviving values with a fresh draw $\\theta'_0\\sim\\mathcal{D}_\\theta$. Thus the comparison preserves connectivity and parameter count while changing initialization.\n\nOn Lenet at $P_m=21\\%$, the original-initialization ticket reached minimum validation loss 2.51 times faster than its reinitialized counterpart and was half a percentage point more accurate. This does not prove that topology is irrelevant; the mask was still necessary. It shows that topology alone did not explain this reported ticket’s performance.\n\nA common misconception is therefore: “Once pruning discovers the right architecture, any fresh initialization should work.” That statement is stronger than the evidence and conflicts with the central ablation. The paper’s object is the pair $(m,m\\odot\\theta_0)$, not $m$ alone. At moderate sparsity in some convolutional settings, structure could still help, but the advantage of the original initialization became important under heavier pruning.",
+      "sourceIds": [
+        "section-1",
+        "section-2",
+        "section-3"
+      ],
+      "claimIds": [
+        "c1",
+        "c7"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s5",
+      "title": "What the reported curves establish",
+      "markdown": "The paper evaluates trainability using test accuracy and the iteration of minimum validation loss as a proxy for learning speed. That proxy matters: “faster” means reaching the selected validation criterion earlier, not a measured wall-clock acceleration.\n\nFor Lenet on MNIST, iterative pruning initially improved both speed and accuracy. As $P_m$ fell from $100\\%$ to about $21\\%$, early stopping occurred earlier; excessive pruning eventually slowed learning again. This non-monotonic behavior rules out the simplistic lesson that more pruning is always better.\n\nThe Conv-2, Conv-4, and Conv-6 experiments on CIFAR10 showed the same broad pattern: over a range of retained fractions, tickets learned faster and achieved higher test accuracy than the dense comparison. The reported gains belong to the stated architectures, optimizers, pruning schedules, datasets, and evaluation points. They are evidence that such subnetworks existed in those trained models, not a universal accuracy curve for every sparse network.\n\nTraining accuracy also matters when interpreting generalization. In several experiments, tickets and baselines approached the same training accuracy while tickets retained higher test accuracy. That supports a smaller train–test gap under those conditions, but it does not establish a general theorem connecting pruning to generalization.",
+      "sourceIds": [
+        "section-1",
+        "section-2",
+        "section-3"
+      ],
+      "claimIds": [
+        "c6",
+        "c8"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s6",
+      "title": "Optimization conditions are part of the result",
+      "markdown": "On deeper VGG-19 and Resnet-18 experiments, ticket discovery was sensitive to learning rate. The original procedure failed at some higher learning rates; learning-rate warmup enabled qualifying tickets in reported settings, although the paper did not find a successful Resnet-18 configuration at the original rate of $0.1$.\n\nThe optimizer control supplies a deliberately smaller mental model. It performs ordinary gradient descent on the illustrative quadratic $f(x)=x^2/2$, starting at $x_0=3$. Since $f'(x)=x$, a learning rate $\\eta$ gives\n\n$$\nx_{t+1}=x_t-\\eta x_t=(1-\\eta)x_t.\n$$\n\nWith the illustrative choice $\\eta=0.25$, $x_1=2.25$ and $x_2=1.6875$. Changing $\\eta$ changes the twelve displayed iterates even though the objective is unchanged. Predict whether a larger control value contracts faster, oscillates, or becomes unstable. This toy clarifies why optimization settings can affect a pruning experiment, but it is plain scalar gradient descent—not SGD with momentum, Adam, warmup, or a reproduction of the paper’s networks.",
+      "sourceIds": [
+        "section-4",
+        "section-6"
+      ],
+      "claimIds": [
+        "c9"
+      ],
+      "figureId": "fig-optimizer"
+    },
+    {
+      "id": "s7",
+      "title": "Sparsity is not the same as deployment efficiency",
+      "markdown": "The paper uses unstructured pruning: individual weights are removed while neurons, channels, and layers can remain in place. A retained fraction such as $P_m=10\\%$ therefore means that the mask contains one tenth of the original active parameter coordinates. It does not imply a proportional reduction in latency, energy, or memory traffic, because irregular nonzero weights must still be represented and processed by software and hardware capable of exploiting that sparsity.\n\nThe low-rank control separates this coordinate-wise selection from a structured form of compression. It uses a constructed diagonal $6\\times6$ matrix with singular values\n\n$$\n[6,4,3,2,1,0.5].\n$$\n\nAt rank $r$, the first $r$ singular components are retained, and the displayed squared-energy fraction is\n\n$$\nE_r=\\frac{\\sum_{i=1}^{r}\\sigma_i^2}{\\sum_{i=1}^{6}\\sigma_i^2}.\n$$\n\nBecause singular values have the same units as the matrix entries, both the numerator and denominator have squared matrix-entry units; their ratio $E_r$ is dimensionless. The total squared Frobenius norm is\n\n$$\n6^2+4^2+3^2+2^2+1^2+0.5^2=66.25.\n$$\n\nFor example, rank $2$ retains the components with singular values $6$ and $4$, so\n\n$$\nE_2=\\frac{36+16}{66.25}\\approx0.785.\n$$\n\nIncreasing $r$ preserves more singular directions and raises $E_r$ monotonically to $1$. This calculation illustrates a structured approximation organized by singular components. The lottery-ticket method performs a different operation: trained magnitudes determine a binary mask over individual weights, after which every survivor is reset to its own original initialization.\n\nCompact models can therefore arise from different constructions with different computational consequences. A low-rank factorization preserves selected matrix directions, whereas a lottery ticket preserves selected parameter coordinates together with their initial values. Only the latter mask-plus-initialization construction addresses the paper’s hypothesis, and its lower active-parameter count should not be mistaken for a guaranteed hardware speedup.",
+      "sourceIds": [
+        "section-6",
+        "section-7"
+      ],
+      "claimIds": [
+        "c3",
+        "c11"
+      ],
+      "figureId": "fig-low-rank"
+    },
+    {
+      "id": "s8",
+      "title": "Boundaries and the open mechanism",
+      "markdown": "The evidence is bounded to vision classification on MNIST and CIFAR10. The study did not test ImageNet or non-vision tasks, so its results should not be generalized to those settings. Its search procedure was also expensive: iterative pruning required training a network repeatedly—15 or more consecutive runs in the authors’ larger search process—before obtaining the final sparse initialization.\n\nThe deeper-network experiments show that the optimization regime is part of the result. For VGG-19 and Resnet-18 on CIFAR10, iterative pruning found qualifying tickets only under particular learning-rate choices and warmup schedules. Warmup enabled winning tickets at a learning rate of $0.1$ for VGG-19 and at $0.03$ for Resnet-18, while the authors did not find a successful Resnet-18 configuration at its original learning rate of $0.1$. These are conditional empirical findings, not a guarantee that warmup always produces a ticket.\n\nExistence and explanation are different achievements. The experiments show that the tested dense networks contained sparse masks whose original surviving values trained unusually effectively. Random reinitialization indicates that the numerical starting values matter alongside the mask, while the dependence on learning rate indicates that the optimizer and training regime matter too. The proposal that SGD actively finds and trains a favorable subnetwork is explicitly conjectural: the paper does not establish that mechanism experimentally.\n\nThe supported conclusion is therefore specific but important. In the reported architectures and datasets, sparse trainability arose from the combination of selected connections, their original initialization, and compatible optimization conditions. How to identify such combinations efficiently, why they work, and how broadly they occur remained open questions.",
+      "sourceIds": [
+        "section-4",
+        "section-5",
+        "section-6"
+      ],
+      "claimIds": [
+        "c9",
+        "c10",
+        "c11",
+        "c12"
+      ],
+      "figureId": null
+    }
+  ],
+  "figures": [
+    {
+      "id": "fig-mask",
+      "kind": "patches",
+      "title": "A mask as retained coordinates",
+      "question": "As the masked fraction increases, how do the visible and masked cell counts change while the grid size stays fixed?",
+      "caption": "An illustrative deterministic mask hides a controlled fraction of an $8\\times8$ grid, making binary retention and $P_m$ arithmetic tangible.",
+      "limitation": "This control only counts visible and masked patches; it does not train a network, perform magnitude pruning, or measure reconstruction quality.",
+      "sourceIds": [
+        "section-1",
+        "section-2"
+      ],
+      "claimIds": [
+        "c2",
+        "c5"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "fig-optimizer",
+      "kind": "optimizer",
+      "title": "Learning rate changes an optimization path",
+      "question": "How does the learning rate change the twelve iterates toward, around, or away from the minimum of the fixed quadratic?",
+      "caption": "Ordinary gradient descent follows $x_{t+1}=(1-\\eta)x_t$ on the illustrative scalar objective $f(x)=x^2/2$ from $x=3$.",
+      "limitation": "This is plain scalar gradient descent, not SGD with minibatches, momentum, Adam, warmup, pruning, or a reproduction of a reported curve.",
+      "sourceIds": [
+        "section-4",
+        "section-6"
+      ],
+      "claimIds": [
+        "c9"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "fig-low-rank",
+      "kind": "low-rank",
+      "title": "Low rank and sparse masks are different objects",
+      "question": "As rank $r$ increases, which fixed singular components are retained, and what fraction $E_r=\\sum_{i=1}^r\\sigma_i^2/\\sum_{i=1}^6\\sigma_i^2$ of the matrix’s squared Frobenius-norm energy do they retain?",
+      "caption": "The control retains the first $r$ components of a fixed diagonal matrix with singular values $[6,4,3,2,1,0.5]$, illustrating structured rank reduction.",
+      "limitation": "It is not unstructured magnitude pruning, a trained LoRA update, a lottery-ticket search, or a reported compression result.",
+      "sourceIds": [
+        "section-6",
+        "section-7"
+      ],
+      "claimIds": [
+        "c3",
+        "c11"
+      ],
+      "illustrative": true
+    }
+  ],
+  "quiz": [
+    {
+      "question": "A discovered mask trains well with its original surviving values but poorly after a fresh random initialization. Under the controlled comparison, what is the strongest conclusion?",
+      "options": [
+        {
+          "text": "The original initialization contributes to the ticket’s success.",
+          "explanation": "Correct. The mask and parameter count are held fixed, so the performance change isolates the initialization change."
+        },
+        {
+          "text": "The mask’s topology contributes nothing.",
+          "explanation": "Incorrect. The experiment still uses the discovered mask and does not remove topology from the ticket."
+        },
+        {
+          "text": "Every fresh initialization of that topology must fail.",
+          "explanation": "Incorrect. The reported trials support a comparative result, not a universal impossibility claim."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-1",
+        "section-2"
+      ],
+      "claimIds": [
+        "c1",
+        "c7"
+      ]
+    },
+    {
+      "question": "An eight-parameter network uses the mask $(1,0,1,1,0,0,1,0)$. Using the paper’s definition, what is $P_m$?",
+      "options": [
+        {
+          "text": "$25\\%$",
+          "explanation": "Incorrect. Two weights would remain at $25\\%$, but this mask contains four ones."
+        },
+        {
+          "text": "$50\\%$",
+          "explanation": "Correct. $\\lVert m\\rVert_0=4$ and $|\\theta|=8$, so $P_m=4/8=50\\%$."
+        },
+        {
+          "text": "$75\\%$",
+          "explanation": "Incorrect. $75\\%$ would describe neither the four retained weights nor the four removed weights here."
+        }
+      ],
+      "answer": 1,
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c5"
+      ]
+    },
+    {
+      "question": "Which deployment claim is justified solely by finding an unstructured ticket with $10\\%$ of the original parameters?",
+      "options": [
+        {
+          "text": "Inference latency falls by exactly $90\\%$.",
+          "explanation": "Incorrect. Irregular sparsity may not map to proportional hardware speedups."
+        },
+        {
+          "text": "Ticket discovery costs only one sparse training run.",
+          "explanation": "Incorrect. Iterative pruning repeatedly trains, prunes, and resets."
+        },
+        {
+          "text": "The masked model has $10\\%$ of the original active parameters.",
+          "explanation": "Correct. This follows from the retained fraction, without assuming runtime or search-cost improvements."
+        }
+      ],
+      "answer": 2,
+      "sourceIds": [
+        "section-1",
+        "section-6"
+      ],
+      "claimIds": [
+        "c4",
+        "c11"
+      ]
+    }
+  ],
+  "id": "the-lottery-ticket-hypothesis-finding-sparse",
+  "createdAt": "2026-10-01T23:48:30.972Z",
+  "pipelineVersion": "subjects-lessons-v1",
+  "sources": [
+    {
+      "id": "abstract",
+      "label": "Original paper · abstract",
+      "url": "https://arxiv.org/abs/1803.03635",
+      "digest": "93b99015e4a32e75efbc130f1ab24e17c4d79408566a5ef4f29c16d4902e7115",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:46:03.276Z"
+    },
+    {
+      "id": "main-text",
+      "label": "Original paper · unsectioned main text",
+      "url": "https://arxiv.org/html/1803.03635",
+      "digest": "1826acef46c3017ffd187bf8d570fd479106840256c56ef4d48667b9ca0c8d27",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:46:03.276Z"
+    },
+    {
+      "id": "section-1",
+      "label": "1 Introduction",
+      "url": "https://arxiv.org/html/1803.03635#S1",
+      "digest": "bdf27d8cb6baeed5ba66ec2ca4d4cd5f3dcf6a2e48b918220223e001e0c1c9cc",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:46:03.276Z"
+    },
+    {
+      "id": "section-2",
+      "label": "2 Winning Tickets in Fully-Connected Networks",
+      "url": "https://arxiv.org/html/1803.03635#S2",
+      "digest": "363bc0a070e1ff5de5531b16476193b77d27cca3ec20bdd9fb63584cba7cfd92",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:46:03.276Z"
+    },
+    {
+      "id": "section-3",
+      "label": "3 Winning Tickets in Convolutional Networks",
+      "url": "https://arxiv.org/html/1803.03635#S3",
+      "digest": "106f3bcfaf0442c460c07acc4dbe9e77da9cd5bff8063e8848168becafce8a4c",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:46:03.276Z"
+    },
+    {
+      "id": "section-4",
+      "label": "4 VGG and Resnet for CIFAR10",
+      "url": "https://arxiv.org/html/1803.03635#S4",
+      "digest": "eb897ce7b6ddcfd2840c629a9c3e978b8fac6b1543549c93bb0f3bb2f2597e5b",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:46:03.276Z"
+    },
+    {
+      "id": "section-5",
+      "label": "5 Discussion",
+      "url": "https://arxiv.org/html/1803.03635#S5",
+      "digest": "aa53cea0ac1795768da6fc96c26abd1fd8276a0b5819e7cdf7fdd4eaf2c603fd",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:46:03.276Z"
+    },
+    {
+      "id": "section-6",
+      "label": "6 Limitations and Future Work",
+      "url": "https://arxiv.org/html/1803.03635#S6",
+      "digest": "f8402b6a0fa008548ca1a8ab2e853dbc7131a1ccee8da21cc8795c0791764a66",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:46:03.276Z"
+    },
+    {
+      "id": "section-7",
+      "label": "7 Related Work",
+      "url": "https://arxiv.org/html/1803.03635#S7",
+      "digest": "77c06bf3ebe07956740c7680885b16237f13bb2ec63a3ed73c088ba9e9a5d337",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:46:03.276Z"
+    }
+  ],
+  "review": {
+    "status": "passed",
+    "reviewedAt": "2026-10-02T02:07:56.296Z",
+    "contentDigest": "fc971ea91314d1bba741ed330d10efe51a2a85db0c6c3085681c66e2ad585d42"
+  }
+}

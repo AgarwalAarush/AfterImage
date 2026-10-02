@@ -1,0 +1,478 @@
+{
+  "title": "The Bridge Has Two Ends: How DBMSolver Accelerates Image Translation",
+  "summary": "DBMSolver accelerates diffusion-bridge image translation by solving linear dynamics analytically, approximating model-dependent terms, and treating the singular first step separately.",
+  "prerequisites": [
+    "Basic probability distributions and Gaussian noise",
+    "Basic ordinary and stochastic differential equations",
+    "Discrete approximation of continuous trajectories"
+  ],
+  "objectives": [
+    "Distinguish image-conditioned bridges from noise-to-image diffusion.",
+    "Explain the semi-linear structure of the bridge equations.",
+    "Explain why DBMSolver selects second-order ODE steps.",
+    "Interpret quality and efficiency results within benchmark conditions.",
+    "Identify limits in DBMSolver's derivation and empirical evidence."
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "mechanism",
+      "statement": "In the paper's forward-process construction, a diffusion bridge connects $\\boldsymbol{x}_0\\sim p_0$ to the conditioned endpoint $\\boldsymbol{x}_T\\sim p_T$; for reverse-time image translation, however, $\\boldsymbol{x}_T$ is the supplied input-domain image and $\\boldsymbol{x}_0$ is the desired output-domain image.",
+      "conditions": "For the generalized diffusion-bridge formulation used by the paper, distinguishing the forward process's conditioned endpoint from the target/output domain of the reverse-time image-to-image task.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c2",
+      "kind": "caveat",
+      "statement": "Fast noise-to-image solvers whose derivations assume a Gaussian terminal prior are not theoretically interchangeable with a bridge solver when the terminal distribution contains arbitrary images.",
+      "conditions": "When the terminal distribution p_T is not approximately an isotropic Gaussian noise distribution.",
+      "sourceIds": [
+        "section-2",
+        "section-3"
+      ]
+    },
+    {
+      "id": "c3",
+      "kind": "equation",
+      "statement": "The bridge probability-flow ODE contains the learned conditional score with coefficient minus one half g(t)^2 and the analytic transition score with coefficient g(t)^2.",
+      "conditions": "For the Bridge PF ODE given as Equation 5 in the paper.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c4",
+      "kind": "mechanism",
+      "statement": "After replacing the learned score by an x_0-predicting model, the Bridge PF ODE can be written as a linear term L(t)x_t plus a nonlinear model-dependent term.",
+      "conditions": "For the paper's reformulation of its generalized VP/VE bridge dynamics.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c5",
+      "kind": "mechanism",
+      "statement": "DBMSolver uses exponential integration to handle the linear part analytically and Taylor approximation for the nonlinear term containing the pretrained predictor.",
+      "conditions": "For the Bridge SDE and Bridge PF ODE derivations presented in Section 3.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c6",
+      "kind": "equation",
+      "statement": "The paper's first-order Bridge SDE update combines a scaled current state, a scaled predictor output, and a Gaussian innovation whose amplitude depends on the SNR ratio.",
+      "conditions": "For 0 ≤ t < s ≤ T, with z_t distributed as a standard Gaussian and the schedule quantities defined by the paper.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c7",
+      "kind": "caveat",
+      "statement": "The closed-form Bridge PF ODE expression cannot initialize directly from s=T because a denominator involving rho(lambda_s,lambda_T) tends to zero.",
+      "conditions": "In the limit s approaches T for Equation 9, where rho(a,b)=exp(2(a-b))-1.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c8",
+      "kind": "mechanism",
+      "statement": "DBMSolver therefore takes one short first-order stochastic bridge step from T to T-epsilon, applies second-order Bridge PF ODE steps internally, and uses Euler for the final step to time zero.",
+      "conditions": "For Algorithm 1 with epsilon approximately 10^-4 and the descending time grid described by the paper.",
+      "sourceIds": [
+        "section-3",
+        "section-3-part-2"
+      ]
+    },
+    {
+      "id": "c9",
+      "kind": "caveat",
+      "statement": "The selected second-order ODE approximation remains analytically tractable, whereas orders k≥3 introduce a non-elementary antiderivative in the paper's formulation.",
+      "conditions": "For the Taylor-expanded exponential integral in Equation 10.",
+      "sourceIds": [
+        "section-3-part-2"
+      ]
+    },
+    {
+      "id": "c10",
+      "kind": "result",
+      "statement": "On DIODE at 256×256, DBMSolver reported FID 3.38 at 6 NFEs and 2.06 at 20 NFEs; Hybrid Heun reported FID 4.43 at 119 NFEs.",
+      "conditions": "Under the DIODE evaluation and checkpoints used in Table 2; lower FID and fewer NFEs are preferred.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c11",
+      "kind": "result",
+      "statement": "On Edges2Handbags at 64×64, DBMSolver reported FID 0.93 at 6 NFEs and 0.53 at 20 NFEs, while ODES3 reported 0.54 at 28 NFEs.",
+      "conditions": "Under the Edges2Handbags evaluation reported in Table 3; the prose elsewhere gives 0.97 at 6 NFEs, so the table value is used here.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c12",
+      "kind": "result",
+      "statement": "For ImageNet center-mask inpainting at 256×256, DBMSolver at 20 NFEs matched DBIM-2 and DBIM-3 at FID 4.07 and classification accuracy 72.0.",
+      "conditions": "With a central 128×128 mask and the ImageNet DBM checkpoint adopted from prior work, as reported in Table 5.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c13",
+      "kind": "caveat",
+      "statement": "The paper reports that DBMSolver performed similarly to earlier solvers on realistic ImageNet inpainting and hypothesizes that approximation error is dominated by the nonlinear predictor term.",
+      "conditions": "This is the authors' interpretation of the reported ImageNet setting, not an established general cause.",
+      "sourceIds": [
+        "section-5"
+      ]
+    },
+    {
+      "id": "c14",
+      "kind": "caveat",
+      "statement": "The paper leaves text-conditioned translation, adaptive step sizes, and integration with flow matching as future directions.",
+      "conditions": "Within the scope stated in the conclusion; these capabilities are not established by the reported experiments.",
+      "sourceIds": [
+        "section-5"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "s1",
+      "title": "Why an image endpoint changes the problem",
+      "markdown": "A standard noise-to-image diffusion model begins at a terminal random variable, commonly written $\\boldsymbol{x}_T$, whose distribution is approximately isotropic Gaussian noise. Image-to-image translation asks for a different journey: one endpoint can itself be an image from an arbitrary distribution. A surface-normal map, edge map, segmentation mask, or corrupted photograph is not generally a draw from $\\mathcal{N}(\\mathbf{0},\\sigma_T^2\\mathbf{I})$.\n\nA diffusion bridge encodes this distinction by conditioning the trajectory between $\\boldsymbol{x}_0\\sim p_0$ and $\\boldsymbol{x}_T\\sim p_T$. Here $t\\in[0,T]$ is diffusion time; $p_t$ is the marginal distribution at time $t$; $\\boldsymbol{x}_0$ is the desired output-domain image; and $\\boldsymbol{x}_T$ is the supplied input-domain endpoint image. Doob's $h$-transform steers the forward process from $\\boldsymbol{x}_0$ toward its conditioned endpoint $\\boldsymbol{x}_T$. Thus, “target” in the forward Doob-transform construction names the endpoint at time $T$; it is not the target or output domain of the reverse-time image-translation task, which produces $\\boldsymbol{x}_0$ from the supplied $\\boldsymbol{x}_T$.\n\nThis explains the central compatibility issue. A fast sampler derived by assuming that $p_T$ is Gaussian noise does not automatically become valid when $p_T$ is an arbitrary image distribution. DBMSolver is not a new image model trained to repair that mismatch. It is a training-free numerical sampler designed for an already trained diffusion bridge model.",
+      "sourceIds": [
+        "section-1",
+        "section-2",
+        "section-3"
+      ],
+      "claimIds": [
+        "c1",
+        "c2"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s2",
+      "title": "The two reverse-time descriptions",
+      "markdown": "The paper uses both a stochastic reverse process and a deterministic probability-flow process. Its Bridge SDE can be read schematically as\n\n$$\n\\mathrm{d}\\boldsymbol{x}_t=\\left[f(\\boldsymbol{x}_t,t)-g(t)^2\\nabla_{\\boldsymbol{x}_t}\\log p_t(\\boldsymbol{x}_t\\mid\\boldsymbol{x}_T)+g(t)^2\\nabla_{\\boldsymbol{x}_t}\\log p_t(\\boldsymbol{x}_T\\mid\\boldsymbol{x}_t)\\right]\\mathrm{d}t+g(t)\\,\\mathrm{d}\\mathbf{w}_t.\n$$\n\nHere $f$ is the drift, $g$ is the scalar diffusion coefficient, $\\mathbf{w}_t$ is a Wiener process, $\\nabla_{\\boldsymbol{x}_t}$ denotes differentiation with respect to the current state, and $\\nabla\\log p$ is a score. The first score is learned conditionally; the second is the bridge transition score supplied by the known process. The corresponding Bridge PF ODE removes the random increment and changes the learned-score coefficient from $-g(t)^2$ to $-\\tfrac12g(t)^2$.\n\nThe illustrative noise control makes only the Gaussian ingredient tangible. It draws seeded Gaussian vectors in $D$ dimensions and compares their measured norms with the RMS scale $\\sigma\\sqrt{D}$. Increasing $\\sigma$ stretches lengths; changing $D$ changes the norm distribution. That helps interpret the innovation $\\boldsymbol{z}_t$ in a stochastic update, but it is not a diffusion bridge, an image experiment, or evidence about DBMSolver's error.",
+      "sourceIds": [
+        "section-2",
+        "section-3"
+      ],
+      "claimIds": [
+        "c3",
+        "c6"
+      ],
+      "figureId": "fig-noise"
+    },
+    {
+      "id": "s3",
+      "title": "The semi-linear opening",
+      "markdown": "Let $\\mathbf{D}_{\\boldsymbol{\\theta}}(\\boldsymbol{x}_t,t,\\boldsymbol{x}_T,T)$ be the pretrained bridge model's prediction of $\\boldsymbol{x}_0$ from the current state and endpoint. The paper abbreviates it as $\\mathbf{D}_{\\boldsymbol{\\theta}}(\\boldsymbol{x}_t)$. Substituting this predictor into the conditional score lets the Bridge PF ODE be reorganized as\n\n$$\n\\frac{\\mathrm{d}\\boldsymbol{x}_t}{\\mathrm{d}t}=L(t)\\boldsymbol{x}_t+N\\!\\left(\\mathbf{D}_{\\boldsymbol{\\theta}}(\\boldsymbol{x}_t),t,\\boldsymbol{x}_T\\right).\n$$\n\n$L(t)\\boldsymbol{x}_t$ is linear in the evolving state. $N$ collects the nonlinear, predictor-dependent forcing and its dependence on time and the endpoint. This split is the key numerical opportunity: exponential integrators propagate the linear contribution analytically instead of approximating every part of the vector field in the same crude way. The nonlinear contribution is still approximated through a Taylor expansion, so the method does not make the whole learned dynamics exact.\n\nThe scalar recurrence figure offers a discrete analogy. It computes $h_t=a h_{t-1}+u_t$ after a single impulse $u_0=1$; the retention $a$ changes how the exactly known linear propagation decays. In DBMSolver, the state is an image tensor, coefficients vary with time, and the forcing comes from a neural predictor. Thus the toy clarifies separation of propagation and forcing, not the actual solver or a learned rollout.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c4",
+        "c5"
+      ],
+      "figureId": "fig-state"
+    },
+    {
+      "id": "s4",
+      "title": "The stochastic first foothold",
+      "markdown": "The ODE solution has a boundary problem, so DBMSolver first uses a Bridge SDE update. For $0\\leq t<s\\leq T$, the paper's first-order approximation is\n\n$$\n\\boldsymbol{x}_t=\\frac{\\mathrm{SNR}_s}{\\mathrm{SNR}_t}\\frac{\\alpha_t}{\\alpha_s}\\boldsymbol{x}_s+\\alpha_t\\left(1-\\frac{\\mathrm{SNR}_s}{\\mathrm{SNR}_t}\\right)\\mathbf{D}_{\\boldsymbol{\\theta}}(\\boldsymbol{x}_s)+\\sigma_t\\sqrt{1-\\frac{\\mathrm{SNR}_s}{\\mathrm{SNR}_t}}\\,\\boldsymbol{z}_t,\n$$\n\nwhere $\\alpha_t$ and $\\sigma_t$ are the schedule's signal and noise scales, $\\mathrm{SNR}_t:=\\alpha_t^2/\\sigma_t^2$, and $\\boldsymbol{z}_t\\sim\\mathcal{N}(\\mathbf{0},\\mathbf{I})$. The three terms respectively carry the current state, insert the model's clean-image prediction, and add stochastic innovation. Its stated local error is $\\mathcal{O}(\\Delta t^2)$.\n\nA small illustrative scalar calculation shows the bookkeeping, not a reported configuration. Suppose $\\mathrm{SNR}_s/\\mathrm{SNR}_t=0.64$, $\\alpha_t/\\alpha_s=1$, $\\alpha_t=0.8$, $\\sigma_t=0.5$, $x_s=2$, $D_\\theta(x_s)=1$, and a chosen Gaussian draw $z_t=-1$. Then\n\n$$\nx_t=0.64(2)+0.8(1-0.64)(1)+0.5\\sqrt{1-0.64}(-1)=1.28+0.288-0.300=1.268.\n$$\n\nThe values are invented solely to demonstrate the equation. In the actual algorithm this update covers only the tiny interval from $T$ to $T-\\epsilon$, with $\\epsilon\\approx10^{-4}$, limiting the benefit expected from a more elaborate first-step approximation.",
+      "sourceIds": [
+        "section-3",
+        "section-3-part-2"
+      ],
+      "claimIds": [
+        "c6",
+        "c8"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s5",
+      "title": "Why the ODE cannot start at the endpoint",
+      "markdown": "For later steps the paper changes variables to\n\n$$\n\\lambda_t:=\\log\\!\\left(\\frac{\\alpha_t}{\\sigma_t}\\right),\\qquad \\rho(a,b):=e^{2(a-b)}-1.\n$$\n\nBecause $\\mathrm{SNR}_t=\\alpha_t^2/\\sigma_t^2$, $\\lambda_t$ is half the log signal-to-noise ratio. The exact Bridge PF ODE expression contains analytically known coefficients multiplying $\\boldsymbol{x}_s$ and $\\boldsymbol{x}_T$, plus an exponentially weighted integral of $\\mathbf{D}_{\\boldsymbol{\\theta}}(\\boldsymbol{x}_\\lambda)$. Here $\\boldsymbol{x}_\\lambda:=\\boldsymbol{x}_{t_\\lambda(\\lambda)}$ and $t_\\lambda$ is the inverse time mapping.\n\nAt $s\\to T$, however, $\\rho(\\lambda_s,\\lambda_T)\\to0$. A coefficient divides by its square root, so the expression becomes singular. This is a mathematical boundary issue, not evidence that stochastic sampling is universally superior to deterministic integration. The initial SDE foothold moves the state away from the singular endpoint; only then is the ODE formula used.\n\nThe ODE control illustrates a narrower numerical lesson. It compares Forward Euler on $\\mathrm{d}x/\\mathrm{d}t=-x$, $x(0)=1$, with the exact $e^{-t}$ trajectory as step size changes. It can reveal ordinary discretization error, but it is neither exponential integration nor an adaptive or learned solver. DBMSolver's benefit specifically relies on the bridge-derived coefficients and semi-linear split.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c5",
+        "c7"
+      ],
+      "figureId": "fig-ode"
+    },
+    {
+      "id": "s6",
+      "title": "Second order where it pays",
+      "markdown": "The remaining difficulty is the predictor integral. DBMSolver Taylor-expands the predictor with respect to $\\lambda$ while computing the scalar exponential weights analytically. For $k=2$, Equation 10 retains the predictor and its first $\\lambda$-derivative:\n\n$$\n\\int_{\\lambda_s}^{\\lambda_t}\\frac{e^{2\\lambda}\\mathbf{D}_{\\boldsymbol{\\theta}}(\\boldsymbol{x}_\\lambda)}{\\sqrt{\\rho(\\lambda,\\lambda_T)}}\\,\\mathrm{d}\\lambda\n\\approx\n\\mathbf{D}_{\\boldsymbol{\\theta}}(\\boldsymbol{x}_{\\lambda_s})I_0\n+\\mathbf{D}_{\\boldsymbol{\\theta}}^{(1)}(\\boldsymbol{x}_{\\lambda_s})I_1,\n$$\n\nwhere\n\n$$\nI_0:=\\int_{\\lambda_s}^{\\lambda_t}\\frac{e^{2\\lambda}}{\\sqrt{\\rho(\\lambda,\\lambda_T)}}\\,\\mathrm{d}\\lambda,\n\\qquad\nI_1:=\\int_{\\lambda_s}^{\\lambda_t}\\frac{e^{2\\lambda}(\\lambda-\\lambda_s)}{\\sqrt{\\rho(\\lambda,\\lambda_T)}}\\,\\mathrm{d}\\lambda,\n$$\n\nand $\\mathbf{D}_{\\boldsymbol{\\theta}}^{(1)}:=\\mathrm{d}\\mathbf{D}_{\\boldsymbol{\\theta}}/\\mathrm{d}\\lambda$. The scalar weights $I_0$ and $I_1$ are computed analytically and the omitted Taylor remainder is $\\mathcal{O}((\\lambda_t-\\lambda_s)^3)$. Equation 9 then multiplies this approximation by $\\alpha_t e^{-2\\lambda_t}\\sqrt{\\rho(\\lambda_t,\\lambda_T)}$ and combines it with the analytic coefficients of $\\boldsymbol{x}_s$ and $\\boldsymbol{x}_T$. The supplied formulation identifies the derivative as estimated but does not specify the model-evaluation formula used for that estimate, so it supports explaining the second-order structure and update components, not reconstructing a complete executable second-order step.\n\nThe choice is not simply “higher order is always better.” The $k=1$ form retains only the $I_0$ term and is equivalent to DBIM-1. In this derivation, $k\\geq3$ leads to a non-elementary antiderivative. A numerical multistep approximation could still be used, but it sacrifices the selected formulation's closed-form tractability and introduces another approximation. The paper therefore chooses the analytically tractable $k=2$ middle ground.\n\nGiven $T=t_N>t_{N-1}>\\cdots>t_0=0$, the algorithm first takes the first-order stochastic update from $t_N$ to $t_{N-1}$, applies the $k=2$ Bridge PF ODE approximation through the intermediate states down to $t_1$, and then uses Euler from $t_1$ to $t_0$. Each predictor call contributes to the number of function evaluations, or NFE. “Training-free” means that this sampling procedure does not retrain or alter the existing bridge model; it does not mean that the underlying DBM was obtained without training.",
+      "sourceIds": [
+        "section-3",
+        "section-3-part-2"
+      ],
+      "claimIds": [
+        "c8",
+        "c9"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s7",
+      "title": "Reading the evidence without overgeneralizing",
+      "markdown": "The reported comparisons support an efficiency-quality claim under particular models, datasets, resolutions, and metrics. On DIODE at $256\\times256$, DBMSolver obtained FID 3.38 with 6 NFEs and 2.06 with 20, while Hybrid Heun obtained 4.43 with 119. On Edges2Handbags at $64\\times64$, the table reports 0.93 at 6 NFEs and 0.53 at 20; ODES3 reports 0.54 at 28. These results show strong low-NFE performance in those tests, not a universal 20-fold wall-clock speedup for every implementation.\n\nThe metric picture is also multidimensional. DIODE DBMSolver at 6 NFEs has lower FID, LPIPS, and MSE than the displayed Hybrid Heun row, but its IS is 6.00 versus 6.21. One should not collapse all notions of quality into FID alone. NFE counts neural evaluations, while actual latency can also depend on solver overhead and hardware.\n\nImageNet center-mask inpainting is a useful boundary case. At 20 NFEs, DBMSolver, DBIM-2, and DBIM-3 all report FID 4.07 and classification accuracy 72.0. The authors consequently note similar performance to preceding solvers on this more realistic task and hypothesize that errors from the nonlinear predictor term dominate. That explanation is plausible within their analysis but is not isolated as a general causal result.",
+      "sourceIds": [
+        "section-4",
+        "section-5"
+      ],
+      "claimIds": [
+        "c10",
+        "c11",
+        "c12",
+        "c13"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s8",
+      "title": "What the contribution does—and does not—establish",
+      "markdown": "A common misconception is that DBMSolver succeeds merely by applying a generic high-order ODE solver. Its actual contribution is bridge-specific: expose semi-linearity in both bridge equations, integrate their linear terms analytically, use a stochastic step to escape the singular endpoint, and approximate the model-dependent ODE integral at second order. Applying an unrelated noise-to-image solver would ignore the arbitrary image endpoint and its conditioning terms.\n\nSeveral limits remain. The predictor-dependent nonlinear term is approximated, and the paper's own ImageNet discussion indicates that it may restrict gains. The reported evidence covers selected translation, stylization, semantics-to-image, and inpainting settings up to $256\\times256$; it does not establish the same tradeoff for every bridge model, resolution, metric, or deployment stack. The endpoint workaround uses a fixed tiny interval rather than an adaptive controller. Text-conditioned translation, adaptive step sizing, and flow-matching integration are proposed as future work rather than demonstrated abilities.\n\nThe lasting idea is methodological: when learned dynamics contain a solvable linear backbone and a costly nonlinear prediction, preserve the exact structure you have instead of discretizing everything uniformly. DBMSolver shows how that principle can be specialized to generalized VP/VE diffusion bridges without additional model training.",
+      "sourceIds": [
+        "section-2",
+        "section-3",
+        "section-3-part-2",
+        "section-5"
+      ],
+      "claimIds": [
+        "c2",
+        "c4",
+        "c5",
+        "c7",
+        "c9",
+        "c13",
+        "c14"
+      ],
+      "figureId": null
+    }
+  ],
+  "figures": [
+    {
+      "id": "fig-noise",
+      "kind": "noise",
+      "title": "Gaussian innovation scale",
+      "question": "How do the sampled norm distribution and the reference RMS radius change when sigma or dimension increases?",
+      "caption": "A seeded Gaussian experiment plots sample norms and the reference radius $\\sigma\\sqrt{D}$, making the scale of a stochastic innovation visible.",
+      "limitation": "This is a Gaussian norm experiment, not a diffusion bridge, an image sampler, or a measurement of DBMSolver quality or error.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c6"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "fig-state",
+      "kind": "state",
+      "title": "Linear propagation and external forcing",
+      "question": "With a single initial impulse, how does increasing retention change the persistence of the scalar state?",
+      "caption": "The recurrence $h_t=a h_{t-1}+u_t$ separates linear state propagation from an input, echoing the conceptual split between a linear term and forcing.",
+      "limitation": "The control is a scalar fixed-coefficient impulse response, not DBMSolver's time-varying image dynamics, neural predictor, or learned rollout.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c4",
+        "c5"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "fig-ode",
+      "kind": "ode",
+      "title": "Step size and Euler error",
+      "question": "As the Euler step size shrinks, how does the numerical path compare with the exact exponential decay?",
+      "caption": "Forward Euler approximates $\\mathrm{d}x/\\mathrm{d}t=-x$ over a fixed interval and exposes how discretization step size affects error.",
+      "limitation": "This is not an exponential integrator, adaptive solver, learned vector field, reverse-time bridge, or empirical reproduction of DBMSolver.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c5",
+        "c7"
+      ],
+      "illustrative": true
+    }
+  ],
+  "quiz": [
+    {
+      "question": "Why does DBMSolver use a Bridge SDE update for its first step rather than starting directly with its Bridge PF ODE formula?",
+      "options": [
+        {
+          "text": "The ODE coefficient becomes singular at the terminal endpoint.",
+          "explanation": "Correct. As the starting time approaches T, rho(lambda_s,lambda_T) approaches zero in a denominator."
+        },
+        {
+          "text": "The pretrained predictor cannot accept an image at time T.",
+          "explanation": "Incorrect. The stated reason is the ODE expression's endpoint singularity, not an input restriction of the predictor."
+        },
+        {
+          "text": "Every deterministic bridge step requires Gaussian noise.",
+          "explanation": "Incorrect. The later probability-flow ODE steps are deterministic; Gaussian innovation belongs to the SDE step."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-3",
+        "section-3-part-2"
+      ],
+      "claimIds": [
+        "c7",
+        "c8"
+      ]
+    },
+    {
+      "question": "Under the paper's derivation, what is treated analytically by exponential integration?",
+      "options": [
+        {
+          "text": "The linear state-dependent part of the bridge dynamics.",
+          "explanation": "Correct. The semi-linear split permits analytic propagation of the linear term."
+        },
+        {
+          "text": "The complete neural predictor at every future state.",
+          "explanation": "Incorrect. The predictor-dependent integral is Taylor-approximated rather than known exactly."
+        },
+        {
+          "text": "The benchmark FID as a function of NFE.",
+          "explanation": "Incorrect. FID is an empirical evaluation metric, not part of the differential-equation integration."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c4",
+        "c5"
+      ]
+    },
+    {
+      "question": "What is the most defensible interpretation of the reported ImageNet result at 20 NFEs?",
+      "options": [
+        {
+          "text": "DBMSolver matched DBIM-2 and DBIM-3 on the reported FID and classification accuracy.",
+          "explanation": "Correct. All three rows report FID 4.07 and classification accuracy 72.0 in that setting."
+        },
+        {
+          "text": "DBMSolver proved that nonlinear predictor error is always dominant.",
+          "explanation": "Incorrect. Dominance of that error is the authors' hypothesis for similar performance, not a general proof."
+        },
+        {
+          "text": "DBMSolver dominated every baseline on every metric and compute measure.",
+          "explanation": "Incorrect. The matching DBIM results directly rule out that interpretation."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-4",
+        "section-5"
+      ],
+      "claimIds": [
+        "c12",
+        "c13"
+      ]
+    }
+  ],
+  "id": "dbmsolver-a-training-free-diffusion-bridge",
+  "createdAt": "2026-10-02T00:19:15.558Z",
+  "pipelineVersion": "subjects-lessons-v1",
+  "sources": [
+    {
+      "id": "abstract",
+      "label": "Original paper · abstract",
+      "url": "https://arxiv.org/abs/2605.05889",
+      "digest": "8db6127d455868ca439bdd0d1e8cb3364982cc42864ae341c28189ec225d8f3a",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:15:27.714Z"
+    },
+    {
+      "id": "main-text",
+      "label": "Original paper · unsectioned main text",
+      "url": "https://arxiv.org/html/2605.05889",
+      "digest": "972738fcc204647891a437cf7fcf42d61fa50c418bfc678dd6800576b0064e6f",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:15:27.714Z"
+    },
+    {
+      "id": "section-1",
+      "label": "1 Introduction",
+      "url": "https://arxiv.org/html/2605.05889#S1",
+      "digest": "07fff60fdb6805fcec807d4ab3e2ce929f9a124eb581a70eda20eafaa55aa5ec",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:15:27.714Z"
+    },
+    {
+      "id": "section-2",
+      "label": "2 Preliminaries and Related Work",
+      "url": "https://arxiv.org/html/2605.05889#S2",
+      "digest": "ab49921eace2c376c9b2d78320025033309c7fc12b44ab273beb7ee5945fc288",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:15:27.714Z"
+    },
+    {
+      "id": "section-3",
+      "label": "3 DBMSolver: A Fast DBM Sampler",
+      "url": "https://arxiv.org/html/2605.05889#S3",
+      "digest": "8d61f2268c354bc6c39b070f00242328630dd42a4c42a6511fedec4959c0b08c",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:15:27.714Z"
+    },
+    {
+      "id": "section-3-part-2",
+      "label": "3 DBMSolver: A Fast DBM Sampler · part 2",
+      "url": "https://arxiv.org/html/2605.05889#S3",
+      "digest": "3a6a167dde64e96fb563e5043474f9cef0c531aa1d667c7964182da357ed420a",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:15:27.714Z"
+    },
+    {
+      "id": "section-4",
+      "label": "4 Experiments and Results",
+      "url": "https://arxiv.org/html/2605.05889#S4",
+      "digest": "5e4895abb80b9b0dc71fa6e832887b80de1f9accddcb676b7d27865a7d18da98",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:15:27.714Z"
+    },
+    {
+      "id": "section-4-part-2",
+      "label": "4 Experiments and Results · part 2",
+      "url": "https://arxiv.org/html/2605.05889#S4",
+      "digest": "fb2cb95294cac95e92171dbc15e7dca14ff8519de2d62394d80dfce7d10ec7bb",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:15:27.714Z"
+    },
+    {
+      "id": "section-5",
+      "label": "5 Conclusion",
+      "url": "https://arxiv.org/html/2605.05889#S5",
+      "digest": "b1438610ed27d71cd874d577fe7988c5f3a8badfad4111608e9585acdaadb896",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:15:27.714Z"
+    }
+  ],
+  "review": {
+    "status": "passed",
+    "reviewedAt": "2026-10-02T00:19:15.559Z",
+    "contentDigest": "2e2967c9759cf30800fd099e22e388c8544bc95dfe991b0267cd08d2cf63a470"
+  }
+}

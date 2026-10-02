@@ -1,0 +1,480 @@
+{
+  "title": "The Gate Inside the State: How Mamba Selects What Survives",
+  "summary": "Mamba makes state-space dynamics depend on each input, gaining content-aware memory while retaining recurrent, linear-length computation through a hardware-aware scan.",
+  "prerequisites": [
+    "Linear recurrences and latent states",
+    "Conceptual understanding of softmax attention",
+    "Matrix-vector products and matrix exponentials",
+    "Basic asymptotic complexity"
+  ],
+  "objectives": [
+    "Explain why fixed state-space dynamics struggle with content-dependent selection.",
+    "Derive recurrent and convolutional forms of a time-invariant state-space model.",
+    "Trace how input-dependent parameters control memory, updates, and resets.",
+    "Explain why selectivity prevents computation with one fixed convolution kernel.",
+    "Relate selective scan design to the paper's efficiency evidence and limitations."
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "mechanism",
+      "statement": "A structured state-space layer maps an input sequence through a latent state using a discretized linear recurrence, and a time-invariant instance can also be evaluated as a convolution.",
+      "conditions": "The parameters remain fixed across sequence positions and the stated discretization has been applied.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c2",
+      "kind": "equation",
+      "statement": "Under zero-order-hold discretization, the continuous parameters satisfy $\\overline{\\mathbf A}=\\exp(\\Delta\\mathbf A)$ and $\\overline{\\mathbf B}=(\\Delta\\mathbf A)^{-1}(\\exp(\\Delta\\mathbf A)-\\mathbf I)\\Delta\\mathbf B$.",
+      "conditions": "This is the paper's ZOH rule; alternative discretization rules are possible.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c3",
+      "kind": "mechanism",
+      "statement": "Mamba's selection mechanism makes $\\Delta$, $\\mathbf B$, and $\\mathbf C$ functions of the current input, turning fixed dynamics into position-dependent dynamics.",
+      "conditions": "This describes the selective SSM construction in the paper's Algorithm 2.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c4",
+      "kind": "caveat",
+      "statement": "Once the SSM parameters vary with position, the layer no longer corresponds to one fixed global convolution kernel.",
+      "conditions": "The input-dependent parameters carry a sequence-length dimension.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c5",
+      "kind": "equation",
+      "statement": "In the scalar special case, the selective recurrence becomes $g_t=\\sigma(\\operatorname{Linear}(x_t))$ and $h_t=(1-g_t)h_{t-1}+g_tx_t$.",
+      "conditions": "This identity uses $N=1$, $\\mathbf A=-1$, $\\mathbf B=1$, a linear input projection, softplus for $\\Delta$, and ZOH discretization.",
+      "sourceIds": [
+        "section-3-part-2"
+      ]
+    },
+    {
+      "id": "c6",
+      "kind": "mechanism",
+      "statement": "Small input-dependent update gates preserve earlier state and suppress the current input, whereas large gates replace more of the state with current content.",
+      "conditions": "This interpretation applies to the scalar gated special case; the full selective SSM has vector states and additional selective projections.",
+      "sourceIds": [
+        "section-3-part-2"
+      ]
+    },
+    {
+      "id": "c7",
+      "kind": "mechanism",
+      "statement": "The selective scan fuses discretization and recurrence in fast accelerator memory, writes only sequence outputs to high-bandwidth memory, and recomputes intermediate states during the backward pass.",
+      "conditions": "This describes the paper's GPU-oriented implementation rather than a property of every possible SSM implementation.",
+      "sourceIds": [
+        "section-3",
+        "section-3-part-2"
+      ]
+    },
+    {
+      "id": "c8",
+      "kind": "result",
+      "statement": "On the paper's selective-copying evaluation, replacing an S4 layer with S6 raised accuracy from 18.3 to 97.0 in the ungated architecture and from 56.4 to 99.8 in the Mamba architecture.",
+      "conditions": "These values are for the architecture-layer combinations reported in the selective-copying table.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c9",
+      "kind": "result",
+      "statement": "A two-layer Mamba trained on induction sequences of length 256 generalized in the reported experiment through length 1,048,576.",
+      "conditions": "The task used vocabulary size 16 and model dimension 64 for Mamba; this synthetic extrapolation is not a general guarantee for arbitrary long-context tasks.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c10",
+      "kind": "result",
+      "statement": "In the approximately 350-million-parameter language-model ablation, the Mamba architecture with an S6 layer achieved perplexity 8.69, compared with 10.56 for its real-valued S4 substitution.",
+      "conditions": "The comparison uses the paper's Chinchilla-token-count language-model setting and holds the surrounding Mamba architecture category fixed.",
+      "sourceIds": [
+        "section-4-part-3"
+      ]
+    },
+    {
+      "id": "c11",
+      "kind": "result",
+      "statement": "In the selective-parameter ablation, making $\\Delta$, $\\mathbf B$, and $\\mathbf C$ selective together achieved perplexity 8.71, while the fully non-selective row achieved 10.93.",
+      "conditions": "The result is from the paper's approximately 350-million-parameter language-model ablation; lower perplexity is better.",
+      "sourceIds": [
+        "section-4-part-3"
+      ]
+    },
+    {
+      "id": "c12",
+      "kind": "result",
+      "statement": "The reported efficient scan used linear sequence-length scaling, and the end-to-end inference benchmark showed roughly four-to-five-times higher throughput than a similarly sized Transformer.",
+      "conditions": "The throughput statement belongs to the paper's benchmark setup and is attributed to recurrent inference without a KV cache and access to larger batch sizes; it is not universal hardware performance.",
+      "sourceIds": [
+        "abstract",
+        "section-4-part-3"
+      ]
+    },
+    {
+      "id": "c13",
+      "kind": "caveat",
+      "statement": "The paper's evaluation did not establish favorable scaling beyond the studied small-model regime, and the authors identify larger-scale SSM engineering as unresolved.",
+      "conditions": "The stated limitation concerns the experiments in this paper, which remained below the scale of several strong open-source language models.",
+      "sourceIds": [
+        "section-5"
+      ]
+    },
+    {
+      "id": "c14",
+      "kind": "caveat",
+      "statement": "Selectivity can weaken the continuous-signal inductive bias on modalities where time-invariant SSMs are strong.",
+      "conditions": "The tradeoff is modality-dependent; the paper used complex-valued parameters for its audio experiment but real values by default elsewhere.",
+      "sourceIds": [
+        "section-3-part-2",
+        "section-4-part-2",
+        "section-5"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "s1",
+      "title": "The compression problem beneath sequence modeling",
+      "markdown": "A sequence model must decide what information remains available after many inputs. Attention largely postpones that decision: during autoregressive inference, earlier keys and values remain in a cache so a later query can address them. A recurrent model instead compresses the prefix into a fixed-size state. Its next step can therefore be cheap, but anything discarded from that state is unavailable later.\n\nThe attention experiment below isolates the addressing idea. Four fixed scores are divided by a positive temperature and normalized with softmax. Predict what happens to the largest weight as temperature falls: it becomes more dominant. The pictured calculation is illustrative—not a learned attention head or measured token similarity—but it clarifies what a compressed recurrence gives up. Attention can redistribute weight across stored items at query time; a recurrence must have already encoded the useful information.\n\nMamba's central proposal is not to stop compressing. It is to make compression selective. The current input changes how information enters, persists in, and exits a compact state. That distinction matters: linear scaling alone does not ensure that a model preserves the right content.",
+      "sourceIds": [
+        "section-1",
+        "section-3"
+      ],
+      "claimIds": [
+        "c3"
+      ],
+      "figureId": "fig-attention"
+    },
+    {
+      "id": "s2",
+      "title": "From a continuous system to a sequence recurrence",
+      "markdown": "Begin with a one-dimensional signal $x(t)$, an $N$-dimensional latent state $h(t)$, and scalar output $y(t)$. A structured state-space model starts from\n\n$$\nh'(t)=\\mathbf A h(t)+\\mathbf Bx(t),\\qquad y(t)=\\mathbf Ch(t).\n$$\n\nHere $t$ is continuous time; $\\mathbf A\\in\\mathbb R^{N\\times N}$ evolves the state, $\\mathbf B\\in\\mathbb R^{N\\times1}$ injects the input, and $\\mathbf C\\in\\mathbb R^{1\\times N}$ reads the state. A step size $\\Delta>0$ converts this system into\n\n$$\nh_t=\\overline{\\mathbf A}h_{t-1}+\\overline{\\mathbf B}x_t,\\qquad y_t=\\mathbf Ch_t,\n$$\n\nwhere subscript $t$ now denotes a discrete sequence position. With zero-order hold,\n\n$$\n\\overline{\\mathbf A}=\\exp(\\Delta\\mathbf A),\\qquad\n\\overline{\\mathbf B}=(\\Delta\\mathbf A)^{-1}\\bigl(\\exp(\\Delta\\mathbf A)-\\mathbf I\\bigr)\\Delta\\mathbf B,\n$$\n\nand $\\mathbf I$ is the identity matrix. The paper notes that other discretizations are possible.\n\nIf these parameters are fixed at every position, expanding the recurrence produces one fixed convolution kernel:\n\n$$\n\\overline{\\mathbf K}=(\\mathbf C\\overline{\\mathbf B},\\;\\mathbf C\\overline{\\mathbf A}\\overline{\\mathbf B},\\;\\mathbf C\\overline{\\mathbf A}^{2}\\overline{\\mathbf B},\\ldots),\n\\qquad y=x*\\overline{\\mathbf K}.\n$$\n\nThus recurrence and convolution are two computations of the same linear time-invariant transformation. This duality enabled earlier SSMs to train convolutionally and run autoregressively as recurrences.",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c1",
+        "c2"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s3",
+      "title": "Why fixed dynamics miss content",
+      "markdown": "Time invariance means that equal relative positions receive the same transition rule regardless of token identity. That is useful for stationary signal structure, but it creates a shortcut—and then a failure—on the paper's copying examples. Ordinary copying uses fixed spacing, so a static kernel can learn when information should reappear. Selective copying randomizes the spacing and inserts irrelevant tokens. Position alone no longer says which items deserve memory.\n\nThe same issue appears in induction: after observing a pair such as “Harry Potter,” the model should predict “Potter” when “Harry” recurs. The required action depends on both present content and earlier context. A fixed kernel cannot change its information-routing rule merely because the current token is a meaningful cue.\n\nA common misconception is that any multiplicative gate makes a sequence model selective. The paper distinguishes ordinary architecture gating from a parameter that changes interactions along the sequence axis. A gate placed around a fixed SSM may rescale features without changing how recurrent state crosses intervening positions. In the selective-copying table, architecture gates helped only partially, whereas substituting the selective S6 layer produced 97.0% accuracy without an architecture gate and 99.8% inside Mamba. Those results diagnose this synthetic task under its reported setup; they do not prove that every content-dependent problem is solved.",
+      "sourceIds": [
+        "section-3",
+        "section-4"
+      ],
+      "claimIds": [
+        "c3",
+        "c8"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s4",
+      "title": "Selection turns the transition into a decision",
+      "markdown": "Mamba makes $\\Delta$, $\\mathbf B$, and $\\mathbf C$ functions of the input $x_t$. The resulting quantities differ across positions, so the recurrence is time-varying. Informally, $\\Delta_t$ controls persistence versus update, $\\mathbf B_t$ controls how current content enters state, and $\\mathbf C_t$ controls how state contributes to the output. Because these parameters now carry a length dimension, there is no single fixed convolution kernel for the whole sequence.\n\nThe cleanest intuition comes from the paper's scalar special case:\n\n$$\ng_t=\\sigma(\\operatorname{Linear}(x_t)),\\qquad\nh_t=(1-g_t)h_{t-1}+g_tx_t,\n$$\n\nwhere $h_t$ is scalar state, $x_t$ is scalar input, $g_t\\in(0,1)$ is an input-dependent gate, $\\sigma(z)=1/(1+e^{-z})$ is the logistic sigmoid, and $\\operatorname{Linear}$ is a learned affine projection. When $g_t\\approx0$, the old state survives and the new input is nearly ignored. When $g_t\\approx1$, current content nearly replaces the old state.\n\nWorked example, explicitly illustrative: take $h_{t-1}=4$, $x_t=10$, and $g_t=0.25$. Then\n\n$$\nh_t=(1-0.25)4+0.25(10)=3+2.5=5.5.\n$$\n\nIf an irrelevant next input is $x_{t+1}=-6$ with $g_{t+1}=0.02$, then $h_{t+1}=0.98(5.5)+0.02(-6)=5.27$. The state mostly preserves the earlier value. These invented numbers teach the gate arithmetic, not a measured Mamba activation.\n\nThe state experiment pictures an even narrower prerequisite: $h_t=ah_{t-1}+u_t$ after one impulse. Increasing fixed retention $a$ slows decay. Predict how the twelfth state changes as $a$ rises. This toy has no input-dependent gate, vector state, or learned parameters; precisely because it is non-selective, it makes clear what Mamba changes.",
+      "sourceIds": [
+        "section-3",
+        "section-3-part-2"
+      ],
+      "claimIds": [
+        "c3",
+        "c4",
+        "c5",
+        "c6"
+      ],
+      "figureId": "fig-state"
+    },
+    {
+      "id": "s5",
+      "title": "Recovering parallelism without recovering convolution",
+      "markdown": "Selectivity improves expressiveness but removes the convenient fixed-convolution training path. A naive recurrent implementation would materialize states with shape $(B,L,D,N)$, where $B$ is batch size, $L$ sequence length, $D$ channel count, and $N$ state dimension. That expanded tensor can make movement through accelerator memory more costly than the arithmetic itself.\n\nThe paper's selective scan addresses computation rather than changing the recurrence's meaning. It loads $\\Delta$, $\\mathbf A$, $\\mathbf B$, and $\\mathbf C$ from high-bandwidth memory into faster on-chip SRAM, fuses discretization with the scan, and writes outputs of shape $(B,L,D)$ back to high-bandwidth memory. A work-efficient parallel scan handles the recurrence's dependency structure. During backpropagation, intermediate states are recomputed instead of being retained in expensive memory.\n\nThis leads to an important distinction. “Recurrent” does not necessarily mean that training must execute one visibly serial loop at a time; an associative scan can expose parallel work. Conversely, “linear time” does not mean constant total cost. Processing twice as many positions still requires work proportional to twice the sequence length. Constant-time-per-token autoregressive inference refers to updating a fixed recurrent state without revisiting a growing KV cache.",
+      "sourceIds": [
+        "section-1",
+        "section-3",
+        "section-3-part-2"
+      ],
+      "claimIds": [
+        "c4",
+        "c7",
+        "c12"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s6",
+      "title": "The Mamba block and what the ablations isolate",
+      "markdown": "A selective SSM is a sequence transformation, not by itself a complete network. Mamba places it inside a homogeneous gated block with input and output projections, SiLU/Swish activation, optional normalization, and residual connections. The design combines roles that earlier architectures assigned to separate SSM and MLP blocks; the paper's experiments fixed expansion factor $E=2$.\n\nThe ablations help separate block design from the selective inner layer. Around 350 million parameters, the Mamba architecture with a real-valued S4 layer had perplexity 10.56, while the same architecture category with S6 reached 8.69. In another selective-parameter table, the fully static row scored 10.93; making only $\\Delta$ selective scored 9.81, while making $\\Delta$, $\\mathbf B$, and $\\mathbf C$ selective together scored 8.71. Lower perplexity is better.\n\nThese controlled comparisons support the claim that input-dependent recurrent dynamics—not merely the surrounding block—drive much of the reported language-model gain. They do not show that $\\Delta$ alone explains all performance: the joint setting was better than any single selective parameter reported. Nor do they imply that larger state is automatically useful. The paper found the strongest gains from increasing $N$ when $\\mathbf B$ and $\\mathbf C$ were also selective.",
+      "sourceIds": [
+        "section-3-part-2",
+        "section-4-part-3",
+        "section-4-part-4"
+      ],
+      "claimIds": [
+        "c10",
+        "c11"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s7",
+      "title": "Reading the evidence at the right scale",
+      "markdown": "The synthetic evidence is unusually sharp. The two-layer induction model was trained at length 256 with vocabulary size 16, then evaluated from length 64 through 1,048,576; the paper reports perfect generalization through the longest test length. That demonstrates the learned solution's extrapolation on this constructed associative-recall task, not universal million-token reasoning.\n\nThe broader experiments cover language, DNA, and audio. In language scaling experiments, Mamba matched the paper's strong Transformer++ recipe over the evaluated range. In efficiency benchmarks, the recurrent design delivered roughly four-to-five-times the inference throughput of similarly sized Transformers under the authors' setup. Hardware, kernels, batch size, model shape, and generation conditions matter, so that number should not be treated as a portable speed constant.\n\nThere are also scientific limits. The paper explicitly says its model-scale evaluation remained below several prominent open-source models evaluated at 7B parameters and beyond, leaving favorable larger-scale comparison unresolved. Selectivity is not a free universal prior: it can impede performance on continuous signals where time-invariant SSMs are strong. Indeed, the audio study was the one experiment that switched from the default real parameterization to a complex one. The appropriate conclusion is therefore specific: input-conditioned state transitions made compact recurrence substantially more capable in the tested settings, while a fused scan made that choice practical on the tested hardware.",
+      "sourceIds": [
+        "abstract",
+        "section-4",
+        "section-4-part-2",
+        "section-4-part-3",
+        "section-5",
+        "section-6"
+      ],
+      "claimIds": [
+        "c9",
+        "c12",
+        "c13",
+        "c14"
+      ],
+      "figureId": null
+    }
+  ],
+  "figures": [
+    {
+      "id": "fig-attention",
+      "kind": "attention",
+      "title": "Addressing stored items with softmax",
+      "question": "As the positive temperature decreases, does the highest-scoring item receive more or less normalized weight?",
+      "caption": "Four fixed illustrative scores $[2,1,0,-1]$ are divided by temperature and passed through softmax, showing how a query can redistribute normalized weight across stored items.",
+      "limitation": "This is an illustrative normalization calculation, not a learned attention head, measured token similarity, runtime comparison, or model of Mamba's recurrent state.",
+      "sourceIds": [
+        "section-1",
+        "section-3"
+      ],
+      "claimIds": [
+        "c3"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "fig-state",
+      "kind": "state",
+      "title": "Persistence in a fixed scalar recurrence",
+      "question": "With one initial impulse and no later input, how does increasing retention $a$ change the rate at which the state decays?",
+      "caption": "The control evaluates the illustrative recurrence $h_t=ah_{t-1}+u_t$ for 12 steps with $u_0=1$ and no later impulses; larger $a$ preserves more state.",
+      "limitation": "The pictured system has one scalar, fixed retention, and no learned or input-dependent selection; it is not a selective or complex-valued Mamba simulation.",
+      "sourceIds": [
+        "section-2",
+        "section-3-part-2"
+      ],
+      "claimIds": [
+        "c1",
+        "c5",
+        "c6"
+      ],
+      "illustrative": true
+    }
+  ],
+  "quiz": [
+    {
+      "question": "Assume the scalar recurrence $h_t=(1-g_t)h_{t-1}+g_tx_t$. If a token should be ignored while preserving prior state, which gate behavior is appropriate?",
+      "options": [
+        {
+          "text": "Choose $g_t$ near zero.",
+          "explanation": "Correct. The coefficient on prior state approaches one, while the coefficient on the current input approaches zero."
+        },
+        {
+          "text": "Choose $g_t$ near one.",
+          "explanation": "This nearly replaces the prior state with the current input, which is appropriate for a strong update or reset rather than ignoring it."
+        },
+        {
+          "text": "Fix $g_t=1/2$ for every token.",
+          "explanation": "This always mixes old and new values equally and therefore cannot implement content-dependent ignoring under the stated recurrence."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-3-part-2"
+      ],
+      "claimIds": [
+        "c5",
+        "c6"
+      ]
+    },
+    {
+      "question": "Why can a selective SSM not use the same fixed global-convolution computation as an LTI SSM?",
+      "options": [
+        {
+          "text": "Its hidden state must always be complex-valued.",
+          "explanation": "Incorrect. The paper uses real values by default, and numerical field choice is not what removes the fixed convolution."
+        },
+        {
+          "text": "Its parameters vary with the input and sequence position.",
+          "explanation": "Correct. Position-dependent $\\Delta$, $\\mathbf B$, and $\\mathbf C$ produce changing transitions, so one static kernel no longer represents the entire sequence."
+        },
+        {
+          "text": "Convolutions cannot represent any recurrence.",
+          "explanation": "Incorrect. The paper explicitly gives equivalent recurrent and convolutional forms for the time-invariant SSM."
+        }
+      ],
+      "answer": 1,
+      "sourceIds": [
+        "section-2",
+        "section-3"
+      ],
+      "claimIds": [
+        "c1",
+        "c3",
+        "c4"
+      ]
+    },
+    {
+      "question": "What is the strongest defensible interpretation of the reported induction extrapolation to length 1,048,576?",
+      "options": [
+        {
+          "text": "It proves Mamba can reason perfectly over any million-token real dataset.",
+          "explanation": "Incorrect. Success on a controlled synthetic induction task does not establish universal long-context reasoning."
+        },
+        {
+          "text": "It guarantees every larger Mamba will outperform every Transformer.",
+          "explanation": "Incorrect. The result neither covers every model scale nor supplies an architecture-independent guarantee."
+        },
+        {
+          "text": "The trained model retained its solution far beyond training length on that synthetic task.",
+          "explanation": "Correct. This matches the reported conditions while keeping the conclusion limited to the tested induction setup."
+        }
+      ],
+      "answer": 2,
+      "sourceIds": [
+        "section-4",
+        "section-5"
+      ],
+      "claimIds": [
+        "c9",
+        "c13"
+      ]
+    }
+  ],
+  "id": "mamba",
+  "createdAt": "2026-10-02T00:35:49.897Z",
+  "pipelineVersion": "subjects-lessons-v1",
+  "sources": [
+    {
+      "id": "abstract",
+      "label": "Original paper · abstract",
+      "url": "https://arxiv.org/abs/2312.00752",
+      "digest": "02876b0b6623889fc02293d10311254a4b50fe4eea0c1324ba6744906305d479",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:33:15.025Z"
+    },
+    {
+      "id": "section-1",
+      "label": "1 Introduction",
+      "url": "https://arxiv.org/html/2312.00752#S1",
+      "digest": "4932b3439f7405dd9ab88cfdd00be8028e6c9f985df89eb69a54ed8fb24f3409",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:33:15.025Z"
+    },
+    {
+      "id": "section-2",
+      "label": "2 State Space Models",
+      "url": "https://arxiv.org/html/2312.00752#S2",
+      "digest": "d232ae454f4e51a846cc61adffe1cc694b0d745b1644b0894c13b7b2354da07c",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:33:15.025Z"
+    },
+    {
+      "id": "section-3",
+      "label": "3 Selective State Space Models",
+      "url": "https://arxiv.org/html/2312.00752#S3",
+      "digest": "d4ad7e87d04065ac77015b6f6855bf66197cd76ed4278513708d18f00ee3da9a",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:33:15.025Z"
+    },
+    {
+      "id": "section-3-part-2",
+      "label": "3 Selective State Space Models · part 2",
+      "url": "https://arxiv.org/html/2312.00752#S3",
+      "digest": "1c46dd42d26ff0748a727590cbf08d90ee9d6af68cdf04465e16b93c196bf12d",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:33:15.025Z"
+    },
+    {
+      "id": "section-3-part-3",
+      "label": "3 Selective State Space Models · part 3",
+      "url": "https://arxiv.org/html/2312.00752#S3",
+      "digest": "c725372e7825b951cdd738e6736b97cc73c338c2b812bfb3490072ff50a0c120",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:33:15.025Z"
+    },
+    {
+      "id": "section-4",
+      "label": "4 Empirical Evaluation",
+      "url": "https://arxiv.org/html/2312.00752#S4",
+      "digest": "1859ea2f92a2c855ab8c671baf884942ef805c40790aa491a94f4a23e0e3df40",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:33:15.025Z"
+    },
+    {
+      "id": "section-4-part-2",
+      "label": "4 Empirical Evaluation · part 2",
+      "url": "https://arxiv.org/html/2312.00752#S4",
+      "digest": "eb33986599c92475793fff6db37413b361409655c2b2556a0e44ec3580526816",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:33:15.025Z"
+    },
+    {
+      "id": "section-4-part-3",
+      "label": "4 Empirical Evaluation · part 3",
+      "url": "https://arxiv.org/html/2312.00752#S4",
+      "digest": "ff7f40df6217c39cc3df10ac0015cecffea050992e6dd0e77dba4385df53ff2b",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:33:15.025Z"
+    },
+    {
+      "id": "section-4-part-4",
+      "label": "4 Empirical Evaluation · part 4",
+      "url": "https://arxiv.org/html/2312.00752#S4",
+      "digest": "7f2593144a62dcb2ef36277b12132104d52cc9b2833359889a9a0f4a7b720d4c",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:33:15.025Z"
+    },
+    {
+      "id": "section-5",
+      "label": "5 Discussion",
+      "url": "https://arxiv.org/html/2312.00752#S5",
+      "digest": "b7fd539f1a1698f42475a4b78214e6ca667852e7fc254bc89b5b0aea6148feb9",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:33:15.025Z"
+    },
+    {
+      "id": "section-6",
+      "label": "6 Conclusion",
+      "url": "https://arxiv.org/html/2312.00752#S6",
+      "digest": "29b91fe7cf028fc2d54d7e456b51d51588ea3c5adf574843149ab4a372471eaa",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:33:15.025Z"
+    }
+  ],
+  "review": {
+    "status": "passed",
+    "reviewedAt": "2026-10-02T00:35:49.897Z",
+    "contentDigest": "8a7160de0f1980f7e9f8de88e938891dcd36fd762f2ccb8d1e83a42c53a5811b"
+  }
+}

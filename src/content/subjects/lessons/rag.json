@@ -1,0 +1,456 @@
+{
+  "title": "A Generator with a Searchable Memory",
+  "summary": "RAG turns retrieved Wikipedia passages into latent evidence for generation, contrasting one-document-per-sequence and document-mixture-per-token formulations.",
+  "prerequisites": [
+    "Autoregressive sequence models and conditional probability",
+    "Softmax distributions and vector inner products",
+    "Latent-variable marginalization and top-k retrieval"
+  ],
+  "objectives": [
+    "Explain how RAG combines parametric and non-parametric memory.",
+    "Derive the RAG-Sequence and RAG-Token factorizations.",
+    "Trace how retrieval scores affect generated-token probabilities.",
+    "Interpret the reported results under their evaluation conditions.",
+    "Identify what retrieval does and does not guarantee."
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "mechanism",
+      "statement": "RAG combines a pre-trained sequence-to-sequence generator with a dense index of Wikipedia passages accessed by a neural retriever.",
+      "conditions": "In the architecture studied, using BART-large as generator and a DPR-initialized retriever over Wikipedia.",
+      "sourceIds": [
+        "abstract",
+        "section-1",
+        "section-2"
+      ]
+    },
+    {
+      "id": "c2",
+      "kind": "mechanism",
+      "statement": "The retriever assigns passage probabilities from exponentiated inner products between query and document representations, with top passages found by maximum inner-product search.",
+      "conditions": "For the DPR-based retrieval component described in the paper.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c3",
+      "kind": "equation",
+      "statement": "RAG-Sequence marginalizes one latent document for the entire output, summing each document's retrieval probability times its full-sequence generator probability.",
+      "conditions": "Under the paper's top-k approximation to the document marginal.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c4",
+      "kind": "equation",
+      "statement": "RAG-Token marginalizes documents separately inside each token probability, so different output positions can receive support from different passages.",
+      "conditions": "Under the paper's top-k approximation, with one retrieved candidate set conditioned on the input.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c5",
+      "kind": "mechanism",
+      "statement": "Training minimizes negative marginal log-likelihood without direct supervision identifying which passage should be retrieved.",
+      "conditions": "For fine-tuning input-output pairs in the reported RAG training procedure.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c6",
+      "kind": "mechanism",
+      "statement": "During training, the document encoder and index remain fixed while the query encoder and BART generator are fine-tuned.",
+      "conditions": "For the implementation used in the reported experiments.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c7",
+      "kind": "result",
+      "statement": "On the reported open-domain QA test sets, RAG-Sequence scored 44.5 on Natural Questions, 45.2 on WebQuestions, and 52.2 on CuratedTrec exact match.",
+      "conditions": "Using the December 2018 Wikipedia index and the paper's specified test splits and exact-match evaluation.",
+      "sourceIds": [
+        "section-3",
+        "section-4"
+      ]
+    },
+    {
+      "id": "c8",
+      "kind": "result",
+      "statement": "In Jeopardy question generation, evaluators judged RAG-Token more factual than BART in 42.7% of 452 comparison pairs, while judging BART more factual in 7.1%.",
+      "conditions": "In the paper's pairwise human evaluation; remaining pairs were judged both good in 11.7%, both poor in 17.7%, or had no majority in 20.8%.",
+      "sourceIds": [
+        "section-3",
+        "section-4"
+      ]
+    },
+    {
+      "id": "c9",
+      "kind": "result",
+      "statement": "Replacing the retrieval index changed answers to time-sensitive world-leader questions without retraining the model.",
+      "conditions": "For 82 templated questions comparing December 2016 and December 2018 Wikipedia indices.",
+      "sourceIds": [
+        "section-4-part-2"
+      ]
+    },
+    {
+      "id": "c10",
+      "kind": "result",
+      "statement": "Freezing the dense retriever reduced development-set performance relative to learned retrieval on every reported task in the ablation table.",
+      "conditions": "For the paper's task-specific fine-tuning and development-set comparisons in Table 6.",
+      "sourceIds": [
+        "section-4-part-2"
+      ]
+    },
+    {
+      "id": "c11",
+      "kind": "caveat",
+      "statement": "Retrieval quality and downstream quality are not interchangeable: BM25 produced the strongest FEVER ablation results despite learned dense retrieval improving the other reported tasks.",
+      "conditions": "For the development-set ablations using BM25 scores as retrieval logits.",
+      "sourceIds": [
+        "section-4-part-2"
+      ]
+    },
+    {
+      "id": "c12",
+      "kind": "caveat",
+      "statement": "Retrieved text may be incorrect or biased, and retrieval augmentation does not eliminate harmful, misleading, or fabricated generation.",
+      "conditions": "For deployment with Wikipedia or any imperfect external knowledge source.",
+      "sourceIds": [
+        "section-7"
+      ]
+    },
+    {
+      "id": "c13",
+      "kind": "result",
+      "statement": "RAG generated some correct Natural Questions answers even when no retrieved document contained the answer string, reaching 11.8% accuracy in that subset.",
+      "conditions": "For the paper's Natural Questions analysis of cases where the correct answer was absent from retrieved documents.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c14",
+      "kind": "caveat",
+      "statement": "Increasing the number of retrieved documents did not benefit both formulations uniformly: RAG-Sequence improved monotonically on the reported NQ analysis, whereas RAG-Token peaked at ten documents.",
+      "conditions": "At test time in the paper's Natural Questions document-count analysis.",
+      "sourceIds": [
+        "section-4-part-2"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "s1",
+      "title": "Two places knowledge can live",
+      "markdown": "A sequence-to-sequence model maps an input sequence $x$ to an output sequence $y=(y_1,\\ldots,y_N)$. Its parameters can retain facts learned during pre-training; the paper calls this **parametric memory**. That memory is useful but awkward to inspect or revise. RAG adds **non-parametric memory**: a collection of raw text passages stored in a searchable dense-vector index.\n\nThe distinction is functional, not mystical. The generator still contributes linguistic knowledge and learned associations. Retrieval supplies candidate passages at inference time. RAG's particular contribution is to place these parts inside one probabilistic generation model: retrieved passages are latent variables rather than mandatory answer spans. Consequently, the output need not be copied verbatim from a passage. In the Natural Questions analysis, RAG even answered some cases correctly when the answer string appeared in none of the retrieved documents—but that result should not be read as evidence that retrieval was irrelevant, because passages may provide clues and the generator may supply complementary parametric knowledge.",
+      "sourceIds": [
+        "section-1",
+        "section-2",
+        "section-4"
+      ],
+      "claimIds": [
+        "c1",
+        "c13"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s2",
+      "title": "From a query to a passage distribution",
+      "markdown": "Let $z$ denote a candidate passage. The retriever has parameters $\\eta$ and assigns\n\n$$\np_{\\eta}(z\\mid x)\\propto \\exp\\!\\left(\\mathbf d(z)^{\\top}\\mathbf q(x)\\right).\n$$\n\nHere $\\mathbf q(x)$ is the query encoder's vector for input $x$, $\\mathbf d(z)$ is the document encoder's vector for passage $z$, and $^{\\top}$ denotes transpose, making $\\mathbf d(z)^{\\top}\\mathbf q(x)$ an inner product. Larger inner products yield larger probabilities after normalization. Maximum Inner Product Search retrieves the top $k$ candidates without exhaustively treating all 21 million indexed chunks as generator inputs.\n\nThe retrieval figure below isolates ranking from generation. It contains four invented candidates with fixed scores $0.9,0.7,0.5,0.2$. Changing $k$ reveals a longer prefix of that ranking without changing any score. Predict what happens when $k$ grows: recall opportunities can increase, but lower-ranked context also enters the candidate set. This toy has no corpus, embeddings, learned query, or generated answer, so it demonstrates only top-$k$ selection—not RAG accuracy.\n\nIn the experiments, the non-parametric memory came from a December 2018 Wikipedia dump split into disjoint 100-word chunks. The paper used a DPR-initialized retriever and a FAISS index. Those implementation facts matter: results are evidence about this indexed corpus and training setup, not about every possible retrieval system.",
+      "sourceIds": [
+        "section-2",
+        "section-3"
+      ],
+      "claimIds": [
+        "c1",
+        "c2"
+      ],
+      "figureId": "fig-retrieval"
+    },
+    {
+      "id": "s3",
+      "title": "Generation after retrieval",
+      "markdown": "For token position $i$, the generator is\n\n$$\np_{\\theta}(y_i\\mid x,z,y_{1:i-1}),\n$$\n\nwhere $\\theta$ denotes generator parameters, $y_i$ is the current output token, and $y_{1:i-1}$ is the already generated prefix. The paper concatenates $x$ and $z$ as the input to BART-large. Thus a passage does not directly become the answer; it changes the generator's conditional distribution over the next token.\n\nA useful prerequisite is softmax weighting. In the illustrative figure, four fixed scores $[2,1,0,-1]$ are divided by a positive temperature $T$ and normalized as $w_j=\\exp(s_j/T)/\\sum_{r=1}^{4}\\exp(s_r/T)$. At $T=1$, the unnormalized values are approximately $[7.389,2.718,1,0.368]$, whose sum is $11.475$. The first weight is therefore $7.389/11.475\\approx0.644$. This arithmetic is illustrative, not a measurement of RAG. Lower temperature sharpens these displayed weights; higher temperature flattens them. RAG's retriever also normalizes scores, but the control here neither retrieves real passages nor represents a measured attention head.\n\nThe key conceptual separation is: retrieval proposes and weights passages; the autoregressive generator predicts words conditional on those passages and the output prefix.",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c1",
+        "c2"
+      ],
+      "figureId": "fig-attention"
+    },
+    {
+      "id": "s4",
+      "title": "One document for a sequence, or mixtures at every token",
+      "markdown": "RAG-Sequence treats one passage as responsible for the complete output:\n\n$$\np_{\\mathrm{RAG\\text{-}Sequence}}(y\\mid x)\\approx\n\\sum_{z\\in\\mathrm{top}\\text{-}k(p_{\\eta}(\\cdot\\mid x))}\np_{\\eta}(z\\mid x)\n\\prod_{i=1}^{N}p_{\\theta}(y_i\\mid x,z,y_{1:i-1}).\n$$\n\nThe sum is outside the token product. Each candidate passage receives a probability for the entire sequence, and those sequence probabilities are mixed.\n\nRAG-Token moves the document sum inside the product:\n\n$$\np_{\\mathrm{RAG\\text{-}Token}}(y\\mid x)\\approx\n\\prod_{i=1}^{N}\n\\sum_{z\\in\\mathrm{top}\\text{-}k(p_{\\eta}(\\cdot\\mid x))}\np_{\\eta}(z\\mid x)p_{\\theta}(y_i\\mid x,z,y_{1:i-1}).\n$$\n\nNow each position can obtain its strongest support from a different passage. To see the distinction, consider an illustrative two-token output and two passages, $A$ and $B$, each with retrieval probability $0.5$. Suppose $A$ gives token probabilities $(0.8,0.2)$ and $B$ gives $(0.2,0.8)$ for positions one and two. RAG-Sequence assigns $0.5(0.8\\times0.2)+0.5(0.2\\times0.8)=0.16$. RAG-Token assigns $(0.5\\times0.8+0.5\\times0.2)(0.5\\times0.2+0.5\\times0.8)=0.25$. The values are constructed, but the calculation exposes why per-token mixing can combine complementary evidence.\n\nFor a one-token class label, there is only one position, so the two factorizations coincide.",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c3",
+        "c4"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s5",
+      "title": "Learning through an unobserved document choice",
+      "markdown": "Training data provides pairs $(x_j,y_j)$ but no required passage label. For example index $j$, the objective contributes $-\\log p(y_j\\mid x_j)$; training minimizes\n\n$$\n\\mathcal L=\\sum_j-\\log p(y_j\\mid x_j).\n$$\n\nBecause $p(y_j\\mid x_j)$ includes a weighted sum over retrieved passages, passages that help the generator explain the target can receive learning signal indirectly. This is latent-variable training: the useful $z$ is not directly observed. The paper optimized the marginal objective with Adam, fine-tuning the query encoder and BART generator while leaving the document encoder and index fixed. Keeping the index fixed avoids repeatedly recomputing document embeddings.\n\nA common misconception is that “end-to-end” means every component was updated. Here it means that the task loss jointly shapes the trainable query encoder and generator through the marginal probability; the indexed document representations were not updated. The frozen-retriever ablation is informative: learning retrieval improved every task relative to its frozen dense-retriever counterpart in the reported development table. Yet dense retrieval was not universally superior to lexical retrieval—BM25 did best on FEVER in that ablation, plausibly because entity-heavy claims suit word overlap.",
+      "sourceIds": [
+        "section-2",
+        "section-4-part-2"
+      ],
+      "claimIds": [
+        "c5",
+        "c6",
+        "c10",
+        "c11"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s6",
+      "title": "What the experiments actually establish",
+      "markdown": "The paper evaluated one architecture across open-domain QA, abstractive QA, Jeopardy question generation, and FEVER classification. On the reported test sets, RAG-Sequence reached exact-match scores of $44.5$ on Natural Questions, $45.2$ on WebQuestions, and $52.2$ on CuratedTrec. These comparisons used the paper's December 2018 Wikipedia memory and task-specific procedures; they do not establish corpus-independent superiority.\n\nFor Jeopardy generation, human evaluators compared 452 BART/RAG-Token pairs. RAG was selected as more factual in $42.7\\%$ of cases and BART in $7.1\\%$; other cases were classified as both good, both poor, or lacking a majority. This supports a comparative claim under that task and protocol, not a guarantee that any RAG output is factual.\n\nThe two formulations also behaved differently. RAG-Token outperformed RAG-Sequence on the reported Jeopardy Q-BLEU-1 result, consistent with the task sometimes requiring multiple facts. But more retrieved passages were not always better: in the Natural Questions analysis, RAG-Sequence improved monotonically as document count increased, while RAG-Token peaked at ten. More candidates change both computational cost and the mixture being evaluated.",
+      "sourceIds": [
+        "section-3",
+        "section-4",
+        "section-4-part-2"
+      ],
+      "claimIds": [
+        "c7",
+        "c8",
+        "c14"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s7",
+      "title": "Editable memory is not guaranteed truth",
+      "markdown": "The paper demonstrated an operational advantage of non-parametric memory by swapping a December 2016 Wikipedia index for a December 2018 index. Across 82 templated world-leader questions, answers aligned much better with leaders from the matching index year than with those from the mismatched year. The model itself was not retrained for the swap. This shows that indexed evidence can redirect behavior as stored text changes.\n\nIt does not show that the new behavior must be correct. Retrieval can miss relevant passages, surface misleading ones, or draw from a source containing factual errors and bias. The generator can also produce text unsupported by retrieved context. Inspectable passages offer clues about what the system accessed, but they are not automatically complete causal explanations or certified citations.\n\nFurther limits are architectural and empirical. The reported document encoder remained fixed, top-$k$ marginalization approximated a much larger corpus-wide sum, and RAG-Sequence required specialized decoding because its sequence probability does not decompose into the usual single per-token model. The knowledge-update demonstration covered a small, templated set of world-leader questions. Responsible use therefore requires checking retrieved evidence and generated claims rather than treating retrieval as a truth mechanism.",
+      "sourceIds": [
+        "section-2",
+        "section-4-part-2",
+        "section-7"
+      ],
+      "claimIds": [
+        "c9",
+        "c12",
+        "c14"
+      ],
+      "figureId": null
+    }
+  ],
+  "figures": [
+    {
+      "id": "fig-retrieval",
+      "kind": "retrieval",
+      "title": "What top-k actually changes",
+      "question": "As k increases, which additional ranked contexts become visible while all four scores remain fixed?",
+      "caption": "An illustrative ranking with scores 0.9, 0.7, 0.5, and 0.2; the control changes only how many leading candidates are revealed.",
+      "limitation": "This has no real corpus, embeddings, retrieval-quality measurement, or generated answer, so it illustrates selection only.",
+      "sourceIds": [
+        "section-1",
+        "section-2",
+        "section-3"
+      ],
+      "claimIds": [
+        "c1",
+        "c2"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "fig-attention",
+      "kind": "attention",
+      "title": "From scores to normalized weights",
+      "question": "How does a positive temperature change the concentration of the normalized weights over fixed scores?",
+      "caption": "Four illustrative scores [2, 1, 0, -1] are divided by temperature and passed through softmax to show normalized weighting.",
+      "limitation": "These are invented scores, not a measured RAG retriever, learned token similarity, or attention head.",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c2"
+      ],
+      "illustrative": true
+    }
+  ],
+  "quiz": [
+    {
+      "question": "Suppose two passages each support a different part of a multi-token answer. Which formulation can mix passage support independently at each output position?",
+      "options": [
+        {
+          "text": "RAG-Token",
+          "explanation": "Correct. Its document marginal is inside the product over token positions, permitting position-specific mixtures."
+        },
+        {
+          "text": "RAG-Sequence",
+          "explanation": "Incorrect. It scores each complete sequence under one latent passage before marginalizing passages."
+        },
+        {
+          "text": "They must always differ equally",
+          "explanation": "Incorrect. Their difference depends on output length and probabilities; for a one-token target they are equivalent."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c3",
+        "c4"
+      ]
+    },
+    {
+      "question": "In the paper's training setup, what does end-to-end learning update?",
+      "options": [
+        {
+          "text": "The query encoder and generator, but not the document encoder or index",
+          "explanation": "Correct. The marginal task loss trains the query encoder and BART generator while indexed document representations remain fixed."
+        },
+        {
+          "text": "Only the document encoder",
+          "explanation": "Incorrect. Updating it would require rebuilding the index, and the paper kept it fixed."
+        },
+        {
+          "text": "Every component, including all indexed document vectors",
+          "explanation": "Incorrect. End-to-end here does not mean that every architectural component is trainable."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c5",
+        "c6"
+      ]
+    },
+    {
+      "question": "Which conclusion is justified by the index-swap experiment?",
+      "options": [
+        {
+          "text": "Replacing indexed text can redirect answers without retraining",
+          "explanation": "Correct. Answers tracked the matching 2016 or 2018 index much better than the mismatched index in the templated evaluation."
+        },
+        {
+          "text": "Any newer index guarantees factually correct answers",
+          "explanation": "Incorrect. An index may contain errors or bias, retrieval can fail, and generation remains fallible."
+        },
+        {
+          "text": "Parametric memory played no role in the answers",
+          "explanation": "Incorrect. The experiment changed non-parametric memory but did not isolate or eliminate the generator's parametric knowledge."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-4-part-2",
+        "section-7"
+      ],
+      "claimIds": [
+        "c9",
+        "c12"
+      ]
+    }
+  ],
+  "id": "rag",
+  "createdAt": "2026-10-02T00:21:57.135Z",
+  "pipelineVersion": "subjects-lessons-v1",
+  "sources": [
+    {
+      "id": "abstract",
+      "label": "Original paper · abstract",
+      "url": "https://arxiv.org/abs/2005.11401",
+      "digest": "766b22c091b5e3c8cdd736cd8c8d1529a5abe2f4895f6bd8f01df31f93851d55",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:19:15.832Z"
+    },
+    {
+      "id": "main-text",
+      "label": "Original paper · unsectioned main text",
+      "url": "https://arxiv.org/html/2005.11401",
+      "digest": "da1426b610a52d0dbb3c2292e9e929036ee8c97d7126c627d111a59b84c225ea",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:19:15.832Z"
+    },
+    {
+      "id": "section-1",
+      "label": "1 Introduction",
+      "url": "https://arxiv.org/html/2005.11401#S1",
+      "digest": "a8f2895a5d5de18146d7ef04d20a9437a946fd23f98c4ad5c3a0e0d71f8c54d4",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:19:15.832Z"
+    },
+    {
+      "id": "section-2",
+      "label": "2 Methods",
+      "url": "https://arxiv.org/html/2005.11401#S2",
+      "digest": "5168d209b953cfa3d2517a56d544d3cc598125db7331f468695d5562920f2929",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:19:15.832Z"
+    },
+    {
+      "id": "section-3",
+      "label": "3 Experiments",
+      "url": "https://arxiv.org/html/2005.11401#S3",
+      "digest": "7c8e45655ab0a41cf5b73b288304fbe800dc406e8e47ffafbf1d36b9e4012bb4",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:19:15.832Z"
+    },
+    {
+      "id": "section-4",
+      "label": "4 Results",
+      "url": "https://arxiv.org/html/2005.11401#S4",
+      "digest": "49e22a2a6e881bd8e1e427181b95e89dbc258de5073f62a9f53ef222dff1738e",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:19:15.832Z"
+    },
+    {
+      "id": "section-4-part-2",
+      "label": "4 Results · part 2",
+      "url": "https://arxiv.org/html/2005.11401#S4",
+      "digest": "da94b81d7108884fc08a5b927ffbb72603830836f7543c4e7f9e6d11546d2144",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:19:15.832Z"
+    },
+    {
+      "id": "section-5",
+      "label": "5 Related Work",
+      "url": "https://arxiv.org/html/2005.11401#S5",
+      "digest": "ac1596360016c19e463f02493c274c0ac13620449ffbc2c29ccc80a6ad71dd38",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:19:15.832Z"
+    },
+    {
+      "id": "section-6",
+      "label": "6 Discussion",
+      "url": "https://arxiv.org/html/2005.11401#S6",
+      "digest": "66b966b96ae0571374fdeacb510f24b297ea4a01a8fb4407c5c64f5ede5dfafc",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:19:15.832Z"
+    },
+    {
+      "id": "section-7",
+      "label": "Broader Impact",
+      "url": "https://arxiv.org/html/2005.11401#Sx1",
+      "digest": "36cb7646d1e749db8f6694309b7baf531c82b98726577dd97e864ab57c5c593f",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:19:15.832Z"
+    }
+  ],
+  "review": {
+    "status": "passed",
+    "reviewedAt": "2026-10-02T00:21:57.137Z",
+    "contentDigest": "4cca99bbdcbabe2ab5a759f6d2d2c42685b3137690a648b24216ab4d8b9de78f"
+  }
+}

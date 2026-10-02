@@ -1,0 +1,386 @@
+{
+  "title": "Planning Without Repainting the World: A Working Model of MuZero",
+  "summary": "MuZero learns only the rewards, values, and policies needed by tree search, enabling planning without reproducing observations or receiving the environment’s rules.",
+  "prerequisites": [
+    "Basic reinforcement-learning concepts: observations, actions, rewards, policies, and discounted sums",
+    "The distinction between learning a model and using a model to plan",
+    "Probability distributions over actions and elementary loss functions",
+    "A conceptual understanding of tree search; detailed MCTS formulas are not required"
+  ],
+  "objectives": [
+    "Explain why MuZero learns a planning-oriented hidden model instead of reconstructing observations",
+    "Trace information through MuZero’s representation, dynamics, prediction, search, acting, and training stages",
+    "Interpret the policy, value, reward, and joint-loss equations with every symbol defined",
+    "Relate the reported results to their particular search budgets, domains, and evaluation settings",
+    "Distinguish MuZero’s learned planning model from a simulator, a purely model-free agent, and ordinary breadth-first search"
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "mechanism",
+      "statement": "MuZero combines tree-based planning with a learned model whose outputs are the reward, action-selection policy, and value needed for planning.",
+      "conditions": "For the MuZero algorithm described in the paper, rather than a conventional observation-reconstruction model.",
+      "sourceIds": [
+        "abstract"
+      ]
+    },
+    {
+      "id": "c2",
+      "kind": "mechanism",
+      "statement": "The initial observation history is encoded into a hidden state, after which hypothetical actions recurrently produce new hidden states and predicted immediate rewards.",
+      "conditions": "At a real timestep t, with the model unrolled along candidate future actions.",
+      "sourceIds": [
+        "section-1"
+      ]
+    },
+    {
+      "id": "c3",
+      "kind": "caveat",
+      "statement": "MuZero does not require its hidden states to reconstruct observations or coincide with the environment’s true state.",
+      "conditions": "This freedom concerns the semantics and training constraints of the learned hidden state; it does not imply that missing information can never hurt prediction.",
+      "sourceIds": [
+        "section-1"
+      ]
+    },
+    {
+      "id": "c4",
+      "kind": "equation",
+      "statement": "The learned dynamics function maps the preceding hidden state and a hypothetical action to a predicted reward and successor hidden state: $r^k,s^k=g_\\theta(s^{k-1},a^k)$.",
+      "conditions": "At hypothetical model step k, using shared learned parameters θ.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c5",
+      "kind": "equation",
+      "statement": "The prediction function reads a hidden state and returns an action-policy vector and scalar value: $\\mathbf p^k,v^k=f_\\theta(s^k)$.",
+      "conditions": "At each modeled node represented by hidden state s^k.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c6",
+      "kind": "mechanism",
+      "statement": "MuZero’s MCTS uses the learned policy, value, and reward estimates at internal nodes and returns an improved search policy and estimated root value.",
+      "conditions": "For the paper’s MCTS generalization to single-agent domains and intermediate rewards.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c7",
+      "kind": "equation",
+      "statement": "For long episodes, a value target combines n observed rewards with a discounted search-value bootstrap: $z_t=u_{t+1}+\\gamma u_{t+2}+\\cdots+\\gamma^{n-1}u_{t+n}+\\gamma^n\\nu_{t+n}$.",
+      "conditions": "For the discounted, intermediate-reward setting; board-game terminal outcomes are handled as final rewards.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c8",
+      "kind": "equation",
+      "statement": "Training jointly penalizes reward, value, and policy prediction errors across all unrolled steps, plus L2 parameter regularization.",
+      "conditions": "Across model steps k=0,…,K for the sampled replay position t.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c9",
+      "kind": "result",
+      "statement": "The reported experiments trained the model for five hypothetical steps and used substantially different search budgets for board games and Atari.",
+      "conditions": "In the paper’s principal board-game and Atari experiments.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c10",
+      "kind": "result",
+      "statement": "On the paper’s Atari comparison, MuZero exceeded R2D2 on 42 of 57 games and SimPLe on every game.",
+      "conditions": "Across all 57 Atari Learning Environment games in the reported large-data evaluation.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c11",
+      "kind": "result",
+      "statement": "Increasing search produced much stronger scaling in Go than in Atari; Atari performance improved only slightly and plateaued around 100 simulations.",
+      "conditions": "Using fully trained MuZero while varying evaluation-time simulations across the Atari games.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c12",
+      "kind": "caveat",
+      "statement": "The paper’s model uses deterministic latent transitions and leaves stochastic-transition extensions unresolved.",
+      "conditions": "For the dynamics formulation evaluated in this paper.",
+      "sourceIds": [
+        "section-3"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "s1",
+      "title": "The obstacle: useful foresight without a supplied simulator",
+      "markdown": "Classical planning asks, “If I take this action, what happens next?” In chess or Go, an exact rules engine can answer. A real agent may instead receive pixels and rewards without an accessible transition function. Pure model-free reinforcement learning avoids constructing a model, but then cannot directly examine alternative futures through that model.\n\nMuZero’s contribution is a third route: learn an internal process specifically for planning. Its model predicts three things—reward, policy, and value—rather than every visible detail of the future. A **policy** is a distribution over candidate actions. A **value** estimates future discounted reward from a state. An **immediate reward** is the local consequence assigned to a transition.\n\nThis objective changes what “model” means. MuZero is model-based because search advances through learned states and rewards. Yet it is not trained to reproduce the next screen or implement externally supplied rules. The model must retain whatever information supports accurate planning targets, not everything a camera might observe. That distinction lets the method address both precision-oriented board games and visually rich Atari games with the same conceptual machinery.",
+      "sourceIds": [
+        "abstract",
+        "section-1",
+        "section-2"
+      ],
+      "claimIds": [
+        "c1",
+        "c3"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s2",
+      "title": "Three functions form the learned planning world",
+      "markdown": "At real time $t$, let $o_1,\\ldots,o_t$ denote the observation history. MuZero first applies the **representation function**\n\n$$s^0=h_\\theta(o_1,\\ldots,o_t),$$\n\nwhere $s^0$ is the root hidden state, $h_\\theta$ is a learned function, and $\\theta$ denotes the jointly learned parameters. It then considers a hypothetical action $a^k$ at imagined depth $k$ and applies the **dynamics function**\n\n$$r^k,s^k=g_\\theta(s^{k-1},a^k).$$\n\nHere $s^{k-1}$ is the preceding hidden state, $r^k$ is the predicted immediate reward, and $s^k$ is the successor hidden state. Finally, the **prediction function** produces\n\n$$\\mathbf p^k,v^k=f_\\theta(s^k),$$\n\nwhere $\\mathbf p^k$ is a vector of action-policy predictions and $v^k$ is a scalar value prediction.\n\nThe state experiment below isolates one prerequisite: recurrence lets a past input influence later states. Increase its retention coefficient and predict whether the impulse disappears faster or slower. This makes iterative state updates tangible, but its scalar linear equation is not MuZero’s learned nonlinear, action-conditioned world model. In particular, it has neither reward nor policy/value heads and should not be read as a paper implementation.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c2",
+        "c4",
+        "c5"
+      ],
+      "figureId": "fig-state"
+    },
+    {
+      "id": "s3",
+      "title": "Search turns predictions into an improved decision",
+      "markdown": "Starting from $s^0$, search evaluates alternative action sequences. Each selected edge supplies an action to $g_\\theta$; each resulting node supplies a policy and value through $f_\\theta$. The policy helps direct exploration, the predicted rewards score traversed transitions, and the leaf value estimates what lies beyond the explicitly explored portion. The paper uses an MCTS variant and returns a search policy $\\pi_t$ plus a search value $\\nu_t$. The real action $a_{t+1}$ is sampled from $\\pi_t$, whose root action probabilities are proportional to visit counts.\n\nSearch therefore combines immediate predicted rewards with a leaf value for the continuation, guided by network policy priors. Its root visit counts become a policy target used in learning: the network trains toward the decisions improved by search, and subsequent searches use the updated network. The learned state supplies the quantities needed for this decision process.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c6"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s4",
+      "title": "Act in reality, then preserve the trajectory",
+      "markdown": "Planning remains internal until MuZero selects an action. At time $t$, the agent searches from the encoded observation history, samples $a_{t+1}$ from $\\pi_t$, and sends that action to the real environment. Only the environment supplies the next observation $o_{t+1}$ and true reward $u_{t+1}$. The resulting trajectory is stored in replay.\n\nThis boundary prevents a common misconception: MuZero does not hallucinate observations and then train as if those images were real. During a model unroll, it advances hidden states under actions. During experience collection, the environment provides actual observations and rewards. During training, actions from a replayed real trajectory condition the recurrent unroll, while later observed rewards and search-derived targets supervise its predictions.\n\nThe learned hidden state therefore need not look like a board or an Atari frame. “No state semantics” means there is no direct requirement that its coordinates correspond to human-interpretable environment variables. It does not mean the representation may discard every predictive fact: failure to retain decision-relevant information would increase the policy, value, or reward losses.",
+      "sourceIds": [
+        "section-1",
+        "section-3"
+      ],
+      "claimIds": [
+        "c2",
+        "c3",
+        "c6"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s5",
+      "title": "Targets connect model time to experienced time",
+      "markdown": "Suppose training samples replay position $t$ and unrolls for $K$ model steps. Prediction $r_t^k$ is aligned with observed reward $u_{t+k}$; policy prediction $\\mathbf p_t^k$ is aligned with later search policy $\\pi_{t+k}$; and value prediction $v_t^k$ is aligned with return target $z_{t+k}$. Thus hypothetical depth $k$ is supervised by what occurred $k$ real steps after the sampled position.\n\nFor a long episode, the paper defines an $n$-step target\n\n$$z_t=u_{t+1}+\\gamma u_{t+2}+\\cdots+\\gamma^{n-1}u_{t+n}+\\gamma^n\\nu_{t+n},$$\n\nwhere $u_{t+i}$ is the observed reward $i$ steps ahead, $\\gamma$ is the environment discount, $n$ is the bootstrap horizon, and $\\nu_{t+n}$ is the MCTS value at the bootstrap state.\n\n**Illustrative arithmetic—not a reported paper setting:** take $n=2$, $\\gamma=0.9$, $u_{t+1}=1$, $u_{t+2}=2$, and $\\nu_{t+2}=3$. Then\n\n$$z_t=1+0.9(2)+0.9^2(3)=1+1.8+2.43=5.23.$$\n\nThis example shows why $z_t$ is neither merely the next reward nor solely the search value: it joins observed near-term outcomes to a discounted estimate beyond the horizon.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c7"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s6",
+      "title": "One loss trains representation, dynamics, and prediction together",
+      "markdown": "For a replay position $t$, MuZero minimizes the joint objective\n\n$$l_t(\\theta)=\\sum_{k=0}^{K}\\left[l^r(u_{t+k},r_t^k)+l^v(z_{t+k},v_t^k)+l^p(\\pi_{t+k},\\mathbf p_t^k)\\right]+c\\lVert\\theta\\rVert^2.$$\n\nThe index $k$ aligns each prediction in a recurrent model unroll with a target at the corresponding experienced time. The unroll begins from $s_t^0=h_\\theta(o_1,\\ldots,o_t)$ and follows the recorded actions for $K$ steps. At step $k$, $r_t^k$ is the predicted immediate reward, $v_t^k$ is the predicted value, and $\\mathbf p_t^k$ is the predicted action-policy vector. Their targets are, respectively, the observed reward $u_{t+k}$, the return target $z_{t+k}$, and the search policy $\\pi_{t+k}$. The functions $l^r$, $l^v$, and $l^p$ measure the three prediction errors. The coefficient $c$ controls the strength of L2 regularization, while $\\lVert\\theta\\rVert^2$ is the squared norm of the shared parameters.\n\nEach summand changes a different planning quantity. The reward term teaches the dynamics function which immediate consequence to attach to an action-conditioned transition. The value term teaches a hidden state to summarize the discounted consequences beyond that point, using either the final board-game outcome or the bootstrapped target defined earlier. The policy term distills MCTS visit-count preferences into the prediction network. Increasing one term’s effective weight would direct more of the parameter update toward reducing that target’s error, potentially at the expense of the other predictions because the representation, dynamics, and prediction functions share parameters.\n\nThe sum over $k=0,\\ldots,K$ is crucial: supervision is applied not only at the encoded root but throughout the recurrent trajectory. Backpropagation through time carries later reward, value, and policy errors through $f_\\theta$ and $g_\\theta$ and back into $h_\\theta$. Consequently, the root representation and each successor state are trained to preserve information that remains useful across the modeled horizon. This loss does not require hidden coordinates to reproduce observations; its scientific consequence is that two representations that make equally accurate reward, value, and policy predictions can be indistinguishable to the objective even if they retain different visual details.\n\nFor chess, Go, and shogi, the paper used squared error for reward and value. For Atari, whose rewards and values vary in scale, cross-entropy was found to be more stable; policy used cross-entropy in both settings. These choices alter how prediction discrepancies produce gradients, but they do not change the alignment between model step $k$ and experienced target time $t+k$.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c8"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s7",
+      "title": "Read the evidence with its search budgets attached",
+      "markdown": "The principal experiments used $K=5$ hypothetical training steps. Board-game training used one million mini-batches of size 2048, while Atari used one million mini-batches of size 1024. Both training and evaluation used 800 search simulations in board games and 50 in Atari.\n\nUnder the reported Atari comparison, MuZero surpassed model-free R2D2 in 42 of 57 games and the model-based SimPLe result in all games. A separate sample-efficient variant, MuZero Reanalyze, reran MCTS on old trajectories using newer parameters; at 200 million frames per game, its reported median human-normalized score was 731.1%. That number belongs to the Reanalyze condition and should not be silently transferred to ordinary MuZero or a different data budget.\n\nMore search did not help uniformly. In Go, the learned model reportedly scaled to searches much longer than those used in training and matched the perfect-model comparison. Across Atari, gains were smaller and plateaued around 100 simulations. The authors suggest greater Atari model inaccuracy as a possible explanation, so this is an interpretation rather than a directly isolated causal result. Search budget, learned-model accuracy, and domain must therefore accompany any claim that planning “scales.”",
+      "sourceIds": [
+        "section-4"
+      ],
+      "claimIds": [
+        "c9",
+        "c10",
+        "c11"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s8",
+      "title": "What the achievement does—and does not—establish",
+      "markdown": "MuZero establishes that tree search can be supported by a learned model trained directly on planning-relevant quantities, without receiving the rules of chess, shogi, Go, or Atari. Its recurrent computation assigns predicted rewards to hypothetical transitions and policy and value predictions to the resulting hidden states. The reported performance therefore supports the usefulness of this learned planning interface. It does not establish that the hidden transition is a uniquely identified copy of the environment dynamics: distinct latent processes may agree on every supervised reward, policy, and value target while representing other aspects of the future differently.\n\nThe evaluated dynamics function is deterministic. For a given hidden state $s^{k-1}$ and action $a^k$, it produces one pair $(r^k,s^k)$. The paper leaves stochastic-transition extensions unresolved. The consequence is important in environments where the same apparent history and action can lead to materially different futures: this formulation does not explicitly maintain a distribution over alternative successor states. It may still learn useful expected planning quantities, but the experiments do not show that its deterministic latent trajectory captures uncertainty needed for every stochastic decision problem.\n\nThe method also does not directly address imperfect-information games such as poker. In such settings, strategically relevant uncertainty can concern hidden information held by another player, not merely unobserved visual detail. A history encoder can summarize available evidence, but the reported results do not demonstrate the belief-state reasoning or opponent-information treatment required to generalize the achievement to those games.\n\nPlanning depth has an empirical limit when model errors matter. In Go, evaluation with longer searches scaled strongly and MuZero matched the perfect-model comparison even at search times much longer than those used in training. Across the 57 Atari games, increasing evaluation-time simulations produced only modest improvement and performance plateaued around 100 simulations. The authors propose greater model inaccuracy as a possible explanation, but that comparison does not isolate model error as the sole cause. Its defensible consequence is narrower: extra search through a learned model is not guaranteed to keep improving decisions, and search-budget claims must remain tied to the domain and evaluation condition.\n\nThe central achievement is therefore selective modeling, not unrestricted simulation. MuZero learns an action-conditioned hidden process because reward, policy, and value errors train that process to support search. Its evidence covers the reported architectures, training regimes, games, and simulation budgets. Applying the same principle to environments with stronger partial observability or stochasticity would require demonstrating that the learned state and transition preserve the uncertainty and history needed for sound decisions; the reported board-game and Atari results alone do not supply that guarantee.",
+      "sourceIds": [
+        "section-3",
+        "section-4",
+        "section-5"
+      ],
+      "claimIds": [
+        "c1",
+        "c3",
+        "c11",
+        "c12"
+      ],
+      "figureId": null
+    }
+  ],
+  "figures": [
+    {
+      "id": "fig-state",
+      "kind": "state",
+      "title": "How long does an impulse remain in a recurrent state?",
+      "question": "As the retention coefficient $a$ increases, does the initial impulse decay more quickly or remain visible for more of the 12 displayed steps?",
+      "caption": "Illustrative scalar recurrence $h_t=a h_{t-1}+u_t$ with the single impulse $u_0=1$; changing $a$ changes the decay of stored influence across 12 steps.",
+      "limitation": "This is a scalar linear impulse response, not MuZero’s learned, action-conditioned dynamics, not a selective or complex state-space model, and not a learned world-model rollout.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c2",
+        "c4"
+      ],
+      "illustrative": true
+    }
+  ],
+  "quiz": [
+    {
+      "question": "Assume two learned hidden states reconstruct future pixels differently but produce equally accurate reward, policy, and value predictions throughout the trained unroll. Which conclusion best follows from MuZero’s stated objective?",
+      "options": [
+        {
+          "text": "The state with better pixel reconstruction must be preferred by the MuZero objective.",
+          "explanation": "Incorrect. The stated objective contains no direct observation-reconstruction term."
+        },
+        {
+          "text": "The objective need not distinguish them on the basis of pixel reconstruction alone.",
+          "explanation": "Correct. MuZero supervises planning-relevant reward, value, and policy quantities rather than reconstructed observations."
+        },
+        {
+          "text": "Neither state can be used by tree search unless it equals the true environment state.",
+          "explanation": "Incorrect. The paper explicitly assigns no true-environment-state semantics to the hidden state."
+        }
+      ],
+      "answer": 1,
+      "sourceIds": [
+        "section-1",
+        "section-3"
+      ],
+      "claimIds": [
+        "c3",
+        "c8"
+      ]
+    },
+    {
+      "question": "Under the illustrative assumptions $n=2$, $\\gamma=0.5$, $u_{t+1}=2$, $u_{t+2}=4$, and $\\nu_{t+2}=8$, what is the bootstrap target $z_t$?",
+      "options": [
+        {
+          "text": "$6$",
+          "explanation": "Correct: $2+0.5(4)+0.5^2(8)=2+2+2=6$."
+        },
+        {
+          "text": "$8$",
+          "explanation": "Incorrect. This omits or misweights terms in the discounted two-step target."
+        },
+        {
+          "text": "$14$",
+          "explanation": "Incorrect. This is the undiscounted sum of all three supplied numbers."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c7"
+      ]
+    },
+    {
+      "question": "Which interpretation of the reported search-scaling evidence is defensible?",
+      "options": [
+        {
+          "text": "More simulations must always improve MuZero because tree search cannot be harmed by model error.",
+          "explanation": "Incorrect. Atari gains plateaued around 100 simulations, and the paper discusses greater model inaccuracy as a possible reason for weaker scaling."
+        },
+        {
+          "text": "Atari establishes the same strong long-search scaling reported for Go.",
+          "explanation": "Incorrect. The paper explicitly contrasts Atari’s modest gains with much stronger Go scaling."
+        },
+        {
+          "text": "The benefit of additional search depended on the domain and evaluation condition.",
+          "explanation": "Correct. Go and Atari showed materially different scaling behavior under the reported tests."
+        }
+      ],
+      "answer": 2,
+      "sourceIds": [
+        "section-4"
+      ],
+      "claimIds": [
+        "c11"
+      ]
+    }
+  ],
+  "id": "mastering-atari-go-chess-and-shogi",
+  "createdAt": "2026-10-01T22:57:18.502Z",
+  "pipelineVersion": "subjects-lessons-v1",
+  "sources": [
+    {
+      "id": "abstract",
+      "label": "Original paper · abstract",
+      "url": "https://arxiv.org/abs/1911.08265",
+      "digest": "fcb44dfa749274e64f89849b0ae9128eb3db72ac8ecc8bd7a7e8f7501e8ded54"
+    },
+    {
+      "id": "section-1",
+      "label": "1 Introduction",
+      "url": "https://arxiv.org/html/1911.08265#S1",
+      "digest": "9d652c1297ac1d3a895b758bc8c2d80fdf7a78a5970daa382cfb78f938f3d005"
+    },
+    {
+      "id": "section-2",
+      "label": "2 Prior Work",
+      "url": "https://arxiv.org/html/1911.08265#S2",
+      "digest": "49281962e0d124c777408d4e7595aeca64cce1bba0b7d3e50310192580b5ffea"
+    },
+    {
+      "id": "section-3",
+      "label": "3 MuZero Algorithm",
+      "url": "https://arxiv.org/html/1911.08265#S3",
+      "digest": "93de583c725c5d05d8d2d0910e8e8a5905d651ef59a09490ceac1d021b07b87b"
+    },
+    {
+      "id": "section-4",
+      "label": "4 Results",
+      "url": "https://arxiv.org/html/1911.08265#S4",
+      "digest": "027d67430a60b876a308d831db01566198b3794202c1ee49c9ae2f2e21a1ad0d"
+    },
+    {
+      "id": "section-5",
+      "label": "5 Conclusions",
+      "url": "https://arxiv.org/html/1911.08265#S5",
+      "digest": "7855a67daeab8c45ce41ea3f20a3e7cd653d699d2b47135308d3ee0419baf15d"
+    },
+    {
+      "id": "section-6",
+      "label": "6 Acknowledgments",
+      "url": "https://arxiv.org/html/1911.08265#S6",
+      "digest": "906b463e127871f7572200eddc90037bb6adbd8ce4902d40453500f30858bc71"
+    }
+  ],
+  "review": {
+    "status": "passed",
+    "reviewedAt": "2026-10-02T02:00:46.676Z",
+    "contentDigest": "8ae4425963d8481985f24709d64c909dd90a9219b8b9d0308c829654b442adb3"
+  }
+}

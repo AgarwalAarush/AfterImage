@@ -1,0 +1,464 @@
+{
+  "title": "The Width-Stable Dial: How μTransfer Tunes Giants Through Proxies",
+  "summary": "μTransfer uses width-aware parameterization to make useful hyperparameters stable enough to tune on a small proxy and copy to a much larger network.",
+  "prerequisites": [
+    "Basic neural-network layers, gradients, and learning rates",
+    "Parameter initialization, width, and fan-in",
+    "Softmax attention and training versus test loss"
+  ],
+  "objectives": [
+    "Explain why hyperparameters can drift as network width changes.",
+    "Derive width-scaled initialization and learning rates for a μP MLP.",
+    "Describe the proxy-tune-transfer workflow and its assumptions.",
+    "Interpret the reported results within their experimental limits."
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "mechanism",
+      "statement": "μTransfer parameterizes a target model in μP, tunes transferable hyperparameters on a smaller proxy, and copies the selected values to the target without target-model tuning.",
+      "conditions": "The proxy and target belong to the same scaling family and all relevant μP scaling rules are applied.",
+      "sourceIds": [
+        "abstract",
+        "section-1"
+      ]
+    },
+    {
+      "id": "c2",
+      "kind": "equation",
+      "statement": "In the paper’s central-limit analogy, writing c=α/√n yields a large-n objective whose dependence on α stabilizes, motivating transfer in normalized rather than raw coordinates.",
+      "conditions": "The variables are independent, identically distributed, zero mean, and unit variance, and the objective uses a bounded continuous function.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c3",
+      "kind": "result",
+      "statement": "Under standard parameterization, the best learning rate in the reported two-hidden-layer MLP experiment shifted by roughly one order of magnitude as width increased from 256 to 8192.",
+      "conditions": "CIFAR-10, ReLU MLP, cross-entropy, SGD, LeCun-style initialization, and 20 training epochs.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c4",
+      "kind": "equation",
+      "statement": "For the paper’s basic three-layer μP MLP with SGD, the output-weight initialization variance is 1/n² and the input, hidden, and output learning rates scale respectively as ηn, η, and η/n.",
+      "conditions": "Hidden width is n; the stated basic form omits base-width multipliers and uses the layer roles defined in the paper.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c5",
+      "kind": "mechanism",
+      "statement": "Width-stable transfer requires jointly scaling initialization, layerwise learning rates, and parameter multipliers; changing only a global learning rate is insufficient.",
+      "conditions": "The comparison varies network width while preserving the architecture’s μP layer-role assignments.",
+      "sourceIds": [
+        "section-2",
+        "section-4"
+      ]
+    },
+    {
+      "id": "c6",
+      "kind": "equation",
+      "statement": "The paper’s Transformer μP prescription uses attention logits qᵀk/d rather than qᵀk/√d.",
+      "conditions": "Queries q and keys k have dimension d, and the remaining μP rules in the paper’s parameterization table are also used.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c7",
+      "kind": "mechanism",
+      "statement": "In the paper’s one-hidden-layer linear example, standard parameterization produces an order-n contribution after one SGD step, whereas μP width scalings keep the output order one.",
+      "conditions": "Scalar input and output, width n, learning-rate setting and Gaussian initializations specified in the example.",
+      "sourceIds": [
+        "section-5"
+      ]
+    },
+    {
+      "id": "c8",
+      "kind": "caveat",
+      "statement": "Regularization hyperparameters such as dropout and weight decay are not generally μTransferable because their appropriate strength can depend on both model size and data size.",
+      "conditions": "The parameterization scales with model size alone and regularization affects generalization or overfitting.",
+      "sourceIds": [
+        "section-1",
+        "section-6"
+      ]
+    },
+    {
+      "id": "c9",
+      "kind": "result",
+      "statement": "On IWSLT14 De-En at equal reported FLOP budget, μTransfer from a 4M-parameter proxy produced more reliable validation BLEU outcomes than direct random-search tuning of the 40M-parameter target.",
+      "conditions": "The searches tuned learning rate and two parameter multipliers; percentiles used 25 independent search trials, and selected settings were evaluated over five initializations.",
+      "sourceIds": [
+        "section-7"
+      ]
+    },
+    {
+      "id": "c10",
+      "kind": "result",
+      "statement": "A single 13M-parameter BERT proxy supplied hyperparameters for BERT-base and BERT-large, and the transferred models improved the reported pretraining test losses over the Megatron defaults.",
+      "conditions": "Batch size 256, proxy search over 256 combinations for 100,000 steps, and the paper’s stated pretraining and finetuning procedures.",
+      "sourceIds": [
+        "section-7"
+      ]
+    },
+    {
+      "id": "c11",
+      "kind": "caveat",
+      "statement": "The reported GPT-3 6.7B comparison is confounded by attention-type and numerical-precision differences between the transferred model and the authors’ rerun baseline.",
+      "conditions": "The μTransfer target used relative attention and FP32, while the rerun mistakenly used absolute attention and FP16.",
+      "sourceIds": [
+        "section-7-part-2"
+      ]
+    },
+    {
+      "id": "c12",
+      "kind": "caveat",
+      "statement": "Depth transfer was less general than width transfer: initialization scale transferred poorly across depth, and depth transfer did not work for the studied post-layer-normalized Transformers.",
+      "conditions": "The conclusion concerns the Transformer configurations and scale ranges investigated in the paper.",
+      "sourceIds": [
+        "section-6",
+        "section-11"
+      ]
+    },
+    {
+      "id": "c13",
+      "kind": "caveat",
+      "statement": "The paper leaves unexplained why a proxy can be wide enough for its hyperparameter optimum to stabilize while remaining functionally different from the target.",
+      "conditions": "Useful transfer requires separation between convergence of the coarse hyperparameter landscape and convergence of trained functions or losses.",
+      "sourceIds": [
+        "section-9"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "s1",
+      "title": "The expensive dial-setting problem",
+      "markdown": "A training hyperparameter is a choice made outside gradient-based learning: examples include the master learning rate, initialization scale, momentum, or a multiplier attached to a parameter tensor. Such choices matter, but testing them directly on a billion-parameter target can cost several target pretraining runs.\n\nThe paper’s proposal, **μTransfer**, changes where this search happens. First construct a small **proxy** and a large **target** as members of one model family. Parameterize both with the Maximal Update Parametrization, or **μP**. Search transferable hyperparameters on the proxy, select a setting there, and copy that setting to the target without tuning the target itself. “Zero-shot” describes this last transfer step; it does not mean that no search or training occurs anywhere.\n\nThe key claim is therefore conditional, not magical: the proxy is useful only when its hyperparameter landscape resembles the target’s. μP is designed to make that resemblance emerge as width changes by keeping the effects of layer updates on activations at comparable orders of magnitude.",
+      "sourceIds": [
+        "abstract",
+        "section-1"
+      ],
+      "claimIds": [
+        "c1"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s2",
+      "title": "A normalization parable for transfer",
+      "markdown": "The paper motivates the idea with a central-limit example. Let $x_1,\\ldots,x_n$ be independent, identically distributed variables with mean $0$ and variance $1$. Their unscaled sum grows with $n$, but\n\n$$\n\\frac{1}{\\sqrt{n}}\\sum_{i=1}^{n}x_i\n$$\n\napproaches a nondegenerate standard Gaussian distribution. Now define\n\n$$\nF_n(c)=\\mathbb{E}\\left[f\\left(c\\sum_{i=1}^{n}x_i\\right)\\right],\n$$\n\nwhere $f:\\mathbb{R}\\to\\mathbb{R}$ is bounded and continuous, $c$ is a tunable scalar, and $\\mathbb{E}$ averages over the $x_i$. Reparameterize $c=\\alpha/\\sqrt{n}$. The resulting objective $G_n(\\alpha)=F_n(\\alpha/\\sqrt{n})$ approaches $\\mathbb{E}[f(Z_\\alpha)]$, where $Z_\\alpha\\sim\\mathcal{N}(0,\\alpha^2)$. Thus the useful coordinate is $\\alpha$, whose optimum can stabilize, rather than raw $c$.\n\nA small illustrative calculation makes the distinction concrete. If a proxy has $n=100$ and its best normalized value is $\\alpha=2$, then $c_{100}=2/10=0.2$. For a target with $N=400$, preserving $\\alpha$ gives $c_{400}=2/20=0.1$. Copying the normalized choice means scaling the raw coefficient by $\\sqrt{100/400}=1/2$. This arithmetic illustrates the analogy; it is not a reported neural-network measurement.",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c2"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s3",
+      "title": "Why ordinary width scaling breaks the analogy",
+      "markdown": "Standard parameterization, or **SP**, primarily keeps activations well scaled at initialization. That does not guarantee balanced learning after an update. In the paper’s two-hidden-layer MLP experiment, the optimal learning rate moved by roughly an order of magnitude between widths 256 and 8192. Copying the narrow model’s optimum to the widest model could perform very poorly or diverge.\n\nThe scalar control below is an illustrative optimizer, not a neural network. It applies plain gradient descent to $f(x)=x^2/2$, starting from $x_0=3$. Because $\\nabla f(x)=x$, each update is\n\n$$\nx_{t+1}=x_t-\\eta x_t=(1-\\eta)x_t,\n$$\n\nwhere $t$ is the step and $\\eta$ is the learning rate. For example, with illustrative $\\eta=0.5$, $x_1=1.5$, $x_2=0.75$, and $x_3=0.375$. Changing $\\eta$ reveals how one dial can control convergence or instability. The paper’s problem is harder: changing width changes the effective update balance among many tensors, so one global $\\eta$ cannot repair every layer simultaneously.",
+      "sourceIds": [
+        "section-3",
+        "section-5"
+      ],
+      "claimIds": [
+        "c3",
+        "c5"
+      ],
+      "figureId": "fig-optimizer"
+    },
+    {
+      "id": "s4",
+      "title": "The μP scaling recipe",
+      "markdown": "Consider the paper’s MLP with input dimension $d_{in}$, hidden width $n$, output dimension $d_{out}$, activation $\\phi$, weights $W^1,W^2,W^3$, biases $b^1,b^2$, and master learning rate $\\eta$. Its basic μP form initializes\n\n$$\nW^1\\sim\\mathcal{N}(0,1/d_{in}),\\quad W^2\\sim\\mathcal{N}(0,1/n),\\quad W^3\\sim\\mathcal{N}(0,1/n^2),\n$$\n\nwith zero biases, and uses SGD learning rates\n\n$$\n\\eta_{W^1}=\\eta_{b^1}=\\eta_{b^2}=\\eta n,\\quad\n\\eta_{W^2}=\\eta,\\quad\n\\eta_{W^3}=\\eta/n.\n$$\n\nThese unequal rates are deliberate. Input weights, hidden weights, and output weights play different width-dependent roles. In the paper’s linear example, an SP update creates a term proportional to $U^\\top U=\\Theta(n)$, so the output can grow with width after one step. μP offsets that growth with layer-specific initialization and learning-rate factors, keeping the resulting output $\\Theta(1)$.\n\nA practical base-width form sets $\\widetilde n=n/n_0$, where $n_0$ is a chosen base width. Proxy and target match SP at $n=n_0$, but μP dictates how their settings diverge as $n$ grows. For Transformers, the recipe also changes an attention logit from $q^\\top k/\\sqrt d$ to $q^\\top k/d$, where $q,k\\in\\mathbb{R}^d$. Applying only that attention change, or only rescaling the global learning rate, is not μP; the coupled parameter rules matter.",
+      "sourceIds": [
+        "section-4",
+        "section-5"
+      ],
+      "claimIds": [
+        "c4",
+        "c5",
+        "c6",
+        "c7"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s5",
+      "title": "A disciplined proxy-to-target workflow",
+      "markdown": "The proxy-to-target workflow begins by defining one scaling family: the proxy and target must share the architecture, task, data conventions, and parameter roles, while selected scale dimensions such as hidden width change. Choose a base width $n_0$ and express each model’s width through $\\widetilde n=n/n_0$. The base-width form of μP can coincide with standard parameterization when $n=n_0$, but as width grows it applies the prescribed factors to initialization, layerwise learning rates, and parameter multipliers. This coordinated scaling is what gives a copied master hyperparameter the same interpretation across widths.\n\nNext, implement and check the μP rules before searching. For the basic MLP trained with SGD, input weights and biases use learning rate $\\eta\\widetilde n$, hidden weights use $\\eta$, and output weights use $\\eta/\\widetilde n$; the output initialization variance also changes with width. A Transformer additionally uses $q^\\top k/d$ attention logits under the paper’s prescription. These rules balance how parameter updates affect activations: an order-one master learning rate $\\eta$ should not produce an output contribution that grows with width merely because a hidden layer contains more coordinates. The one-hidden-layer calculation makes the mechanism explicit. Under SP, the first update contains $\\theta U^\\top U$, and $U^\\top U=\\Theta(n)$; under μP, its corresponding contribution is $\\theta n^{-1}U^\\top U=\\Theta(1)$, while the other terms are scaled to remain order one as well.\n\nWith the parameterization fixed, search on the proxy over normalized, transferable choices such as the master learning rate, optimizer coefficients, learning-rate schedule, initialization multipliers, and parameter multipliers. Each trial must be converted into tensor-specific settings by the same μP rules; copying one raw learning rate to every tensor would discard the parameterization that makes transfer possible. Select a configuration using a declared proxy validation criterion, then instantiate the target at its new width and reuse the selected normalized choices without a target-model hyperparameter search. The target is still trained normally—the saved computation is the repeated search over expensive target runs.\n\nThe proxy cannot be arbitrarily small. It must be wide enough that finite-width shifts in the hyperparameter landscape are modest; in the paper’s Transformer investigations, optima could still move at smaller scales, and the reported empirical thresholds depended on the configuration being studied. A useful diagnostic is therefore stability across more than one affordable proxy width: if neighboring μP proxies choose materially different regions, transferring from the smallest one is weakly supported. This check does not prove target optimality, but it tests the premise that the normalized landscape has begun to settle before committing target-scale compute.\n\nThe scientific limit is that μP explains how to form width-stable coordinates, not why their optima must converge sooner than the trained functions or losses. Useful transfer requires exactly that separation: the proxy’s coarse hyperparameter landscape must already resemble the target’s even though the larger model can still learn a better function. The experiments demonstrate that this regime can occur, but the paper leaves its general theoretical explanation open. Consequently, transfer is evidence-based only within a sufficiently similar scaling family; changing the task, dataset, or architecture can change the landscape rather than merely its width coordinate.",
+      "sourceIds": [
+        "section-1",
+        "section-2",
+        "section-9"
+      ],
+      "claimIds": [
+        "c1",
+        "c13"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s6",
+      "title": "What the reported evidence establishes",
+      "markdown": "The evidence is strongest when read with its experimental conditions attached. On IWSLT14 German-to-English translation, the authors tuned a 4M-parameter, quarter-width proxy and transferred to a 40M-parameter Transformer. At the same reported FLOP budget, μTransfer used 64 proxy samples while direct target tuning used five. Across 25 independent search trials, transferred validation BLEU percentiles were more reliable; naïve SP transfer diverged. This supports compute-efficient search, not superiority per equal number of sampled configurations.\n\nFor BERT, one roughly 13M-parameter proxy supplied settings to both BERT-base and BERT-large. The proxy search tested 256 combinations for $10^5$ steps, with reported total tuning cost comparable to one full BERT-large pretraining run. The transferred BERT-large test loss was 1.683 versus 1.731 for the cited Megatron default under the paper’s setup.\n\nThe GPT-3-scale result demands extra caution. Hyperparameters were transferred from a roughly 40M-parameter proxy to a 6.7B target at a reported tuning cost of 7% of target pretraining. However, the transferred run used relative attention and FP32, while the authors’ rerun baseline mistakenly used absolute attention and FP16. The reported improvement is real within those runs, but it cannot isolate μTransfer from those confounders.",
+      "sourceIds": [
+        "section-7",
+        "section-7-part-2"
+      ],
+      "claimIds": [
+        "c9",
+        "c10",
+        "c11"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s7",
+      "title": "Boundaries, misconceptions, and safe conclusions",
+      "markdown": "A common misconception is that μTransfer makes every hyperparameter universal. It does not. Regularization choices such as dropout and weight decay respond to overfitting and therefore to both data and model size. The paper primarily studies training loss in regimes where regularization is not the test-performance bottleneck; small-data finetuning can violate that premise.\n\nTransfer across width is also better supported than transfer across every other scale axis. In the studied Transformers, initialization scale did not transfer well across depth, and depth transfer failed for post-layer-normalized models. Even within successful regimes, an optimum can shift slightly for small proxies. Architecture, task, and data changes are not licensed by a result about scaling one family.\n\nThe defensible conclusion is precise: μP supplies width-aware coordinates in which several optimization and initialization hyperparameters were empirically stable enough to tune on much smaller models. That can decouple much of tuning cost from target width. It remains necessary to implement every scaling rule correctly, choose a sufficiently representative proxy, distinguish optimization from regularization, and treat results outside the tested scale ranges as hypotheses rather than guarantees.",
+      "sourceIds": [
+        "section-1",
+        "section-6",
+        "section-9",
+        "section-11"
+      ],
+      "claimIds": [
+        "c8",
+        "c12",
+        "c13"
+      ],
+      "figureId": null
+    }
+  ],
+  "figures": [
+    {
+      "id": "fig-optimizer",
+      "kind": "optimizer",
+      "title": "One learning-rate dial on a scalar objective",
+      "question": "Starting from x=3, how does changing the learning rate alter the 12 plain-gradient-descent iterates?",
+      "caption": "Illustrative gradient descent on $f(x)=x^2/2$ uses $x_{t+1}=(1-\\eta)x_t$ for 12 updates, exposing convergence, oscillation, or instability as $\\eta$ changes.",
+      "limitation": "This is a scalar quadratic with ordinary gradient descent, not Adam, a neural network, or a simulation of μP’s layerwise width scalings.",
+      "sourceIds": [
+        "section-3",
+        "section-4",
+        "section-5"
+      ],
+      "claimIds": [
+        "c3",
+        "c5",
+        "c7"
+      ],
+      "illustrative": true
+    }
+  ],
+  "quiz": [
+    {
+      "question": "A μP proxy and target differ only in hidden width. What should be copied during μTransfer?",
+      "options": [
+        {
+          "text": "The normalized master hyperparameters, while applying μP’s width-dependent tensor rules.",
+          "explanation": "Correct. Transfer operates in the parameterization’s stable coordinates, with layer-specific scaling handled by μP."
+        },
+        {
+          "text": "Every raw tensor learning rate unchanged, regardless of its layer role.",
+          "explanation": "Incorrect. Input, hidden, output, and bias parameters can require different width-dependent learning rates."
+        },
+        {
+          "text": "Only the proxy’s global learning rate, leaving standard initialization untouched.",
+          "explanation": "Incorrect. The paper stresses that rescaling one hyperparameter alone is insufficient."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-2",
+        "section-4"
+      ],
+      "claimIds": [
+        "c1",
+        "c4",
+        "c5"
+      ]
+    },
+    {
+      "question": "Why can reducing one global SP learning rate fail to fix wide-model training?",
+      "options": [
+        {
+          "text": "It necessarily increases every activation after initialization.",
+          "explanation": "Incorrect. A smaller rate generally reduces update magnitudes; the issue is their imbalance across parameter roles."
+        },
+        {
+          "text": "It may restrain exploding outputs while making other components, such as embeddings, learn negligibly.",
+          "explanation": "Correct. The paper argues that distinct components have incompatible width scaling under one SP learning rate."
+        },
+        {
+          "text": "It converts SGD into Adam at sufficiently large width.",
+          "explanation": "Incorrect. Width and learning-rate scaling do not change the optimizer’s update rule into Adam."
+        }
+      ],
+      "answer": 1,
+      "sourceIds": [
+        "section-5"
+      ],
+      "claimIds": [
+        "c7"
+      ]
+    },
+    {
+      "question": "Which conclusion is justified by the paper’s limitations?",
+      "options": [
+        {
+          "text": "Dropout tuned on one proxy is guaranteed to transfer across model and dataset sizes.",
+          "explanation": "Incorrect. Regularization strength can depend jointly on data size and model size."
+        },
+        {
+          "text": "Successful width transfer guarantees depth transfer for post-layer-normalized Transformers.",
+          "explanation": "Incorrect. The reported depth transfer did not work for the studied post-layer-normalized Transformers."
+        },
+        {
+          "text": "Transfer outside the tested family or scale range should be validated rather than assumed.",
+          "explanation": "Correct. The reported stability is conditional and includes explicit exceptions and finite-scale caveats."
+        }
+      ],
+      "answer": 2,
+      "sourceIds": [
+        "section-6",
+        "section-11"
+      ],
+      "claimIds": [
+        "c8",
+        "c12"
+      ]
+    }
+  ],
+  "id": "tensor-programs-v-tuning-large-neural",
+  "createdAt": "2026-10-02T00:17:17.548Z",
+  "pipelineVersion": "subjects-lessons-v1",
+  "sources": [
+    {
+      "id": "abstract",
+      "label": "Original paper · abstract",
+      "url": "https://arxiv.org/abs/2203.03466",
+      "digest": "6d3c1e1dd7c71bcbee4f4a93c0be5d21ae805016732e583808e083abf366f286",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:14:54.503Z"
+    },
+    {
+      "id": "main-text",
+      "label": "Original paper · unsectioned main text",
+      "url": "https://arxiv.org/html/2203.03466",
+      "digest": "15ad453bdd2ce1f6b9f2685abf79f9fa216716ec104e95568215737a56f41c2c",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:14:54.503Z"
+    },
+    {
+      "id": "section-1",
+      "label": "1 Introduction",
+      "url": "https://arxiv.org/html/2203.03466#S1",
+      "digest": "57e086c5cc7c5a83c2725875bb688e979ecff7401b9ddb5faa79e876a29c51d7",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:14:54.503Z"
+    },
+    {
+      "id": "section-2",
+      "label": "2 Parametrization Matters: A Primer",
+      "url": "https://arxiv.org/html/2203.03466#S2",
+      "digest": "a73f51e8f5a7151ec8621f2dd35c1e84d1de6238c918e02f9101bead2650f126",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:14:54.503Z"
+    },
+    {
+      "id": "section-3",
+      "label": "3 Hyperparameters Don’t Transfer Conventionally",
+      "url": "https://arxiv.org/html/2203.03466#S3",
+      "digest": "63ddc7a7cdafc9f147b2d9d4cc583e3742345f6942ea5cc1a13fa0ed9f7673b3",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:14:54.503Z"
+    },
+    {
+      "id": "section-4",
+      "label": "4 Unlocking Zero-Shot Hyperparameter Transfer with  LATEX: \\mu P",
+      "url": "https://arxiv.org/html/2203.03466#S4",
+      "digest": "e92ac4372e86819e1fa93be5f9f1109e7e266660bf19f808bb8cb6ce69e99989",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:14:54.503Z"
+    },
+    {
+      "id": "section-5",
+      "label": "5 The Defects of SP and How  LATEX: \\mu P Fixes Them",
+      "url": "https://arxiv.org/html/2203.03466#S5",
+      "digest": "878c12a38f2b83ffaddfe20e1f02d37188ba69b5831cfd3da9637e187469813c",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:14:54.503Z"
+    },
+    {
+      "id": "section-6",
+      "label": "6 Which Hyperparameters Can Be  LATEX: \\mu Transferred?",
+      "url": "https://arxiv.org/html/2203.03466#S6",
+      "digest": "fc30d5736210477db8f6938fa272dd22a84c8dcd2ce690998175a8725f6032a2",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:14:54.503Z"
+    },
+    {
+      "id": "section-7",
+      "label": "7 Efficiency and Performance of  LATEX: \\mu Transfer",
+      "url": "https://arxiv.org/html/2203.03466#S7",
+      "digest": "5d16c3b745f7d2cf159a21ab8ca8b25193805661d79394135333964d7294464d",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:14:54.503Z"
+    },
+    {
+      "id": "section-7-part-2",
+      "label": "7 Efficiency and Performance of  LATEX: \\mu Transfer · part 2",
+      "url": "https://arxiv.org/html/2203.03466#S7",
+      "digest": "8c5986eaa2b5f998a4907e109324c4cf69991a404dc42e98b3c3b6a4f87531a6",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:14:54.503Z"
+    },
+    {
+      "id": "section-8",
+      "label": "8 Wider is Better in  LATEX: \\mu P Throughout Training",
+      "url": "https://arxiv.org/html/2203.03466#S8",
+      "digest": "50166cf886434949309af9ab7439cdbe5df1e0767745d6ee89624d87fea1624a",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:14:54.503Z"
+    },
+    {
+      "id": "section-9",
+      "label": "9 Useful Hyperparameter Transfer: A Theoretical Puzzle",
+      "url": "https://arxiv.org/html/2203.03466#S9",
+      "digest": "c2650c9ec2a942494050dff87df2cf8475e108f8286d9e90f1b64daef183c7a3",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:14:54.503Z"
+    },
+    {
+      "id": "section-10",
+      "label": "10 Related Works",
+      "url": "https://arxiv.org/html/2203.03466#S10",
+      "digest": "284d2ae3c686f0697a8677f66becc470dad8a1921048d0f59e5686db5c1e6c62",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:14:54.503Z"
+    },
+    {
+      "id": "section-11",
+      "label": "11 Conclusion",
+      "url": "https://arxiv.org/html/2203.03466#S11",
+      "digest": "f5a47e94a9bd0a223e46047d873c53ca5c987b92c8685b106c142cdaba29d1b4",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:14:54.503Z"
+    }
+  ],
+  "review": {
+    "status": "passed",
+    "reviewedAt": "2026-10-02T02:19:23.021Z",
+    "contentDigest": "4246ee7ee9ae7065e250f0ae2c3230ebb6f5bcbd460b2bad4d2ddbe1eeb6b1dc"
+  }
+}

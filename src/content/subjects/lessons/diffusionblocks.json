@@ -1,0 +1,505 @@
+{
+  "title": "Denoising by Depth: How DiffusionBlocks Breaks the Backpropagation Chain",
+  "summary": "DiffusionBlocks converts residual transformer groups into independently trained, noise-conditioned denoisers, reducing active-depth memory while preserving a sequential reverse process.",
+  "prerequisites": [
+    "Residual updates as additive state changes",
+    "Gaussian corruption controlled by noise scale",
+    "Conceptual denoising score matching",
+    "Forward Euler integration of ordinary differential equations",
+    "Conditional expectations and squared-error objectives"
+  ],
+  "objectives": [
+    "Relate residual updates to Euler steps in a probability-flow ODE.",
+    "Reconstruct how DiffusionBlocks trains blocks and runs sequential inference.",
+    "Explain how direct noisy-target sampling enables independent block training.",
+    "Distinguish equal-probability noise partitions from equal-width partitions.",
+    "Interpret results within the reported datasets, architectures, and block counts."
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "mechanism",
+      "statement": "End-to-end backpropagation retains activations across depth, whereas DiffusionBlocks differentiates only one active block at a time.",
+      "conditions": "A depth-$L$ model is divided into $B$ independently optimized blocks.",
+      "sourceIds": [
+        "abstract"
+      ]
+    },
+    {
+      "id": "c2",
+      "kind": "equation",
+      "statement": "The variance-exploding construction corrupts a clean target according to $\\mathbf z_\\sigma=\\mathbf y+\\sigma\\boldsymbol\\epsilon$.",
+      "conditions": "$\\mathbf y\\sim p_{\\mathrm{data}}$, $\\boldsymbol\\epsilon\\sim\\mathcal N(\\mathbf0,\\mathbf I)$, and $\\sigma>0$.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c3",
+      "kind": "equation",
+      "statement": "The paper states its probability-flow ODE as $\\mathrm d\\mathbf z_\\sigma/\\mathrm d\\sigma=-\\sigma\\nabla_{\\mathbf z}\\log p_\\sigma(\\mathbf z_\\sigma)$.",
+      "conditions": "The paper’s variance-exploding deterministic reverse-process formulation.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c4",
+      "kind": "equation",
+      "statement": "The score is approximated through a clean-data denoiser by $(D_{\\boldsymbol\\theta}(\\mathbf z_\\sigma,\\sigma)-\\mathbf z_\\sigma)/\\sigma^2$.",
+      "conditions": "The Tweedie-form denoiser parameterization stated in the paper.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c5",
+      "kind": "equation",
+      "statement": "The paper’s displayed Euler rule adds a residual proportional to $\\mathbf z-D_{\\boldsymbol\\theta}$.",
+      "conditions": "Decreasing levels $\\sigma_{\\ell-1}>\\sigma_\\ell$ with $\\Delta\\sigma_\\ell=\\sigma_{\\ell-1}-\\sigma_\\ell>0$.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c6",
+      "kind": "mechanism",
+      "statement": "Each block is assigned a noise interval and trained to predict the target from a condition and directly corrupted target.",
+      "conditions": "A stack divided into $B$ noise-conditioned blocks whose intervals cover the selected noise range.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c7",
+      "kind": "equation",
+      "statement": "Block $b$ samples from the base noise distribution restricted and renormalized to its assigned interval.",
+      "conditions": "Block interval $[\\sigma_b,\\sigma_{b-1}]$ and supervised samples $(\\mathbf x,\\mathbf y)\\sim p_{\\mathrm{data}}$. The reported experiments use EDM weighting w(σ)=(σ²+σ_data²)/(σ σ_data)² with σ_data=0.5, preconditioning, and L2 normalization for discrete-variable embeddings.",
+      "sourceIds": [
+        "section-3",
+        "supplement-a3"
+      ]
+    },
+    {
+      "id": "c8",
+      "kind": "mechanism",
+      "statement": "Equi-probability partitioning gives every block the same probability mass rather than the same numerical width in $\\sigma$.",
+      "conditions": "A bounded noise range divided into $B$ intervals under $p_{\\mathrm{noise}}$.",
+      "sourceIds": [
+        "section-3-part-2"
+      ]
+    },
+    {
+      "id": "c9",
+      "kind": "result",
+      "statement": "On CIFAR-100, the reported 12-layer ViT obtained 59.30% accuracy with DiffusionBlocks versus 60.25% for the baseline.",
+      "conditions": "CIFAR-100 classification, 12-layer ViT, $B=3$, with gradients required for four layers at a time.",
+      "sourceIds": [
+        "section-5"
+      ]
+    },
+    {
+      "id": "c10",
+      "kind": "result",
+      "statement": "In the reported three-block DiT experiments, DiffusionBlocks had lower displayed train/test FID than the corresponding baselines on CIFAR-10 and ImageNet.",
+      "conditions": "DiT-S/2 on CIFAR-10 and DiT-L/2 on $256\\times256$ ImageNet; 50 Euler steps and classifier-free guidance scale 2.0.",
+      "sourceIds": [
+        "section-5"
+      ]
+    },
+    {
+      "id": "c11",
+      "kind": "result",
+      "statement": "The displayed CIFAR-10 ablation favored equi-probability intervals over uniform intervals for every tested layer allocation.",
+      "conditions": "Three blocks, four displayed layer distributions, block overlap disabled, and lower FID treated as better.",
+      "sourceIds": [
+        "section-5-part-2"
+      ]
+    },
+    {
+      "id": "c12",
+      "kind": "caveat",
+      "statement": "More blocks do not monotonically improve quality because reduced capacity per block can eventually outweigh efficiency gains.",
+      "conditions": "The reported ImageNet block-count ablation on a 24-layer model.",
+      "sourceIds": [
+        "section-5-part-2"
+      ]
+    },
+    {
+      "id": "c13",
+      "kind": "caveat",
+      "statement": "The conversion requires matching input and output dimensions, restricting direct use with dimension-changing architectures such as U-Net.",
+      "conditions": "Applying the paper’s recipe without an additional dimension-changing mechanism.",
+      "sourceIds": [
+        "section-6"
+      ]
+    },
+    {
+      "id": "c14",
+      "kind": "caveat",
+      "statement": "The reported demonstrations train models from scratch; adapting pretrained large models is presented as future work.",
+      "conditions": "Claims about converting or fine-tuning an already pretrained large model.",
+      "sourceIds": [
+        "section-6"
+      ]
+    },
+    {
+      "id": "c15",
+      "kind": "mechanism",
+      "statement": "The ViT classification adaptation concatenates CLS, image patch embeddings and a noisy learned label embedding, and trains a classification head on CLS with cross-entropy.",
+      "conditions": "Each specialist receives label embedding y_emb+σε conditioned on the image patches. This classification adaptation is distinct from image-pixel denoising with an L2 objective.",
+      "sourceIds": [
+        "supplement-a2"
+      ]
+    },
+    {
+      "id": "c16",
+      "kind": "mechanism",
+      "statement": "The autoregressive-language adaptation adds Gaussian noise after the embedding layer and trains token-i denoising conditioned on previous clean token embeddings using cross-entropy.",
+      "conditions": "D_b(z_i,σ,z_<i,σ) predicts in a continuous relaxation of discrete tokens; the previous clean prefix is the condition, not an unrestricted future-token context.",
+      "sourceIds": [
+        "supplement-a2"
+      ]
+    },
+    {
+      "id": "c17",
+      "kind": "mechanism",
+      "statement": "For a recurrent-depth network ordinarily applied K times, the adaptation trains a sampled-noise denoiser with one forward pass while retaining K-iteration inference.",
+      "conditions": "The stated factor-K reduction concerns training forward-pass count in this construction; it does not measure all end-to-end latency or change the retained inference iteration count.",
+      "sourceIds": [
+        "supplement-a2"
+      ]
+    },
+    {
+      "id": "c18",
+      "kind": "equation",
+      "statement": "Training overlap expands a nominal interval [σ_low,σ_high] to [σ_low/α,ασ_high], where α=(σ_high/σ_low)^γ.",
+      "conditions": "Positive interval endpoints with σ_high>σ_low and γ≥0; γ=0 gives no overlap. Reported γ is 0.05 by default and 0.1 for text generation; this expands training coverage rather than multiplying active inference blocks.",
+      "sourceIds": [
+        "supplement-a3"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "s1",
+      "title": "The dependency that consumes memory",
+      "markdown": "In ordinary end-to-end training, layer $\\ell$ consumes the activation from layer $\\ell-1$, and the backward pass needs information retained throughout that chain. Activation storage therefore grows with depth. DiffusionBlocks changes the learning problem: each block receives a synthetically corrupted supervised target and learns a local denoising objective.\n\nThis is not merely checkpointed or truncated backpropagation. During training, a block need not wait for the preceding block’s activation because its noisy input can be generated directly from the true target. During inference, however, blocks remain part of a sequential reverse process. “Independent” therefore describes their parameter optimization, not an absence of global composition.\n\nIf $L$ layers are evenly divided among $B$ blocks, an active block contains $L/B$ layers. The paper’s factor-$B$ argument concerns activations and gradients for that active block rather than all $L$ layers. It does not establish that parameter storage, optimizer state, communication, wall-clock time, or total device memory all decrease by exactly $B$.",
+      "sourceIds": [
+        "abstract",
+        "section-1",
+        "section-3"
+      ],
+      "claimIds": [
+        "c1",
+        "c6"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s2",
+      "title": "Noise creates training pairs at any depth",
+      "markdown": "Let the clean target be $\\mathbf y\\in\\mathbb R^d$. Draw $\\boldsymbol\\epsilon\\sim\\mathcal N(\\mathbf0,\\mathbf I)$ and form\n\n$$\n\\mathbf z_\\sigma=\\mathbf y+\\sigma\\boldsymbol\\epsilon.\n$$\n\nHere $d$ is target dimensionality, $\\mathbf I$ is the $d\\times d$ identity matrix, and $\\sigma>0$ controls corruption magnitude. The distribution of corrupted states at level $\\sigma$ is $p_\\sigma$. Because a state at any chosen $\\sigma$ can be sampled directly, training does not need to execute all earlier denoising stages to obtain it.\n\nA denoiser $D_{\\boldsymbol\\theta}(\\mathbf z_\\sigma,\\sigma)$ predicts $\\mathbf y$ by minimizing\n\n$$\n\\mathbb E\\!\\left[w(\\sigma)\\left\\|D_{\\boldsymbol\\theta}(\\mathbf y+\\sigma\\boldsymbol\\epsilon,\\sigma)-\\mathbf y\\right\\|_2^2\\right].\n$$\n\nThe expectation covers data, noise levels drawn from $p_{\\mathrm{noise}}$, and Gaussian noise. The function $w(\\sigma)$ weights contributions from different levels. The associated score, the gradient of log density with respect to the noisy state, is approximated by\n\n$$\n\\nabla_{\\mathbf z}\\log p_\\sigma(\\mathbf z_\\sigma)\n\\approx\\frac{D_{\\boldsymbol\\theta}(\\mathbf z_\\sigma,\\sigma)-\\mathbf z_\\sigma}{\\sigma^2}.\n$$\n\nThe noise experiment displays the lengths of 256 seeded Gaussian draws. It uses ambient dimension $D$ for the constructed sample and noise scale $\\sigma$ for each coordinate. Since independent standard Gaussian coordinates satisfy $\\mathbb E[\\epsilon_i^2]=1$,\n\n$$\\mathbb E[\\|\\sigma\\boldsymbol\\epsilon\\|^2]=D\\sigma^2,\\qquad r_{\\mathrm{RMS}}=\\sigma\\sqrt D.$$\n\nThe histogram records the sample norm distribution, while the reference marks the theoretical RMS radius. The measured mean norm averages the 256 lengths, which is a different statistic from the square root of their mean squared length. Doubling $\\sigma$ doubles every length and the RMS reference. Increasing $D$ adds independent squared coordinates, so the norm becomes relatively more concentrated around its typical radius. Predict those changes before moving the controls: they explain the scale of the directly corrupted state each block receives.",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c2",
+        "c4"
+      ],
+      "figureId": "fig-noise"
+    },
+    {
+      "id": "s3",
+      "title": "Residual depth as numerical integration",
+      "markdown": "The probability-flow ODE and denoiser-score relation in the paper imply\n\n$$\n\\frac{d\\mathbf z_\\sigma}{d\\sigma}=-\\sigma\\nabla_{\\mathbf z}\\log p_\\sigma(\\mathbf z_\\sigma)\n\\approx\\frac{\\mathbf z_\\sigma-D_{\\boldsymbol\\theta}(\\mathbf z_\\sigma,\\sigma)}{\\sigma}.\n$$\n\nThe derivative is with respect to noise level, not elapsed sampler-step count. A denoising step moves from $\\sigma_{\\mathrm{old}}$ to a lower $\\sigma_{\\mathrm{new}}$, so the signed increment $h=\\sigma_{\\mathrm{new}}-\\sigma_{\\mathrm{old}}$ is negative. Ordinary forward Euler gives\n\n$$\n\\mathbf z_{\\mathrm{new}}=\\mathbf z_{\\mathrm{old}}+\n\\frac{h}{\\sigma_{\\mathrm{old}}}(\\mathbf z_{\\mathrm{old}}-D_{\\boldsymbol\\theta}).\n$$\n\nWriting the positive decrement as $\\Delta\\sigma=-h$ makes the same update $\\mathbf z_{\\mathrm{old}}+(\\Delta\\sigma/\\sigma_{\\mathrm{old}})(D_{\\boldsymbol\\theta}-\\mathbf z_{\\mathrm{old}})$. For a constructed scalar example with old state $2$, denoiser prediction $0$, and $\\Delta\\sigma/\\sigma_{\\mathrm{old}}=1/4$, the update is $2+(1/4)(0-2)=1.5$, moving toward the denoiser.\n\nThe paper’s displayed Equation 4 instead uses a positive decrement multiplying $\\mathbf z-D$, the opposite sign. Its residual-layer **structure** still motivates the analogy between network depth and integration: a persistent state receives a learned increment. But the printed sign does not algebraically match the preceding ODE under the stated decreasing-level convention. A sampler derivation must retain the signed increment; this lesson does not infer an implementation from that inconsistent line.\n\nThe ODE example starts at $x(0)=1$ and integrates $dx/dt=-x$, whose exact solution is $e^{-t}$. Forward Euler replaces a curved segment by its tangent step,\n\n$$x_{n+1}=x_n+h(-x_n)=(1-h)x_n.$$\n\nFor positive steps smaller than one, each update reduces the state. The exact one-step multiplier is $e^{-h}=1-h+h^2/2+O(h^3)$, so the local mismatch begins at order $h^2$. Across a fixed interval, those local errors accumulate into a first-order global error. The plotted exact curve and numerical nodes let you see that accumulation; the displayed error changes when the integration step changes. This scalar calculation makes the residual-update interpretation concrete before a learned vector field replaces $-x$.",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c3",
+        "c4",
+        "c5"
+      ],
+      "figureId": "fig-ode"
+    },
+    {
+      "id": "s4",
+      "title": "From independent lessons to a sequential sampler",
+      "markdown": "The conversion begins with token-preserving layers: each layer maps a variable set of $d$-dimensional tokens to the same number of $d$-dimensional tokens.\n\nFirst, divide the $L$ layers into $B$ contiguous groups. If block $b$ contains layers $\\ell_{b-1}+1$ through $\\ell_b$, their composition is $\\bar f_{\\boldsymbol\\theta_b}$, where $\\boldsymbol\\theta_b$ denotes that block’s parameters. Second, select $[\\sigma_{\\min},\\sigma_{\\max}]$ and assign block $b$ an interval $[\\sigma_b,\\sigma_{b-1}]$. Third, augment condition $\\mathbf x$ with a noisy target state $\\mathbf z$ and add explicit noise-level conditioning. The relevant output tokens of $\\bar f_{\\boldsymbol\\theta_b\\mid\\sigma}(\\mathbf x,\\mathbf z)$ become the block’s denoised prediction.\n\nFor training, block $b$ draws $(\\mathbf x,\\mathbf y)$ from the data, samples $\\sigma$ from the restricted distribution $p_{\\mathrm{noise}}^{(b)}$, and constructs $\\mathbf y+\\sigma\\boldsymbol\\epsilon$. Its objective is\n\n$$\n\\mathcal L_b(\\boldsymbol\\theta_b)=\n\\mathbb E\\left[w(\\sigma)\\,\n\\mathrm{Loss}\\!\\left(\n\\bar f_{\\boldsymbol\\theta_b\\mid\\sigma}(\\mathbf x,\\mathbf y+\\sigma\\boldsymbol\\epsilon),\n\\mathbf y\\right)\n\\right].\n$$\n\nBecause both noisy input and clean target are directly available, optimizing $\\boldsymbol\\theta_b$ requires neither earlier block outputs nor their gradients.\n\nInference restores sequential dependence. Begin from the paper’s pure-noise state $\\mathbf z_0=\\sigma_{\\max}\\boldsymbol\\epsilon$. At each sampler step, inspect the current noise level $\\sigma$ and select the block whose assigned interval contains it; that block supplies the denoising estimate used in the next numerical update. A block may therefore be selected repeatedly while several sampler levels lie inside its interval. Crossing a boundary switches to the neighboring specialist.\n\nConsequently, $B$ is the number of independently trained specialists, not necessarily the number of sampler updates. For example, the reported DiT evaluation used $B=3$ blocks but 50 Euler sampling steps: those 50 levels are mapped to the relevant one of three blocks.\n\nThe local pair depends on the original task. In a **ViT classifier**, the clean target is a learned label embedding. The input concatenates the CLS token, image patches, and that label embedding after Gaussian corruption. A specialist conditions its reconstruction on the clean image, while the classification head on CLS is trained against the true class using cross-entropy. The supervised signal is therefore not an instruction to denoise image pixels.\n\nFor an existing **diffusion model**, the denoising interface is already present: replace a global denoiser $D_\\theta$ with $D_{\\theta_b}$ selected by its noise region. For an **autoregressive language model**, corrupt the continuous embedding of token $i$ and condition its denoiser on previous clean embeddings $\\mathbf z_{<i}$. Cross-entropy supplies supervision for the discrete token. The clean prefix is available because it is the causal context; future clean tokens are not added as a shortcut.\n\nFor **recurrent depth**, a network originally executes the same parameters $K$ times. Its converted training pair again comes directly from a clean target and sampled corruption level, so a training iteration needs one denoising forward pass instead of traversing the $K$ recurrent passes. Inference still performs the original $K$-iteration procedure. Saving training computation and shortening inference are different claims: this adaptation establishes the former forward-pass-count reduction, not the latter.\n\nThese conversions preserve a shared principle—construct the local noisy target without running upstream blocks—while changing representation, conditioning, and loss to suit the task. They are not one identical pixel-MSE procedure applied to every architecture.\n",
+      "sourceIds": [
+        "section-3",
+        "section-4",
+        "section-5",
+        "supplement-a2"
+      ],
+      "claimIds": [
+        "c6",
+        "c7",
+        "c10",
+        "c15",
+        "c16",
+        "c17"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s5",
+      "title": "Equal probability is not equal width",
+      "markdown": "Uniform widths in $\\sigma$ need not contain equal training probability when $p_{\\mathrm{noise}}$ is nonuniform. DiffusionBlocks instead chooses boundaries so every block receives probability mass $1/B$.\n\nUsing increasing boundaries for clarity, write\n\n$$\na_0=\\sigma_{\\min}<a_1<\\cdots<a_B=\\sigma_{\\max},\n\\qquad\n\\int_{a_{j-1}}^{a_j}p_{\\mathrm{noise}}(\\sigma)\\,\\mathrm d\\sigma=\\frac1B.\n$$\n\nFor bounded log-normal sampling, let $P_{\\mathrm{mean}}$ and $P_{\\mathrm{std}}$ be the mean and standard deviation of $\\log\\sigma$, let $\\Phi$ be the standard-normal CDF, and define\n\n$$\nq_j=q_{\\min}+\\frac jB(q_{\\max}-q_{\\min}),\n\\qquad\na_j=\\exp\\!\\left(P_{\\mathrm{mean}}+P_{\\mathrm{std}}\\Phi^{-1}(q_j)\\right).\n$$\n\nIllustrative calculation: ignore truncation, take $P_{\\mathrm{mean}}=0$, $P_{\\mathrm{std}}=1$, and $B=4$. The interior normal quantiles are approximately $-0.6745$, $0$, and $0.6745$. Exponentiation gives $a_1\\approx0.509$, $a_2=1$, and $a_3\\approx1.963$. Thus the intervals have equal probability but visibly unequal numerical widths. These numbers are illustrative, not reported settings.\n\nUnder the paper’s CIFAR-10 ablation—three blocks, four layer allocations, and block overlap disabled—equi-probability partitioning produced lower FID than uniform partitioning for every displayed allocation. That supports this design under the tested conditions; it is not a theorem that probability mass universally equals denoising difficulty.\n\nThe nominal boundaries specialize blocks, but a sharp training handoff can leave neighboring specialists poorly matched near their common boundary. Appendix C expands each training interval in **log noise**. For nominal $[\\sigma_{\\mathrm{low}},\\sigma_{\\mathrm{high}}]$, define\n\n$$\n\\alpha=\\left(\\frac{\\sigma_{\\mathrm{high}}}{\\sigma_{\\mathrm{low}}}\\right)^\\gamma,\n\\qquad\n[\\sigma_{\\mathrm{low}},\\sigma_{\\mathrm{high}}]\\longrightarrow\n[\\sigma_{\\mathrm{low}}/\\alpha,\\alpha\\sigma_{\\mathrm{high}}].\n$$\n\nConstruct an example with nominal interval $[1,4]$ and $\\gamma=0.05$. Then $\\alpha=4^{0.05}\\approx1.071773$, giving expanded training range $[0.933033,4.287094]$. In log coordinates, width changes from $\\log4$ to $(1+2\\gamma)\\log4$: ten percent wider for this $\\gamma$. These are arithmetic consequences of a constructed interval, not reported model boundaries.\n\nAt $\\gamma=0$, the expansion disappears. Positive overlap gives both neighboring specialists training experience near the handoff. The paper reports $0.05$ by default and $0.1$ for text generation. Equal probability refers to the **nominal partition**; after expansion, training ranges overlap and are no longer disjoint equal-mass bins. Nor does overlap mean every inference step runs both blocks: the relevant specialist is still selected by the inference noise region.\n",
+      "sourceIds": [
+        "section-3-part-2",
+        "supplement-a3"
+      ],
+      "claimIds": [
+        "c8",
+        "c11",
+        "c18"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s6",
+      "title": "Reading the evidence with its conditions attached",
+      "markdown": "The central contribution is direct access to local denoising pairs: corrupt the true target at a chosen level, give that pair to its assigned noise-conditioned block, and optimize without traversing preceding blocks. Unlike an arbitrary local classifier, every block participates in a common noise-indexed reverse process.\n\nThe demonstrations span several distinct adaptations rather than one universal, unchanged procedure: continuous noise intervals for ViT and DiT conversions, masking-schedule partitioning for masked diffusion, conversion of an autoregressive transformer into the denoising framework, and replacement of recurrent-depth iterative training with single-pass training. The NoProp experiment additionally isolates the continuous-time, independently denoised construction on NoProp’s own CNN-based architecture. Each adaptation uses the same local-pair principle with its own target representation and conditioning: class-label embeddings for ViT, clean causal prefixes for autoregressive text, and sampled-noise single-pass training for recurrent depth.\n\nSeveral limits remain. The recipe assumes matching input and output dimensions, restricting direct application to architectures such as U-Net. The demonstrations train models from scratch; conversion of pretrained large models by fine-tuning remains future work. Euler discretization is the demonstrated match to residual connections, while alternative samplers would require modified inter-block connections. The ideal partition granularity is unresolved, and the ImageNet ablation shows that excessive partitioning can hurt.\n\n\nTraining also needs a consistent weighting and representation. The experiments adopt the EDM noise weight\n\n$$w(\\sigma)=\\frac{\\sigma^2+\\sigma_{\\mathrm{data}}^2}{(\\sigma\\sigma_{\\mathrm{data}})^2},\\qquad \\sigma_{\\mathrm{data}}=0.5,$$\n\nand EDM preconditioning. Sampling noise levels determines how often a region appears; weighting determines how strongly its errors contribute. Those two choices should not be conflated with the number of layers in a specialist. For discrete labels or tokens, the authors L2-normalize continuous embeddings to counter embedding collapse, where different categories otherwise drift toward the same vector.\n\nA training iteration randomly selects a block; alternatively, different blocks can be trained on different GPUs. The active-depth argument remains $L/B$ layers for an evenly divided block, while parameters, optimizer state and other physical costs still require separate accounting. At inference the specialists compose from high to low noise. The paper demonstrates Euler-style residual composition; connections for other numerical solvers are a proposed extension rather than an evaluated drop-in guarantee.\n",
+      "sourceIds": [
+        "section-6",
+        "supplement-a2",
+        "supplement-a3"
+      ],
+      "claimIds": [
+        "c1",
+        "c6",
+        "c7",
+        "c14",
+        "c15",
+        "c16",
+        "c17",
+        "c18"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s7",
+      "title": "Reading the evidence across architectures",
+      "markdown": "For CIFAR-100 classification, the paper used a 12-layer ViT divided into $B=3$ blocks and added noise to class-label embeddings. Reported accuracy was 60.25% for the ViT baseline and 59.30% for DiffusionBlocks, which required gradients for four layers at a time. This is nearby performance in that experiment, not proof that the procedures are generally equivalent.\n\nFor image generation, the method was applied within EDM to 12-layer DiT-S/2 on CIFAR-10 and 24-layer DiT-L/2 on $256\\times256$ ImageNet, both with $B=3$. Inference used 50 Euler steps and classifier-free guidance scale 2.0. Displayed train/test FID changed from 32.84/39.83 to 30.59/37.20 on CIFAR-10 and from 9.01/12.09 to 9.00/10.63 on ImageNet. Since lower FID is preferred, DiffusionBlocks had lower displayed values in these comparisons. The result remains conditional on the architectures, datasets, sampler, guidance scale, and block count.\n\nThe breadth experiments modify the construction for architectures that are not ordinary continuous image diffusion models. For masked diffusion on text8, the paper partitions the masking schedule so that three blocks share the demasking work in a 12-layer DiT-based transformer. Reported bits per character, where lower is better, changed from 1.56 for MD4 to 1.45 for DiffusionBlocks, alongside the stated threefold memory reduction.\n\nFor autoregressive text generation, 12-layer Llama-2-style transformers were divided into $B=4$ blocks, leaving three layers active at a time. Because traditional perplexity is non-trivial for the resulting diffusion framework, the paper evaluates generated text using MAUVE and generative perplexity from Llama-2-7B and GPT2-XL teachers. On LM1B, the displayed MAUVE and teacher perplexities favored DiffusionBlocks; on OpenWebText, MAUVE and GPT2-XL perplexity were slightly worse while Llama-2 perplexity was slightly better. Thus this experiment supports applicability to an autoregressive base architecture, not uniform improvement on every metric and dataset.\n\nThe recurrent-depth demonstration addresses computation as well as active depth. Huginn ordinarily applies shared parameters for 32 iterations and uses eight-step truncated backpropagation through time. DiffusionBlocks instead trains with a single forward pass per training step; on LM1B, its displayed MAUVE rose from 0.49 to 0.70, while Llama-2 and GPT2-XL generative perplexities fell from 17.04 to 16.08 and from 46.73 to 42.43. These results are specific to the reported Huginn comparison and its text-generation evaluation.\n\nFor the NoProp comparison, the authors applied DiffusionBlocks to NoProp’s custom CNN-based architecture on CIFAR-100 rather than adapting NoProp to an unrelated transformer. DiffusionBlocks was the only displayed method marked as both continuous and block-wise and reported 46.88% accuracy, compared with 47.80% for the table’s backpropagation reference and 46.06%, 21.31%, and 37.57% for NoProp-DT, NoProp-CT, and NoProp-FM. It therefore exceeded the displayed NoProp variants while remaining slightly below that backpropagation result under this architecture-specific comparison.\n\nThe ImageNet block-count ablation exposes the central trade-off. For $B=1,2,3,4,6$, displayed FID was 12.09, 9.90, 11.11, 11.90, and 14.43, while active layers fell from 24 to 4. Moderate partitioning performed well, but six blocks degraded quality. A common misconception is therefore that independence makes arbitrarily fine partitioning free. It does not: efficiency, specialization, and capacity per block change together.",
+      "sourceIds": [
+        "section-3",
+        "section-5-part-2",
+        "section-6"
+      ],
+      "claimIds": [
+        "c1",
+        "c5",
+        "c12",
+        "c13",
+        "c14"
+      ],
+      "figureId": null
+    }
+  ],
+  "figures": [
+    {
+      "id": "fig-noise",
+      "kind": "noise",
+      "title": "Gaussian radius across scale and dimension",
+      "question": "If $\\sigma$ doubles while $D$ stays fixed, how should the RMS radius $\\sigma\\sqrt D$ and sampled norm histogram change?",
+      "caption": "A seeded illustrative Gaussian sample displays a norm histogram, RMS radius $\\sigma\\sqrt D$, and measured mean radius while controls vary $\\sigma$ and dimension $D$.",
+      "limitation": "This shows Gaussian norm geometry only. Dimension is not depicted as physical 3D space, and no learned denoiser, target distribution, or DiffusionBlocks training is simulated.",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c2"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "fig-ode",
+      "kind": "ode",
+      "title": "Forward Euler as residual increments",
+      "question": "As the Euler step size decreases, should the numerical solution of $\\mathrm dx/\\mathrm dt=-x$ approach or depart from $e^{-t}$ on $t\\in[0,3]$?",
+      "caption": "An illustrative Forward Euler solver evolves $x(0)=1$ under $\\mathrm dx/\\mathrm dt=-x$ and compares its discrete trajectory with the exact curve $e^{-t}$.",
+      "limitation": "This is a fixed scalar field, not an adaptive solver, adjoint method, learned vector field, or simulation of the paper’s reverse-noise schedule.",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c3",
+        "c5"
+      ],
+      "illustrative": true
+    }
+  ],
+  "quiz": [
+    {
+      "question": "Assume block $b$ receives $(\\mathbf x,\\mathbf y+\\sigma\\boldsymbol\\epsilon)$ with $\\sigma$ sampled in its assigned interval. Why can it train without executing block $b-1$?",
+      "options": [
+        {
+          "text": "Its noisy input and clean target are sampled directly from supervised data.",
+          "explanation": "Correct. Direct corruption constructs a local training pair at any assigned noise level."
+        },
+        {
+          "text": "Euler discretization makes every preceding block output exactly $\\mathbf y$.",
+          "explanation": "Incorrect. Euler is approximate, and preceding inference states are not assumed to equal the target."
+        },
+        {
+          "text": "All blocks share parameters, so one gradient automatically updates every block.",
+          "explanation": "Incorrect. The framework describes independently parameterized and optimized blocks."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-3",
+        "section-4"
+      ],
+      "claimIds": [
+        "c6",
+        "c7"
+      ]
+    },
+    {
+      "question": "A constructed block has nominal noise interval $[1,4]$ and overlap $\\gamma=0.05$. Which expanded training range follows from the paper’s rule?",
+      "options": [
+        {
+          "text": "Approximately $[0.933,4.287]$.",
+          "explanation": "Correct. The scale is $\\alpha=4^{0.05}\\approx1.071773$, and the expanded bounds are $1/\\alpha$ and $4\\alpha$."
+        },
+        {
+          "text": "Exactly $[1,4]$, because equal-mass bins cannot overlap.",
+          "explanation": "Incorrect. Equal mass defines the nominal partition; positive gamma separately expands its training coverage."
+        },
+        {
+          "text": "Exactly $[0,5]$, by subtracting and adding one unit.",
+          "explanation": "Incorrect. Expansion is multiplicative in noise level, hence additive in log noise, rather than a one-unit offset."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "supplement-a3"
+      ],
+      "claimIds": [
+        "c18"
+      ]
+    },
+    {
+      "question": "A sampler uses 50 noise steps with $B=3$ DiffusionBlocks. Which interpretation is consistent with the method?",
+      "options": [
+        {
+          "text": "Only the first three sampler steps use learned blocks; the remaining 47 have no denoiser.",
+          "explanation": "Incorrect. The assigned intervals collectively cover the selected noise range."
+        },
+        {
+          "text": "Each sampler step selects the block assigned to its current noise interval, so a block can be reused across multiple steps.",
+          "explanation": "Correct. Block count and sampler-step count are distinct, and the relevant specialist is used at each level."
+        },
+        {
+          "text": "All three blocks must be differentiated jointly at every inference step.",
+          "explanation": "Incorrect. Inference does not require gradient computation, and the paper says only the relevant block is required per denoising step."
+        }
+      ],
+      "answer": 1,
+      "sourceIds": [
+        "section-1",
+        "section-3",
+        "section-5"
+      ],
+      "claimIds": [
+        "c6",
+        "c10"
+      ]
+    }
+  ],
+  "id": "diffusionblocks",
+  "createdAt": "2026-10-01T23:15:12.908Z",
+  "pipelineVersion": "subjects-lessons-v1",
+  "sources": [
+    {
+      "id": "abstract",
+      "label": "Original paper · abstract",
+      "url": "https://arxiv.org/abs/2506.14202",
+      "digest": "b7af1e9e6482359c7027fe9bd1ca59c7e230d3f56ab53824c3743dab8c3c11ac"
+    },
+    {
+      "id": "section-1",
+      "label": "1 Introduction",
+      "url": "https://arxiv.org/html/2506.14202#S1",
+      "digest": "4acfae7fe5c3c331e7e85ae82e117f36adca6a048c9a8291264cd4124a4c0fc2"
+    },
+    {
+      "id": "section-2",
+      "label": "2 Preliminaries",
+      "url": "https://arxiv.org/html/2506.14202#S2",
+      "digest": "aad4fb1572829052fd823de372a12cffa031cffa6c7e9da87b7b76fdfbcd282c"
+    },
+    {
+      "id": "section-3",
+      "label": "3 Method",
+      "url": "https://arxiv.org/html/2506.14202#S3",
+      "digest": "ed487900a36303a13a2c1868311b49b0a586c0faa5a0d209c8830772d214f167"
+    },
+    {
+      "id": "section-3-part-2",
+      "label": "3 Method · part 2",
+      "url": "https://arxiv.org/html/2506.14202#S3",
+      "digest": "dc08793c4e4acdcfea9f391a53bd029caa7e3497e2eb8dad7440ad793e0c0344"
+    },
+    {
+      "id": "section-4",
+      "label": "4 Related works",
+      "url": "https://arxiv.org/html/2506.14202#S4",
+      "digest": "563d181c3b9eaec85baf3ca45fbccea2e6fdaa7fe092b1f4a91873259a90fc99"
+    },
+    {
+      "id": "section-5",
+      "label": "5 Experimental results",
+      "url": "https://arxiv.org/html/2506.14202#S5",
+      "digest": "3f3bd3bad1291bdcf2cc76f01fb7ca2a22ebb6f16bf49fea9a6938bd12f49552"
+    },
+    {
+      "id": "section-5-part-2",
+      "label": "5 Experimental results · part 2",
+      "url": "https://arxiv.org/html/2506.14202#S5",
+      "digest": "a196ed4d6405149e63245285120df6e1ebb65c4d8988f27a5206e8cd387edb62"
+    },
+    {
+      "id": "section-6",
+      "label": "6 Conclusion",
+      "url": "https://arxiv.org/html/2506.14202#S6",
+      "digest": "2dfdb9bd8aadb389cb6f290d6a6aed4269bd04472f07e13a4479b01eec0c193b"
+    },
+    {
+      "id": "section-7",
+      "label": "Author contributions",
+      "url": "https://arxiv.org/html/2506.14202#Sx1",
+      "digest": "ce51daa03e5cae636af46541fc8b8ddf89cf7120355109c45c4d6eb6855f05bb"
+    },
+    {
+      "id": "section-8",
+      "label": "Acknowledgement",
+      "url": "https://arxiv.org/html/2506.14202#Sx2",
+      "digest": "13de29ad16a3c02c2498d5dfcad5d6d2d2e081ec92366b3ec87948e806e1d2cb"
+    },
+    {
+      "id": "supplement-a2",
+      "label": "Appendix B Extension to diverse architectures",
+      "url": "https://arxiv.org/html/2506.14202#A2",
+      "digest": "8a56a1fe42128bded7e83f167835bc49bd08490282b04e060ecc9dda52867500",
+      "extractionVersion": "arxiv-html-scientific-body-v5",
+      "capturedAt": "2026-10-02T00:33:49.325Z"
+    },
+    {
+      "id": "supplement-a3",
+      "label": "Appendix C Implementation details in DiffusionBlocks",
+      "url": "https://arxiv.org/html/2506.14202#A3",
+      "digest": "3f0c97ef8a2f7733a35d6166f2d51f63aa511f5909ef95a6b3dc3ac6fabb141e",
+      "extractionVersion": "arxiv-html-scientific-body-v5",
+      "capturedAt": "2026-10-02T00:33:49.325Z"
+    }
+  ],
+  "review": {
+    "status": "passed",
+    "reviewedAt": "2026-10-02T01:49:12.183Z",
+    "contentDigest": "32dcb5bdcb4d7bd8eb9b80c4cd357b4e835705ba306eb2db82171a02f1e08e5b"
+  }
+}

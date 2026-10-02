@@ -1,0 +1,481 @@
+{
+  "title": "Teaching a Transformer to Carry Its Past Forward",
+  "summary": "NextLat adds latent-state transition prediction to next-token training, pressuring transformer hidden states to become compact, recursively predictive summaries of history.",
+  "prerequisites": [
+    "Autoregressive next-token prediction and cross-entropy",
+    "Transformer hidden states and output heads",
+    "Conditional probability, sufficient statistics, and KL divergence",
+    "Teacher forcing and speculative decoding"
+  ],
+  "objectives": [
+    "Explain why next-token accuracy does not ensure a coherent internal state.",
+    "Reconstruct the one-step and multi-step NextLat training objectives.",
+    "State the assumptions behind the paper's belief-state result.",
+    "Distinguish latent rollout training from recurrent inference.",
+    "Interpret the reported results under their evaluation conditions."
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "mechanism",
+      "statement": "Standard self-attention can retrieve earlier tokens without forcing each current hidden state to summarize everything needed for the future.",
+      "conditions": "Applies to ordinary autoregressive transformers whose attention memory grows with sequence length.",
+      "sourceIds": [
+        "abstract"
+      ]
+    },
+    {
+      "id": "c2",
+      "kind": "mechanism",
+      "statement": "NextLat jointly learns transformer states and a transition model that predicts the next state from the current state and newly observed token.",
+      "conditions": "The next token is teacher-forced during the latent transition training described by the paper.",
+      "sourceIds": [
+        "section-1"
+      ]
+    },
+    {
+      "id": "c3",
+      "kind": "equation",
+      "statement": "A belief state preserves every conditional expectation about the future that the complete observed history would determine.",
+      "conditions": "The equality is required for every bounded measurable future function, almost surely.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c4",
+      "kind": "result",
+      "statement": "The paper's belief-state conclusion is an idealized result requiring successful next-token and transition consistency with the underlying data distribution.",
+      "conditions": "Both stated consistency objectives must be optimized successfully; this is not a finite-training guarantee.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c5",
+      "kind": "mechanism",
+      "statement": "The practical hidden-state loss compares every recursively predicted state through horizon d with a stopped-gradient transformer target using Smooth L1 loss.",
+      "conditions": "The rollout uses teacher-forced tokens and averages the intermediate losses over the chosen horizon.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c6",
+      "kind": "mechanism",
+      "statement": "The KL term aligns predicted and target states by comparing their output-token distributions while freezing the output head for this term.",
+      "conditions": "Gradients from this KL objective flow only through the latent dynamics model.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c7",
+      "kind": "caveat",
+      "statement": "One-step transition consistency is sufficient for the paper's theoretical belief-state result; longer rollout supervision is introduced as an additional learning signal.",
+      "conditions": "This statement concerns the theorem's idealized assumptions, not guaranteed optimization in practical models.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c8",
+      "kind": "result",
+      "statement": "On the Manhattan experiment, every compared model passed the teacher-forced next-token test, so that metric alone did not separate their learned world models.",
+      "conditions": "Random-walk Manhattan dataset; models trained for six epochs; the compared table reports 100% for this test.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c9",
+      "kind": "result",
+      "statement": "In the Manhattan table, NextLat obtained sequence compression 0.71 and effective latent rank 52.7, compared with GPT's 0.65 and 160.1.",
+      "conditions": "The experiment used the random-walk dataset, six training epochs, and horizon d=8 for NextLat, MTP, and JTP.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c10",
+      "kind": "result",
+      "statement": "On Countdown, one-step NextLat reached 54.8% final-equation validity versus 42.3% for the next-best baseline reported in that comparison.",
+      "conditions": "All models in the equation-validity analysis used d=1; Countdown evaluation used 10,000 problems and eight pause tokens.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c11",
+      "kind": "result",
+      "statement": "Across Wikipedia, Books, Code, and Math, NextLat's average accepted-token counts exceeded its training horizons; separately, Figure 9 shows fully accepted drafts persisting to length 10 on the FineWeb-Edu validation set.",
+      "conditions": "Models were trained with d=1 or d=2. Domain-level results report average accepted tokens and speedups, while the length-10 full-draft acceptance evidence is specific to Figure 9's FineWeb-Edu validation evaluation.",
+      "sourceIds": [
+        "section-4-part-3"
+      ]
+    },
+    {
+      "id": "c12",
+      "kind": "caveat",
+      "statement": "The paper did not implement prompt-dependent adaptive draft lengths; it only compared several fixed lengths.",
+      "conditions": "For each prompt, the selected draft length stayed fixed throughout decoding.",
+      "sourceIds": [
+        "section-6"
+      ]
+    },
+    {
+      "id": "c13",
+      "kind": "caveat",
+      "statement": "The experiments leave the latent dynamics architecture and its hidden-width bottleneck largely unexplored.",
+      "conditions": "All reported experiments used simple MLP dynamics models.",
+      "sourceIds": [
+        "section-6"
+      ]
+    },
+    {
+      "id": "c14",
+      "kind": "caveat",
+      "statement": "NextLat changes learned representations but does not increase the fixed-depth transformer's computational expressivity.",
+      "conditions": "The statement concerns the transformer itself, distinct from separately rolling out the learned dynamics model.",
+      "sourceIds": [
+        "section-5-part-2"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "s1",
+      "title": "The missing pressure in next-token training",
+      "markdown": "An autoregressive transformer maps the observed prefix $X_{1:t}=(X_1,\\ldots,X_t)$ to a hidden vector $\\mathbf{h}_t$, then uses an output head $p_\\theta$ to predict $X_{t+1}$. Here $X_i$ is token $i$, $t$ is the current position, and $\\theta$ denotes transformer and output-head parameters.\n\nAccurate next-token prediction does not require $\\mathbf{h}_t$ alone to contain every fact needed later. Attention may retrieve different earlier tokens when different questions arise. Thus a model can achieve excellent local predictions with no single compact, consistently updated state. NextLat targets this gap: it retains token prediction but also asks a learned transition model to advance the hidden state.\n\nA useful distinction is **availability versus organization**. The entire prefix may be available in the attention cache, yet its information need not be organized into a state with a reusable update rule. NextLat supplies training pressure for that organization; it does not remove attention memory or replace the transformer architecture.",
+      "sourceIds": [
+        "abstract",
+        "section-1"
+      ],
+      "claimIds": [
+        "c1",
+        "c2"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s2",
+      "title": "Belief states: what compactness must preserve",
+      "markdown": "A belief state is not merely a short vector. Let $\\mathbf{b}_t=g(X_{1:t})$ summarize the prefix. It is sufficient for predicting the future when, for every bounded measurable function $f$ of future tokens,\n\n$$\n\\mathbb{E}[f(X_{t+1:T})\\mid\\mathbf{b}_t]\n=\n\\mathbb{E}[f(X_{t+1:T})\\mid X_{1:t}]\n\\quad\\text{a.s.}\n$$\n\nHere $T$ is sequence length, $g$ is an encoder, $\\mathbb{E}$ denotes conditional expectation, and “a.s.” means almost surely under the data distribution. This definition says that replacing the full history by $\\mathbf{b}_t$ loses no future-predictive information. It does **not** say that the state reconstructs every detail of the past.\n\nThe low-rank toy below offers a geometric intuition for compression. It starts with a fixed diagonal matrix whose singular values are $[6,4,3,2,1,0.5]$ and retains the first $r$ components. Increasing $r$ preserves more squared singular-value energy. That trade-off helps distinguish dimensional compression from predictive sufficiency: a low-rank representation is useful only if the discarded directions are irrelevant to the future. The control demonstrates linear algebra, not learned NextLat states or the Manhattan rank measurement.",
+      "sourceIds": [
+        "section-3",
+        "section-4"
+      ],
+      "claimIds": [
+        "c3",
+        "c9"
+      ],
+      "figureId": "f1"
+    },
+    {
+      "id": "s3",
+      "title": "The training loop, reconstructed",
+      "markdown": "NextLat learns three interacting pieces: the transformer state $\\mathbf{h}_t$, the token head $p_\\theta(X_{t+1}\\mid\\mathbf{h}_t)$, and dynamics $p_\\psi$, with parameters $\\psi$. Standard token training minimizes\n\n$$\n\\mathcal{L}_{\\text{next-token}}(\\theta)\n=\n\\mathbb{E}_{t<T}\\!\\left[-\\log p_\\theta(X_{t+1}\\mid\\mathbf{h}_t)\\right].\n$$\n\nFor latent training, begin at the true state $\\mathbf{h}_t$ and recursively feed teacher-forced tokens $X_{t+1:t+d}$ through $p_\\psi$. The resulting prediction at offset $i$ is $\\hat{\\mathbf{h}}_{t+i}$. The regression term is\n\n$$\n\\mathcal{L}_{\\text{next-h}}(\\theta,\\psi;d)\n=\n\\mathbb{E}_t\\!\\left[\\frac{1}{d}\\sum_{i=1}^{d}\n\\operatorname{SmoothL1}\\!\\left(\\operatorname{sg}[\\mathbf{h}_{t+i}],\n\\hat{\\mathbf{h}}_{t+i}\\right)\\right].\n$$\n\nThe horizon $d$ counts supervised rollout steps, and $\\operatorname{sg}$ stops gradients through the target state. A KL term additionally makes predicted and target states induce similar token distributions while its frozen output head sends gradients only into the dynamics model. Finally,\n\n$$\n\\mathcal{L}_{\\text{NextLat}}\n=\n\\mathcal{L}_{\\text{next-token}}\n+\\lambda_{\\text{next-h}}\\mathcal{L}_{\\text{next-h}}\n+\\lambda_{\\mathrm{KL}}\\mathcal{L}_{\\mathrm{KL}},\n$$\n\nwhere both $\\lambda$ values are positive weights.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c2",
+        "c5",
+        "c6"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s4",
+      "title": "A small rollout without magical machinery",
+      "markdown": "Consider an **illustrative** scalar state, not the paper's learned vector dynamics. Let $h_t=a h_{t-1}+u_t$, where $h_t$ is state, $a$ is retention, and $u_t$ is input. Set $h_{-1}=0$, $u_0=1$, all later $u_t=0$, and $a=0.5$. Then\n\n$$h_0=1,\\qquad h_1=0.5,\\qquad h_2=0.25,\\qquad h_3=0.125.$$\n\nThe calculation is recursive: each value is the previous value multiplied by $0.5$. The state experiment exposes exactly this impulse response for 12 steps. Raising $a$ makes information decay more slowly; lowering it erases the impulse faster. It teaches what a consistent reusable transition means, while deliberately omitting tokens, vector states, MLP dynamics, Smooth L1, KL alignment, and learning.\n\nThis clarifies a common misconception: NextLat does not turn the transformer's ordinary forward pass into this recurrence. During training, transformer states can still be produced in parallel. The auxiliary dynamics model is trained to connect those states. Multi-step unrolling introduces sequential work proportional to $d$, but the theoretical argument says $d=1$ is already sufficient under ideal consistency assumptions.",
+      "sourceIds": [
+        "section-3",
+        "section-5-part-2"
+      ],
+      "claimIds": [
+        "c4",
+        "c7",
+        "c14"
+      ],
+      "figureId": "f2"
+    },
+    {
+      "id": "s5",
+      "title": "Why the ideal theorem needs both consistencies",
+      "markdown": "The paper assumes two exact properties. First, next-token consistency requires the token head at $\\mathbf{h}_t$ to reproduce the true conditional distribution of $X_{t+1}$ given the complete prefix. Second, transition consistency requires $p_\\psi(\\mathbf{h}_{t+1}\\mid\\mathbf{h}_t,X_{t+1})$ to reproduce the transformer's next-state law.\n\nTogether they support recursive generation: decode a token from the current state, update the state with that token, and repeat. If this recursion matches the true future law, $\\mathbf{h}_t$ must preserve the history information needed for future prediction. Token consistency alone cannot establish that conclusion because later attention computations may recover information absent from the current state.\n\nThe important qualifier is “ideal.” This is a population-level statement about successful optimization, not proof that finite data, an MLP of limited width, or a particular optimizer reaches exact consistency. Nor does it prove minimal dimensionality. The practical losses approximate the desired equalities, and empirical compression must therefore be evaluated separately.",
+      "sourceIds": [
+        "section-3",
+        "section-6"
+      ],
+      "claimIds": [
+        "c3",
+        "c4",
+        "c7",
+        "c13"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s6",
+      "title": "Reading the evidence without collapsing the conditions",
+      "markdown": "The Manhattan experiment asks whether accurate local prediction is accompanied by a compact state that supports coherent behavior beyond familiar routes. It uses Vafa et al.’s random-walk dataset of Manhattan traversals, containing 91 million sequences and 4.7 billion tokens. The models were trained for six epochs; JTP, MTP, and NextLat used horizon $d=8$. Every compared model scored $100\\%$ on the teacher-forced next-token test, which measures whether each top-1 prediction is a legal turn on an in-distribution validation sequence. This perfect score does not establish that a model has recovered the street graph: a model can choose locally legal turns while representing intersections and routes inconsistently.\n\nThe other diagnostics test consequences that local legality misses. **Valid trajectories** measures successful traversals for out-of-distribution pickup–dropoff pairs. **Detour robustness** repeats that evaluation while replacing the model’s top prediction with a random legal detour $75\\%$ of the time, testing whether it can continue coherently after being pushed away from its preferred route. NextLat reported $98.7\\%$ valid trajectories and $95.0\\%$ detour robustness, compared with GPT’s $97.0\\%$ and $85.0\\%$. These results are specific to the reported random-walk benchmark and evaluation procedure.\n\nTwo further diagnostics examine compactness from different directions. **Sequence compression** is the percentage of cases in which two distinct traversals arriving at the same intersection with the same destination produce identical continuations. If the histories differ but the current task-relevant state is the same, merging their future behavior is evidence that the model is relying less on incidental path history. **Effective latent rank** is the exponentiated Shannon entropy of the normalized singular values of the hidden states; a lower value means their variation is concentrated in fewer effective dimensions. Sequence compression therefore measures behavioral merging, whereas effective latent rank measures representation geometry. In the reported table, NextLat obtained sequence compression $0.71$ and effective latent rank $52.7$, versus GPT’s $0.65$ and $160.1$. Neither metric alone proves the theorem’s belief-state condition, which requires preservation of the full future conditional law.\n\nThe connection to the training mechanism is direct. Starting from a transformer state $\\mathbf{h}_t$, the dynamics model must use the next observed token $X_{t+1}$ to predict the state the transformer produces for the extended history. Under multi-step supervision, that predicted state is then reused with the following teacher-forced token, and every intermediate prediction is compared with its corresponding stopped-gradient transformer state. A representation that depends on irrelevant details of how an intersection was reached makes this shared transition rule harder to fit across different traversals. The auxiliary loss therefore pressures histories with the same future-relevant situation toward states that can be advanced consistently, while the next-token loss preserves predictive grounding. The reported compression and robustness results are empirical evidence consistent with that pressure, not a finite-training guarantee of exact state recovery.\n\nCountdown evaluates a different consequence of recursively predictive states: whether intermediate representations support planning before the final arithmetic commitment. Each problem asks the model to combine given numbers with $+,-,\\times,$ and $\\div$ to reach a target. The experiment used 500,000 training problems, held out $10\\%$ of target numbers for out-of-distribution evaluation, inserted eight pause tokens after the target during training and testing, and evaluated 10,000 test problems. Results were averaged over three random seeds per baseline.\n\nOverall solve accuracy requires the model to emit a valid sequence of equations that reaches the requested target. The separate equation-validity analysis instead checks each generated equation locally by asking whether its left-hand side equals its right-hand side. For the comparison in that analysis, all models used $d=1$. Errors concentrated in the final equation: after earlier choices leave no valid route to the target, a model may force an incorrect equality rather than revise the preceding steps. NextLat’s final-equation validity was $54.8\\%$, compared with $42.3\\%$ for the next-best baseline in that analysis.\n\nWith $d=1$, NextLat is not explicitly trained against a complete multi-step arithmetic plan. Its additional signal is one-step latent transition consistency: after the next token is observed, the predicted latent must agree with the transformer state for the extended prefix, both through Smooth L1 regression and through the frozen-head token-distribution alignment. Because the same transition must remain useful at every position, the current state is encouraged to encode information that makes later states predictable rather than only the immediately correct symbol. The Countdown result supports an association between that training pressure and fewer late-stage inconsistencies under the stated benchmark conditions; it does not isolate a unique causal explanation or establish perfect long-horizon planning.",
+      "sourceIds": [
+        "section-4"
+      ],
+      "claimIds": [
+        "c8",
+        "c9",
+        "c10"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s7",
+      "title": "Inference opportunity and honest boundaries",
+      "markdown": "Although the auxiliary dynamics model can be discarded for ordinary transformer decoding, it can also serve as a lightweight self-speculative drafter. Starting from $\\mathbf{h}_t$, the system decodes a proposed token, updates the latent state through $p_\\psi$, and repeats. The main transformer then verifies proposed tokens in parallel. Because the same transition rule composes recursively, draft length is not architecturally tied to the training horizon in the way a fixed set of token-prediction heads is.\n\nIn the reported 1.3B-parameter language experiment, models trained on 100B FineWeb-Edu tokens used horizons $d=1$ or $d=2$. Across Wikipedia, Books, Code, and Math, the reported average accepted-token counts for NextLat exceeded its training horizon. Separately, Figure 9 evaluates draft length on the FineWeb-Edu validation set and shows fully accepted drafts persisting at length 10. The paper reports speedups up to $3.3\\times$. That maximum is conditional on the reported hardware, workloads, sampling procedure, and selection among tested draft lengths—not a general latency promise.\n\nFinally, “variable-length” did not mean adaptive within a prompt: the authors tested fixed lengths from 2 through 10 and kept the selected length static during decoding. Other open boundaries include simple MLP dynamics only, unstudied hidden-width effects, optimizer sensitivity, incomplete comparison with specialized MTP variants, and no full analysis of learned latent geometry.",
+      "sourceIds": [
+        "section-3-part-2",
+        "section-4-part-2",
+        "section-4-part-3",
+        "section-6"
+      ],
+      "claimIds": [
+        "c11",
+        "c12",
+        "c13"
+      ],
+      "figureId": null
+    }
+  ],
+  "figures": [
+    {
+      "id": "f1",
+      "kind": "low-rank",
+      "title": "Compression is not automatically sufficiency",
+      "question": "As retained rank r increases, how much of the fixed matrix's squared singular-value energy remains, and does that alone establish a belief state?",
+      "caption": "Illustrative diagonal singular decomposition with values [6,4,3,2,1,0.5]; the control retains the first r components and reports retained energy.",
+      "limitation": "This is fixed linear algebra, not a trained NextLat representation, LoRA update, or reproduction of the paper's effective-rank measurement.",
+      "sourceIds": [
+        "section-3",
+        "section-4"
+      ],
+      "claimIds": [
+        "c3",
+        "c9"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "f2",
+      "kind": "state",
+      "title": "A reusable update rule carries an impulse",
+      "question": "With a single initial impulse, how does changing retention a alter the state's decay over the next 12 steps?",
+      "caption": "Illustrative scalar recurrence h_t=a h_(t-1)+u_t with u_0=1 shows how one fixed transition repeatedly updates state.",
+      "limitation": "The control is not learned and does not simulate vector hidden states, tokens, an MLP dynamics model, or a NextLat world-model rollout.",
+      "sourceIds": [
+        "section-3",
+        "section-5-part-2"
+      ],
+      "claimIds": [
+        "c2",
+        "c7",
+        "c14"
+      ],
+      "illustrative": true
+    }
+  ],
+  "quiz": [
+    {
+      "question": "Assume exact next-token and transition consistency with the data distribution. What follows about the current hidden state?",
+      "options": [
+        {
+          "text": "It is sufficient for predicting the future.",
+          "explanation": "Correct. Under both ideal consistency assumptions, recursive token decoding and state updating preserve the future conditional law."
+        },
+        {
+          "text": "It is the smallest possible state vector.",
+          "explanation": "Incorrect. Sufficiency does not prove minimal dimensionality or uniqueness."
+        },
+        {
+          "text": "It reconstructs every detail of the past.",
+          "explanation": "Incorrect. A belief state must retain future-relevant information, not necessarily all historical detail."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c3",
+        "c4"
+      ]
+    },
+    {
+      "question": "Why can NextLat draft beyond a training horizon of d=1 in principle?",
+      "options": [
+        {
+          "text": "Its latent transition can be recursively composed.",
+          "explanation": "Correct. The same learned state update can produce another predicted state after each proposed token."
+        },
+        {
+          "text": "Its output head contains ten fixed token heads.",
+          "explanation": "Incorrect. That describes neither the NextLat mechanism nor its variable rollout length."
+        },
+        {
+          "text": "It reruns full transformer attention after every draft token.",
+          "explanation": "Incorrect. The proposed inference benefit comes from rolling the lightweight dynamics model before parallel verification."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-3-part-2",
+        "section-4-part-3"
+      ],
+      "claimIds": [
+        "c2",
+        "c11"
+      ]
+    },
+    {
+      "question": "Which conclusion is justified by the reported 3.3x maximum speedup?",
+      "options": [
+        {
+          "text": "That value holds under the reported decoding setup and tested draft lengths.",
+          "explanation": "Correct. It is a conditional measured result, with the static draft length selected from the evaluated range."
+        },
+        {
+          "text": "Every NextLat deployment will be exactly 3.3x faster.",
+          "explanation": "Incorrect. Hardware, workload, implementation, acceptance, and draft length affect realized speed."
+        },
+        {
+          "text": "The system adaptively changed draft length inside each prompt.",
+          "explanation": "Incorrect. The paper states that draft length remained fixed throughout decoding for each prompt."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-4-part-3",
+        "section-6"
+      ],
+      "claimIds": [
+        "c11",
+        "c12"
+      ]
+    }
+  ],
+  "id": "next-latent-prediction-transformers-learn-compact",
+  "createdAt": "2026-10-02T00:10:04.549Z",
+  "pipelineVersion": "subjects-lessons-v1",
+  "sources": [
+    {
+      "id": "abstract",
+      "label": "Original paper · abstract",
+      "url": "https://arxiv.org/abs/2511.05963",
+      "digest": "2758c85df879dc55dbc7263dcaa9610572a0f695f600b0479a44189fdfa3f427",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:07:46.004Z"
+    },
+    {
+      "id": "main-text",
+      "label": "Original paper · unsectioned main text",
+      "url": "https://arxiv.org/html/2511.05963",
+      "digest": "35ebde5369604c2de5a9bc03d0c9f1890b89fa7f8bf332b33fc5253d107141d3",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:07:46.004Z"
+    },
+    {
+      "id": "section-1",
+      "label": "1 Introduction",
+      "url": "https://arxiv.org/html/2511.05963#S1",
+      "digest": "807778cfe49e4621e977fb35155c4e8a3a8233aaa426f80001a631b69afcd96b",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:07:46.004Z"
+    },
+    {
+      "id": "section-2",
+      "label": "2 Related Work",
+      "url": "https://arxiv.org/html/2511.05963#S2",
+      "digest": "7b87c77608e3e1f2aef8d7da86790b4e1ea6ae3b7fd3601c37ca944e23dfcd57",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:07:46.004Z"
+    },
+    {
+      "id": "section-3",
+      "label": "3 Methodology: Next-Latent Prediction",
+      "url": "https://arxiv.org/html/2511.05963#S3",
+      "digest": "67285ec5cb13e06180d4ac598f8d6d57931407daa138aa498e572a693a5a7f59",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:07:46.004Z"
+    },
+    {
+      "id": "section-3-part-2",
+      "label": "3 Methodology: Next-Latent Prediction · part 2",
+      "url": "https://arxiv.org/html/2511.05963#S3",
+      "digest": "cedde039e4c0407d4bf85dca774e6df60c7159edbf447bb6cdf80c08a308600a",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:07:46.004Z"
+    },
+    {
+      "id": "section-4",
+      "label": "4 Experiments",
+      "url": "https://arxiv.org/html/2511.05963#S4",
+      "digest": "45536172e0d6d59a061cde26e99e09f285e9b052928e970fb9471ad5e5567800",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:07:46.004Z"
+    },
+    {
+      "id": "section-4-part-2",
+      "label": "4 Experiments · part 2",
+      "url": "https://arxiv.org/html/2511.05963#S4",
+      "digest": "1d488c42000c1f34614d630f32108d343f416c60dec7bced081912dbe666d21b",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:07:46.004Z"
+    },
+    {
+      "id": "section-4-part-3",
+      "label": "4 Experiments · part 3",
+      "url": "https://arxiv.org/html/2511.05963#S4",
+      "digest": "52a2e54d42d31c91f3fe84c97e536d8a3da12f43183813d6556f025422a96264",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:07:46.004Z"
+    },
+    {
+      "id": "section-5",
+      "label": "5 Discussions",
+      "url": "https://arxiv.org/html/2511.05963#S5",
+      "digest": "4e9ac6e21f92f6e6dbed9e588bafe1da6b76b3a8a8d04a1d92953066bf726cbd",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:07:46.004Z"
+    },
+    {
+      "id": "section-5-part-2",
+      "label": "5 Discussions · part 2",
+      "url": "https://arxiv.org/html/2511.05963#S5",
+      "digest": "fc5bba100a2e2f753d681000cf08e1a58fa2a495c88aa88e3a2f9e09c11b30e7",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:07:46.004Z"
+    },
+    {
+      "id": "section-6",
+      "label": "6 Limitations and Future Work",
+      "url": "https://arxiv.org/html/2511.05963#S6",
+      "digest": "cd9bfd8864cd4e419ce1942b7f7f9515abdcc9279379a6d54e53e95f9ab51a2d",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:07:46.004Z"
+    },
+    {
+      "id": "section-7",
+      "label": "7 Conclusion",
+      "url": "https://arxiv.org/html/2511.05963#S7",
+      "digest": "3847c2b77535790f064c7a49982d65e06a113358e27b75187741478b632b042d",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:07:46.004Z"
+    }
+  ],
+  "review": {
+    "status": "passed",
+    "reviewedAt": "2026-10-02T02:17:07.074Z",
+    "contentDigest": "1cd28993d32f1dbbd8bdbb5556d7f87cf8e1e315a8788e44c0a024a20d6d0a2b"
+  }
+}

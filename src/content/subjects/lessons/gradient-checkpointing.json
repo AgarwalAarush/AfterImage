@@ -1,0 +1,445 @@
+{
+  "title": "The Vanishing Tape: Training Deep Networks by Recomputing the Past",
+  "summary": "Chen et al. turn saved activations into a tunable resource: retain selected checkpoints, recompute discarded values during backpropagation, and reduce feature-map memory below linear growth.",
+  "prerequisites": [
+    "Computation graphs and data dependencies",
+    "Reverse-mode backpropagation and parameter gradients",
+    "Asymptotic notation for linear, square-root, and logarithmic growth"
+  ],
+  "objectives": [
+    "Explain why standard backpropagation retains forward activations.",
+    "Distinguish liveness-based storage reuse from checkpoint recomputation.",
+    "Derive the memory cost of checkpointing an equal-cost segmented chain.",
+    "Choose the segment count that minimizes memory in the equal-cost chain model.",
+    "Interpret reported memory and runtime results within their experimental conditions."
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "mechanism",
+      "statement": "A computation graph represents operations as nodes and dependencies between operations as edges; its backward pathway can be constructed in reverse topological order.",
+      "conditions": "For a differentiable forward graph whose gradient operators and dependencies have been declared.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c2",
+      "kind": "mechanism",
+      "statement": "In-place execution is safe only when overwriting an input cannot destroy a value still required by another pending operation.",
+      "conditions": "For an operation whose input may have multiple downstream consumers.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c3",
+      "kind": "mechanism",
+      "statement": "Storage can be shared by intermediate values whose lifetimes do not overlap, and the paper uses a linear-time liveness-counter heuristic for static allocation.",
+      "conditions": "For a known computation graph traversed in topological order with declared dependencies.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c4",
+      "kind": "caveat",
+      "statement": "Liveness analysis and storage reuse can reduce training memory by a constant factor, but ordinary gradient operators still require enough forward intermediates to leave activation memory linear in network depth.",
+      "conditions": "For convolutional chains or recurrent unrollings of length n without dropping and recomputing forward results.",
+      "sourceIds": [
+        "section-3",
+        "section-4"
+      ]
+    },
+    {
+      "id": "c5",
+      "kind": "mechanism",
+      "statement": "The checkpointing method retains selected segment outputs, discards internal segment results, and regenerates those results from the nearest retained output when their backward computation begins.",
+      "conditions": "For a graph that can be divided into segments whose internal forward computations can be replayed.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c6",
+      "kind": "mechanism",
+      "statement": "The general graph construction uses a mirror-count function m from graph nodes to nonnegative integers to specify how many times a node result may be recomputed; setting every mirror count to zero recovers the normal gradient graph.",
+      "conditions": "For the paper's memory-optimized gradient-graph construction.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c7",
+      "kind": "equation",
+      "statement": "For an equally divided n-layer chain with k segments, the activation-memory model is max_i cost-of-segment(i) + O(k) = O(n/k) + O(k).",
+      "conditions": "Layers have comparable activation-memory cost and segments are approximately equal.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c8",
+      "kind": "result",
+      "statement": "Choosing k proportional to sqrt(n) balances stored segment boundaries against within-segment working memory, giving O(sqrt(n)) feature-map memory with one additional forward computation per mini-batch.",
+      "conditions": "Under the paper's equal-cost segmented-chain analysis and single-level recomputation plan.",
+      "sourceIds": [
+        "section-4",
+        "section-6"
+      ]
+    },
+    {
+      "id": "c9",
+      "kind": "equation",
+      "statement": "Under recursive checkpointing, the paper models memory by g(n)=k+g(n/(k+1)), yielding g(n)=k log base k+1 of n; k=1 gives logarithmic memory.",
+      "conditions": "Each recursive level stores k intermediate results and applies the same strategy to its subpath.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c10",
+      "kind": "caveat",
+      "statement": "When layers have unequal memory costs, the paper replaces the equal-segment square-root prescription with greedy planning under a per-segment memory budget B and heuristic search over B.",
+      "conditions": "For heterogeneous computation graphs where layer activation costs differ.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c11",
+      "kind": "result",
+      "statement": "On the reported ResNet setup, graph allocation reduced memory by a factor of two to three but retained linear scaling, while the sublinear plan trained a 1,000-layer configuration using less than 7 GB.",
+      "conditions": "MXNet implementation; batch size 32; input shape (3,224,224); a conv-bn-relu counted as one layer; feature-map estimates excluded parameters and temporary convolution memory.",
+      "sourceIds": [
+        "section-5"
+      ]
+    },
+    {
+      "id": "c12",
+      "kind": "result",
+      "statement": "The reported sublinear plan incurred roughly 30 percent additional runtime relative to linear-memory allocation.",
+      "conditions": "Twenty-batch timing on one Titan X GPU for the paper's ResNet and LSTM settings.",
+      "sourceIds": [
+        "section-5"
+      ]
+    },
+    {
+      "id": "c13",
+      "kind": "result",
+      "statement": "For the reported long-unrolling LSTM experiment, the sublinear plan used more than four times less memory than the optimized plan that did not trade computation for memory.",
+      "conditions": "Four-layer LSTM; 1,024 hidden states; sequence length 64; batch size 64; 50-dimensional inputs; 5,000-class softmax outputs.",
+      "sourceIds": [
+        "section-5"
+      ]
+    },
+    {
+      "id": "c14",
+      "kind": "caveat",
+      "statement": "The paper's feature-map memory reports exclude parameter storage and temporary workspace such as convolution memory, so they are not identical to total device-memory consumption.",
+      "conditions": "For the static feature-map accounting used in the experiments.",
+      "sourceIds": [
+        "section-5"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "s1",
+      "title": "Why backpropagation carries a tape",
+      "markdown": "A deep network is a sequence—or, more generally, a graph—of operations. Let $x_0$ be an input and let layer $i$ compute $x_i=f_i(x_{i-1};\\theta_i)$, where $x_i$ is the activation after layer $i$ and $\\theta_i$ denotes that layer's parameters. A scalar loss $L$ is evaluated at the end. Backpropagation applies the chain rule in reverse, and a layer's backward operator commonly needs values produced during its forward operation.\n\nThe usual implementation therefore behaves like a tape recorder: the forward pass creates $x_1,\\ldots,x_n$, retains them, and the backward pass consumes them in reverse order. If comparable layers each require one unit of activation storage, retaining all $n$ activations costs $O(n)$ memory. This is separate from parameter storage. Chen et al. focus on intermediate feature maps and their gradients because these can dominate memory in the deep architectures they discuss.\n\nThe optimizer experiment below isolates a prerequisite: gradients drive parameter updates. With the illustrative objective $f(x)=x^2/2$, ordinary gradient descent obeys $x_{t+1}=x_t-\\eta x_t=(1-\\eta)x_t$. From $x_0=3$ and $\\eta=0.25$, the first three iterates are $2.25$, $1.6875$, and $1.265625$. Changing the learning rate changes those twelve displayed updates. Checkpointing does not change this optimization rule; it changes how the values needed to calculate a gradient are obtained. The pictured scalar quadratic is not a neural network, an adaptive optimizer, or an experiment reported by the paper.",
+      "sourceIds": [
+        "section-1",
+        "section-3",
+        "section-4"
+      ],
+      "claimIds": [
+        "c1",
+        "c4"
+      ],
+      "figureId": "f1"
+    },
+    {
+      "id": "s2",
+      "title": "Reuse is not recomputation",
+      "markdown": "Before discarding activations, the paper extracts savings already latent in the computation graph. Every produced value has a lifetime: it begins when the value is written and ends after its final consumer has executed. Two values with nonoverlapping lifetimes can occupy the same storage at different times. An operation may also write its output directly over an input, but only when no pending consumer still needs that input. Otherwise, an apparently clever in-place update silently corrupts the computation.\n\nThe paper tracks liveness with counters while traversing nodes in topological order. A storage tag becomes recyclable when its counter reaches zero. The authors use this as a static allocation plan, avoiding runtime garbage-collection overhead. This graph analysis can substantially improve constants, yet it does not remove the central training problem: backward operators often need forward activations whose lifetimes extend across most of the forward pass.\n\nThe illustrative 16-slot control makes allocation waste tangible. Nine live tokens are grouped into blocks; changing block width changes padded slots relative to a fixed 16-slot reservation. Think of those slots only as a small model of occupied versus unused storage. They are not activation tensors, physical bytes, latency measurements, or the allocator in the paper. The useful distinction is conceptual: packing and recycling improve how existing live values occupy memory, whereas checkpointing deliberately makes some values absent and later reconstructs them.",
+      "sourceIds": [
+        "section-3",
+        "section-4"
+      ],
+      "claimIds": [
+        "c2",
+        "c3",
+        "c4"
+      ],
+      "figureId": "f2"
+    },
+    {
+      "id": "s3",
+      "title": "Segmenting the forward history",
+      "markdown": "Consider a linear chain of $n$ layers divided into $k$ contiguous segments. During the initial forward pass, retain only each segment's output—the checkpoint at its boundary—and discard the internal activations. During backward propagation through a segment, start from its nearest retained boundary, replay that segment's forward operations to reconstruct its internal activations, and then execute its backward operations. Once that segment is finished, its temporary values may be released.\n\nSuppose segment $j$ starts from checkpoint $c_{j-1}$ and contains layers $a$ through $b$. Its replay computes $x_a,\\ldots,x_b$ again from $c_{j-1}$. These are the same deterministic forward quantities that ordinary backpropagation would have retained, subject to reproducing the same operation semantics. The method changes their storage schedule, not the intended gradient.\n\nThe paper generalizes this idea through a mirror-count function $m:\\mathcal{V}\\rightarrow\\mathbb{N}$, where $\\mathcal{V}$ is the graph's node set and $\\mathbb{N}$ denotes nonnegative integers in this construction. A value $m(v)$ specifies how many times node $v$ may be mirrored for recomputation. Segment interiors can use $m(v)=1$, while retained segment outputs use $m(v)=0$. If all counts are zero, the construction reduces to the ordinary gradient graph. The generated traversal order also exposes when reconstructed values become live, allowing checkpointing to combine with in-place execution and memory sharing.",
+      "sourceIds": [
+        "section-4",
+        "section-5"
+      ],
+      "claimIds": [
+        "c5",
+        "c6"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s4",
+      "title": "The square-root balance",
+      "markdown": "The segmented chain has two competing memory terms. Storing one output per segment costs $O(k)$. Backpropagating through one segment requires its reconstructed internal activations; with equal-sized segments, the largest segment has about $n/k$ layers and costs $O(n/k)$. Because segments are processed separately, their internal working sets need not coexist. Thus\n\n$$\nM(n,k)=\\max_{i=1,\\ldots,k} M_{\\mathrm{segment}}(i)+O(k)=O\\!\\left(\\frac{n}{k}\\right)+O(k).\n$$\n\nHere $n$ is the number of comparable layers, $k$ is the number of segments, $M(n,k)$ is feature-map memory, and $M_{\\mathrm{segment}}(i)$ is the working memory for segment $i$. Balancing the two terms means choosing $n/k\\approx k$, hence $k\\approx\\sqrt{n}$ and $M=O(\\sqrt{n})$.\n\nFor a correctly calculated illustrative example, take $n=64$ equal-cost layers and ignore constant factors. With $k=8$, the boundary term is $8$ units and the largest segment term is $64/8=8$ units, totaling $16$. With $k=4$, the estimate is $4+16=20$; with $k=16$, it is $16+4=20$. The symmetric result shows why eight balances this simplified model. These units are illustrative activation units, not gigabytes or measurements from the paper.\n\nA common misconception is that checkpointing makes training computation sublinear. It does not. The claimed sublinear quantity is activation memory. The single-level plan saves memory by adding approximately one forward pass per mini-batch; ordinary forward and backward work still has to occur.",
+      "sourceIds": [
+        "section-4",
+        "section-6"
+      ],
+      "claimIds": [
+        "c7",
+        "c8"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s5",
+      "title": "Beyond uniform chains",
+      "markdown": "Real graphs do not have equal-cost layers. Activation shapes vary, branches keep values alive for different durations, and some operations are much more expensive to replay than others. Consequently, $k=\\sqrt{n}$ is an explanation of the balance, not a universal configuration rule.\n\nFor heterogeneous costs, the paper introduces a memory budget $B$ for the work within a segment. Its greedy planner forms segments under that budget, obtains an exact cost from static allocation for each candidate plan, and heuristically searches over $B$. Small budgets tend to create more boundaries; large budgets retain fewer boundaries but permit larger per-segment working sets. The paper also notes that operation cost can inform which results should be kept: for example, one may retain an expensive convolution result while dropping cheaper batch-normalization, activation, or pooling results.\n\nThe same idea can be nested. Let $g(n)$ denote memory for forward and backward processing of an $n$-layer path. If each level retains $k$ intermediate results and recursively applies the strategy to subpaths, the paper writes\n\n$$\ng(n)=k+g\\!\\left(\\frac{n}{k+1}\\right),\n$$\n\nwhich yields\n\n$$\ng(n)=k\\log_{k+1}(n).\n$$\n\nFor $k=1$, this becomes $g(n)=\\log_2 n$. That stronger memory bound carries a stronger recomputation burden: layers are replayed across logarithmically many recursive levels, requiring $O(\\log n)$ full-forward-pass equivalents, or $O(n\\log n)$ forward-operation work for an $n$-layer chain. Thus the logarithm describes retained feature-map memory and the number of full-pass equivalents, not merely $O(\\log n)$ individual layer operations. Logarithmic memory is therefore a boundary of the trade-off, not evidence that maximal recomputation is normally fastest.",
+      "sourceIds": [
+        "section-4"
+      ],
+      "claimIds": [
+        "c9",
+        "c10"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s6",
+      "title": "What the experiments establish",
+      "markdown": "The experiments separate static feature-map accounting from total runtime memory. The static numbers exclude parameters and temporary workspace such as convolution memory, so they must not be read as complete GPU requirements. Runtime measurements complement that narrower accounting.\n\nFor residual networks, the authors used MXNet, batch size $32$, inputs of shape $(3,224,224)$, and counted each conv-bn-relu group as one layer while varying depth. In-place execution plus sharing reduced memory by a factor of two to three, but the remaining trend was linear in depth. The sublinear plan changed that scaling behavior and trained the reported 1,000-layer configuration in less than 7 GB. Timing twenty batches on one Titan X showed roughly 30% additional runtime for the sublinear plan relative to linear-memory allocation.\n\nThe recurrent experiment used a four-layer LSTM with 1,024 hidden states, unrolled for 64 time steps, at batch size 64; inputs were continuous 50-dimensional vectors and outputs used a 5,000-class softmax. In that setting, the sublinear plan reduced memory by more than fourfold relative to the already optimized plan without computation-for-memory trading.\n\nThese results support feasibility under the stated architectures, implementation, hardware, and accounting rules. They do not establish a universal 30% overhead, a universal fourfold reduction, or a fixed number of bytes saved by every checkpoint. Actual outcomes depend on graph structure, tensor sizes, operation costs, allocator behavior, and hardware.",
+      "sourceIds": [
+        "section-5"
+      ],
+      "claimIds": [
+        "c11",
+        "c12",
+        "c13",
+        "c14"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s7",
+      "title": "A precise mental model",
+      "markdown": "Gradient checkpointing is best understood as scheduled forgetting. Liveness analysis first recycles storage once values are truly dead. Checkpoint planning then chooses some still-useful forward values not to preserve, accepting deterministic replay when backward propagation later demands them. The planner balances three quantities: the checkpoints simultaneously retained, the largest temporary reconstruction workspace, and the additional forward work.\n\nThat framing prevents two mistakes. First, dropping a value is not the same as dropping a dependency: backward computation must still receive the required quantity, reconstructed from a valid retained ancestor. Second, asymptotic activation savings do not erase parameters, optimizer state, temporary operator workspace, or unrelated device allocations. The paper's contribution is a general graph construction and planning approach that integrates recomputation with established in-place and sharing optimizations, producing a practical square-root-memory point and a more expensive recursive logarithmic-memory extreme.",
+      "sourceIds": [
+        "abstract",
+        "section-3",
+        "section-4",
+        "section-6"
+      ],
+      "claimIds": [
+        "c3",
+        "c5",
+        "c6",
+        "c8",
+        "c9",
+        "c14"
+      ],
+      "figureId": null
+    }
+  ],
+  "figures": [
+    {
+      "id": "f1",
+      "kind": "optimizer",
+      "title": "Gradients still drive the same update",
+      "question": "As the learning rate changes, how do the twelve iterates of ordinary gradient descent on the fixed quadratic change, and what remains outside this toy computation?",
+      "caption": "Illustrative gradient descent on $f(x)=x^2/2$ from $x=3$ for twelve updates; it isolates the optimization step whose gradients checkpointing aims to preserve.",
+      "limitation": "This is plain scalar gradient descent, not a neural-network backward pass, checkpoint planner, Adam/RMSProp simulation, or reported experiment from the paper.",
+      "sourceIds": [
+        "section-3",
+        "section-4",
+        "section-5"
+      ],
+      "claimIds": [
+        "c1",
+        "c5"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "f2",
+      "kind": "memory",
+      "title": "Live occupancy versus reserved capacity",
+      "question": "With nine live tokens, how does changing block width alter padding relative to the fixed 16-slot reservation?",
+      "caption": "A constructed 16-slot layout shows occupied and padded slots, providing a small visual analogy for distinguishing useful live storage from allocation waste.",
+      "limitation": "The control models block allocation for nine tokens; it does not implement activation checkpointing, liveness analysis, physical byte accounting, latency, or the paper's allocator.",
+      "sourceIds": [
+        "section-3",
+        "section-4"
+      ],
+      "claimIds": [
+        "c3",
+        "c4",
+        "c5"
+      ],
+      "illustrative": true
+    }
+  ],
+  "quiz": [
+    {
+      "question": "Assume a 100-layer equal-cost chain and the paper's single-level model $M(n,k)\\propto n/k+k$. Which segment count minimizes this expression among the choices?",
+      "options": [
+        {
+          "text": "2 segments",
+          "explanation": "This gives $100/2+2=52$ illustrative units, leaving a large within-segment working set."
+        },
+        {
+          "text": "10 segments",
+          "explanation": "This gives $100/10+10=20$ units and balances the two terms."
+        },
+        {
+          "text": "50 segments",
+          "explanation": "This gives $100/50+50=52$ units, so stored boundaries dominate."
+        }
+      ],
+      "answer": 1,
+      "sourceIds": [
+        "section-4"
+      ],
+      "claimIds": [
+        "c7",
+        "c8"
+      ]
+    },
+    {
+      "question": "Which statement correctly distinguishes storage sharing from checkpoint recomputation?",
+      "options": [
+        {
+          "text": "Sharing reuses storage after a value's lifetime ends; checkpointing discards a value that will later be regenerated.",
+          "explanation": "Correct: the first exploits nonoverlapping lifetimes, while the second deliberately exchanges additional forward work for less retained state."
+        },
+        {
+          "text": "Sharing and checkpointing both overwrite any input immediately after it is read once.",
+          "explanation": "Incorrect: an input cannot be overwritten safely while another pending operation still depends on it."
+        },
+        {
+          "text": "Checkpointing stores every activation but compresses each one in place.",
+          "explanation": "Incorrect: the paper's central mechanism drops selected intermediate results and recomputes them."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-3",
+        "section-4"
+      ],
+      "claimIds": [
+        "c2",
+        "c3",
+        "c5"
+      ]
+    },
+    {
+      "question": "What is the defensible interpretation of the paper's roughly 30% runtime overhead result?",
+      "options": [
+        {
+          "text": "Every checkpointed model on every GPU will run exactly 30% slower.",
+          "explanation": "Incorrect: the measurement is tied to the reported implementation, hardware, workloads, and timing procedure."
+        },
+        {
+          "text": "Checkpointing guarantees lower total GPU memory by exactly the same fraction.",
+          "explanation": "Incorrect: runtime overhead and memory reduction are different quantities, and feature-map accounting excludes other allocations."
+        },
+        {
+          "text": "The reported sublinear plans cost roughly 30% more runtime than linear-memory allocation in the stated Titan X benchmark.",
+          "explanation": "Correct: this preserves the experimental conditions and avoids claiming universality."
+        }
+      ],
+      "answer": 2,
+      "sourceIds": [
+        "section-5"
+      ],
+      "claimIds": [
+        "c12",
+        "c14"
+      ]
+    }
+  ],
+  "id": "gradient-checkpointing",
+  "createdAt": "2026-10-02T00:18:11.058Z",
+  "pipelineVersion": "subjects-lessons-v1",
+  "sources": [
+    {
+      "id": "abstract",
+      "label": "Original paper · abstract",
+      "url": "https://arxiv.org/abs/1604.06174",
+      "digest": "ef07529a3ade9fcd7eb18cf46599c3d6b29bca1a701fc1a47def33b8d2183f41",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:15:39.470Z"
+    },
+    {
+      "id": "section-1",
+      "label": "1 Introduction",
+      "url": "https://arxiv.org/html/1604.06174#S1",
+      "digest": "87374a2f1cc6a5ceca3e69ea3d3712d7b5e50871a8be4f1896a083187470a6f9",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:15:39.470Z"
+    },
+    {
+      "id": "section-2",
+      "label": "2 Related Works",
+      "url": "https://arxiv.org/html/1604.06174#S2",
+      "digest": "5b6a50fb9d5add182f06ec047de86d9099fcfd420f612e6e05caacf00359f493",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:15:39.470Z"
+    },
+    {
+      "id": "section-3",
+      "label": "3 Memory Optimization with Computation Graph",
+      "url": "https://arxiv.org/html/1604.06174#S3",
+      "digest": "c4c1f3c03676d79aa16e8203162ec220b8945950c61654778263c308eadc9f9d",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:15:39.470Z"
+    },
+    {
+      "id": "section-4",
+      "label": "4 Trade Computation for Memory",
+      "url": "https://arxiv.org/html/1604.06174#S4",
+      "digest": "18ac477b391f61cc137bbaa4aa2663a612def493f35c457e93c103d2703a9651",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:15:39.470Z"
+    },
+    {
+      "id": "section-5",
+      "label": "5 Experiments",
+      "url": "https://arxiv.org/html/1604.06174#S5",
+      "digest": "6adfc646f854884d13117dbaaa62e013035c36ca4110985e3d009c5cd176e017",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:15:39.470Z"
+    },
+    {
+      "id": "section-6",
+      "label": "6 Conclusion",
+      "url": "https://arxiv.org/html/1604.06174#S6",
+      "digest": "c97812d1161df432b2e8d5a1e53e15908e929798f1f9e426a1178d85a777f36f",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:15:39.470Z"
+    },
+    {
+      "id": "section-7",
+      "label": "Acknowledgement",
+      "url": "https://arxiv.org/html/1604.06174#Sx1",
+      "digest": "468ad12f3c7272724fdb3fd49082f06371aebb19a08b62e40aa07bd0ad3e2952",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:15:39.470Z"
+    }
+  ],
+  "review": {
+    "status": "passed",
+    "reviewedAt": "2026-10-02T00:18:11.058Z",
+    "contentDigest": "20678df6b1e8f9ba69f3e51aa24612d1d71e5a2c411c75c22a4ab97c8bc8331f"
+  }
+}

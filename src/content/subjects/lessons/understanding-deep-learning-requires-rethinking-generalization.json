@@ -1,0 +1,529 @@
+{
+  "title": "The Memorization Stress Test: What Fits, What Generalizes, and Why the Gap Matters",
+  "summary": "By fitting corrupted labels and noise, the paper shows that capacity, optimization, and generalization are distinct—and that none alone explains deep learning’s success.",
+  "prerequisites": [
+    "Training error on examples used to fit a model",
+    "Test error on held-out examples from the target distribution",
+    "Regularization that favors some fitted solutions over others",
+    "The rectified linear unit function"
+  ],
+  "objectives": [
+    "Distinguish training-set interpolation from generalization to new data.",
+    "Reconstruct the paper's label and input randomization tests.",
+    "Explain why unrestricted capacity measures are uninformative here.",
+    "Interpret the finite-sample expressivity theorem without overextending it.",
+    "Derive the minimum-norm interpolant for an overparameterized linear model."
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "mechanism",
+      "statement": "The paper compares an architecture trained on true data with the same training setup after replacing labels by fixed random labels.",
+      "conditions": "The architecture, model size, hyperparameters, and optimizer are held fixed while the training labels are transformed.",
+      "sourceIds": [
+        "page-2",
+        "page-3"
+      ]
+    },
+    {
+      "id": "c2",
+      "kind": "result",
+      "statement": "The tested CIFAR10 networks achieved perfect or near-perfect training fit on completely random labels, while test performance approached random guessing; Table 1 reports 100% training accuracy for Inception and the 3x512 MLP, 99.82% for AlexNet, and 99.34% for the 1x512 MLP.",
+      "conditions": "CIFAR10 experiments with fixed random labels, generally without explicit regularization; the reported networks were trained until convergence. The paper’s prose describes zero loss or perfect fitting, while Table 1 records slightly sub-100% training accuracy for AlexNet and the 1x512 MLP.",
+      "sourceIds": [
+        "page-2",
+        "page-5",
+        "page-6"
+      ]
+    },
+    {
+      "id": "c3",
+      "kind": "result",
+      "statement": "The tested convolutional networks could also fit inputs whose pixels were independently randomized or generated from a matching Gaussian distribution.",
+      "conditions": "The input-randomization variants described for the CIFAR10 experiments, generally without explicit regularization.",
+      "sourceIds": [
+        "page-2",
+        "page-4"
+      ]
+    },
+    {
+      "id": "c4",
+      "kind": "result",
+      "statement": "Across partial label-corruption levels on CIFAR10, training error reached zero while test error deteriorated steadily toward 90 percent at complete corruption.",
+      "conditions": "CIFAR10 with independently corrupted labels and ten classes; after training convergence.",
+      "sourceIds": [
+        "page-4",
+        "page-5"
+      ]
+    },
+    {
+      "id": "c5",
+      "kind": "result",
+      "statement": "On ImageNet, the tested network reached 95.20 percent top-1 training accuracy on one million random labels without retuning hyperparameters.",
+      "conditions": "The paper’s ImageNet random-label experiment; this was not perfect interpolation and no random-label hyperparameter tuning was performed.",
+      "sourceIds": [
+        "page-5"
+      ]
+    },
+    {
+      "id": "c6",
+      "kind": "caveat",
+      "statement": "Explicit regularization improved some test results but did not adequately explain why the tested networks generalized.",
+      "conditions": "Comparisons toggling data augmentation, weight decay, and, for ImageNet Inception V3, dropout.",
+      "sourceIds": [
+        "page-2",
+        "page-6",
+        "page-7",
+        "page-8"
+      ]
+    },
+    {
+      "id": "c7",
+      "kind": "result",
+      "statement": "CIFAR10 models without the tested explicit regularizers still achieved substantial test accuracy despite fitting their training sets almost perfectly.",
+      "conditions": "The architectures and preprocessing reported in Table 1; results vary materially by architecture.",
+      "sourceIds": [
+        "page-6",
+        "page-7"
+      ]
+    },
+    {
+      "id": "c8",
+      "kind": "equation",
+      "statement": "The empirical Rademacher complexity averages the largest correlation a hypothesis class can attain with independent random signs: R-hat_n(H)=E_sigma[sup_{h in H}(1/n) sum_i sigma_i h(x_i)].",
+      "conditions": "Binary-valued random signs on a fixed sample; the paper uses this analogy to interpret random-label fitting.",
+      "sourceIds": [
+        "page-5"
+      ]
+    },
+    {
+      "id": "c9",
+      "kind": "mechanism",
+      "statement": "Perfect fitting of random labels suggests that an unrestricted hypothesis-class complexity can be near its trivial maximum and therefore yield no useful realistic generalization bound.",
+      "conditions": "Model classes capable of fitting arbitrary random binary assignments on the observed sample, without an additional effective restriction.",
+      "sourceIds": [
+        "page-5"
+      ]
+    },
+    {
+      "id": "c10",
+      "kind": "result",
+      "statement": "A two-layer ReLU network with 2n+d weights can represent any real-valued function on any finite sample of n points in d dimensions.",
+      "conditions": "Finite-sample representation on distinct sample points; this is an existence statement, not a claim about test behavior or SGD.",
+      "sourceIds": [
+        "page-2",
+        "page-8"
+      ]
+    },
+    {
+      "id": "c11",
+      "kind": "equation",
+      "statement": "For a full-row-rank data matrix X with d at least n, an interpolating linear predictor satisfies Xw=y, and a zero-initialized gradient method remains in the row span so that w=X^T alpha and XX^T alpha=y.",
+      "conditions": "Distinct examples assembled as rows of X, full row rank, interpolation, and initialization at zero.",
+      "sourceIds": [
+        "page-8",
+        "page-9"
+      ]
+    },
+    {
+      "id": "c12",
+      "kind": "mechanism",
+      "statement": "The row-span interpolant obtained from XX^T alpha=y is the minimum Euclidean-norm solution of Xw=y.",
+      "conditions": "The linear, full-row-rank interpolation setting analyzed in the paper.",
+      "sourceIds": [
+        "page-9"
+      ]
+    },
+    {
+      "id": "c13",
+      "kind": "caveat",
+      "statement": "Minimum Euclidean norm alone did not predict generalization across the paper’s different feature representations.",
+      "conditions": "The MNIST comparison between raw inputs and wavelet preprocessing; norms and representations are not directly interchangeable measures of simplicity.",
+      "sourceIds": [
+        "page-9"
+      ]
+    },
+    {
+      "id": "c14",
+      "kind": "caveat",
+      "statement": "The experiments separate ease of optimization from generalization because training remained effective even when the fitted solution had poor test performance.",
+      "conditions": "Random-label and randomized-input experiments for the tested architectures and training procedures.",
+      "sourceIds": [
+        "page-2",
+        "page-4",
+        "page-10"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "s1",
+      "title": "Three questions hidden inside one loss value",
+      "markdown": "A low training loss can conceal three different questions. **Expressivity** asks whether some parameter setting can match the training examples. **Optimization** asks whether the training algorithm can find such a setting. **Generalization** asks whether the resulting predictor works on fresh examples.\n\nLet a training sample be $S=\\{(x_i,y_i)\\}_{i=1}^n$, where $x_i$ is an input, $y_i$ its label, and $n$ the number of examples. For a predictor $h$ and nonnegative loss $\\ell$, empirical risk is\n\n$$\\widehat L_S(h)=\\frac{1}{n}\\sum_{i=1}^n \\ell(h(x_i),y_i).$$\n\nA model interpolates the sample when its training error is zero. That fact alone says nothing about its error on new draws. The paper’s central move is to disturb the statistical relationship between $x_i$ and $y_i$ while changing as little else as possible. If optimization still succeeds, successful fitting cannot itself explain successful prediction.\n\nThe optimizer control below is deliberately smaller than the paper’s networks. It performs ordinary gradient descent on $f(x)=x^2/2$, starting at $x=3$, for 12 updates. Changing the learning rate changes whether and how quickly the scalar iterate approaches the minimum. This isolates an optimization fact: reaching a minimum depends on update dynamics. It cannot show generalization because it contains neither a dataset split nor competing label structures.",
+      "sourceIds": [
+        "page-1",
+        "page-2",
+        "page-10"
+      ],
+      "claimIds": [
+        "c1",
+        "c14"
+      ],
+      "figureId": "fig-optimizer"
+    },
+    {
+      "id": "s2",
+      "title": "The controlled break: randomize labels, not the learner",
+      "markdown": "The primary stress test copies a dataset and replaces its true labels with fixed random labels. The architecture, parameter count, optimizer, and hyperparameters remain unchanged. Because the randomized label assigned to each training image stays fixed across epochs, memorization is possible; because the assignment destroys the input–label relationship, it provides no useful rule for predicting independently labeled test examples.\n\nOn CIFAR10, the tested networks achieved perfect or near-perfect training fit under complete label randomization, while test error approached 90%, the random-guessing error for ten balanced choices. The paper’s surrounding prose describes zero loss or perfect fitting, but Table 1 gives the model-level qualification: Inception and the 3x512 MLP reached 100% training accuracy, whereas AlexNet reached 99.82% and the 1x512 MLP reached 99.34%. Partial corruption provided a continuum: the reported training error reached zero across corruption levels, while test error worsened steadily as corruption increased. Thus one fitted model can capture remaining signal and memorize the corrupted portion simultaneously.\n\nThe ImageNet result needs its exact qualifier. The tested network attained 95.20% top-1 **training** accuracy on one million random labels, not perfect accuracy, and the authors did not retune hyperparameters for the randomized case. This strengthens the optimization observation without licensing the claim that every architecture, optimizer, or arbitrary dataset must be easy to memorize.",
+      "sourceIds": [
+        "page-2",
+        "page-4",
+        "page-5"
+      ],
+      "claimIds": [
+        "c1",
+        "c2",
+        "c4",
+        "c5",
+        "c14"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s3",
+      "title": "When even the inputs lose their structure",
+      "markdown": "The paper next altered inputs. One condition applied the same pixel permutation to every training and test image; another used a different permutation for every image; a third generated Gaussian pixels with mean and variance matched to the original dataset. The tested convolutional networks still fit these training sets. Convolution therefore did not prevent memorization merely because its local structure was mismatched to the data.\n\nThe noise control visualizes a related prerequisite, not the paper’s image experiment. It repeatedly samples a seeded $D$-dimensional Gaussian vector and displays its norm, the measured mean norm, and the reference root-mean-square radius $\\sigma\\sqrt D$, where $D$ is dimension and $\\sigma$ is the coordinate standard deviation. For an illustrative calculation, if $D=4$ and $\\sigma=0.5$, then\n\n$$\\sigma\\sqrt D=0.5\\sqrt4=1.$$\n\nChanging $\\sigma$ rescales lengths; changing $D$ affects the norm distribution. This helps clarify that “Gaussian noise” is still a precisely specified distribution rather than a synonym for every unstructured input. The control does not train a classifier, reproduce CIFAR10 preprocessing, or establish the paper’s fitting result.",
+      "sourceIds": [
+        "page-2",
+        "page-4",
+        "page-5"
+      ],
+      "claimIds": [
+        "c3",
+        "c14"
+      ],
+      "figureId": "fig-noise"
+    },
+    {
+      "id": "s4",
+      "title": "Why a worst-case capacity score becomes blunt",
+      "markdown": "The empirical Rademacher complexity of a class $\\mathcal H$ on fixed inputs $x_1,\\ldots,x_n$ is\n\n$$\\widehat{\\mathfrak R}_n(\\mathcal H)=\\mathbb E_{\\sigma}\\left[\\sup_{h\\in\\mathcal H}\\frac{1}{n}\\sum_{i=1}^n\\sigma_i h(x_i)\\right],$$\n\nwhere each $\\sigma_i\\in\\{-1,+1\\}$ is an independent uniform random sign, $\\mathbb E_\\sigma$ averages over those signs, and the supremum chooses the best $h$ in $\\mathcal H$ for each assignment. In the binary formulation used for the paper’s argument, a class that can match arbitrary random signs has complexity near the trivial maximum. A resulting uniform bound cannot distinguish the network trained on meaningful labels from the same class trained on random labels.\n\nThis does **not** mean complexity theory is false or that every refined bound is impossible. It means a measure applied to the unrestricted model class is too coarse for the observed distinction. A useful account must encode a more selective property of the data, learned solution, representation, or training procedure. The paper similarly argues that label-independent uniform stability cannot distinguish true-label and random-label outcomes under this test.",
+      "sourceIds": [
+        "page-3",
+        "page-5"
+      ],
+      "claimIds": [
+        "c8",
+        "c9"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s5",
+      "title": "Regularization helps without becoming the whole explanation",
+      "markdown": "The authors toggled data augmentation, weight decay, and, in the relevant ImageNet model, dropout. These interventions often improved test accuracy, but removing them did not automatically destroy generalization. On CIFAR10, for example, Table 1 reports 100% training accuracy and 85.75% test accuracy for Inception without random cropping or weight decay; architecture-specific results differ, so this is not a universal baseline. Conversely, explicit regularizers did not universally block random-label fitting.\n\nBatch normalization complicates the vocabulary because it was not introduced as an explicit penalty. Removing it from the paper’s CIFAR10 Inception variant reduced test accuracy and made training less stable, but the observed generalization difference was only about 3–4 percentage points. Early stopping also had dataset-dependent potential, and the authors warn that selecting a stopping point rigorously requires a separate validation role.\n\nThe normalization control takes the fixed illustrative activations $[-2,-1,0,2,6]$. An offset changes every raw value; standardization then computes $z_i=(a_i-\\mu)/s$, where $\\mu$ is their mean and $s$ their population standard deviation. It demonstrates shift removal for one vector. It is not a BatchNorm training implementation and cannot reproduce the reported accuracy change.",
+      "sourceIds": [
+        "page-6",
+        "page-7",
+        "page-8"
+      ],
+      "claimIds": [
+        "c6",
+        "c7"
+      ],
+      "figureId": "fig-normalization"
+    },
+    {
+      "id": "s6",
+      "title": "A finite sample can be memorized by a shallow network",
+      "markdown": "The theoretical result sharpens the empirical message. For any finite sample $S\\subset\\mathbb R^d$ with $|S|=n$ and any target function $f:S\\to\\mathbb R$, the paper constructs a two-layer ReLU network with $2n+d$ weights whose output equals $f(x)$ at every $x\\in S$. Here $d$ is input dimension, $n$ is sample size, and $\\operatorname{ReLU}(z)=\\max(0,z)$.\n\nThe theorem concerns **finite-sample expressivity**. It says an appropriate parameter setting exists for arbitrary values on the listed points. It does not say the network approximates an arbitrary function everywhere in $\\mathbb R^d$, that stochastic gradient descent will find the construction, that the weights will be robust, or that the predictor will generalize. Those are separate questions.\n\nA common misconception is that the result proves “more parameters cause poor generalization.” It does not. The experiments exhibit highly expressive models that generalize on true labels and memorize random ones. The tension is exactly that parameter count or representational capacity alone fails to discriminate between those outcomes.",
+      "sourceIds": [
+        "page-2",
+        "page-3",
+        "page-8"
+      ],
+      "claimIds": [
+        "c10"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s7",
+      "title": "The linear mirror: interpolation plus algorithmic selection",
+      "markdown": "The paper uses an overparameterized linear model to make solution selection explicit. Put feature row $x_i^T$ into $X\\in\\mathbb R^{n\\times d}$ and labels into $y\\in\\mathbb R^n$. If $d\\ge n$ and $X$ has row rank $n$, then $Xw=y$ has interpolating solutions. A zero-initialized gradient update is assembled from training vectors, so its solution remains in their span:\n\n$$w=X^T\\alpha.$$\n\nCombining this identity with interpolation gives\n\n$$XX^T\\alpha=y.$$\n\nSince $XX^T$ is invertible under full row rank, $\\alpha=(XX^T)^{-1}y$ and\n\n$$w=X^T(XX^T)^{-1}y,$$\n\nthe minimum-$\\ell_2$-norm interpolant.\n\nFor a small illustrative example, take $X=[1\\;2]$, a $1\\times2$ matrix, and $y=[3]$. Then $XX^T=1^2+2^2=5$, so $\\alpha=3/5$ and $w=[3/5,6/5]^T$. Indeed, $Xw=3/5+12/5=3$. Its squared norm is $9/25+36/25=9/5$. Adding any null-space vector $t[-2,1]^T$ preserves the fit but increases squared norm by $5t^2$, confirming the minimum at $t=0$.\n\nThe paper also reports that exact interpolation without explicit regularization could retain nontrivial test performance in traditional kernel models. Solving the unregularized pixel-based system on MNIST produced 1.2% test error; applying Gabor wavelet preprocessing before exact fitting reduced it to 0.6%, and adding regularization did not improve either MNIST result. On CIFAR10, an unregularized Gaussian kernel applied directly to pixels produced 46% test error. These results depend on the stated datasets, kernels, and feature representations: they made interpolation without explicit regularization part of the paper’s challenge to the traditional account, but they do not explain why neural networks generalize.\n\nThis is a clean example of implicit selection, not a complete neural-network theory. The paper’s own MNIST comparison found that a larger minimum norm after changing features could accompany lower test error, so Euclidean norm is representation-dependent and not a universal predictor.",
+      "sourceIds": [
+        "page-8",
+        "page-9"
+      ],
+      "claimIds": [
+        "c11",
+        "c12",
+        "c13"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s8",
+      "title": "The conclusion is a separation, not a counsel of despair",
+      "markdown": "The evidence separates several propositions that are often bundled together. These networks had enough effective capacity to memorize. Their stochastic training procedures could find memorizing solutions. Yet the same architecture and optimizer generalized very differently when the labels carried real structure. Explicit regularization improved some outcomes but did not supply a necessary-and-sufficient explanation.\n\nThe paper therefore rules out a simple story, not the possibility of theory. Its experiments cover particular architectures, CIFAR10 and ImageNet conditions, and specified randomizations; its theorem is an expressivity construction; its linear analysis is a special case. None establishes that all modern networks behave identically, that regularization is useless, or that optimization has no inductive bias.\n\nThe productive question becomes narrower and harder: among the many interpolating solutions, what properties of the data, representation, architecture, and algorithm select a predictor that transfers? Any proposed answer should survive the paper’s stress test by explaining both successful prediction on meaningful labels and successful memorization when that meaning is deliberately removed.",
+      "sourceIds": [
+        "abstract",
+        "page-2",
+        "page-8",
+        "page-9",
+        "page-10"
+      ],
+      "claimIds": [
+        "c6",
+        "c10",
+        "c13",
+        "c14"
+      ],
+      "figureId": null
+    }
+  ],
+  "figures": [
+    {
+      "id": "fig-optimizer",
+      "kind": "optimizer",
+      "title": "Optimization can succeed without answering generalization",
+      "question": "How does changing the learning rate alter the 12 gradient-descent iterates toward the scalar minimum?",
+      "caption": "Illustrative ordinary gradient descent on $f(x)=x^2/2$ from $x=3$; the control changes the learning rate and displays 12 updates.",
+      "limitation": "This scalar quadratic has no train/test split and is not SGD, a neural network, or a reproduction of the paper’s optimization curves.",
+      "sourceIds": [
+        "page-2",
+        "page-4",
+        "page-10"
+      ],
+      "claimIds": [
+        "c14"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "fig-noise",
+      "kind": "noise",
+      "title": "Dimension, scale, and Gaussian norm",
+      "question": "When dimension or standard deviation changes, how do the sampled norm histogram and $\\sigma\\sqrt D$ reference radius change?",
+      "caption": "A seeded Gaussian sample displays vector norms, their measured mean, and the RMS radius $\\sigma\\sqrt D$ as dimension and scale vary.",
+      "limitation": "This is a norm histogram, not a three-dimensional picture, trained classifier, CIFAR10 input pipeline, or measured fitting result.",
+      "sourceIds": [
+        "page-2",
+        "page-4"
+      ],
+      "claimIds": [
+        "c3"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "fig-normalization",
+      "kind": "normalization",
+      "title": "What standardization removes",
+      "question": "As a common offset is added, which aspects of the raw and standardized five-value vector change?",
+      "caption": "The fixed vector $[-2,-1,0,2,6]$ is offset and then standardized using its mean and population standard deviation.",
+      "limitation": "One vector’s standardization is not BatchNorm or LayerNorm training and makes no claim about optimization or test accuracy.",
+      "sourceIds": [
+        "page-7",
+        "page-8"
+      ],
+      "claimIds": [
+        "c6"
+      ],
+      "illustrative": true
+    }
+  ],
+  "quiz": [
+    {
+      "question": "The same network reaches zero training error on true labels and fixed random labels, but only the true-label model performs well on held-out data. What follows most directly?",
+      "options": [
+        {
+          "text": "Zero training error alone does not explain generalization.",
+          "explanation": "Correct. Both runs interpolate, so their different test behavior requires an explanation beyond training fit."
+        },
+        {
+          "text": "The random-label run must have used more parameters.",
+          "explanation": "Incorrect. The randomization test holds the architecture and model size fixed."
+        },
+        {
+          "text": "Optimization failed on the random-label run.",
+          "explanation": "Incorrect. Reaching zero training error is evidence that optimization succeeded on that training objective."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "page-2",
+        "page-5"
+      ],
+      "claimIds": [
+        "c1",
+        "c2",
+        "c14"
+      ]
+    },
+    {
+      "question": "Assume $X$ has full row rank and a zero-initialized linear gradient method reaches an interpolant. Which solution is selected in the paper’s analysis?",
+      "options": [
+        {
+          "text": "$w=X^T(XX^T)^{-1}y$",
+          "explanation": "Correct. It lies in the data row span, interpolates, and is the minimum-Euclidean-norm solution."
+        },
+        {
+          "text": "An arbitrary solution of $Xw=y$",
+          "explanation": "Incorrect. Interpolation alone permits many solutions, but zero initialization and gradient updates impose the row-span restriction."
+        },
+        {
+          "text": "$w=(X^TX)^{-1}X^Ty$ in every overparameterized case",
+          "explanation": "Incorrect. With $d>n$, $X^TX$ is singular under the stated full-row-rank setting, so this inverse generally does not exist."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "page-8",
+        "page-9"
+      ],
+      "claimIds": [
+        "c11",
+        "c12"
+      ]
+    },
+    {
+      "question": "What is the sound interpretation of the two-layer ReLU expressivity theorem?",
+      "options": [
+        {
+          "text": "A network with the stated size can realize arbitrary values on a finite sample.",
+          "explanation": "Correct. The theorem is an existence result about representation on $n$ sampled points."
+        },
+        {
+          "text": "Every such network trained by SGD will memorize any sample.",
+          "explanation": "Incorrect. The theorem does not guarantee that a particular optimization procedure finds the representing weights."
+        },
+        {
+          "text": "Any represented labeling will generalize to the full input domain.",
+          "explanation": "Incorrect. Agreement on finitely many points does not determine behavior elsewhere or imply low test error."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "page-8"
+      ],
+      "claimIds": [
+        "c10"
+      ]
+    }
+  ],
+  "id": "understanding-deep-learning-requires-rethinking-generalization",
+  "createdAt": "2026-10-02T00:06:13.073Z",
+  "pipelineVersion": "subjects-lessons-v1",
+  "sources": [
+    {
+      "id": "abstract",
+      "label": "Original paper · abstract",
+      "url": "https://arxiv.org/abs/1611.03530",
+      "digest": "7110a98074ea86ccf934471a045339fe439b9f8c23956289bef2c629f89b0711",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:02:48.730Z"
+    },
+    {
+      "id": "page-1",
+      "label": "Original paper · page 1",
+      "url": "https://arxiv.org/pdf/1611.03530#page=1",
+      "digest": "cbc8eb71b79c2d7721b8909ccff27bcb05a6a71b4bd7e9735c7508848938b827",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:02:48.730Z"
+    },
+    {
+      "id": "page-2",
+      "label": "Original paper · page 2",
+      "url": "https://arxiv.org/pdf/1611.03530#page=2",
+      "digest": "7ebed4ebc8ed1b6b930f377136e72d6d7b447b7f13dac49e7e63734e54053edb",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:02:48.730Z"
+    },
+    {
+      "id": "page-3",
+      "label": "Original paper · page 3",
+      "url": "https://arxiv.org/pdf/1611.03530#page=3",
+      "digest": "8f4b5664876d2f53c0cb8d37ffd57ef2c05b2a30d7dd3dc4a08c6cf9c4960328",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:02:48.730Z"
+    },
+    {
+      "id": "page-4",
+      "label": "Original paper · page 4",
+      "url": "https://arxiv.org/pdf/1611.03530#page=4",
+      "digest": "2fd9377d071e854139291279435ebe104ecaa60271553168032f4cfc8d849e6c",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:02:48.730Z"
+    },
+    {
+      "id": "page-5",
+      "label": "Original paper · page 5",
+      "url": "https://arxiv.org/pdf/1611.03530#page=5",
+      "digest": "a2edaca10894e190c88a97eb0d0d3467b44ae39b03b5101c7dadca0825418e73",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:02:48.730Z"
+    },
+    {
+      "id": "page-6",
+      "label": "Original paper · page 6",
+      "url": "https://arxiv.org/pdf/1611.03530#page=6",
+      "digest": "ecfbbd30f222c1d4b5972c31c492e7e9da769bae3d7643a68ff0fbeff77c6bcf",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:02:48.730Z"
+    },
+    {
+      "id": "page-7",
+      "label": "Original paper · page 7",
+      "url": "https://arxiv.org/pdf/1611.03530#page=7",
+      "digest": "df4b226678799fe99e09b616f60301e85364b7c702639723cf47a2a1ae2ca67b",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:02:48.730Z"
+    },
+    {
+      "id": "page-8",
+      "label": "Original paper · page 8",
+      "url": "https://arxiv.org/pdf/1611.03530#page=8",
+      "digest": "05e4fe3cef1c8c7b18d5d61c5fe1b5d3997ceedd8930ebdc5e5ec9326b6b7527",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:02:48.730Z"
+    },
+    {
+      "id": "page-9",
+      "label": "Original paper · page 9",
+      "url": "https://arxiv.org/pdf/1611.03530#page=9",
+      "digest": "ca412c6a27804ed04edc6973c74cf6588d9ace3e5c8811ea8265b6fefd94cc41",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:02:48.730Z"
+    },
+    {
+      "id": "page-10",
+      "label": "Original paper · page 10",
+      "url": "https://arxiv.org/pdf/1611.03530#page=10",
+      "digest": "f4583e0855c9961317db0fc22c3a4c55f61ca03aad27ec7c39323d95260a27fd",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:02:48.730Z"
+    },
+    {
+      "id": "page-11",
+      "label": "Original paper · page 11",
+      "url": "https://arxiv.org/pdf/1611.03530#page=11",
+      "digest": "89958f614efacbcab0903f52ab5a8b8b6777d994497c1c3c4c736a10b66aed7a",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:02:48.730Z"
+    },
+    {
+      "id": "page-12",
+      "label": "Original paper · page 12",
+      "url": "https://arxiv.org/pdf/1611.03530#page=12",
+      "digest": "b732981cbd6b3239aa24896bc58fbf59fe7021e46118987477a9b8f6f93e92a5",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:02:48.730Z"
+    }
+  ],
+  "review": {
+    "status": "passed",
+    "reviewedAt": "2026-10-02T00:06:13.075Z",
+    "contentDigest": "b169077f4ac2746f139a7013907b2b8f551cb8bc4c5e0aee48d59bac28ffe69e"
+  }
+}

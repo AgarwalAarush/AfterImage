@@ -1,0 +1,433 @@
+{
+  "title": "The Long Reach of a Short Window: Mistral 7B’s Efficiency Design",
+  "summary": "Mistral 7B combines grouped-query attention, layered sliding windows, and a rolling cache to improve the performance–inference-cost balance of a 7B model.",
+  "prerequisites": [
+    "Transformer layers and causal self-attention",
+    "Token-by-token autoregressive generation",
+    "Softmax, modular arithmetic, and benchmark percentages"
+  ],
+  "objectives": [
+    "Explain how stacked local-attention layers carry information beyond one window.",
+    "Calculate the receptive span of a small sliding-window example.",
+    "Describe how a rolling KV cache bounds storage during decoding.",
+    "Distinguish architectural claims from benchmark evidence.",
+    "Identify limits in the reported efficiency and safety evaluations."
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "result",
+      "statement": "Mistral 7B is presented as a 7-billion-parameter model designed to combine performance with efficient inference.",
+      "conditions": "Applies to the Mistral 7B v0.1 model introduced in the paper.",
+      "sourceIds": [
+        "abstract"
+      ]
+    },
+    {
+      "id": "c2",
+      "kind": "mechanism",
+      "statement": "Mistral 7B reports 32 attention heads and 8 key/value heads, a 4:1 ratio of attention heads to key/value heads.",
+      "conditions": "Applies to the architectural counts reported for Mistral 7B. The four-to-one ratio is derived from 32 divided by 8; the supplied paper text does not define the internal sharing arrangement of grouped-query attention or isolate its individual performance effect.",
+      "sourceIds": [
+        "section-1",
+        "section-2"
+      ]
+    },
+    {
+      "id": "c3",
+      "kind": "mechanism",
+      "statement": "Grouped-query attention is used to accelerate inference and reduce decoding-memory requirements.",
+      "conditions": "The paper makes this claim for autoregressive decoding, where cached keys and values affect batch capacity and throughput.",
+      "sourceIds": [
+        "section-1"
+      ]
+    },
+    {
+      "id": "c4",
+      "kind": "equation",
+      "statement": "After $k$ attention layers with window width $W$, information can theoretically move forward by as much as $kW$ token positions.",
+      "conditions": "Assumes a stack in which each layer can relay information across at most its local window; this is a reachability bound, not direct last-layer attention to every earlier token.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c5",
+      "kind": "mechanism",
+      "statement": "At position $i$, a sliding-window layer reads previous-layer states only from positions $i-W$ through $i$.",
+      "conditions": "Applies to the paper’s stated causal sliding-window rule, with boundary clipping needed near the beginning of a sequence.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c6",
+      "kind": "result",
+      "statement": "For the reported 32-layer architecture and $W=4096$, the paper gives an approximately 131K-token theoretical span.",
+      "conditions": "This is a theoretical layered reach calculation, not a measured guarantee that information is preserved or used effectively across 131K tokens.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c7",
+      "kind": "result",
+      "statement": "The paper reports a twofold speed improvement for a 16K-token sequence relative to its vanilla-attention baseline.",
+      "conditions": "Reported for sequence length 16K, window size 4096, and the authors’ changes to FlashAttention and xFormers; it should not be generalized to every implementation or sequence length.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c8",
+      "kind": "equation",
+      "statement": "The rolling cache stores the keys and values for timestep $i$ in slot $i \\bmod W$.",
+      "conditions": "Assumes a fixed attention span of $W$ and a cache whose slots may be overwritten once positions fall outside that span.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c9",
+      "kind": "result",
+      "statement": "For a 32K-token sequence, the paper reports an eightfold cache-memory reduction without model-quality impact.",
+      "conditions": "Reported for the paper’s rolling-cache setup; the excerpt does not provide byte counts, hardware details, or a quality metric.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c10",
+      "kind": "mechanism",
+      "statement": "Long known prompts may be divided into chunks while pre-filling the key-value cache.",
+      "conditions": "Applies to prompt pre-fill, not token-by-token generation after the prompt; the paper suggests selecting the window size as chunk size.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c11",
+      "kind": "result",
+      "statement": "In Table 2 under the authors’ re-evaluation pipeline, Mistral 7B scored 60.1% on MMLU, 28.8% on NaturalQuestions, 69.9% on TriviaQA, and 30.5% on HumanEval.",
+      "conditions": "Restricted to Mistral 7B’s numeric row in the supplied private evidence for Table 2. Comparisons with Llama 2 13B, including the 28.8% versus 29.0% NaturalQuestions exception, require the corresponding Llama 2 13B row and table headers and are therefore not asserted by this claim.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c12",
+      "kind": "caveat",
+      "statement": "The benchmark protocol differs from the Llama 2 paper for MBPP and TriviaQA.",
+      "conditions": "Relevant when comparing the reported numbers with results produced under the original Llama 2 protocol.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c13",
+      "kind": "result",
+      "statement": "The instruction-tuned demonstration used publicly available instruction datasets and no proprietary data or claimed training tricks.",
+      "conditions": "Applies to Mistral 7B–Instruct as described in this paper; the supplied excerpt does not enumerate datasets, hyperparameters, or the complete training recipe.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c14",
+      "kind": "result",
+      "statement": "The system-prompt safety test reported refusal of every harmful question in a set of 175 unsafe prompts.",
+      "conditions": "Applies only to the curated 175-prompt evaluation with the recommended system prompt; it does not establish safety for arbitrary attacks or deployments.",
+      "sourceIds": [
+        "section-5"
+      ]
+    },
+    {
+      "id": "c15",
+      "kind": "caveat",
+      "statement": "The paper frames model selection as a three-way balance among capability, training cost, and inference cost.",
+      "conditions": "This is the authors’ concluding conceptual framing, not a fitted law or a complete optimization model.",
+      "sourceIds": [
+        "section-6"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "s1",
+      "title": "Why a smaller model can still be an engineering contribution",
+      "markdown": "Mistral 7B’s engineering contribution is the joint treatment of capability and serving cost. A seven-billion-parameter model can be useful only if its benchmark performance survives architectural choices that make inference less expensive. The paper therefore frames model selection along three distinct axes—capability, training cost, and inference cost—rather than treating parameter count or training compute as a sufficient summary.\n\nDuring causal generation, each new token is computed from the prefix that precedes it. A decoder normally retains the keys and values produced for earlier tokens in a KV cache, avoiding repeated computation of the entire prefix at every generation step. The amount of cached state affects the memory available for concurrent sequences, so reducing it can permit larger batches and higher throughput. Attention computation over a full sequence has a different cost: the paper describes vanilla attention as quadratic in sequence length and its memory as increasing linearly with the number of tokens.\n\nMistral 7B reports 32 attention heads and 8 key/value heads. Their ratio is\n\n$$\n\\frac{32\\ \\text{attention heads}}{8\\ \\text{KV heads}}=4.\n$$\n\nThis arithmetic describes the reported architecture but, by itself, does not define how grouped-query attention assigns query heads to key/value heads. Separately, the paper states that GQA accelerates inference and reduces decoding-memory requirements, allowing larger batches and higher throughput. Its reported experiments do not isolate the magnitude of GQA’s contribution from the rest of the architecture.\n\nSliding-window attention addresses how many token positions participate in each layer’s attention. At position $i$, a layer admits only previous-layer states from $i-W$ through $i$, clipped at the start of the sequence. Limiting this set reduces attention work for long sequences. Stacking layers preserves a longer indirect route: a state obtained from one local neighborhood can carry information into the next neighborhood, giving a theoretical reach of as much as $kW$ positions after $k$ layers.\n\nThe rolling KV cache then turns that semantic window into bounded decoding storage. Once a token is too old to belong to a future local window, its cache slot can be reused. This cache stores token keys and values across decoding steps. The paper specifies that the cache has fixed size $W$ and that timestep $i$ is stored at slot $i\\bmod W$; it does not describe the internal score-tiling or online-softmax state of the cited attention-kernel implementations.\n\nThese mechanisms therefore control related but distinct resources. The paper attributes faster inference and lower decoding-memory requirements to GQA; the sliding window limits eligible token positions; and the rolling cache reuses storage after positions expire. It also reports a conditional twofold improvement from changes to FlashAttention and xFormers at sequence length 16K and $W=4096$, without detailing those kernel changes in the supplied text. The paper reports their combined use in a 7B model that remains competitive on its evaluated tasks, while leaving the individual causal contribution of each design choice unresolved.",
+      "sourceIds": [
+        "abstract",
+        "section-1",
+        "section-2",
+        "section-6"
+      ],
+      "claimIds": [
+        "c1",
+        "c2",
+        "c3",
+        "c15"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s2",
+      "title": "Attention weights before attention windows",
+      "markdown": "To understand what a window restricts, first consider the calculation performed among eligible keys. For scores $s_1,\\ldots,s_n$, softmax assigns\n\n$$\na_j=\\frac{\\exp(s_j)}{\\sum_{r=1}^{n}\\exp(s_r)},\n$$\n\nwhere $a_j$ is the normalized weight of key $j$, $s_j$ is its score, and $r$ indexes the keys admitted by the mask. Every weight is positive and the weights sum to one. The mask acts before this normalization. Under the paper’s causal sliding-window rule, query position $i$ may read previous-layer states at\n\n$$\n\\max(0,i-W),\\ldots,i,\n$$\n\nwhere clipping at zero handles the beginning of the sequence. Away from that boundary, the inclusive interval contains the current position and $W$ preceding positions.\n\nThe figure evaluates softmax on the fixed illustrative scores $[2,1,0,-1]$ after dividing them by a positive temperature $T$. At $T=1$, the unnormalized exponentials are approximately\n\n$$\n[7.389,2.718,1,0.368],\n$$\n\nwith sum $11.475$, giving weights of approximately\n\n$$\n[0.644,0.237,0.087,0.032].\n$$\n\nLowering $T$ enlarges score differences after division, so more of the normalized mass moves to the largest score; raising $T$ makes the distribution flatter. The scores and resulting weights are constructed quantities used to expose the normalization calculation, with no units or empirical interpretation attached to them.\n\nTemperature and the sliding-window mask control different parts of attention. The window determines which positions enter the denominator, while temperature changes the relative allocation among those admitted positions. Moving the figure’s temperature control therefore changes the four displayed weights but not causal eligibility or window width. A large weight indicates strong allocation within this illustrative competition; it does not by itself show that information will remain recoverable after many learned layers.",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c4",
+        "c5"
+      ],
+      "figureId": "fig-attention"
+    },
+    {
+      "id": "s3",
+      "title": "How stacked local windows acquire long reach",
+      "markdown": "Let $i$ denote a token position, $k$ a layer index, $W$ the maximum backward distance of one layer, and $h_i^{(k)}$ the hidden state at position $i$ after layer $k$. The paper’s inclusive local rule can be written schematically as\n\n$$\nh_i^{(k)}\\leftarrow\\operatorname{Attention}\\!\\left(h_{\\max(0,i-W)}^{(k-1)},\\ldots,h_i^{(k-1)}\\right).\n$$\n\nAway from the sequence boundary, that interval contains the current position and $W$ preceding positions. One layer can therefore carry information forward by at most $W$ token positions. The states inside its local interval were themselves constructed from earlier intervals, so repeating the relay across $k$ layers gives the theoretical reach bound\n\n$$\nR(k)=kW,\n$$\n\nwhere $R(k)$ is the maximum backward distance through the layered dependency graph.\n\nFor an illustrative example with $W=3$, the state at position $8$ can depend after one layer on positions $5$ through $8$, reaching backward by three positions. After two layers, information can be relayed from as far back as position $2$, a distance of $2\\times3=6$. After four layers, the theoretical bound is $4\\times3=12$. The same multiplication gives the paper’s approximately 131K theoretical span for 32 layers and $W=4096$:\n\n$$\n32\\times4096=131{,}072.\n$$\n\nTokens outside the final layer’s direct interval can thus influence it through intermediate hidden states. This does not guarantee faithful recall: the bound establishes a possible dependency path, not measured long-context accuracy or preservation of every earlier detail.",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c4",
+        "c5",
+        "c6"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s4",
+      "title": "Rolling storage for an advancing window",
+      "markdown": "The rolling cache converts a logical attention window into a fixed set of reusable storage locations. Let $W=4$ denote four cache slots for previous-token keys and values, and let $i\\in\\{0,\\ldots,11\\}$ be the current query position in the figure. The current key/value pair is available separately while query $i$ is evaluated. Before that query, the cache contains the surviving previous positions\n\n$$\n\\max(0,i-W),\\ldots,i-1.\n$$\n\nTogether with the separate current state, the eligible logical positions are\n\n$$\n\\max(0,i-W),\\ldots,i.\n$$\n\nThis realizes the paper’s inclusive causal rule from $i-W$ through $i$. Once the window is full, the query can use four preceding positions plus its current position even though the rolling buffer itself has only four slots: the current pair has not yet been written into those slots.\n\nAfter the read, position $i$ is assigned to\n\n$$\n\\operatorname{slot}(i)=i\\bmod W.\n$$\n\nFor $i\\ge W$, that physical slot still contains position $i-W$ before the write. Position $i-W$ participates in the current query because it is the oldest member of the inclusive window; only afterward is it replaced by $i$. The updated cache therefore holds\n\n$$\n\\max(0,i-W+1),\\ldots,i,\n$$\n\nwhich are exactly the previous positions needed as query position advances to $i+1$.\n\nAt the pictured setting $i=5$, the four physical slots before evaluation contain logical positions\n\n$$\n[4,1,2,3].\n$$\n\nThis array is in slot order, not chronological order: position $4$ occupies slot $0$, position $1$ occupies slot $1$, and so on. Query $5$ reads cached positions $1,2,3,4$ and its separate current position $5$, making the eligible sequence $[1,2,3,4,5]$. The control’s query-position slider changes which identities are previous, current, expired, or future; it does not change $W$ or attach probabilities to those identities.\n\nThe write target is\n\n$$\n5\\bmod4=1.\n$$\n\nAfter the query has read position $1$, the write replaces it with position $5$, producing the slot-ordered state\n\n$$\n[4,5,2,3].\n$$\n\nWhen the control advances to query $6$, position $1$ is outside the new interval $[2,6]$ and no longer has a cached identity. Position $6$ is current, while positions $7$ through $11$ remain future positions and are causally unavailable. A reused slot number never revives an expired timestep: positions $1$, $5$, and $9$ are distinct keys and values that occupy slot $1$ at different times.\n\nThis identity trace explains why storage can stop growing while generation continues. The model preserves the KV pairs required by the next local query and overwrites the oldest pair only after its final eligible read. The diagram’s slot count is purely illustrative, so it supplies no conversion from four slots to bytes. Actual storage also depends on layer count, KV-head count, head dimension, numerical representation, and batch size. Mistral 7B reports 32 attention heads and 8 KV heads, while the modular mapping determines which token positions remain resident; the supplied architectural table alone does not define the sharing mechanism between those head counts.\n\nThe paper reports that changes to FlashAttention and xFormers yield a twofold improvement over a vanilla-attention baseline for sequence length 16K and $W=4096$. The supplied text does not specify score tiling, online-softmax accumulators, numerical rescaling, or other internal kernel mechanics, and the cache figure neither reproduces those changes nor predicts their timing.\n\nFor a 32K-token sequence, the paper separately reports an eightfold reduction in cache-memory usage without an impact on model quality. Because the report gives neither byte counts nor the quality metric, its consequence is appropriately stated as a measured relative reduction for that setup. The control establishes the mechanism behind bounded positional storage: advancing $i$ changes the logical occupants, the write target, and the evicted identity while the number of cache slots remains fixed.",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c5",
+        "c8",
+        "c9"
+      ],
+      "figureId": "fig-memory"
+    },
+    {
+      "id": "s5",
+      "title": "Prompt pre-fill is not ordinary decoding",
+      "markdown": "Autoregressive decoding and prompt processing have different dependency structures. After a prompt is known, its tokens can be processed to populate the KV cache; this stage is called pre-fill. Newly generated tokens, by contrast, must be produced sequentially because token $i+1$ is conditioned on the selected token $i$.\n\nFor a long prompt, the paper proposes dividing the known sequence into smaller chunks and notes that the window size can be used as the chunk size. For each chunk, attention is computed over two regions: the chunk itself and the relevant cached prefix. A causal mask within the chunk prevents each token from reading later tokens, while the sliding-window mask over the cache excludes prefix positions that are too far back. Chunking is therefore an execution strategy that limits pre-fill memory; it does not alter the model’s causal or local-attention semantics.\n\nFor example, consider a 12-token prompt divided into three four-token chunks. When the third chunk is processed, its first token may use eligible cached states from earlier chunks but cannot attend to the other three tokens that follow it. Later tokens in the same chunk may attend to earlier tokens within that chunk. The chunks are consequently not independent prompts: information crosses chunk boundaries through the cache wherever the sliding window permits it.\n\nThe calculation also differs from ordinary decoding in how much work can be scheduled at once. All prompt tokens are already known, so the masked computations for a chunk can be performed together. During generation, the next token identity is not known until the preceding decoding step finishes. The paper establishes this causal distinction and the cache-plus-chunk masking pattern; it does not attach a general throughput or memory ratio to chunked pre-fill.",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c10"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s6",
+      "title": "Reading the benchmark evidence without overreaching",
+      "markdown": "The evaluation covers commonsense reasoning, world knowledge, reading comprehension, mathematics, code, and aggregate suites. Its conditions differ by task: the reported commonsense and reading-comprehension tasks are zero-shot; NaturalQuestions and TriviaQA are five-shot; GSM8K uses eight-shot majority-at-eight; MATH uses four-shot majority-at-four; HumanEval is zero-shot; and MBPP is three-shot. These settings are part of each result rather than interchangeable measurements of a single capability.\n\nUnder the authors’ common re-evaluation pipeline, Mistral 7B scored 60.1% on MMLU compared with 55.6% for Llama 2 13B, and 30.5% on HumanEval compared with 18.9%. The margins are much smaller on the two listed world-knowledge tasks: TriviaQA was 69.9% versus 69.6%, while NaturalQuestions was 28.8% versus 29.0%. NaturalQuestions is therefore a numeric exception to the paper’s prose and captions claiming that Mistral surpassed Llama 2 13B on every metric. The table supports a broad advantage across the listed evaluation, not literal dominance on every entry.\n\nEvaluation protocol also matters when comparing these numbers with results reported elsewhere. The authors used the hand-verified MBPP subset and evaluated TriviaQA without Wikipedia contexts, both of which differ from the protocol they attribute to the Llama 2 paper. Re-running the compared models in one pipeline improves internal comparability, but it does not erase the dependence of scores on task variants, prompts, shot counts, and scoring procedures.\n\nThe efficiency evidence is similarly conditional. The reported twofold attention speed improvement was observed for a 16K-token sequence with $W=4096$, using the authors’ changes to FlashAttention and xFormers against their vanilla-attention baseline. It demonstrates that the local-attention design can yield a substantial implementation-level benefit in that setting; it is not a constant multiplier for every device, batch size, sequence length, or complete-model workload.\n\nTaken together, the results show a favorable measured capability–cost point for Mistral 7B. They do not isolate how much of the benchmark performance comes from grouped-query attention, sliding-window attention, training data, optimization, or interactions among them, so the architectural mechanisms and the benchmark comparisons should be treated as complementary evidence rather than as a component-by-component causal attribution.",
+      "sourceIds": [
+        "section-2",
+        "section-3"
+      ],
+      "claimIds": [
+        "c7",
+        "c11",
+        "c12"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s7",
+      "title": "Instruction tuning, guardrails, and honest boundaries",
+      "markdown": "Mistral 7B–Instruct is presented as a preliminary demonstration that the base model can be adapted through instruction tuning. The authors used instruction datasets publicly available on the Hugging Face repository and report using neither proprietary data nor special training tricks. This supports a broad claim of straightforward adaptability, while the scientific result remains the behavior of the released tuned model under the reported evaluations rather than a fully specified, independently reproducible training recipe.\n\nSystem prompting changes the instructions given to that tuned model, not its weights or attention architecture. The paper evaluates this behavioral control under three MT-Bench conditions. With no system prompt, Mistral 7B–Instruct scored\n\n$$\n6.84\\pm0.07.\n$$\n\nThe Mistral guardrail prompt produced $6.58\\pm0.05$, and the Llama 2 system prompt produced $6.38\\pm0.07$. These are means over ten MT-Bench iterations with reported standard deviations. Relative to no system prompt, the Mistral guardrail condition was lower by $0.26$ points; relative to the Llama 2 prompt condition, it was higher by $0.20$ points. These differences describe the evaluated prompts and show that prompt-level constraints can change observed utility, but they do not define a fixed utility–safety tradeoff for other policies or applications.\n\nOn a curated set of 175 unsafe prompts, the recommended system prompt refused all 175, giving the reported 100% refusal rate for that set. The relevant experimental unit is the combination of one prompt intervention and one selected test set. The result shows complete coverage of those cases, while the possible prompt space is much broader; robustness to reformulations, multi-turn interactions, and different deployment policies requires evaluation under those conditions.\n\nThe paper also tested a self-reflection prompt that asks the model to classify a prompt or generated answer as acceptable or as belonging to a harmful-content category. On the authors’ manually curated, balanced collection of adversarial and standard prompts, treating acceptable prompts as positives, the reported precision was 99.4% and recall was 95.6%. Precision measures the fraction of items classified as acceptable that were labeled acceptable, whereas recall measures the fraction of labeled-acceptable items recovered. Because operational error rates depend on the prevalence and composition of incoming content, these figures characterize the curated balanced evaluation rather than directly predicting performance on deployment traffic.\n\nThe architectural claims have the same need for scope. A reach of up to $kW$ establishes a possible dependency path through stacked local-attention layers, not guaranteed recovery of an early fact. A rolling cache bounds retained KV positions, not total inference memory, which also includes model weights, activations, runtime workspaces, layers, and batches. Likewise, the reported twofold attention improvement belongs to the authors’ 16K-token, $W=4096$ implementation comparison and does not by itself determine end-to-end latency elsewhere.\n\nMistral 7B is therefore one measured design point in the paper’s three-axis framing of capability, training cost, and inference cost. Its results show that a smaller model can combine competitive task scores with mechanisms that reduce specific inference costs. They do not establish a universal optimum, so deployment selection still requires measuring all three axes under the intended workload, evaluation protocol, and guardrail policy.",
+      "sourceIds": [
+        "section-4",
+        "section-5",
+        "section-6"
+      ],
+      "claimIds": [
+        "c13",
+        "c14",
+        "c15"
+      ],
+      "figureId": null
+    }
+  ],
+  "figures": [
+    {
+      "id": "fig-attention",
+      "kind": "attention",
+      "title": "Temperature reshapes a fixed attention distribution",
+      "question": "As temperature decreases, how does the weight on the largest fixed score change?",
+      "caption": "Illustrative softmax over fixed scores [2,1,0,-1]. The positive temperature changes the sharpness of normalized weights and helps distinguish weight allocation from the sliding-window eligibility rule.",
+      "limitation": "This is not a measured Mistral head or learned token similarity, and it does not change which positions are inside a sliding window.",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c4",
+        "c5"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "fig-memory",
+      "kind": "rolling-window",
+      "title": "Logical positions in a four-slot rolling cache",
+      "question": "At query position $i$, which logical positions are read before the current key/value pair overwrites slot $i\\bmod 4$?",
+      "caption": "Illustrative read-before-write trace over positions 0 through 11 with $W=4$ cached previous tokens. At the default query $i=5$, slots before the query contain $[4,1,2,3]$; positions $1$ through $5$ are eligible, and writing position $5$ to slot $1$ produces $[4,5,2,3]$.",
+      "limitation": "This constructed control demonstrates causal eligibility and modular slot reuse only. It does not model learned attention weights, grouped-query attention, chunked pre-fill, multilayer reach, physical bytes, runtime, or output quality, and its read-before-write convention is not claimed to describe a verified Mistral runtime implementation.",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c5",
+        "c8"
+      ],
+      "illustrative": true
+    }
+  ],
+  "quiz": [
+    {
+      "question": "In an illustrative causal stack with window width $W=4$ and three attention layers, what is the maximum theoretical backward reach?",
+      "options": [
+        {
+          "text": "4 token positions",
+          "explanation": "Incorrect. That is the direct reach of one layer, not the layered dependency reach."
+        },
+        {
+          "text": "12 token positions",
+          "explanation": "Correct. Under the paper’s reachability rule, $kW=3\\times4=12$."
+        },
+        {
+          "text": "64 token positions",
+          "explanation": "Incorrect. The bound multiplies layer count by window width; it does not exponentiate the width."
+        }
+      ],
+      "answer": 1,
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c4",
+        "c5"
+      ]
+    },
+    {
+      "question": "What does the rolling-buffer assignment $q(i)=i\\bmod W$ accomplish once $i\\ge W$?",
+      "options": [
+        {
+          "text": "It reuses the slot of the oldest position after that position’s final eligible read, because it will be outside the next query’s window.",
+          "explanation": "Correct. Under the inclusive read-before-write convention, position $i-W$ remains eligible for query $i$ and is read before its slot is overwritten; it falls outside the window when the query advances to $i+1$."
+        },
+        {
+          "text": "It restores direct attention to every token ever generated.",
+          "explanation": "Incorrect. Reusing slots cannot preserve every old key and value for direct attention."
+        },
+        {
+          "text": "It converts grouped-query attention into dense multi-head attention.",
+          "explanation": "Incorrect. Cache indexing and query-group structure are separate architectural concerns."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c8"
+      ]
+    },
+    {
+      "question": "Which interpretation of the reported 2x speed improvement is warranted?",
+      "options": [
+        {
+          "text": "Sliding-window attention is exactly twice as fast on every device and sequence length.",
+          "explanation": "Incorrect. The report is conditional and does not establish a universal constant-factor speedup."
+        },
+        {
+          "text": "The complete Mistral model always generates tokens twice as fast as every dense-attention model.",
+          "explanation": "Incorrect. The evidence concerns attention under a specified baseline and setup, not every full-model comparison."
+        },
+        {
+          "text": "The authors observed 2x improvement at length 16K and window 4096 with stated implementation changes versus their vanilla-attention baseline.",
+          "explanation": "Correct. This preserves the sequence length, window, implementation, and baseline conditions attached to the result."
+        }
+      ],
+      "answer": 2,
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c7"
+      ]
+    }
+  ],
+  "id": "mistral",
+  "createdAt": "2026-10-02T00:09:28.714Z",
+  "pipelineVersion": "subjects-lessons-v1",
+  "sources": [
+    {
+      "id": "abstract",
+      "label": "Original paper · abstract",
+      "url": "https://arxiv.org/abs/2310.06825",
+      "digest": "08aafea152362ed0c43863b1c96f558f4fd7095d806dedb265d5383fd942cced",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:24:21.889Z"
+    },
+    {
+      "id": "section-1",
+      "label": "1 Introduction",
+      "url": "https://arxiv.org/html/2310.06825#S1",
+      "digest": "496e54c33845394f83faded53f6e2621d2bfb0b16050217d6cf17b5045e6e443",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:24:21.889Z"
+    },
+    {
+      "id": "section-2",
+      "label": "2 Architectural details",
+      "url": "https://arxiv.org/html/2310.06825#S2",
+      "digest": "19dc5cf4a8c21b4f05339caf379bb6af6da230ef65df2023b350a2a3fcb41980",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:24:21.889Z"
+    },
+    {
+      "id": "section-3",
+      "label": "3 Results",
+      "url": "https://arxiv.org/html/2310.06825#S3",
+      "digest": "3405971ad086728639757fbdd854a4221c73282d1ec5536c92272daac5114ba6",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:24:21.889Z"
+    },
+    {
+      "id": "section-4",
+      "label": "4 Instruction Finetuning",
+      "url": "https://arxiv.org/html/2310.06825#S4",
+      "digest": "7ee7699d8c732a62b006b38b45117a5103c2d2fba1db108e371eb0bc528eb688",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:24:21.889Z"
+    },
+    {
+      "id": "section-5",
+      "label": "5 Adding guardrails for front-facing applications",
+      "url": "https://arxiv.org/html/2310.06825#S5",
+      "digest": "35defb63ecd3f9a7a5be735cb9198ca51878d39b9aba72e7c333ae4fc89bd044",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:24:21.889Z"
+    },
+    {
+      "id": "section-6",
+      "label": "6 Conclusion",
+      "url": "https://arxiv.org/html/2310.06825#S6",
+      "digest": "1ae56dec1078792a4ef9f67c60cf0e6ae14b93048cff28f853c32930b6b88b5d",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:24:21.889Z"
+    }
+  ],
+  "review": {
+    "status": "passed",
+    "reviewedAt": "2026-10-02T02:02:41.355Z",
+    "contentDigest": "dd472442cf0af3d091feb924dc68a2245b73dc99e47db2e50ad136b119caba20"
+  }
+}

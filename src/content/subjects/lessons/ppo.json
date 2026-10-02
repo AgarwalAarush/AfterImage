@@ -1,0 +1,466 @@
+{
+  "title": "A Ratchet, Not a Wall: Understanding PPO’s Clipped Update",
+  "summary": "PPO reuses sampled experience for several minibatch epochs while a clipped probability-ratio objective removes incentives for selected policy changes that go too far.",
+  "prerequisites": [
+    "Basic probability and conditional distributions",
+    "Policies that map states to action probabilities",
+    "Gradient-based optimization and empirical averages",
+    "Discounted rewards, value functions, and advantages"
+  ],
+  "objectives": [
+    "Explain why PPO compares a new policy with the behavior policy.",
+    "Calculate a clipped-surrogate term for either advantage sign.",
+    "Describe how PPO reuses a fixed on-policy batch across minibatch epochs.",
+    "Interpret the reported continuous-control and Atari results within their tested settings.",
+    "Distinguish objective clipping from a hard trust-region constraint."
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "mechanism",
+      "statement": "Policy-gradient estimation weights the score gradient of the sampled action by an estimated advantage.",
+      "conditions": "For a finite batch of state-action samples and chosen advantage estimator.",
+      "sourceIds": [
+        "page-2"
+      ]
+    },
+    {
+      "id": "c2",
+      "kind": "caveat",
+      "statement": "Repeatedly optimizing the ordinary policy-gradient loss on one trajectory batch can produce destructively large policy updates.",
+      "conditions": "When multiple optimization steps reuse the same sampled trajectories without a constraint, clipping, or penalty.",
+      "sourceIds": [
+        "page-2"
+      ]
+    },
+    {
+      "id": "c3",
+      "kind": "equation",
+      "statement": "PPO defines the sampled-action probability ratio as the new-policy probability divided by the old-policy probability.",
+      "conditions": "For action a_t sampled in state s_t under the behavior policy π_{θ_old}; the denominator must be nonzero for a sampled action.",
+      "sourceIds": [
+        "page-3"
+      ]
+    },
+    {
+      "id": "c4",
+      "kind": "equation",
+      "statement": "The clipped surrogate averages the minimum of the ordinary ratio-weighted advantage and the advantage weighted by a ratio clipped to [1-ε,1+ε].",
+      "conditions": "For ε>0, empirical samples from π_{θ_old}, and fixed advantage estimates during the policy update.",
+      "sourceIds": [
+        "page-3"
+      ]
+    },
+    {
+      "id": "c5",
+      "kind": "mechanism",
+      "statement": "The minimum makes clipping sign-dependent: it removes further improvement incentive beyond one boundary but retains changes that worsen the surrogate.",
+      "conditions": "For an individual clipped-surrogate term with a fixed positive or negative advantage.",
+      "sourceIds": [
+        "page-3"
+      ]
+    },
+    {
+      "id": "c6",
+      "kind": "result",
+      "statement": "The clipped and unclipped surrogate objectives agree to first order at the old policy, where the probability ratio equals one.",
+      "conditions": "Locally around θ=θ_old.",
+      "sourceIds": [
+        "page-3"
+      ]
+    },
+    {
+      "id": "c7",
+      "kind": "mechanism",
+      "statement": "A PPO iteration collects trajectory segments, computes advantages, performs K epochs of minibatch optimization, and then refreshes the old-policy parameters.",
+      "conditions": "For the actor-critic implementation using N actors, segments of T timesteps, and minibatches of size M≤NT.",
+      "sourceIds": [
+        "page-5"
+      ]
+    },
+    {
+      "id": "c8",
+      "kind": "equation",
+      "statement": "The paper’s truncated generalized advantage estimator is a discounted sum of temporal-difference residuals with successive weights γλ.",
+      "conditions": "For a length-T trajectory segment, value estimate V, discount γ, and trace parameter λ.",
+      "sourceIds": [
+        "page-5"
+      ]
+    },
+    {
+      "id": "c9",
+      "kind": "mechanism",
+      "statement": "When policy and value functions share parameters, the paper combines the clipped policy surrogate with value-error and entropy terms.",
+      "conditions": "For a joint actor-critic architecture; coefficients c1 and c2 determine the auxiliary terms.",
+      "sourceIds": [
+        "page-5"
+      ]
+    },
+    {
+      "id": "c10",
+      "kind": "result",
+      "statement": "In the seven-task continuous-control objective comparison, clipping with ε=0.2 achieved the highest reported average normalized score, 0.82.",
+      "conditions": "One million training timesteps per task, three seeds on each of seven MuJoCo tasks, two-layer 64-unit tanh policies, and the paper’s normalization and hyperparameter search.",
+      "sourceIds": [
+        "page-6",
+        "page-10"
+      ]
+    },
+    {
+      "id": "c11",
+      "kind": "result",
+      "statement": "On the 49-game Atari comparison, PPO won 30 games by reward averaged over all training and 19 by reward over the final 100 episodes.",
+      "conditions": "Same policy-network architecture across PPO, A2C, and ACER; each metric averaged across three trials, with algorithm-specific tuned hyperparameters.",
+      "sourceIds": [
+        "page-8",
+        "page-10"
+      ]
+    },
+    {
+      "id": "c12",
+      "kind": "caveat",
+      "statement": "The clipped objective is a pessimistic lower bound on the sampled unclipped surrogate, not a hard guarantee that KL divergence or actual return improvement is bounded.",
+      "conditions": "Pointwise for the empirical surrogate terms; no equivalence to TRPO’s explicit mean-KL constraint is asserted.",
+      "sourceIds": [
+        "page-2",
+        "page-3"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "s1",
+      "title": "The batch-reuse problem",
+      "markdown": "A stochastic policy $\\pi_\\theta(a\\mid s)$ assigns an action probability or density given state $s$, with parameters $\\theta$. After taking action $a_t$ in state $s_t$, a policy-gradient method estimates whether that action was better or worse than the current baseline. That signed judgment is the advantage estimate $\\hat A_t$: positive favors the sampled action; negative disfavors it.\n\nThe paper begins from the empirical policy-gradient estimator\n\n$$\n\\hat g=\\hat{\\mathbb E}_t\\left[\\nabla_\\theta\\log \\pi_\\theta(a_t\\mid s_t)\\,\\hat A_t\\right],\n$$\n\nwhere $t$ indexes sampled timesteps and $\\hat{\\mathbb E}_t$ is their finite-batch average. A corresponding differentiable objective is $L^{PG}(\\theta)=\\hat{\\mathbb E}_t[\\log\\pi_\\theta(a_t\\mid s_t)\\hat A_t]$.\n\nOne gradient step uses data near the policy that generated it. Several steps on that unchanged batch can move the policy far away while the sampled actions and advantages remain fixed. The paper reports that this unregulated reuse often causes destructively large updates. PPO’s contribution is therefore not merely “use gradient ascent.” It constructs a surrogate that supports several minibatch epochs while becoming deliberately unhelpful for certain excessive probability changes.\n\nThe optimizer toy below isolates an important distinction. It performs ordinary gradient descent on the illustrative quadratic $f(x)=x^2/2$, starting at $x=3$, for 12 iterations. Changing its learning rate changes how fast—or whether—the iterates settle. PPO’s clipping is not simulated here: the toy shows only that repeated optimization steps accumulate movement, which is why the shape of a reused objective matters.",
+      "sourceIds": [
+        "page-2",
+        "abstract"
+      ],
+      "claimIds": [
+        "c1",
+        "c2"
+      ],
+      "figureId": "fig-optimizer"
+    },
+    {
+      "id": "s2",
+      "title": "Compare new action probabilities with the old policy",
+      "markdown": "PPO records the behavior policy before optimization as $\\pi_{\\theta_{old}}$. For each sampled pair $(s_t,a_t)$, it forms\n\n$$\nr_t(\\theta)=\\frac{\\pi_\\theta(a_t\\mid s_t)}{\\pi_{\\theta_{old}}(a_t\\mid s_t)}.\n$$\n\nHere $\\theta$ denotes the candidate new parameters, while $\\theta_{old}$ denotes the parameters that generated the batch. At the start, $r_t(\\theta_{old})=1$. A ratio of $1.10$ means the sampled action has become 10% more probable under the candidate policy; $0.75$ means its probability is 25% lower. For continuous actions these are probability densities, but the ratio plays the same role.\n\nThe unclipped conservative-policy-iteration surrogate is\n\n$$\nL^{CPI}(\\theta)=\\hat{\\mathbb E}_t\\left[r_t(\\theta)\\hat A_t\\right].\n$$\n\nIf $\\hat A_t>0$, maximizing this expression pushes $r_t$ upward. If $\\hat A_t<0$, it pushes $r_t$ downward. Left alone across multiple epochs, either incentive can continue far from one. The ratio is consequently a local comparison anchored to the data-collecting policy, not a reward and not a direct measure of the entire policy’s distance.",
+      "sourceIds": [
+        "page-3"
+      ],
+      "claimIds": [
+        "c3"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s3",
+      "title": "The clipped surrogate as a one-sided ratchet",
+      "markdown": "For clipping width $\\epsilon>0$, PPO uses\n\n$$\nL^{CLIP}(\\theta)=\\hat{\\mathbb E}_t\\left[\\min\\left(r_t(\\theta)\\hat A_t,\\;\\operatorname{clip}(r_t(\\theta),1-\\epsilon,1+\\epsilon)\\hat A_t\\right)\\right].\n$$\n\nThe function $\\operatorname{clip}(x,l,u)$ restricts $x$ to $[l,u]$. The minimum is essential. With positive advantage, the objective stops increasing once $r_t>1+\\epsilon$, but a fall below $1-\\epsilon$ still hurts. With negative advantage, the plateau occurs when $r_t<1-\\epsilon$, but an increase above $1+\\epsilon$ still hurts. PPO discards an excessive change only when that change would make this sampled surrogate look better.\n\nThe interactive policy figure displays exactly one illustrative positive-advantage term with $\\hat A=1$ and $\\epsilon=0.2$. Moving $r$ changes $\\min(r,\\operatorname{clip}(r,0.8,1.2))$: it rises with $r$ until $1.2$, then stays at $1.2$. It is useful for predicting the positive branch, but it is not the full algorithm, does not include negative advantages, and does not establish any bound on actual KL divergence.\n\nA common misconception is that clipping forcibly keeps every ratio inside the interval. It does not. The candidate policy may yield a ratio outside it; clipping only changes the optimized objective’s incentive. Nor is this an explicit trust-region constraint. TRPO constrains an empirical mean KL divergence, whereas clipped PPO replaces that constrained optimization problem with a first-order-friendly surrogate.",
+      "sourceIds": [
+        "page-2",
+        "page-3"
+      ],
+      "claimIds": [
+        "c4",
+        "c5",
+        "c6",
+        "c12"
+      ],
+      "figureId": "fig-policy"
+    },
+    {
+      "id": "s4",
+      "title": "A worked minibatch by hand",
+      "markdown": "Consider two illustrative samples and choose $\\epsilon=0.2$, so the clipping interval is $[0.8,1.2]$. These numbers are invented for arithmetic, not reported measurements.\n\nFor sample 1, let $r_1=1.35$ and $\\hat A_1=2$. The unclipped term is $1.35(2)=2.70$. The clipped term is $1.2(2)=2.40$, so the minimum is $2.40$. Raising the probability of a favorable action beyond the upper boundary earns no additional surrogate credit.\n\nFor sample 2, let $r_2=0.60$ and $\\hat A_2=-1$. The unclipped term is $0.60(-1)=-0.60$. Clipping the ratio gives $0.8(-1)=-0.80$. The minimum is $-0.80$. Lowering the probability of an unfavorable action beyond the lower boundary earns no additional credit: because the advantage is negative, the clipped product is the more pessimistic value.\n\nThe two-sample empirical objective is therefore\n\n$$\n\\frac{2.40+(-0.80)}{2}=0.80.\n$$\n\nNow change only sample 2 to $r_2=1.30$. Its unclipped product is $-1.30$, while its clipped product is $1.2(-1)=-1.20$; the minimum is $-1.30$. The harmful move remains fully visible. This asymmetry explains the ratchet metaphor: clipping removes selected optimistic incentives rather than flattening every out-of-range change.",
+      "sourceIds": [
+        "page-3"
+      ],
+      "claimIds": [
+        "c4",
+        "c5"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s5",
+      "title": "From trajectory segments to repeated minibatches",
+      "markdown": "A full iteration first runs $N$ actors for $T$ timesteps under $\\pi_{\\theta_{old}}$, producing $NT$ samples. It computes advantages and then optimizes the surrogate for $K$ epochs using minibatches of size $M\\le NT$. Only after these epochs does the algorithm set $\\theta_{old}\\leftarrow\\theta$ and collect fresh experience.\n\nThe paper gives a truncated generalized advantage estimator. Define the temporal-difference residual\n\n$$\n\\delta_t=R_t+\\gamma V(s_{t+1})-V(s_t),\n$$\n\nwhere $R_t$ is the immediate reward, $V(s)$ is the learned state-value estimate, and $\\gamma$ is the discount factor. Then, for a segment ending at $T$,\n\n$$\n\\hat A_t=\\sum_{l=0}^{T-t-1}(\\gamma\\lambda)^l\\delta_{t+l},\n$$\n\nwhere $\\lambda$ controls how quickly later residuals are downweighted. Here $R_t$ is written with a capital letter to avoid confusing reward with the policy ratio $r_t(\\theta)$.\n\nFor shared policy-value parameters, the paper approximately maximizes a combined objective containing the clipped surrogate, minus $c_1$ times squared value error, plus $c_2$ times policy entropy. The value term trains prediction; the entropy term can encourage exploration. These additions do not alter what clipping mathematically does to each policy-surrogate term.",
+      "sourceIds": [
+        "page-5"
+      ],
+      "claimIds": [
+        "c7",
+        "c8",
+        "c9"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s6",
+      "title": "What the experiments establish",
+      "markdown": "The objective ablation used seven MuJoCo continuous-control tasks, one million training timesteps per task, and three random seeds per environment. Policies were two-layer, 64-unit tanh networks producing Gaussian means with variable standard deviations; policy and value parameters were separate, and no entropy bonus was used. Scores were shifted and scaled per environment, then averaged over 21 runs. Under that protocol, clipped PPO scored $0.76$, $0.82$, and $0.70$ for $\\epsilon=0.1$, $0.2$, and $0.3$, respectively; the no-clipping-or-penalty setting scored $-0.39$. Thus $\\epsilon=0.2$ was best among the reported settings in this comparison—not a universal optimum.\n\nIn the separate 49-game Atari comparison, a “win” meant the best metric averaged over three trials. PPO won 30 games when the metric was episode reward averaged across all training, versus 18 for ACER and 1 for A2C. For reward over the final 100 episodes, PPO won 19, ACER 28, A2C 1, with one tie. The two metrics reward different properties: early learning speed versus final performance. The result supports a favorable sample-complexity comparison to A2C and a mixed comparison with ACER, not dominance on every game or metric.",
+      "sourceIds": [
+        "page-6",
+        "page-8",
+        "page-10"
+      ],
+      "claimIds": [
+        "c10",
+        "c11"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s7",
+      "title": "Limits and the durable idea",
+      "markdown": "PPO’s durable idea is controlled data reuse: keep the batch fixed for several epochs, compare every sampled action with the policy that produced it, and make the surrogate pessimistic when a ratio change would otherwise look excessively favorable. This gives a simple first-order procedure and avoids TRPO’s constrained second-order approximation.\n\nSeveral limits matter. The paper’s clipping argument concerns a sampled surrogate, not guaranteed monotonic improvement of true expected return. Clipping does not impose a hard KL cap, so implementations may still monitor divergence. Advantage estimates and value predictions can be noisy or biased, and repeated epochs remain tied to experience from the old policy. The reported rankings also depend on task suites, architectures, training budgets, tuning, seeds, and scoring definitions. Finally, the paper includes an adaptive KL-penalty alternative but reports that it performed worse than clipping in its experiments; that comparison does not prove clipping is superior in every later environment or implementation.\n\nThe right mental model is therefore neither “ordinary policy gradient with a magic safe step” nor “TRPO expressed exactly with clipping.” PPO-Clip is a pragmatic surrogate whose flat favorable regions reduce incentives for certain excessive changes while preserving gradients for changes that worsen the sampled objective.",
+      "sourceIds": [
+        "abstract",
+        "page-3",
+        "page-4",
+        "page-5",
+        "page-6",
+        "page-8"
+      ],
+      "claimIds": [
+        "c2",
+        "c5",
+        "c7",
+        "c10",
+        "c11",
+        "c12"
+      ],
+      "figureId": null
+    }
+  ],
+  "figures": [
+    {
+      "id": "fig-optimizer",
+      "kind": "optimizer",
+      "title": "Repeated steps accumulate movement",
+      "question": "From the fixed start x=3, how does changing the learning rate affect the 12 ordinary gradient-descent iterates?",
+      "caption": "An illustrative optimizer isolates repeated updating on f(x)=x²/2; the learning-rate control changes twelve plain gradient-descent steps from x=3.",
+      "limitation": "This is ordinary scalar gradient descent, not PPO, stochastic gradient ascent, Adam, policy learning, or a simulation of clipping.",
+      "sourceIds": [
+        "page-2",
+        "page-5"
+      ],
+      "claimIds": [
+        "c2",
+        "c7"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "fig-policy",
+      "kind": "policy",
+      "title": "Where favorable ratio growth stops paying",
+      "question": "For a positive illustrative advantage of one, what happens to the surrogate when the probability ratio moves above 1.2?",
+      "caption": "With A=1 and ε=0.2, the control evaluates min(r, clip(r, 0.8, 1.2)), so the displayed term plateaus above r=1.2.",
+      "limitation": "This is one positive-advantage term only, not the full reinforcement-learning algorithm, a negative-advantage case, or a bound on actual KL divergence.",
+      "sourceIds": [
+        "page-3"
+      ],
+      "claimIds": [
+        "c4",
+        "c5",
+        "c12"
+      ],
+      "illustrative": true
+    }
+  ],
+  "quiz": [
+    {
+      "question": "Assume ε=0.2 and a single sample has advantage A=-2 and ratio r=0.6. What is its PPO clipped-surrogate term?",
+      "options": [
+        {
+          "text": "-1.2",
+          "explanation": "This is the unclipped product 0.6×(-2), but the minimum also compares the clipped product."
+        },
+        {
+          "text": "-1.6",
+          "explanation": "Correct: clip(0.6,0.8,1.2)=0.8, so min(-1.2,-1.6)=-1.6."
+        },
+        {
+          "text": "-2.4",
+          "explanation": "This would use the upper boundary 1.2, but a low ratio is clipped to the lower boundary 0.8."
+        }
+      ],
+      "answer": 1,
+      "sourceIds": [
+        "page-3"
+      ],
+      "claimIds": [
+        "c4",
+        "c5"
+      ]
+    },
+    {
+      "question": "Why does PPO retain π_old while optimizing one collected batch?",
+      "options": [
+        {
+          "text": "To define a fixed denominator for sampled-action probability ratios.",
+          "explanation": "Correct: the candidate action probability is compared with the probability under the batch-generating policy."
+        },
+        {
+          "text": "To generate new actions after every minibatch.",
+          "explanation": "The described algorithm reuses the collected NT samples for K epochs before collecting fresh experience."
+        },
+        {
+          "text": "To make every ratio remain inside the clipping interval.",
+          "explanation": "The old policy anchors ratios, but clipping the objective does not force actual ratios to stay inside the interval."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "page-3",
+        "page-5"
+      ],
+      "claimIds": [
+        "c3",
+        "c7",
+        "c12"
+      ]
+    },
+    {
+      "question": "Which conclusion is justified by the reported Atari comparison?",
+      "options": [
+        {
+          "text": "PPO won every Atari game under both metrics.",
+          "explanation": "The reported win counts are distributed across PPO, ACER, A2C, and one tie."
+        },
+        {
+          "text": "PPO had more wins than ACER for the final-100-episodes metric.",
+          "explanation": "ACER had 28 wins and PPO had 19 under that metric."
+        },
+        {
+          "text": "PPO led the win count for reward averaged over all training, but not for final-100-episode reward.",
+          "explanation": "Correct: PPO led 30 to 18 on the all-training metric, while ACER led 28 to 19 on the final metric."
+        }
+      ],
+      "answer": 2,
+      "sourceIds": [
+        "page-8"
+      ],
+      "claimIds": [
+        "c11"
+      ]
+    }
+  ],
+  "id": "ppo",
+  "createdAt": "2026-10-02T00:08:43.602Z",
+  "pipelineVersion": "subjects-lessons-v1",
+  "sources": [
+    {
+      "id": "abstract",
+      "label": "Original paper · abstract",
+      "url": "https://arxiv.org/abs/1707.06347",
+      "digest": "546b5aadd08b08fed39c76780cce51c2644358da790a9e9901501ca31c18aba2",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:06:41.810Z"
+    },
+    {
+      "id": "page-1",
+      "label": "Original paper · page 1",
+      "url": "https://arxiv.org/pdf/1707.06347#page=1",
+      "digest": "2a8d4a91770c5d0896e65b30083c2c769d0c9004c448ab57f7decf5dd11a8d0e",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:06:41.810Z"
+    },
+    {
+      "id": "page-2",
+      "label": "Original paper · page 2",
+      "url": "https://arxiv.org/pdf/1707.06347#page=2",
+      "digest": "63627845531371c0405b76a9ac1595585471eb27836f17d5f24507e45810fc05",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:06:41.810Z"
+    },
+    {
+      "id": "page-3",
+      "label": "Original paper · page 3",
+      "url": "https://arxiv.org/pdf/1707.06347#page=3",
+      "digest": "1ae35a62ae330c78a1acb643cd74d453c03cc0bcaac8303bfa3ac05146b6cdb5",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:06:41.810Z"
+    },
+    {
+      "id": "page-4",
+      "label": "Original paper · page 4",
+      "url": "https://arxiv.org/pdf/1707.06347#page=4",
+      "digest": "aa609bbfea9ee095af4a6eda0b2210a0c24f8aac6948c11a18889d11ea3818ac",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:06:41.810Z"
+    },
+    {
+      "id": "page-5",
+      "label": "Original paper · page 5",
+      "url": "https://arxiv.org/pdf/1707.06347#page=5",
+      "digest": "18e9dde71175876b51970c22629e7a3a68d13bc326e7157187a2d89facefdcdb",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:06:41.810Z"
+    },
+    {
+      "id": "page-6",
+      "label": "Original paper · page 6",
+      "url": "https://arxiv.org/pdf/1707.06347#page=6",
+      "digest": "f0bacf3ed7f602312a2edda78a72dbc0c09d8912d0555234c931def3c326f4b4",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:06:41.810Z"
+    },
+    {
+      "id": "page-7",
+      "label": "Original paper · page 7",
+      "url": "https://arxiv.org/pdf/1707.06347#page=7",
+      "digest": "9c550ffba035c6b90da1f93453216641ad9d1421fc5a4656856279d0badaf457",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:06:41.810Z"
+    },
+    {
+      "id": "page-8",
+      "label": "Original paper · page 8",
+      "url": "https://arxiv.org/pdf/1707.06347#page=8",
+      "digest": "a2384f45e7cebc6056f5358b7afd468af7ca8db26de84fdb096a2fd72d9f00ff",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:06:41.810Z"
+    },
+    {
+      "id": "page-9",
+      "label": "Original paper · page 9",
+      "url": "https://arxiv.org/pdf/1707.06347#page=9",
+      "digest": "37b4441b7056718d38b5eb37ae8b64b6ad497d2422cfe203399d86d339a1ea20",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:06:41.810Z"
+    },
+    {
+      "id": "page-10",
+      "label": "Original paper · page 10",
+      "url": "https://arxiv.org/pdf/1707.06347#page=10",
+      "digest": "b3360a14c6b402cefda6c2f8831ddce99c665ebb2e4f74ae3bb68b658f7507e5",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:06:41.810Z"
+    },
+    {
+      "id": "page-11",
+      "label": "Original paper · page 11",
+      "url": "https://arxiv.org/pdf/1707.06347#page=11",
+      "digest": "64c4f943f98766ff86a12a1a8980152f7d049b4ff3fcba49745d6b640d8f690b",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:06:41.810Z"
+    },
+    {
+      "id": "page-12",
+      "label": "Original paper · page 12",
+      "url": "https://arxiv.org/pdf/1707.06347#page=12",
+      "digest": "7feb80dbee2ec3ccf57e6b2516382dcf063d6bcb20f5618bd770cb00ef34a4bf",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:06:41.810Z"
+    }
+  ],
+  "review": {
+    "status": "passed",
+    "reviewedAt": "2026-10-02T00:08:43.604Z",
+    "contentDigest": "8471c6cac597919269a129b17d44b6db9626e2b2f4b11b344781f78cb7c63ba9"
+  }
+}

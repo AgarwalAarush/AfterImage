@@ -1,0 +1,826 @@
+{
+  "version": 1,
+  "sectionId": "s4",
+  "title": "Return-Conditioned Causal Context",
+  "introduction": "Decision Transformer conditions each action on at most the last K timesteps (3K tokens). This illustrative two-step example assumes K is at least 2, so both positions fit the context window. Offline actions supply supervised targets; deployment feeds a new state-action prefix and reduces the requested return by each observed reward.",
+  "entities": [
+    {
+      "id": "p1",
+      "label": "P1",
+      "meaning": "Ordered first-step return-state prefix containing R̂1 followed by soff1."
+    },
+    {
+      "id": "at1",
+      "label": "aoff1",
+      "meaning": "Recorded first action; initially a target, then eligible bounded-context history."
+    },
+    {
+      "id": "rt2",
+      "label": "R̂2",
+      "meaning": "Stored hindsight return-to-go at the second offline timestep."
+    },
+    {
+      "id": "st2",
+      "label": "soff2",
+      "meaning": "State recorded at the second offline timestep."
+    },
+    {
+      "id": "at2",
+      "label": "aoff2",
+      "meaning": "Recorded second action used as the supervised target after the longer prefix."
+    },
+    {
+      "id": "pred1",
+      "label": "â1",
+      "meaning": "Model prediction for the first recorded action."
+    },
+    {
+      "id": "loss1",
+      "label": "L1",
+      "meaning": "Supervised loss comparing â1 with aoff1."
+    },
+    {
+      "id": "pred2",
+      "label": "â2",
+      "meaning": "Model prediction for the second recorded action."
+    },
+    {
+      "id": "loss2",
+      "label": "L2",
+      "meaning": "Supervised loss comparing â2 with aoff2."
+    },
+    {
+      "id": "g1",
+      "label": "G1",
+      "meaning": "Requested remaining return at the start of deployment."
+    },
+    {
+      "id": "sd1",
+      "label": "sdep1",
+      "meaning": "Environment observation at the first deployment timestep."
+    },
+    {
+      "id": "ad1",
+      "label": "a*1",
+      "meaning": "First action generated during deployment."
+    },
+    {
+      "id": "rd1",
+      "label": "rdep1",
+      "meaning": "Reward observed after executing a*1."
+    },
+    {
+      "id": "g2",
+      "label": "G2",
+      "meaning": "Updated request defined by G2 = G1 − rdep1."
+    },
+    {
+      "id": "sd2",
+      "label": "sdep2",
+      "meaning": "Successor observation revealed after executing a*1."
+    }
+  ],
+  "objects": [
+    {
+      "id": "offline-bank",
+      "form": "bank",
+      "label": "Offline trajectory",
+      "detail": "Fixed return-labeled records",
+      "sourceIds": [
+        "section-2",
+        "section-3"
+      ],
+      "claimIds": [
+        "c1",
+        "c2",
+        "c3"
+      ]
+    },
+    {
+      "id": "training-prefix",
+      "form": "tokens",
+      "label": "Training prefix",
+      "detail": "Illustrative bounded prefix",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c3",
+        "c5",
+        "c6",
+        "c7"
+      ]
+    },
+    {
+      "id": "causal-transformer",
+      "form": "module",
+      "label": "Decision Transformer",
+      "detail": "Causally masked action predictor",
+      "sourceIds": [
+        "abstract",
+        "main-text",
+        "section-2",
+        "section-3"
+      ],
+      "claimIds": [
+        "c1",
+        "c6",
+        "c7"
+      ]
+    },
+    {
+      "id": "action-loss",
+      "form": "vector",
+      "label": "Supervised action loss",
+      "detail": "Prediction-target comparison",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c6"
+      ]
+    },
+    {
+      "id": "deployment-prefix",
+      "form": "tokens",
+      "label": "Deployment prefix",
+      "detail": "Bounded receding-return prompt",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c3",
+        "c4",
+        "c5"
+      ]
+    },
+    {
+      "id": "environment",
+      "form": "module",
+      "label": "Environment",
+      "detail": "Deployment transition process",
+      "sourceIds": [
+        "section-2",
+        "section-3"
+      ],
+      "claimIds": [
+        "c4"
+      ]
+    },
+    {
+      "id": "return-updater",
+      "form": "module",
+      "label": "Return updater",
+      "detail": "Remaining-return subtraction",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c4"
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "id": "select-prefix",
+      "from": "offline-bank",
+      "to": "training-prefix",
+      "label": "select bounded ordered prefix",
+      "dashed": false,
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c3",
+        "c5",
+        "c6"
+      ]
+    },
+    {
+      "id": "encode-training-prefix",
+      "from": "training-prefix",
+      "to": "causal-transformer",
+      "label": "encode visible prefix",
+      "dashed": false,
+      "sourceIds": [
+        "main-text",
+        "section-3"
+      ],
+      "claimIds": [
+        "c5",
+        "c7"
+      ]
+    },
+    {
+      "id": "predict-for-loss",
+      "from": "causal-transformer",
+      "to": "action-loss",
+      "label": "supply action prediction",
+      "dashed": false,
+      "sourceIds": [
+        "main-text",
+        "section-3"
+      ],
+      "claimIds": [
+        "c6"
+      ]
+    },
+    {
+      "id": "supply-target",
+      "from": "offline-bank",
+      "to": "action-loss",
+      "label": "supply recorded target",
+      "dashed": true,
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c6"
+      ]
+    },
+    {
+      "id": "prompt-policy",
+      "from": "deployment-prefix",
+      "to": "causal-transformer",
+      "label": "condition on bounded prefix",
+      "dashed": false,
+      "sourceIds": [
+        "abstract",
+        "section-3"
+      ],
+      "claimIds": [
+        "c1",
+        "c3",
+        "c5",
+        "c7"
+      ]
+    },
+    {
+      "id": "append-generated-action",
+      "from": "causal-transformer",
+      "to": "deployment-prefix",
+      "label": "predict and append action",
+      "dashed": false,
+      "sourceIds": [
+        "abstract",
+        "main-text",
+        "section-3"
+      ],
+      "claimIds": [
+        "c1",
+        "c3"
+      ]
+    },
+    {
+      "id": "execute-action",
+      "from": "deployment-prefix",
+      "to": "environment",
+      "label": "execute generated action",
+      "dashed": false,
+      "sourceIds": [
+        "section-2",
+        "section-3"
+      ],
+      "claimIds": [
+        "c4"
+      ]
+    },
+    {
+      "id": "supply-reward",
+      "from": "environment",
+      "to": "return-updater",
+      "label": "supply observed reward",
+      "dashed": false,
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c4"
+      ]
+    },
+    {
+      "id": "append-next-request",
+      "from": "return-updater",
+      "to": "deployment-prefix",
+      "label": "append updated request",
+      "dashed": false,
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c4"
+      ]
+    },
+    {
+      "id": "append-observation",
+      "from": "environment",
+      "to": "deployment-prefix",
+      "label": "append successor observation",
+      "dashed": false,
+      "sourceIds": [
+        "section-2",
+        "section-3"
+      ],
+      "claimIds": [
+        "c3",
+        "c4"
+      ]
+    }
+  ],
+  "beats": [
+    {
+      "title": "Select the first causal prefix",
+      "explanation": "The fixed trajectory retains both recorded actions. For the first prediction, only $P_1=(\\widehat{R}_1,s_1^{\\mathrm{off}})$ is selected within the bounded context. The recorded $a_1^{\\mathrm{off}}$ remains outside that prefix because it is the action currently being predicted.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c2",
+        "c3",
+        "c5",
+        "c6",
+        "c7"
+      ],
+      "objects": [
+        {
+          "objectId": "offline-bank",
+          "status": "retained",
+          "entityIds": [
+            "p1",
+            "at1",
+            "rt2",
+            "st2",
+            "at2"
+          ]
+        },
+        {
+          "objectId": "training-prefix",
+          "status": "active",
+          "entityIds": [
+            "p1"
+          ]
+        },
+        {
+          "objectId": "causal-transformer",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "action-loss",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "deployment-prefix",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "environment",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "return-updater",
+          "status": "pending",
+          "entityIds": []
+        }
+      ],
+      "relationships": [
+        {
+          "relationshipId": "select-prefix",
+          "entityIds": [
+            "p1"
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Predict and score the first action",
+      "explanation": "The causally masked model processes $P_1$ and produces $\\hat a_1$. The supervised objective compares that prediction with recorded target $a_1^{\\mathrm{off}}$, producing $L_1$. The target reaches the loss but is not an input to its own prediction.",
+      "sourceIds": [
+        "section-2",
+        "section-3"
+      ],
+      "claimIds": [
+        "c6",
+        "c7"
+      ],
+      "objects": [
+        {
+          "objectId": "offline-bank",
+          "status": "retained",
+          "entityIds": [
+            "p1",
+            "at1",
+            "rt2",
+            "st2",
+            "at2"
+          ]
+        },
+        {
+          "objectId": "training-prefix",
+          "status": "active",
+          "entityIds": [
+            "p1"
+          ]
+        },
+        {
+          "objectId": "causal-transformer",
+          "status": "active",
+          "entityIds": [
+            "p1",
+            "pred1"
+          ]
+        },
+        {
+          "objectId": "action-loss",
+          "status": "active",
+          "entityIds": [
+            "pred1",
+            "at1",
+            "loss1"
+          ]
+        },
+        {
+          "objectId": "deployment-prefix",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "environment",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "return-updater",
+          "status": "pending",
+          "entityIds": []
+        }
+      ],
+      "relationships": [
+        {
+          "relationshipId": "encode-training-prefix",
+          "entityIds": [
+            "p1"
+          ]
+        },
+        {
+          "relationshipId": "predict-for-loss",
+          "entityIds": [
+            "pred1"
+          ]
+        },
+        {
+          "relationshipId": "supply-target",
+          "entityIds": [
+            "at1"
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Use an earlier action within the window",
+      "explanation": "For the second prediction, the visible prefix grows to $(P_1,a_1^{\\mathrm{off}},\\widehat{R}_2,s_2^{\\mathrm{off}})$. The earlier action is now legitimate history because it remains inside the last $K$ timesteps. The model produces $\\hat a_2$, which the loss compares with withheld target $a_2^{\\mathrm{off}}$.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c3",
+        "c5",
+        "c6",
+        "c7"
+      ],
+      "objects": [
+        {
+          "objectId": "offline-bank",
+          "status": "retained",
+          "entityIds": [
+            "p1",
+            "at1",
+            "rt2",
+            "st2",
+            "at2"
+          ]
+        },
+        {
+          "objectId": "training-prefix",
+          "status": "active",
+          "entityIds": [
+            "p1",
+            "at1",
+            "rt2",
+            "st2"
+          ]
+        },
+        {
+          "objectId": "causal-transformer",
+          "status": "active",
+          "entityIds": [
+            "p1",
+            "at1",
+            "rt2",
+            "st2",
+            "pred2"
+          ]
+        },
+        {
+          "objectId": "action-loss",
+          "status": "active",
+          "entityIds": [
+            "pred2",
+            "at2",
+            "loss2"
+          ]
+        },
+        {
+          "objectId": "deployment-prefix",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "environment",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "return-updater",
+          "status": "pending",
+          "entityIds": []
+        }
+      ],
+      "relationships": [
+        {
+          "relationshipId": "select-prefix",
+          "entityIds": [
+            "p1",
+            "at1",
+            "rt2",
+            "st2"
+          ]
+        },
+        {
+          "relationshipId": "encode-training-prefix",
+          "entityIds": [
+            "p1",
+            "at1",
+            "rt2",
+            "st2"
+          ]
+        },
+        {
+          "relationshipId": "predict-for-loss",
+          "entityIds": [
+            "pred2"
+          ]
+        },
+        {
+          "relationshipId": "supply-target",
+          "entityIds": [
+            "at2"
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Generate and execute a deployment action",
+      "explanation": "A separate deployment episode begins with requested return $G_1$ and observation $s_1^{\\mathrm{dep}}$. The model conditions on that ordered prefix, generates $a^*_1$, and appends the same action identity. The environment executes $a^*_1$; its reward and successor state remain unavailable until the transition completes. The retained training panels are only a prior illustrative snapshot, not deployment inputs.",
+      "sourceIds": [
+        "abstract",
+        "main-text",
+        "section-3"
+      ],
+      "claimIds": [
+        "c1",
+        "c3",
+        "c4",
+        "c7"
+      ],
+      "objects": [
+        {
+          "objectId": "offline-bank",
+          "status": "retained",
+          "entityIds": [
+            "p1",
+            "at1",
+            "rt2",
+            "st2",
+            "at2"
+          ]
+        },
+        {
+          "objectId": "training-prefix",
+          "status": "retained",
+          "entityIds": [
+            "p1",
+            "at1",
+            "rt2",
+            "st2"
+          ]
+        },
+        {
+          "objectId": "causal-transformer",
+          "status": "active",
+          "entityIds": [
+            "g1",
+            "sd1",
+            "ad1"
+          ]
+        },
+        {
+          "objectId": "action-loss",
+          "status": "retained",
+          "entityIds": [
+            "pred2",
+            "at2",
+            "loss2"
+          ]
+        },
+        {
+          "objectId": "deployment-prefix",
+          "status": "active",
+          "entityIds": [
+            "g1",
+            "sd1",
+            "ad1"
+          ]
+        },
+        {
+          "objectId": "environment",
+          "status": "active",
+          "entityIds": [
+            "sd1",
+            "ad1"
+          ]
+        },
+        {
+          "objectId": "return-updater",
+          "status": "pending",
+          "entityIds": []
+        }
+      ],
+      "relationships": [
+        {
+          "relationshipId": "prompt-policy",
+          "entityIds": [
+            "g1",
+            "sd1"
+          ]
+        },
+        {
+          "relationshipId": "append-generated-action",
+          "entityIds": [
+            "ad1"
+          ]
+        },
+        {
+          "relationshipId": "execute-action",
+          "entityIds": [
+            "ad1"
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Append the next request and observation",
+      "explanation": "After execution, the environment reveals $r_1^{\\mathrm{dep}}$ and successor observation $s_2^{\\mathrm{dep}}$. The updater computes $G_2=G_1-r_1^{\\mathrm{dep}}$ and appends $G_2$, while the environment transfers and appends the unchanged $s_2^{\\mathrm{dep}}$ identity. The next prompt is $(G_1,s_1^{\\mathrm{dep}},a^*_1,G_2,s_2^{\\mathrm{dep}})$, subject to the last-$K$-timestep window.",
+      "sourceIds": [
+        "section-2",
+        "section-3"
+      ],
+      "claimIds": [
+        "c3",
+        "c4",
+        "c5",
+        "c7"
+      ],
+      "objects": [
+        {
+          "objectId": "offline-bank",
+          "status": "retained",
+          "entityIds": [
+            "p1",
+            "at1",
+            "rt2",
+            "st2",
+            "at2"
+          ]
+        },
+        {
+          "objectId": "training-prefix",
+          "status": "retained",
+          "entityIds": [
+            "p1",
+            "at1",
+            "rt2",
+            "st2"
+          ]
+        },
+        {
+          "objectId": "causal-transformer",
+          "status": "active",
+          "entityIds": [
+            "g1",
+            "sd1",
+            "ad1",
+            "g2",
+            "sd2"
+          ]
+        },
+        {
+          "objectId": "action-loss",
+          "status": "retained",
+          "entityIds": [
+            "pred2",
+            "at2",
+            "loss2"
+          ]
+        },
+        {
+          "objectId": "deployment-prefix",
+          "status": "active",
+          "entityIds": [
+            "g1",
+            "sd1",
+            "ad1",
+            "g2",
+            "sd2"
+          ]
+        },
+        {
+          "objectId": "environment",
+          "status": "active",
+          "entityIds": [
+            "ad1",
+            "rd1",
+            "sd2"
+          ]
+        },
+        {
+          "objectId": "return-updater",
+          "status": "active",
+          "entityIds": [
+            "g1",
+            "rd1",
+            "g2"
+          ]
+        }
+      ],
+      "relationships": [
+        {
+          "relationshipId": "supply-reward",
+          "entityIds": [
+            "rd1"
+          ]
+        },
+        {
+          "relationshipId": "append-next-request",
+          "entityIds": [
+            "g2"
+          ]
+        },
+        {
+          "relationshipId": "append-observation",
+          "entityIds": [
+            "sd2"
+          ]
+        },
+        {
+          "relationshipId": "prompt-policy",
+          "entityIds": [
+            "g1",
+            "sd1",
+            "ad1",
+            "g2",
+            "sd2"
+          ]
+        }
+      ]
+    }
+  ],
+  "takeaway": "Training predicts its current target from a bounded past context; deployment updates the return request using observed rewards.",
+  "sourceIds": [
+    "abstract",
+    "main-text",
+    "section-2",
+    "section-3"
+  ],
+  "claimIds": [
+    "c1",
+    "c2",
+    "c3",
+    "c4",
+    "c5",
+    "c6",
+    "c7"
+  ],
+  "lessonId": "decision-transformer-reinforcement-learning-via-sequence",
+  "parentContentDigest": "a97a9e6447e33636c663b7b3551ed90ed91a1562d848dba853f1cf70bcfa9408",
+  "review": {
+    "status": "source-passed",
+    "reviewedAt": "2026-10-02T00:21:25.349Z",
+    "contentDigest": "aaa8a07e452b0c6f72008bfb21e8edd26b570bb94f3482cabc12a314d33b575f",
+    "rendererDigest": "2cc690a7105c5faca75e22053e83674a2cf2e227ae22afe88cc4662d09c98bb4",
+    "visualReviewedAt": null
+  }
+}

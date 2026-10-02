@@ -1,0 +1,431 @@
+{
+  "title": "Two Knobs, One Budget: The Chinchilla Allocation Principle",
+  "summary": "Chinchilla shows that, under a fixed training-compute budget, balancing model parameters with substantially more training tokens can outperform simply enlarging the model.",
+  "prerequisites": [
+    "Next-token prediction in autoregressive language models",
+    "Learned numerical model parameters",
+    "Training tokens processed during optimization",
+    "Power-law scaling relationships"
+  ],
+  "objectives": [
+    "Formulate compute-optimal training as constrained loss minimization.",
+    "Explain how parameters and training tokens share a fixed compute budget.",
+    "Derive the paper's parametric compute-optimal allocation.",
+    "Interpret the Chinchilla–Gopher comparison under its actual conditions.",
+    "Identify limits involving extrapolation, evaluation, data, and safety."
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "mechanism",
+      "statement": "The paper treats compute-optimal training as choosing parameter count and training-token count to minimize final pre-training loss under a fixed FLOP budget.",
+      "conditions": "For dense autoregressive transformer training with compute represented as a deterministic function of model size and tokens.",
+      "sourceIds": [
+        "section-1"
+      ]
+    },
+    {
+      "id": "c2",
+      "kind": "result",
+      "statement": "The empirical analysis covered more than 400 models spanning roughly 70 million to over 16 billion parameters and 5 billion to over 400 billion training tokens.",
+      "conditions": "Across the training runs used to estimate the compute-optimal allocation; exact ranges differ slightly among approaches.",
+      "sourceIds": [
+        "section-1",
+        "section-3"
+      ]
+    },
+    {
+      "id": "c3",
+      "kind": "result",
+      "statement": "Three estimation approaches found that compute-optimal parameter count and training-token count grow at approximately equal rates as training compute increases.",
+      "conditions": "Under the paper's dense-transformer setups, fitted power-law assumption, and investigated compute range.",
+      "sourceIds": [
+        "section-3",
+        "section-3-part-2"
+      ]
+    },
+    {
+      "id": "c4",
+      "kind": "equation",
+      "statement": "The paper models final loss as an irreducible term plus separate finite-model and finite-data terms: L-hat equals E plus A over N to alpha plus B over D to beta.",
+      "conditions": "In the paper's third, parametric approach, with positive fitted coefficients and exponents.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c5",
+      "kind": "equation",
+      "statement": "Using the approximation that training compute is six times parameter count times token count, constrained minimization gives allocation exponents a equals beta over alpha plus beta and b equals alpha over alpha plus beta.",
+      "conditions": "For the paper's parametric loss form and the approximation FLOPs approximately equal to 6ND.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c6",
+      "kind": "result",
+      "statement": "The three reported exponent pairs for parameters and tokens were approximately (0.50, 0.50), (0.49, 0.51), and (0.46, 0.54).",
+      "conditions": "For the training-curve-envelope, IsoFLOP, and parametric-loss approaches, respectively.",
+      "sourceIds": [
+        "section-3",
+        "section-3-part-2"
+      ]
+    },
+    {
+      "id": "c7",
+      "kind": "mechanism",
+      "statement": "Matching the cosine learning-rate schedule length to the intended training-token horizon improved final-loss estimation relative to reading intermediate points from one fixed long schedule.",
+      "conditions": "In the paper's comparison with the fixed 130-billion-token schedule methodology.",
+      "sourceIds": [
+        "section-2",
+        "section-3"
+      ]
+    },
+    {
+      "id": "c8",
+      "kind": "result",
+      "statement": "Chinchilla used 70 billion parameters and 1.4 trillion training tokens, while Gopher used 280 billion parameters and 300 billion tokens.",
+      "conditions": "For the paper's large-scale comparison; both models were reported as trained with the same number of FLOPs.",
+      "sourceIds": [
+        "section-1",
+        "section-4"
+      ]
+    },
+    {
+      "id": "c9",
+      "kind": "result",
+      "statement": "Chinchilla achieved 67.6% average five-shot accuracy on 57 MMLU tasks, compared with 60.0% for Gopher.",
+      "conditions": "Under the paper's reported five-shot MMLU evaluation protocol.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c10",
+      "kind": "result",
+      "statement": "Chinchilla improved average performance on the 62 evaluated BIG-bench tasks from Gopher's 54.4% to 65.1%.",
+      "conditions": "For the subset of BIG-bench tasks and evaluation setup inherited from the Gopher study.",
+      "sourceIds": [
+        "section-4-part-2"
+      ]
+    },
+    {
+      "id": "c11",
+      "kind": "caveat",
+      "statement": "Language-modeling comparisons may be inflated by train-test leakage because Chinchilla saw four times more training data than Gopher.",
+      "conditions": "Especially for benchmarks whose examples may overlap the larger training corpus.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c12",
+      "kind": "caveat",
+      "statement": "The large-scale validation rests on only two comparable runs, assumes a power-law frontier despite observed curvature, and does not study multiple training epochs.",
+      "conditions": "When interpreting the fitted frontier or extrapolating it to substantially larger compute budgets.",
+      "sourceIds": [
+        "section-5"
+      ]
+    },
+    {
+      "id": "c13",
+      "kind": "caveat",
+      "statement": "Compute-optimal training did not remove bias, toxicity, privacy, or dataset-quality concerns.",
+      "conditions": "For Chinchilla and similarly trained web-scale autoregressive language models.",
+      "sourceIds": [
+        "section-4-part-2",
+        "section-5"
+      ]
+    },
+    {
+      "id": "c14",
+      "kind": "result",
+      "statement": "Because Chinchilla was four times smaller than Gopher, the paper reports a smaller memory footprint and lower inference cost.",
+      "conditions": "For the compared dense architectures; this is not a claim that total lifecycle cost is determined by parameter count alone.",
+      "sourceIds": [
+        "section-4"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "s1",
+      "title": "The allocation problem hiding inside a compute budget",
+      "markdown": "Suppose a laboratory knows its accelerator count and training duration before a run begins. That fixes a training-compute budget, but it does not determine the model. Two principal knobs remain: the number of learned parameters and the number of tokens processed during training.\n\nLet $N$ be the parameter count, $D$ the number of training tokens, $C$ the available floating-point operations, and $L(N,D)$ the final pre-training loss. The paper asks for\n\n$$\nN_{\\mathrm{opt}}(C),D_{\\mathrm{opt}}(C)=\\underset{N,D\\,\\mathrm{s.t.}\\,\\mathrm{FLOPs}(N,D)=C}{\\arg\\min}\\;L(N,D).\n$$\n\nThis is an allocation problem, not a contest to maximize $N$. With fixed $C$, a larger model makes each token more expensive, so it generally must see fewer tokens. A smaller model can process more tokens but has less representational capacity. The desired point balances these two sources of loss.\n\nThat framing corrects a common misconception: compute-optimal does not mean training a model until no further improvement is possible. It means selecting the model size and training duration that produce the lowest loss among choices costing the same amount. A model can therefore be undertrained relative to its size even after consuming an enormous absolute amount of compute.",
+      "sourceIds": [
+        "section-1"
+      ],
+      "claimIds": [
+        "c1"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s2",
+      "title": "Why a power law is useful—and only a model",
+      "markdown": "Scaling laws turn a collection of training runs into a rule for allocating a larger compute budget. Chinchilla’s central relation is two-dimensional: model size $N$ and training-token count $D$ both consume compute and both affect final loss. For dense autoregressive transformers, the paper approximates training compute as\n\n$$\nC\\approx 6ND.\n$$\n\nAt fixed $C$, this constraint couples the two choices. Increasing $N$ forces $D$ downward, while increasing $D$ requires a smaller $N$. The scientific question is therefore where along this fixed-compute trade-off the final pre-training loss is smallest.\n\nThe researchers estimated that trade-off from more than 400 trained models. The runs ranged from roughly 70 million to more than 16 billion parameters and from billions to hundreds of billions of training tokens, with multiple training horizons for model configurations. This variation matters: observing only larger models at an almost fixed token count would not reveal how much loss could instead be reduced by training a smaller model longer.\n\nThey summarized the compute-optimal choices with power laws\n\n$$\nN_{\\mathrm{opt}}(C)\\propto C^a,\n\\qquad\nD_{\\mathrm{opt}}(C)\\propto C^b.\n$$\n\nAcross three estimation approaches, the fitted exponent pairs were approximately $(0.50,0.50)$, $(0.49,0.51)$, and $(0.46,0.54)$. Although the estimates differ, they agree on the allocation principle: when the available training compute increases, optimal parameter count and token count rise at roughly equal rates. Under exponents near one half, multiplying compute by a factor $k$ calls for multiplying each resource by about $\\sqrt{k}$. Their product then grows by $k$, consistent with $C\\approx6ND$.\n\nA power law is an empirical model of the observed frontier, not a physical law. Its value is that it provides a compact planning rule within the investigated dense-transformer setup and compute range. The fitted relation can become unreliable when architecture, data distribution, optimization, or compute accounting changes, and the paper observed curvature at high compute. That curvature has a practical consequence: extrapolating a straight power law far beyond the training runs may overestimate the compute-optimal parameter count. Within the studied regime, however, three distinct analyses supported the same substantive conclusion—additional compute should be divided between greater capacity and substantially more training data, rather than being spent predominantly on a larger model.",
+      "sourceIds": [
+        "section-1",
+        "section-3"
+      ],
+      "claimIds": [
+        "c2",
+        "c3"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s3",
+      "title": "Three routes to the same frontier",
+      "markdown": "The first approach formed an envelope over training curves. For each model size, the researchers trained models with four cosine-cycle lengths, smoothed and interpolated their losses, and selected the lowest-loss run at each compute value. They then fitted power laws $N_{\\mathrm{opt}}\\propto C^a$ and $D_{\\mathrm{opt}}\\propto C^b$.\n\nThe second approach held total FLOPs fixed at each of nine budgets while varying model size. Because tokens change when $N$ changes under a fixed budget, each IsoFLOP slice exposes a valley: models that are too small spend too little compute on capacity, while models that are too large see too little data. A parabola fitted around each valley estimates its loss-minimizing $N$.\n\nThe third approach fitted one function to final losses from the first two experiment families. The resulting exponent pairs $(a,b)$ were approximately $(0.50,0.50)$, $(0.49,0.51)$, and $(0.46,0.54)$. Thus all three methods placed parameter and token growth near equal footing, though they were not numerically identical.\n\nSchedule design matters here. Intermediate loss from a long, fixed learning-rate schedule need not equal the final loss of a run whose schedule was designed to end at that intermediate token count. The paper reports that approximately matching the cosine schedule to the target token horizon gave the better final loss. The optimizer toy shows ordinary gradient descent on $f(x)=x^2/2$: changing its learning rate changes twelve update iterates. It builds intuition that an optimization schedule affects where a finite run ends, but it does not implement cosine decay, AdamW, L-BFGS fitting, or language-model training.",
+      "sourceIds": [
+        "section-2",
+        "section-3",
+        "section-3-part-2"
+      ],
+      "claimIds": [
+        "c3",
+        "c6",
+        "c7"
+      ],
+      "figureId": "fig-optimizer"
+    },
+    {
+      "id": "s4",
+      "title": "Deriving the two-way balance",
+      "markdown": "The parametric approach proposes\n\n$$\n\\widehat{L}(N,D)=E+\\frac{A}{N^{\\alpha}}+\\frac{B}{D^{\\beta}}.\n$$\n\nHere $\\widehat{L}$ is predicted loss; $E$ is the limiting loss of an ideal generative process on the data distribution; $A$ and $B$ are fitted positive scale coefficients; and $\\alpha$ and $\\beta$ are positive fitted exponents. The $N$ term represents limited model capacity, while the $D$ term represents finite training.\n\nUsing $C\\approx6ND$, substitute $D=C/(6N)$. The part that can be optimized becomes\n\n$$\ng(N)=AN^{-\\alpha}+B\\left(\\frac{6N}{C}\\right)^{\\beta}.\n$$\n\nSetting $g'(N)=0$ balances the marginal reductions in the two terms. The paper obtains\n\n$$\nN_{\\mathrm{opt}}(C)=G\\left(\\frac{C}{6}\\right)^a,\\qquad\nD_{\\mathrm{opt}}(C)=G^{-1}\\left(\\frac{C}{6}\\right)^b,\n$$\n\nwhere\n\n$$\nG=\\left(\\frac{\\alpha A}{\\beta B}\\right)^{\\frac{1}{\\alpha+\\beta}},\\qquad\na=\\frac{\\beta}{\\alpha+\\beta},\\qquad b=\\frac{\\alpha}{\\alpha+\\beta}.\n$$\n\nNotice that $a+b=1$. As a small illustrative calculation, suppose $\\alpha=\\beta=0.5$. Then $a=b=0.5$. Increasing compute by $16\\times$ predicts $N$ and $D$ each increasing by $16^{0.5}=4\\times$; their product increases by $4\\times4=16\\times$, as required by $C\\approx6ND$. These invented exponent values illustrate the algebra; they are not a new measurement.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c4",
+        "c5"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s5",
+      "title": "The large-scale test: exchanging width for experience",
+      "markdown": "The central prediction was tested at the compute budget used for Gopher. Chinchilla had 70 billion parameters and processed 1.4 trillion tokens; Gopher had 280 billion parameters and processed 300 billion tokens. The paper reports equal training FLOPs. This is the crucial controlled comparison: Chinchilla was about four times smaller and saw roughly four times as much data.\n\nThe comparison was not perfectly isolated to only $N$ and $D$. Chinchilla used the same broad architecture and dataset as Gopher, but the paper also reports a somewhat different data-mixture distribution, AdamW instead of Adam, and a modified tokenizer. Those differences prevent attributing every measured improvement solely to the allocation rule.\n\nNevertheless, the reported downstream pattern supports the prediction. On the 57-task MMLU average in a five-shot setting, Chinchilla scored 67.6% and Gopher 60.0%. Across the 62 considered BIG-bench tasks, their reported averages were 65.1% and 54.4%, respectively. The point is not that smaller models always win; it is that, at this particular fixed compute budget, Gopher's extra parameters were less valuable than assigning much more compute to tokens.",
+      "sourceIds": [
+        "section-4",
+        "section-4-part-2"
+      ],
+      "claimIds": [
+        "c8",
+        "c9",
+        "c10"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s6",
+      "title": "What the result does—and does not buy",
+      "markdown": "A smaller dense model has practical downstream advantages. Because Chinchilla had one quarter of Gopher's parameters, the paper reports a smaller memory footprint and lower inference cost. Training compute was held equal, but deployment cost was not: repeatedly serving a smaller model can be substantially easier.\n\nThat does not establish a universal ratio of tokens per parameter. The paper's headline is a scaling relation: as compute grows, optimal $N$ and $D$ should grow in approximately equal proportions within the studied setup. The proportionality constants depend on the fitted loss surface, architecture, data distribution, and compute accounting. Nor does the evidence prove that reducing any existing model and feeding it four times more arbitrary text will improve it. Data quality, optimization, and model design still matter.\n\nEvaluation conditions also constrain the conclusion. The authors warn that Chinchilla's fourfold larger training corpus raises the chance of train-test leakage on language-modeling benchmarks. They therefore place greater emphasis on tasks where leakage was considered less concerning. Even there, benchmark gains measure performance under specified prompting and scoring protocols; they do not establish general reasoning, factual reliability, or safe behavior.",
+      "sourceIds": [
+        "section-4",
+        "section-5"
+      ],
+      "claimIds": [
+        "c11",
+        "c14"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s7",
+      "title": "Where the frontier may bend",
+      "markdown": "Three limitations shape how far the allocation rule can be carried. First, the broad scaling analysis used many smaller experiments, but only Chinchilla and Gopher supplied comparable tests at the largest scale; there were no additional intermediate large-scale validations. Second, the methods assume that the efficient frontier follows a power law, while the authors observed curvature at high compute. Straight-line extrapolation in log space may therefore overestimate the optimal size of very large models. Third, the analyzed runs used less than one epoch of data, leaving repeated-data regimes unresolved.\n\nThe data prescription also creates obligations rather than eliminating them. Training on trillions of tokens requires sufficiently high-quality material and more careful overlap analysis. Larger web-derived corpora can contain toxic language, social biases, and private information. Chinchilla still exhibited bias, and its unconditional toxicity statistics were not materially improved over Gopher's. Better loss or better benchmark accuracy is not a safety guarantee.\n\nThe durable lesson is conditional: for dense autoregressive transformers, under the paper's compute approximation, data regime, and experimental setup, capacity and training exposure must be budgeted together. Parameter count alone is neither the objective nor an adequate measure of how effectively training compute was used.",
+      "sourceIds": [
+        "section-4-part-2",
+        "section-5"
+      ],
+      "claimIds": [
+        "c12",
+        "c13"
+      ],
+      "figureId": null
+    }
+  ],
+  "figures": [
+    {
+      "id": "fig-optimizer",
+      "kind": "optimizer",
+      "title": "Finite optimization depends on the step size",
+      "question": "Which learning rates move the iterate toward the quadratic minimum stably over twelve updates?",
+      "caption": "Starting from $x=3$, the control applies twelve ordinary gradient-descent updates to the illustrative quadratic $f(x)=x^2/2$.",
+      "limitation": "This is plain scalar gradient descent, not the paper's cosine schedule, AdamW language-model optimizer, or L-BFGS scaling-law fit.",
+      "sourceIds": [
+        "section-2",
+        "section-3"
+      ],
+      "claimIds": [
+        "c7"
+      ],
+      "illustrative": true
+    }
+  ],
+  "quiz": [
+    {
+      "question": "Under the illustrative assumptions $C\\approx6ND$ and $N_{\\mathrm{opt}},D_{\\mathrm{opt}}\\propto C^{0.5}$, what happens when compute increases by $9\\times$?",
+      "options": [
+        {
+          "text": "Both optimal parameters and tokens increase by $3\\times$.",
+          "explanation": "Correct: $9^{0.5}=3$, and their product consequently increases by $9\\times$."
+        },
+        {
+          "text": "Parameters increase by $9\\times$, while tokens stay fixed.",
+          "explanation": "This spends all additional compute on capacity and contradicts the assumed equal exponents."
+        },
+        {
+          "text": "Both optimal parameters and tokens increase by $9\\times$.",
+          "explanation": "That would increase their product, and hence approximate compute, by $81\\times$ rather than $9\\times$."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c3",
+        "c5"
+      ]
+    },
+    {
+      "question": "What is the strongest interpretation of the Chinchilla–Gopher comparison?",
+      "options": [
+        {
+          "text": "At equal reported training FLOPs, the smaller, longer-trained Chinchilla performed better on the reported evaluations.",
+          "explanation": "Correct: this matches the comparison's compute condition and reported direction of results."
+        },
+        {
+          "text": "A smaller language model always outperforms a larger one.",
+          "explanation": "The result concerns a particular allocation at fixed compute, not an unconditional law about model size."
+        },
+        {
+          "text": "The comparison isolated parameter count and token count with no other training differences.",
+          "explanation": "Chinchilla also differed in optimizer, tokenizer, and data-mixture details."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-4",
+        "section-4-part-2"
+      ],
+      "claimIds": [
+        "c8",
+        "c9",
+        "c10"
+      ]
+    },
+    {
+      "question": "Which conclusion remains unwarranted even if the fitted compute-optimal frontier predicts loss accurately?",
+      "options": [
+        {
+          "text": "The allocation may help choose model size and token count before training.",
+          "explanation": "This is the intended planning use of the fitted frontier under comparable conditions."
+        },
+        {
+          "text": "Increasing both parameters and tokens can be preferable to scaling parameters alone.",
+          "explanation": "This is the central allocation conclusion supported by the three estimation approaches."
+        },
+        {
+          "text": "Following the allocation automatically resolves bias, toxicity, privacy, and data-quality risks.",
+          "explanation": "Correct: the paper explicitly reports that these risks remain and require separate attention."
+        }
+      ],
+      "answer": 2,
+      "sourceIds": [
+        "section-4-part-2",
+        "section-5"
+      ],
+      "claimIds": [
+        "c12",
+        "c13"
+      ]
+    }
+  ],
+  "id": "chinchilla",
+  "createdAt": "2026-10-02T00:39:38.146Z",
+  "pipelineVersion": "subjects-lessons-v1",
+  "sources": [
+    {
+      "id": "abstract",
+      "label": "Original paper · abstract",
+      "url": "https://arxiv.org/abs/2203.15556",
+      "digest": "e9335359a068826206fa425da51874148b8b43ffbe3e0a3ec1ca114918815f0a",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:37:37.490Z"
+    },
+    {
+      "id": "main-text",
+      "label": "Original paper · unsectioned main text",
+      "url": "https://arxiv.org/html/2203.15556",
+      "digest": "7a3e6b16cb75f48fb897eff3ae732f3154f6d203b53f33660f01b4c3b6bc2df9",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:37:37.490Z"
+    },
+    {
+      "id": "section-1",
+      "label": "1 Introduction",
+      "url": "https://arxiv.org/html/2203.15556#S1",
+      "digest": "40398745c0656b62d3d0af849f4b94a5e4520bd2b089c2a650ac723878a9e881",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:37:37.490Z"
+    },
+    {
+      "id": "section-2",
+      "label": "2 Related Work",
+      "url": "https://arxiv.org/html/2203.15556#S2",
+      "digest": "2db97c33cc3d8def1be870462f29f1f677e77a7ba7b859a316a6a971e2164090",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:37:37.490Z"
+    },
+    {
+      "id": "section-3",
+      "label": "3 Estimating the optimal parameter/training tokens allocation",
+      "url": "https://arxiv.org/html/2203.15556#S3",
+      "digest": "c6d7f91743c3d8bed8f4065e6f38bec55f881ae8d28424422dc7f080d5aed706",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:37:37.490Z"
+    },
+    {
+      "id": "section-3-part-2",
+      "label": "3 Estimating the optimal parameter/training tokens allocation · part 2",
+      "url": "https://arxiv.org/html/2203.15556#S3",
+      "digest": "40788793b04698d540e122bfa5fd19753cf4a64b9b64a642f412a2a6ed073c15",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:37:37.490Z"
+    },
+    {
+      "id": "section-4",
+      "label": "4 Chinchilla",
+      "url": "https://arxiv.org/html/2203.15556#S4",
+      "digest": "e674b408276b7f2fc1f2cff3ca42f912bfe4ab0487d4d2b807da84fbd47d7b72",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:37:37.490Z"
+    },
+    {
+      "id": "section-4-part-2",
+      "label": "4 Chinchilla · part 2",
+      "url": "https://arxiv.org/html/2203.15556#S4",
+      "digest": "c9978142cad4ba2f7db2e6c29c27704e5b421bbacc8c06025f97f82c6c8080b4",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:37:37.490Z"
+    },
+    {
+      "id": "section-5",
+      "label": "5 Discussion & Conclusion",
+      "url": "https://arxiv.org/html/2203.15556#S5",
+      "digest": "3b69b98b62512fd12423cceaa8bd52be8d9b5da301c8f839a6ef1318acd2df14",
+      "extractionVersion": "arxiv-html-scientific-body-v4",
+      "capturedAt": "2026-10-02T00:37:37.490Z"
+    }
+  ],
+  "review": {
+    "status": "passed",
+    "reviewedAt": "2026-10-02T02:20:54.775Z",
+    "contentDigest": "6e096f3f1949b769ee1e020c0d16ac737738f7ff00fcf0d7f8eecd079d14d301"
+  }
+}

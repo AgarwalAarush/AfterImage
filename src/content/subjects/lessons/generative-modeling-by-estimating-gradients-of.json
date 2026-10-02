@@ -1,0 +1,439 @@
+{
+  "title": "Following the Score Through a Ladder of Noise",
+  "summary": "Song and Ermon turn learned density gradients into a generator by training one noise-conditioned score network and sampling down a Gaussian noise ladder.",
+  "prerequisites": [
+    "Log-density gradients",
+    "Gaussian noise and variance",
+    "Expected squared-error losses",
+    "Markov chain sampling"
+  ],
+  "objectives": [
+    "Define a score and explain how it guides sampling without a normalized density.",
+    "Derive the Gaussian denoising target and compute it for a scalar example.",
+    "Explain how a noise ladder addresses manifold support and slow mixing.",
+    "Trace an annealed Langevin update and distinguish drift from injected noise.",
+    "Interpret the image results within the reported datasets and settings."
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "mechanism",
+      "statement": "The score is the input gradient of a log-density, so it points locally toward increasing log-density without providing the density's normalization constant.",
+      "conditions": "For a differentiable probability density at the evaluated point.",
+      "sourceIds": [
+        "section-1"
+      ]
+    },
+    {
+      "id": "c2",
+      "kind": "caveat",
+      "statement": "A naive ambient-space score can be undefined when the data distribution is confined to a lower-dimensional manifold.",
+      "conditions": "Under the manifold hypothesis, with data support lower-dimensional than the ambient space.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c3",
+      "kind": "caveat",
+      "statement": "Finite training samples provide little direct supervision for scores in regions carrying almost no data probability.",
+      "conditions": "For a region with negligible data probability and an empirical expectation formed from i.i.d. samples.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c4",
+      "kind": "mechanism",
+      "statement": "Gaussian perturbation gives each perturbed distribution full-space support and makes its score well-defined.",
+      "conditions": "For the paper's additive Gaussian corruption distributions.",
+      "sourceIds": [
+        "section-4-part-2"
+      ]
+    },
+    {
+      "id": "c5",
+      "kind": "mechanism",
+      "statement": "An NCSN is one network conditioned on the noise scale and trained to approximate the score of every distribution in a discrete noise ladder.",
+      "conditions": "For noise levels in the chosen set and inputs in the ambient space.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c6",
+      "kind": "equation",
+      "statement": "For Gaussian corruption, denoising score matching regresses the network toward the conditional score $-(\\tilde{\\mathbf{x}}-\\mathbf{x})/\\sigma^2$.",
+      "conditions": "When $q_\\sigma(\\tilde{\\mathbf{x}}\\mid\\mathbf{x})$ is isotropic Gaussian with covariance $\\sigma^2I$.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c7",
+      "kind": "equation",
+      "statement": "Across $L$ discrete noise levels, the unified objective is $\\mathcal{L}(\\boldsymbol{\\theta};\\{\\sigma_i\\}_{i=1}^{L})=L^{-1}\\sum_{i=1}^{L}\\lambda(\\sigma_i)\\ell(\\boldsymbol{\\theta};\\sigma_i)$, where every $\\lambda(\\sigma_i)>0$.",
+      "conditions": "For $L$ discrete noise levels and positive coefficient function $\\lambda(\\sigma_i)$.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c8",
+      "kind": "mechanism",
+      "statement": "The paper chooses $\\lambda(\\sigma)=\\sigma^2$ so the weighted scale-specific losses are approximately comparable in magnitude, based on the empirical relation $\\|\\mathbf{s}_{\\boldsymbol{\\theta}}(\\mathbf{x},\\sigma)\\|_2\\propto 1/\\sigma$ near optimal training.",
+      "conditions": "Under the paper's empirical near-optimal score-norm scaling and isotropic Gaussian corruption.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c9",
+      "kind": "equation",
+      "statement": "A Langevin update combines score-directed drift with an independent Gaussian perturbation.",
+      "conditions": "For a positive step size and standard-normal update noise.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c10",
+      "kind": "mechanism",
+      "statement": "Annealed Langevin dynamics carries the final state at one noise level into sampling at the next lower level while reducing the step size.",
+      "conditions": "For the ordered geometric noise schedule used by Algorithm 1.",
+      "sourceIds": [
+        "section-4"
+      ]
+    },
+    {
+      "id": "c11",
+      "kind": "result",
+      "statement": "In the paper's two-mode Gaussian toy experiment, annealing recovered the relative mode weights whereas standard Langevin sampling did not.",
+      "conditions": "For the reported geometric schedule with $L=10$, $\\sigma_1=10$, $\\sigma_{10}=0.1$, on the Section 3.2 Gaussian mixture.",
+      "sourceIds": [
+        "section-4-part-2"
+      ]
+    },
+    {
+      "id": "c12",
+      "kind": "result",
+      "statement": "The reported unconditional CIFAR-10 NCSN obtained an Inception score of $8.87\\pm0.12$ and an FID of $25.32$.",
+      "conditions": "For the paper's unconditional CIFAR-10 evaluation and its stated preprocessing and sampling configuration.",
+      "sourceIds": [
+        "section-5"
+      ]
+    },
+    {
+      "id": "c13",
+      "kind": "caveat",
+      "statement": "The finite-step sampler is treated as approximate because the work omits the Metropolis–Hastings correction and assumes discretization error is negligible.",
+      "conditions": "When the step size is small and the number of sampling steps is large, as assumed by the authors.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c14",
+      "kind": "caveat",
+      "statement": "The architecture investigation in this paper centers on images rather than establishing a design for other data domains.",
+      "conditions": "For the architectures evaluated in this work.",
+      "sourceIds": [
+        "section-4"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "s1",
+      "title": "The object being learned is a direction field",
+      "markdown": "Let $\\mathbf{x}\\in\\mathbb{R}^D$ denote a data vector, $D$ its ambient dimension, and $p(\\mathbf{x})$ a differentiable density. Its **score** is\n\n$$\n\\nabla_{\\mathbf{x}}\\log p(\\mathbf{x}),\n$$\n\nwhere $\\nabla_{\\mathbf{x}}$ differentiates with respect to the coordinates of $\\mathbf{x}$. This vector points toward the steepest local increase of log-density. It does not itself report $p(\\mathbf{x})$, and an additive constant in $\\log p$ disappears on differentiation. That is the opening: a model can learn useful sampling directions without first constructing a normalized likelihood.\n\nGiven i.i.d. observations $\\{\\mathbf{x}_i\\}_{i=1}^N$, the paper represents this field by $\\mathbf{s}_{\\boldsymbol{\\theta}}(\\mathbf{x})$, where $\\boldsymbol{\\theta}$ are neural-network parameters and the output has the same dimension as the input. Ordinary score matching targets the squared discrepancy between this network and the unknown data score. An equivalent objective can avoid knowing the density value, but its Jacobian trace is expensive for deep, high-dimensional networks. Denoising score matching will provide the practical route used later.",
+      "sourceIds": [
+        "section-1",
+        "section-2"
+      ],
+      "claimIds": [
+        "c1"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s2",
+      "title": "Why the direct route breaks",
+      "markdown": "Two problems interact. First, real data may concentrate on a lower-dimensional manifold inside $\\mathbb{R}^D$. A density confined there does not furnish the required ambient-space score in the usual way, and the consistency conditions for naive score matching fail. Second, empirical training concentrates where observations occur. Far from those observations, the learned vector field may be inaccurate precisely where a sampler initialized from unstructured noise must travel.\n\nSeparated modes expose a deeper misconception: **an exact local score does not guarantee rapid global mixing**. Suppose\n\n$$\np_{\\text{data}}(\\mathbf{x})=\\pi p_1(\\mathbf{x})+(1-\\pi)p_2(\\mathbf{x})\n$$\n\nwith disjoint supports. Inside the support of $p_1$, the constant $\\log\\pi$ vanishes under differentiation, so the score reduces to $\\nabla_{\\mathbf{x}}\\log p_1(\\mathbf{x})$; likewise for $p_2$. The local fields therefore do not reveal the mixture weight $\\pi$. A finite chain that rarely crosses the low-density gap can occupy the modes in the wrong proportions even when its within-mode directions are correct. The paper's remedy is not merely a better last-stage score: it constructs easier, noise-smoothed intermediate distributions.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c2",
+        "c3"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s3",
+      "title": "Gaussian corruption builds a ladder of tractable neighborhoods",
+      "markdown": "For a clean example $\\mathbf{t}$ and noise scale $\\sigma>0$, define\n\n$$\nq_\\sigma(\\mathbf{x})=\\int p_{\\text{data}}(\\mathbf{t})\\,\\mathcal{N}(\\mathbf{x}\\mid\\mathbf{t},\\sigma^2I)\\,\\mathrm{d}\\mathbf{t},\n$$\n\nwhere $I$ is the $D\\times D$ identity. Gaussian corruption spreads every data point through the ambient space. Large $\\sigma$ fills gaps and connects modes more strongly; small $\\sigma$ keeps the perturbed distribution close to the data.\n\nThe illustrative control below draws seeded Gaussian samples and displays their norm histogram, the measured mean norm, and the reference RMS radius $\\sigma\\sqrt{D}$. Predict what happens before changing a control: increasing $\\sigma$ scales lengths, while increasing $D$ changes how tightly norms concentrate relative to their scale. This is useful intuition for why noise magnitude depends on dimension, but it is not the paper's learned distribution, sampler, or empirical image experiment.\n\nThe NCSN uses one parameter set while receiving $\\sigma$ as a condition:\n\n$$\n\\mathbf{s}_{\\boldsymbol{\\theta}}(\\mathbf{x},\\sigma)\\approx\\nabla_{\\mathbf{x}}\\log q_\\sigma(\\mathbf{x}).\n$$\n\nThus the model learns a family of vector fields rather than one field at one arbitrarily chosen blur level.",
+      "sourceIds": [
+        "section-4",
+        "section-4-part-2"
+      ],
+      "claimIds": [
+        "c4",
+        "c5"
+      ],
+      "figureId": "f1"
+    },
+    {
+      "id": "s4",
+      "title": "Training targets emerge from the corruption process",
+      "markdown": "Draw a clean sample $\\mathbf{x}\\sim p_{\\text{data}}$, then draw $\\tilde{\\mathbf{x}}\\sim\\mathcal{N}(\\mathbf{x},\\sigma^2I)$. For isotropic Gaussian corruption, the conditional log-density can be written, up to a term $C$ that is constant with respect to $\\tilde{\\mathbf{x}}$, as\n\n$$\n\\log q_\\sigma(\\tilde{\\mathbf{x}}\\mid\\mathbf{x})\n=C-\\frac{\\|\\tilde{\\mathbf{x}}-\\mathbf{x}\\|_2^2}{2\\sigma^2}.\n$$\n\nBecause $\\nabla_{\\tilde{\\mathbf{x}}}\\|\\tilde{\\mathbf{x}}-\\mathbf{x}\\|_2^2=2(\\tilde{\\mathbf{x}}-\\mathbf{x})$ and $\\nabla_{\\tilde{\\mathbf{x}}}C=0$, differentiating gives\n\n$$\n\\nabla_{\\tilde{\\mathbf{x}}}\\log q_\\sigma(\\tilde{\\mathbf{x}}\\mid\\mathbf{x})\n=-\\frac{1}{2\\sigma^2}\\,2(\\tilde{\\mathbf{x}}-\\mathbf{x})\n=-\\frac{\\tilde{\\mathbf{x}}-\\mathbf{x}}{\\sigma^2}.\n$$\n\nConsequently, the scale-specific denoising loss is\n\n$$\n\\ell(\\boldsymbol{\\theta};\\sigma)=\\frac12\\mathbb{E}\\left[\n\\left\\|\\mathbf{s}_{\\boldsymbol{\\theta}}(\\tilde{\\mathbf{x}},\\sigma)\n+\\frac{\\tilde{\\mathbf{x}}-\\mathbf{x}}{\\sigma^2}\\right\\|_2^2\n\\right].\n$$\n\nHere $\\|\\cdot\\|_2$ is Euclidean norm and the expectation covers both clean data and corruption. Although each target uses its associated clean point, minimizing the expectation recovers the score of the *marginal perturbed distribution* $q_\\sigma$, not a command to memorize that clean point.\n\nA small illustrative calculation: take one dimension, $x=2$, $\\sigma=0.5$, and corrupted value $\\tilde{x}=2.25$. The target is\n\n$$\n-\\frac{2.25-2}{0.5^2}=-\\frac{0.25}{0.25}=-1.\n$$\n\nIf the network outputs $-0.6$, this example contributes $\\tfrac12(-0.6-(-1))^2=0.08$. These invented numbers demonstrate the arithmetic only; they are not a reported training case.\n\nAcross a geometric ladder $\\{\\sigma_i\\}_{i=1}^L$, the paper minimizes $\\mathcal{L}=L^{-1}\\sum_i\\lambda(\\sigma_i)\\ell(\\boldsymbol{\\theta};\\sigma_i)$ and chooses $\\lambda(\\sigma)=\\sigma^2$ to approximately balance scales under its observed score-norm relationship.",
+      "sourceIds": [
+        "section-4"
+      ],
+      "claimIds": [
+        "c6",
+        "c7",
+        "c8"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s5",
+      "title": "Sampling descends from broad structure to fine detail",
+      "markdown": "For noise level $\\sigma_i$, an annealed Langevin update is\n\n$$\n\\tilde{\\mathbf{x}}_t=\\tilde{\\mathbf{x}}_{t-1}\n+\\frac{\\alpha_i}{2}\\mathbf{s}_{\\boldsymbol{\\theta}}(\\tilde{\\mathbf{x}}_{t-1},\\sigma_i)\n+\\sqrt{\\alpha_i}\\mathbf{z}_t,\n\\qquad \\mathbf{z}_t\\sim\\mathcal{N}(0,I).\n$$\n\nThe score term is a directed displacement toward locally higher log-density under $q_{\\sigma_i}$, whereas $\\sqrt{\\alpha_i}\\mathbf{z}_t$ provides stochastic exploration. Sampling begins from a fixed prior such as uniform noise at the largest scale $\\sigma_1$. After several updates, the final state at that scale initializes the chain at $\\sigma_2$, and this handoff continues down the geometric ladder to $\\sigma_L$.\n\nThe paper chooses\n\n$$\n\\alpha_i=\\epsilon\\frac{\\sigma_i^2}{\\sigma_L^2},\n$$\n\nwhere $\\epsilon$ is the step size at the smallest noise level. This scaling is motivated by the empirical relationship $\\|\\mathbf{s}_{\\boldsymbol{\\theta}}(\\mathbf{x},\\sigma)\\|_2\\propto 1/\\sigma$: making $\\alpha_i\\propto\\sigma_i^2$ keeps the characteristic balance between score-directed drift and injected noise approximately comparable across levels. Both terms shrink as the ladder descends, so later updates refine the state on a narrower spatial scale.\n\nThe accompanying construction represents that scale change with two ideal RMS radii in $D=3$. The outer level has $\\sigma=1$ and radius $\\sqrt{3}$, while the controlled inner level has radius $\\sigma\\sqrt{3}$. Lowering the inner $\\sigma$ contracts its radius linearly; rotating the camera changes only the view. These radii are declared geometric quantities derived from the Gaussian RMS length $\\sigma\\sqrt{D}$, used to make the coarse-to-fine progression visible rather than to reproduce a sampled trajectory.\n\nAt high noise, Gaussian smoothing fills low-density gaps and makes modes less isolated. A state produced in a high-density region of $q_{\\sigma_{i-1}}$ can therefore provide a useful initialization for the nearby distribution $q_{\\sigma_i}$. In the reported two-mode Gaussian experiment, using $L=10$ geometrically spaced levels from $\\sigma_1=10$ to $\\sigma_{10}=0.1$, this annealed procedure recovered the relative mode weights whereas standard Langevin dynamics did not. That comparison supports the staged-sampling mechanism for the stated mixture and schedule; it does not establish rapid mixing for every multimodal distribution.",
+      "sourceIds": [
+        "section-2",
+        "section-4",
+        "section-4-part-2"
+      ],
+      "claimIds": [
+        "c9",
+        "c10",
+        "c11"
+      ],
+      "figureId": "f2"
+    },
+    {
+      "id": "s6",
+      "title": "What the reported image evidence establishes",
+      "markdown": "The image experiments used MNIST, CelebA, and CIFAR-10. Images were scaled to $[0,1]$; CelebA was center-cropped and resized to $32\\times32$. The reported ladder had $L=10$, geometrically spaced from $\\sigma_1=1$ to $\\sigma_{10}=0.01$. For generation, the paper reports $T=100$ updates per level, $\\epsilon=2\\times10^{-5}$, and uniform-noise initialization.\n\nUnder the unconditional CIFAR-10 evaluation in the supplied table, NCSN obtained Inception $8.87\\pm0.12$ and FID $25.32$. These are two different metrics, so the stronger listed Inception result does not imply dominance on FID: the table includes other models with lower FID. The paper also reports uncurated samples and image inpainting, and contrasts the full ladder with a one-level $\\sigma=0.01$ baseline that failed to produce reasonable images. The justified conclusion is conditional: joint multi-scale score learning plus annealed sampling worked well in these reported image settings. It is not evidence that every schedule, architecture, dataset, or metric will behave similarly.",
+      "sourceIds": [
+        "section-5"
+      ],
+      "claimIds": [
+        "c12"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s7",
+      "title": "Boundaries that matter in practice",
+      "markdown": "Finite-step Langevin dynamics remains an approximation in this work. For a fixed target density, exact sampling is associated with the limit of vanishing step size and infinitely many updates, under regularity conditions. With positive step size and finitely many updates, a Metropolis–Hastings correction would be needed to remove discretization error; the paper omits that correction and assumes the error is negligible when the step size is small and the run is long.\n\nGaussian smoothing also introduces a deliberate approximation. At large $\\sigma$, the perturbed density has full-space support and better connects regions that were separated under the data distribution. At the final level, however, the sampler targets $q_{\\sigma_L}$ rather than exactly $p_{\\text{data}}$. The two are treated as close only when $\\sigma_L$ is sufficiently small; this is a qualified approximation, not an identity.\n\nThe architecture and experimental evidence are centered on images. The NCSN combines ideas from U-Net, dilated convolution, instance normalization, and noise-conditioned instance normalization, while architecture design for other domains is left for future work. Accordingly, the supported conclusion is that one conditioned network can learn scores across a Gaussian noise ladder and guide annealed Langevin sampling in the reported image settings—not that the same architecture or finite schedule is universally sufficient.\n\nThe central scientific contribution is the coupling of training and inference across scales. Gaussian perturbation makes ambient-space scores well-defined and supplies supervision beyond the immediate data manifold. Annealed Langevin dynamics then uses the broad, high-noise distributions to establish coarse structure before progressively moving toward the low-noise distribution that approximates the data.",
+      "sourceIds": [
+        "section-2",
+        "section-4",
+        "section-4-part-2"
+      ],
+      "claimIds": [
+        "c4",
+        "c13",
+        "c14"
+      ],
+      "figureId": null
+    }
+  ],
+  "figures": [
+    {
+      "id": "f1",
+      "kind": "noise",
+      "title": "Norms under Gaussian perturbation",
+      "question": "If the dimension is fixed and sigma doubles, how should the reference RMS radius and sampled norm scale change?",
+      "caption": "A seeded Gaussian experiment compares the norm histogram and measured mean radius with the reference $\\sigma\\sqrt{D}$ as sigma or dimension changes.",
+      "limitation": "This displays sampled noise norms only; it does not represent learned scores, image-space geometry, sampling quality, or a measured result from the paper.",
+      "sourceIds": [
+        "section-4"
+      ],
+      "claimIds": [
+        "c4",
+        "c5"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "f2",
+      "kind": "noise-shells",
+      "title": "A geometric view of descending noise scales",
+      "question": "As the inner sigma decreases with the camera fixed, how does its ideal RMS radius compare with the unchanged outer radius?",
+      "caption": "Two seeded thin surfaces in $D=3$ show ideal RMS radii $\\sqrt{3}$ and $\\sigma\\sqrt{3}$ around one data point; rotation changes only the shared view.",
+      "limitation": "The surfaces are ideal RMS radii, not Gaussian samples, high-dimensional data manifolds, disjoint probability shells, or a simulation of the paper's sampler.",
+      "sourceIds": [
+        "section-4",
+        "section-4-part-2"
+      ],
+      "claimIds": [
+        "c4",
+        "c10"
+      ],
+      "illustrative": true
+    }
+  ],
+  "quiz": [
+    {
+      "question": "For fixed $D$, what happens in the illustrative Gaussian-norm experiment when $\\sigma$ doubles?",
+      "options": [
+        {
+          "text": "The reference RMS radius doubles.",
+          "explanation": "Correct: $\\sigma\\sqrt{D}$ is linear in $\\sigma$ when $D$ is fixed."
+        },
+        {
+          "text": "The reference RMS radius quadruples.",
+          "explanation": "Incorrect: variance scales as $\\sigma^2$, but the displayed radius is a length proportional to $\\sigma$."
+        },
+        {
+          "text": "The reference RMS radius is unchanged.",
+          "explanation": "Incorrect: changing $\\sigma$ rescales the sampled Gaussian lengths."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-4"
+      ],
+      "claimIds": [
+        "c4"
+      ]
+    },
+    {
+      "question": "Why does the NCSN receive the noise level $\\sigma$ as an input?",
+      "options": [
+        {
+          "text": "It must represent different score fields for different perturbed distributions.",
+          "explanation": "Correct: each $q_\\sigma$ generally has its own log-density gradient."
+        },
+        {
+          "text": "It converts Langevin dynamics into deterministic gradient descent.",
+          "explanation": "Incorrect: sampling still includes Gaussian noise in every Langevin update."
+        },
+        {
+          "text": "It directly supplies the unknown mixture weights to the sampler.",
+          "explanation": "Incorrect: $\\sigma$ identifies corruption scale, not latent mode probabilities."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-4"
+      ],
+      "claimIds": [
+        "c5",
+        "c9"
+      ]
+    },
+    {
+      "question": "Which conclusion is warranted by the finite-step sampling discussion?",
+      "options": [
+        {
+          "text": "The generated state is an approximate sample under the paper's small-step, long-run assumption.",
+          "explanation": "Correct: the authors assume uncorrected discretization error is negligible in that regime."
+        },
+        {
+          "text": "Any positive step size yields an exact sample after finitely many updates.",
+          "explanation": "Incorrect: exactness is associated with limiting conditions, and finite updates introduce error."
+        },
+        {
+          "text": "Annealing proves rapid mixing for every multimodal distribution.",
+          "explanation": "Incorrect: the supplied evidence is a particular toy experiment, not a universal guarantee."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-2",
+        "section-4-part-2"
+      ],
+      "claimIds": [
+        "c11",
+        "c13"
+      ]
+    }
+  ],
+  "id": "generative-modeling-by-estimating-gradients-of",
+  "createdAt": "2026-10-01T23:58:02.560Z",
+  "pipelineVersion": "subjects-lessons-v1",
+  "sources": [
+    {
+      "id": "abstract",
+      "label": "Original paper · abstract",
+      "url": "https://arxiv.org/abs/1907.05600",
+      "digest": "4be6e02e2d87497cf893e6f8d3d96deabd938cc53f0c55eefaf7dfba50c2e2c9",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:52:36.571Z"
+    },
+    {
+      "id": "section-1",
+      "label": "1 Introduction",
+      "url": "https://arxiv.org/html/1907.05600#S1",
+      "digest": "2057fe2918e42d8b5cb31e0eba19ce87699c9da9aa81d130119229f6a43590af",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:52:36.571Z"
+    },
+    {
+      "id": "section-2",
+      "label": "2 Score-based generative modeling",
+      "url": "https://arxiv.org/html/1907.05600#S2",
+      "digest": "f1d3bfb77e647ba4c66e74da7477d8949c4ba2553e3e48e16a0de1952bad3c3f",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:52:36.571Z"
+    },
+    {
+      "id": "section-3",
+      "label": "3 Challenges of score-based generative modeling",
+      "url": "https://arxiv.org/html/1907.05600#S3",
+      "digest": "01b93110b2ccd0b3061388cd09da683e0053002dfced13848a2d66926c6ad3b8",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:52:36.571Z"
+    },
+    {
+      "id": "section-4",
+      "label": "4 Noise Conditional Score Networks: learning and inference",
+      "url": "https://arxiv.org/html/1907.05600#S4",
+      "digest": "dca817fd383bad575e5e8bd16940dfc2ebe186fa5e12a1e0c960a0fc7e8867cd",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:52:36.571Z"
+    },
+    {
+      "id": "section-4-part-2",
+      "label": "4 Noise Conditional Score Networks: learning and inference · part 2",
+      "url": "https://arxiv.org/html/1907.05600#S4",
+      "digest": "8bdd2b5af820b669c77aa24d9fe4e7c56987e00e41343bb3ccfa7b562a812ea8",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:52:36.571Z"
+    },
+    {
+      "id": "section-5",
+      "label": "5 Experiments",
+      "url": "https://arxiv.org/html/1907.05600#S5",
+      "digest": "fe1bc21890830b2319fc193f1bb4a555fdb0e4795d0f45387016da0a191b909a",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:52:36.571Z"
+    },
+    {
+      "id": "section-6",
+      "label": "6 Related work",
+      "url": "https://arxiv.org/html/1907.05600#S6",
+      "digest": "162fef468802a809e58ca645f9cc75fd2bc1e4149317a57b649bb7e98cac0fcc",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:52:36.571Z"
+    },
+    {
+      "id": "section-7",
+      "label": "7 Conclusion",
+      "url": "https://arxiv.org/html/1907.05600#S7",
+      "digest": "8bcead6a2ab84a946083d1ecebdb79a5cea004cabd9cc9acd22709d3179f38a0",
+      "extractionVersion": "arxiv-html-main-body-v3",
+      "capturedAt": "2026-10-01T23:52:36.571Z"
+    }
+  ],
+  "review": {
+    "status": "passed",
+    "reviewedAt": "2026-10-02T02:20:01.322Z",
+    "contentDigest": "a8b52491b562894b34ca40f9af404730ee2cb3cad338bef5d0bfabcebc203c0a"
+  }
+}

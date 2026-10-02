@@ -1,0 +1,772 @@
+{
+  "version": 1,
+  "sectionId": "s6",
+  "title": "Replay Reuse and Distinct Critic Evaluations",
+  "introduction": "In this illustrative snapshot, replay already contains $\\tau_O=(s_O,a_O,r_O,s'_O)$ and later receives $\\tau_N=(s_N,a_N,r_N,s'_N)$. We condition on $\\tau_O$ still being available when an update selects it; the paper does not specify insertion or eviction behavior. SAC then separates the stored action used for critic regression from a fresh current-policy action used for actor improvement.",
+  "entities": [
+    {
+      "id": "taun",
+      "label": "τN",
+      "meaning": "The newly collected transition (sN, aN, rN, sN′)."
+    },
+    {
+      "id": "sn",
+      "label": "sN",
+      "meaning": "The current state in the newly collected transition."
+    },
+    {
+      "id": "an",
+      "label": "aN",
+      "meaning": "The action sampled from the current stochastic policy at sN."
+    },
+    {
+      "id": "rn",
+      "label": "rN",
+      "meaning": "The reward observed after taking aN at sN."
+    },
+    {
+      "id": "snp",
+      "label": "sN′",
+      "meaning": "The observed next state following sN and aN."
+    },
+    {
+      "id": "tauo",
+      "label": "τO",
+      "meaning": "A previously collected transition (sO, aO, rO, sO′)."
+    },
+    {
+      "id": "so",
+      "label": "sO",
+      "meaning": "The stored state reused from the selected earlier transition."
+    },
+    {
+      "id": "ao",
+      "label": "aO",
+      "meaning": "The stored action used for critic regression at sO."
+    },
+    {
+      "id": "ro",
+      "label": "rO",
+      "meaning": "The stored reward used in the Bellman target."
+    },
+    {
+      "id": "sop",
+      "label": "sO′",
+      "meaning": "The observed next state used in the Bellman target."
+    },
+    {
+      "id": "vnext",
+      "label": "Vbar",
+      "meaning": "The target-network value V_barψ(sO′)."
+    },
+    {
+      "id": "ytarget",
+      "label": "y",
+      "meaning": "The soft Bellman target rO + γ V_barψ(sO′)."
+    },
+    {
+      "id": "q1o",
+      "label": "Q1O",
+      "meaning": "The first critic estimate Qθ1(sO,aO) used in critic regression."
+    },
+    {
+      "id": "q2o",
+      "label": "Q2O",
+      "meaning": "The second critic estimate Qθ2(sO,aO) used in critic regression."
+    },
+    {
+      "id": "api",
+      "label": "aπ",
+      "meaning": "A fresh reparameterized action sampled from the current policy at sO."
+    },
+    {
+      "id": "logpi",
+      "label": "logπ",
+      "meaning": "The current-policy log-probability log πφ(aπ|sO)."
+    },
+    {
+      "id": "q1pi",
+      "label": "Q1π",
+      "meaning": "The first critic evaluated at the fresh pair (sO,aπ)."
+    },
+    {
+      "id": "q2pi",
+      "label": "Q2π",
+      "meaning": "The second critic evaluated at the fresh pair (sO,aπ)."
+    },
+    {
+      "id": "qminpi",
+      "label": "Qminπ",
+      "meaning": "The smaller critic estimate at (sO,aπ), used for actor improvement."
+    }
+  ],
+  "objects": [
+    {
+      "id": "actor",
+      "form": "module",
+      "label": "Stochastic actor πφ",
+      "detail": "Current reparameterized policy",
+      "sourceIds": [
+        "section-4-part-2"
+      ],
+      "claimIds": [
+        "c8"
+      ]
+    },
+    {
+      "id": "new-transition",
+      "form": "vector",
+      "label": "New transition τN",
+      "detail": "Newly observed experience",
+      "sourceIds": [
+        "section-4-part-2"
+      ],
+      "claimIds": [
+        "c1"
+      ]
+    },
+    {
+      "id": "replay",
+      "form": "bank",
+      "label": "Replay buffer D",
+      "detail": "Displayed transition snapshot",
+      "sourceIds": [
+        "section-2",
+        "section-4",
+        "section-4-part-2"
+      ],
+      "claimIds": [
+        "c1",
+        "c7"
+      ]
+    },
+    {
+      "id": "selected-transition",
+      "form": "vector",
+      "label": "Selected transition τO",
+      "detail": "Reused earlier experience",
+      "sourceIds": [
+        "section-4",
+        "section-4-part-2"
+      ],
+      "claimIds": [
+        "c1",
+        "c7"
+      ]
+    },
+    {
+      "id": "bellman-target",
+      "form": "vector",
+      "label": "Soft target y",
+      "detail": "Reward-plus-value target",
+      "sourceIds": [
+        "section-4"
+      ],
+      "claimIds": [
+        "c7"
+      ]
+    },
+    {
+      "id": "twin-critics",
+      "form": "module",
+      "label": "Twin critics Qθ1, Qθ2",
+      "detail": "Independent soft Q estimates",
+      "sourceIds": [
+        "section-4-part-2"
+      ],
+      "claimIds": [
+        "c9"
+      ]
+    },
+    {
+      "id": "actor-minimum",
+      "form": "vector",
+      "label": "Fresh-action minimum Qminπ",
+      "detail": "Minimum at the policy action",
+      "sourceIds": [
+        "section-4-part-2"
+      ],
+      "claimIds": [
+        "c8",
+        "c9"
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "id": "actor-collects",
+      "from": "actor",
+      "to": "new-transition",
+      "label": "samples collection action",
+      "dashed": false,
+      "sourceIds": [
+        "section-4-part-2"
+      ],
+      "claimIds": [
+        "c8"
+      ]
+    },
+    {
+      "id": "transition-stored",
+      "from": "new-transition",
+      "to": "replay",
+      "label": "stores collected transition",
+      "dashed": false,
+      "sourceIds": [
+        "section-2",
+        "section-4-part-2"
+      ],
+      "claimIds": [
+        "c1"
+      ]
+    },
+    {
+      "id": "replay-selects",
+      "from": "replay",
+      "to": "selected-transition",
+      "label": "selects stored transition",
+      "dashed": false,
+      "sourceIds": [
+        "section-4",
+        "section-4-part-2"
+      ],
+      "claimIds": [
+        "c1",
+        "c7"
+      ]
+    },
+    {
+      "id": "transition-builds-target",
+      "from": "selected-transition",
+      "to": "bellman-target",
+      "label": "forms reward-plus-value target",
+      "dashed": false,
+      "sourceIds": [
+        "section-4"
+      ],
+      "claimIds": [
+        "c7"
+      ]
+    },
+    {
+      "id": "sample-trains-critics",
+      "from": "selected-transition",
+      "to": "twin-critics",
+      "label": "supplies stored state-action",
+      "dashed": false,
+      "sourceIds": [
+        "section-4",
+        "section-4-part-2"
+      ],
+      "claimIds": [
+        "c7",
+        "c9"
+      ]
+    },
+    {
+      "id": "target-trains-critics",
+      "from": "bellman-target",
+      "to": "twin-critics",
+      "label": "supervises both critics",
+      "dashed": false,
+      "sourceIds": [
+        "section-4",
+        "section-4-part-2"
+      ],
+      "claimIds": [
+        "c7",
+        "c9"
+      ]
+    },
+    {
+      "id": "actor-samples-fresh",
+      "from": "selected-transition",
+      "to": "actor",
+      "label": "supplies replayed state",
+      "dashed": false,
+      "sourceIds": [
+        "section-4-part-2"
+      ],
+      "claimIds": [
+        "c8"
+      ]
+    },
+    {
+      "id": "actor-queries-critics",
+      "from": "actor",
+      "to": "twin-critics",
+      "label": "queries with fresh action",
+      "dashed": false,
+      "sourceIds": [
+        "section-4-part-2"
+      ],
+      "claimIds": [
+        "c8",
+        "c9"
+      ]
+    },
+    {
+      "id": "critics-select-actor-minimum",
+      "from": "twin-critics",
+      "to": "actor-minimum",
+      "label": "selects fresh-action minimum",
+      "dashed": false,
+      "sourceIds": [
+        "section-4-part-2"
+      ],
+      "claimIds": [
+        "c9"
+      ]
+    },
+    {
+      "id": "minimum-guides-actor",
+      "from": "actor-minimum",
+      "to": "actor",
+      "label": "guides policy update",
+      "dashed": false,
+      "sourceIds": [
+        "section-4-part-2"
+      ],
+      "claimIds": [
+        "c8",
+        "c9"
+      ]
+    }
+  ],
+  "beats": [
+    {
+      "title": "Collect one new transition",
+      "explanation": "At $s_N$, the current stochastic actor samples $a_N$. The environment supplies $r_N$ and the observed next state $s'_N$, completing $\\tau_N$. Independently, the displayed replay snapshot contains the previously collected $\\tau_O$; no claim is made here about buffer capacity or eviction.",
+      "sourceIds": [
+        "section-2",
+        "section-4-part-2"
+      ],
+      "claimIds": [
+        "c1",
+        "c8"
+      ],
+      "objects": [
+        {
+          "objectId": "actor",
+          "status": "active",
+          "entityIds": [
+            "sn",
+            "an"
+          ]
+        },
+        {
+          "objectId": "new-transition",
+          "status": "active",
+          "entityIds": [
+            "taun",
+            "sn",
+            "an",
+            "rn",
+            "snp"
+          ]
+        },
+        {
+          "objectId": "replay",
+          "status": "retained",
+          "entityIds": [
+            "tauo"
+          ]
+        },
+        {
+          "objectId": "selected-transition",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "bellman-target",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "twin-critics",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "actor-minimum",
+          "status": "pending",
+          "entityIds": []
+        }
+      ],
+      "relationships": [
+        {
+          "relationshipId": "actor-collects",
+          "entityIds": [
+            "sn",
+            "an"
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Store the collected experience",
+      "explanation": "The collected identity $\\tau_N$ enters the replay buffer. For this illustrative snapshot, $\\tau_O$ is also shown because the following update is conditioned on that earlier transition remaining available. The paper supports storing and reusing past experience but does not specify whether any insertion replaces another item.",
+      "sourceIds": [
+        "section-2",
+        "section-4-part-2"
+      ],
+      "claimIds": [
+        "c1"
+      ],
+      "objects": [
+        {
+          "objectId": "actor",
+          "status": "retained",
+          "entityIds": []
+        },
+        {
+          "objectId": "new-transition",
+          "status": "active",
+          "entityIds": [
+            "taun",
+            "sn",
+            "an",
+            "rn",
+            "snp"
+          ]
+        },
+        {
+          "objectId": "replay",
+          "status": "active",
+          "entityIds": [
+            "tauo",
+            "taun"
+          ]
+        },
+        {
+          "objectId": "selected-transition",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "bellman-target",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "twin-critics",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "actor-minimum",
+          "status": "pending",
+          "entityIds": []
+        }
+      ],
+      "relationships": [
+        {
+          "relationshipId": "transition-stored",
+          "entityIds": [
+            "taun"
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Select the earlier transition",
+      "explanation": "Given that $\\tau_O$ remains available in this snapshot, the update selects that same stored identity while replay remains available. The selected vector exposes $s_O$, $a_O$, $r_O$, and observed $s'_O$. The historical action $a_O$ is copied unchanged rather than replaced by an action from the current actor.",
+      "sourceIds": [
+        "section-4",
+        "section-4-part-2"
+      ],
+      "claimIds": [
+        "c1",
+        "c7"
+      ],
+      "objects": [
+        {
+          "objectId": "actor",
+          "status": "retained",
+          "entityIds": []
+        },
+        {
+          "objectId": "new-transition",
+          "status": "retained",
+          "entityIds": [
+            "taun",
+            "sn",
+            "an",
+            "rn",
+            "snp"
+          ]
+        },
+        {
+          "objectId": "replay",
+          "status": "active",
+          "entityIds": [
+            "tauo",
+            "taun"
+          ]
+        },
+        {
+          "objectId": "selected-transition",
+          "status": "active",
+          "entityIds": [
+            "tauo",
+            "so",
+            "ao",
+            "ro",
+            "sop"
+          ]
+        },
+        {
+          "objectId": "bellman-target",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "twin-critics",
+          "status": "pending",
+          "entityIds": []
+        },
+        {
+          "objectId": "actor-minimum",
+          "status": "pending",
+          "entityIds": []
+        }
+      ],
+      "relationships": [
+        {
+          "relationshipId": "replay-selects",
+          "entityIds": [
+            "tauo"
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Regress both critics at the stored action",
+      "explanation": "The target value network evaluates the observed next state, producing $V_{\\bar\\psi}(s'_O)$, and the stored reward forms $y=r_O+\\gamma V_{\\bar\\psi}(s'_O)$. Both independently trained critics receive the unchanged replay pair $(s_O,a_O)$ and regress toward $y$, yielding $Q_{\\theta_1}(s_O,a_O)$ and $Q_{\\theta_2}(s_O,a_O)$.",
+      "sourceIds": [
+        "section-4",
+        "section-4-part-2"
+      ],
+      "claimIds": [
+        "c7",
+        "c9"
+      ],
+      "objects": [
+        {
+          "objectId": "actor",
+          "status": "retained",
+          "entityIds": []
+        },
+        {
+          "objectId": "new-transition",
+          "status": "retained",
+          "entityIds": [
+            "taun",
+            "sn",
+            "an",
+            "rn",
+            "snp"
+          ]
+        },
+        {
+          "objectId": "replay",
+          "status": "retained",
+          "entityIds": [
+            "tauo",
+            "taun"
+          ]
+        },
+        {
+          "objectId": "selected-transition",
+          "status": "active",
+          "entityIds": [
+            "tauo",
+            "so",
+            "ao",
+            "ro",
+            "sop"
+          ]
+        },
+        {
+          "objectId": "bellman-target",
+          "status": "active",
+          "entityIds": [
+            "ro",
+            "sop",
+            "vnext",
+            "ytarget"
+          ]
+        },
+        {
+          "objectId": "twin-critics",
+          "status": "active",
+          "entityIds": [
+            "so",
+            "ao",
+            "ytarget",
+            "q1o",
+            "q2o"
+          ]
+        },
+        {
+          "objectId": "actor-minimum",
+          "status": "pending",
+          "entityIds": []
+        }
+      ],
+      "relationships": [
+        {
+          "relationshipId": "transition-builds-target",
+          "entityIds": [
+            "ro",
+            "sop"
+          ]
+        },
+        {
+          "relationshipId": "sample-trains-critics",
+          "entityIds": [
+            "so",
+            "ao"
+          ]
+        },
+        {
+          "relationshipId": "target-trains-critics",
+          "entityIds": [
+            "ytarget"
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Evaluate a fresh action for actor improvement",
+      "explanation": "For the policy objective, replay supplies the state $s_O$. The current actor samples $a_\\pi=f_\\phi(\\epsilon;s_O)$ and provides $\\log\\pi_\\phi(a_\\pi\\mid s_O)$. Both critics evaluate $(s_O,a_\\pi)$, producing $Q_{1\\pi}$ and $Q_{2\\pi}$; their minimum is $Q_{\\min\\pi}=\\min_i Q_{\\theta_i}(s_O,a_\\pi)$. Actor improvement uses this fresh-action minimum, not the stored-action estimates.",
+      "sourceIds": [
+        "section-4-part-2"
+      ],
+      "claimIds": [
+        "c8",
+        "c9"
+      ],
+      "objects": [
+        {
+          "objectId": "actor",
+          "status": "active",
+          "entityIds": [
+            "so",
+            "api",
+            "logpi",
+            "qminpi"
+          ]
+        },
+        {
+          "objectId": "new-transition",
+          "status": "retained",
+          "entityIds": [
+            "taun",
+            "sn",
+            "an",
+            "rn",
+            "snp"
+          ]
+        },
+        {
+          "objectId": "replay",
+          "status": "retained",
+          "entityIds": [
+            "tauo",
+            "taun"
+          ]
+        },
+        {
+          "objectId": "selected-transition",
+          "status": "retained",
+          "entityIds": [
+            "tauo",
+            "so",
+            "ao",
+            "ro",
+            "sop"
+          ]
+        },
+        {
+          "objectId": "bellman-target",
+          "status": "retained",
+          "entityIds": [
+            "ro",
+            "sop",
+            "vnext",
+            "ytarget"
+          ]
+        },
+        {
+          "objectId": "twin-critics",
+          "status": "active",
+          "entityIds": [
+            "so",
+            "api",
+            "q1pi",
+            "q2pi"
+          ]
+        },
+        {
+          "objectId": "actor-minimum",
+          "status": "active",
+          "entityIds": [
+            "q1pi",
+            "q2pi",
+            "qminpi"
+          ]
+        }
+      ],
+      "relationships": [
+        {
+          "relationshipId": "actor-samples-fresh",
+          "entityIds": [
+            "so"
+          ]
+        },
+        {
+          "relationshipId": "actor-queries-critics",
+          "entityIds": [
+            "so",
+            "api"
+          ]
+        },
+        {
+          "relationshipId": "critics-select-actor-minimum",
+          "entityIds": [
+            "q1pi",
+            "q2pi"
+          ]
+        },
+        {
+          "relationshipId": "minimum-guides-actor",
+          "entityIds": [
+            "qminpi"
+          ]
+        }
+      ]
+    }
+  ],
+  "takeaway": "A selected replay transition keeps its stored action for critic regression, while actor improvement evaluates a fresh current-policy action with both critics.",
+  "sourceIds": [
+    "section-2",
+    "section-4",
+    "section-4-part-2"
+  ],
+  "claimIds": [
+    "c1",
+    "c7",
+    "c8",
+    "c9"
+  ],
+  "lessonId": "soft-actor-critic-off-policy-maximum",
+  "parentContentDigest": "05a05ad0501d9310f9c1213529683a1f2b17f4982be2a5dbc8577efca1c00cb2",
+  "review": {
+    "status": "source-passed",
+    "reviewedAt": "2026-10-02T00:16:57.392Z",
+    "contentDigest": "2bea7d23f011d9e28a23299eb0f183c5168ba2521070777b9faff0cef1a8516f",
+    "rendererDigest": "2cc690a7105c5faca75e22053e83674a2cf2e227ae22afe88cc4662d09c98bb4",
+    "visualReviewedAt": null
+  }
+}

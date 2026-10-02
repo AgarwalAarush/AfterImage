@@ -1,0 +1,430 @@
+{
+  "title": "One Matrix, Two Neighborhood Steps: Reconstructing the Original GCN",
+  "summary": "Kipf and Welling turn a localized spectral approximation into a sparse, trainable propagation rule that combines graph structure and node features for semi-supervised classification.",
+  "prerequisites": [
+    "Graph nodes, edges, adjacency matrices, and node features",
+    "Matrix multiplication and compatible dimensions",
+    "Softmax probabilities and cross-entropy loss",
+    "Training labels and available node features"
+  ],
+  "objectives": [
+    "Derive the GCN layer from the paper's first-order spectral approximation.",
+    "Compute normalized propagation on a small graph by hand.",
+    "Trace information through the paper's two-layer classifier.",
+    "Interpret reported accuracy within the stated splits and training setup.",
+    "Identify limits involving locality, memory, graph type, and implementation."
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "mechanism",
+      "statement": "The task is transductive-style node classification with labels available for only a small subset of graph nodes.",
+      "conditions": "Nodes belong to one observed graph, and only a subset supplies supervised targets.",
+      "sourceIds": [
+        "section-1"
+      ]
+    },
+    {
+      "id": "c2",
+      "kind": "mechanism",
+      "statement": "Instead of adding an explicit graph-smoothness penalty, the paper conditions the predictor on both features and adjacency and applies supervised loss at labeled nodes.",
+      "conditions": "The graph and all node features are available during full-graph training; labels are used only where supplied.",
+      "sourceIds": [
+        "section-1"
+      ]
+    },
+    {
+      "id": "c3",
+      "kind": "equation",
+      "statement": "A GCN layer applies symmetrically normalized, self-inclusive adjacency propagation, a trainable feature transform, and an activation.",
+      "conditions": "The graph is undirected, self-connections are added, and the degree matrix is computed after adding them.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c4",
+      "kind": "mechanism",
+      "statement": "The layer's form is motivated by truncating a spectral graph filter to a localized polynomial and then imposing a first-order simplification.",
+      "conditions": "Localization is measured in graph hops, and the derivation uses a Laplacian-spectrum approximation rather than an exact arbitrary spectral filter.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c5",
+      "kind": "caveat",
+      "statement": "The unrenormalized self-plus-neighbor operator can create numerical and gradient problems when repeatedly applied.",
+      "conditions": "The warning concerns repeated application in a deep network before the paper's renormalization substitution.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c6",
+      "kind": "equation",
+      "statement": "For multiple input and output channels, propagation is a sparse normalized graph multiplication followed by a learned channel map.",
+      "conditions": "There are C input channels, F output maps, and the normalized adjacency is formed from the self-augmented graph.",
+      "sourceIds": [
+        "section-2"
+      ]
+    },
+    {
+      "id": "c7",
+      "kind": "equation",
+      "statement": "The paper's classifier stacks two propagation steps, with ReLU after the first and row-wise softmax after the second.",
+      "conditions": "The stated model uses symmetric adjacency, one hidden layer, and precomputed normalized adjacency.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c8",
+      "kind": "mechanism",
+      "statement": "Cross-entropy is evaluated only at labeled node indices even though graph propagation computes representations for every node.",
+      "conditions": "The task is semi-supervised multiclass classification and targets are one-hot class indicators at labeled nodes.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c9",
+      "kind": "caveat",
+      "statement": "The original training procedure is full-batch and assumes that the entire dataset fits in memory.",
+      "conditions": "Every training iteration uses the full graph; sparse adjacency reduces but does not eliminate memory growth.",
+      "sourceIds": [
+        "section-3"
+      ]
+    },
+    {
+      "id": "c10",
+      "kind": "result",
+      "statement": "On the fixed citation-network splits, the reported GCN accuracies were 70.3%, 81.5%, and 79.0% for Citeseer, Cora, and Pubmed.",
+      "conditions": "Same dataset splits as Yang et al.; mean over 100 random weight initializations; citation training used 20 labels per class and the stated hyperparameters.",
+      "sourceIds": [
+        "section-6"
+      ]
+    },
+    {
+      "id": "c11",
+      "kind": "result",
+      "statement": "The renormalized propagation variant had the highest reported mean accuracy among the displayed propagation variants on all three citation datasets.",
+      "conditions": "One hundred repeated runs with random weight initializations under the Section 5 experimental setup; this is a comparison within the listed variants.",
+      "sourceIds": [
+        "section-6"
+      ]
+    },
+    {
+      "id": "c12",
+      "kind": "caveat",
+      "statement": "The presented framework does not directly model edge features and is natively restricted to undirected graphs.",
+      "conditions": "The limitation applies to the current framework; NELL was handled by transforming relations into additional nodes in an undirected bipartite graph.",
+      "sourceIds": [
+        "section-7"
+      ]
+    },
+    {
+      "id": "c13",
+      "kind": "caveat",
+      "statement": "An exact minibatch for a multilayer GCN must retain the corresponding multi-hop neighborhood, which can become costly on dense graphs.",
+      "conditions": "A GCN has K layers and exact computation is required rather than sampled or otherwise approximated propagation.",
+      "sourceIds": [
+        "section-7"
+      ]
+    },
+    {
+      "id": "c14",
+      "kind": "caveat",
+      "statement": "The approximation fixes equal structural importance for a node's self-connection and its neighbor edges unless the proposed trade-off is introduced.",
+      "conditions": "This concerns the self-loop construction used by the paper's simplified propagation rule.",
+      "sourceIds": [
+        "section-7"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "s1",
+      "title": "The learning problem hiding inside one graph",
+      "markdown": "Suppose each document is a node, citations are edges, and each node has a feature vector such as a bag of words. Let $N$ be the number of nodes, $C$ the number of input features, $X\\in\\mathbb{R}^{N\\times C}$ the feature matrix, and $A\\in\\mathbb{R}^{N\\times N}$ the binary or weighted adjacency matrix. Only nodes indexed by $\\mathcal{Y}_L$ have known labels during training.\n\nA classical route adds a Laplacian penalty encouraging adjacent nodes to make similar predictions. Kipf and Welling instead build $A$ into the predictor $f(X,A)$ and minimize supervised loss only at labeled nodes. This distinction matters: unlabeled nodes do not secretly receive target labels. They participate because their features and connections lie on computational paths through the network. Gradients originating at labeled nodes can therefore update shared weights used to represent labeled and unlabeled nodes.\n\nThe useful prior is not simply “neighbors must have identical labels.” The trainable feature transformations may exploit graph structure together with attributes. Nevertheless, graph edges remain an inductive bias: if connectivity is irrelevant or systematically connects incompatible roles, propagation can be harmful.",
+      "sourceIds": [
+        "section-1"
+      ],
+      "claimIds": [
+        "c1",
+        "c2"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s2",
+      "title": "From spectral filters to a local approximation",
+      "markdown": "For an undirected graph, define the degree matrix by $D_{ii}=\\sum_j A_{ij}$ and the normalized Laplacian\n\n$$L=I_N-D^{-1/2}AD^{-1/2}=U\\Lambda U^\\top,$$\n\nwhere $I_N$ is the $N\\times N$ identity, $U$ contains Laplacian eigenvectors, and diagonal $\\Lambda$ contains eigenvalues. A scalar graph signal is $x\\in\\mathbb{R}^N$. Exact spectral convolution has the form $Ug_\\theta U^\\top x$, where diagonal $g_\\theta$ specifies a response in the graph-frequency basis. Computing and multiplying by $U$ is unattractive on large graphs.\n\nThe paper starts from a truncated Chebyshev-polynomial approximation. A degree-$K$ polynomial in the Laplacian is $K$-localized: its output at a node depends on nodes no more than $K$ graph steps away. It then sets the per-layer order to $K=1$, approximates the largest normalized-Laplacian eigenvalue by $2$, and ties two coefficients. These choices yield a self-plus-normalized-neighbor operator with one parameter set rather than a separate high-order spectral response.\n\nThis is a motivation, not an assertion that the final layer exactly equals every spectral filter. Expressive transformations arise by stacking local layers and inserting nonlinearities.",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c4",
+        "c5"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s3",
+      "title": "The renormalized propagation rule",
+      "markdown": "Add one self-loop per node:\n\n$$\\widetilde A=A+I_N,\\qquad \\widetilde D_{ii}=\\sum_j\\widetilde A_{ij}.$$\n\nThen define\n\n$$\\widehat A=\\widetilde D^{-1/2}\\widetilde A\\widetilde D^{-1/2}.$$\n\nA layer is\n\n$$H^{(l+1)}=\\sigma\\!\\left(\\widehat A H^{(l)}W^{(l)}\\right),\\qquad H^{(0)}=X.$$\n\nHere $H^{(l)}\\in\\mathbb{R}^{N\\times D_l}$ holds layer-$l$ node representations, $W^{(l)}\\in\\mathbb{R}^{D_l\\times D_{l+1}}$ is trainable, and $\\sigma$ is a pointwise activation such as $\\operatorname{ReLU}(q)=\\max(0,q)$. An entry $\\widehat A_{ij}$ is nonzero only for a self-loop or graph edge, so multiplying by $\\widehat A$ aggregates local representations. Symmetric normalization scales an edge $(i,j)$ by $1/\\sqrt{\\widetilde d_i\\widetilde d_j}$; it is not generally an ordinary neighbor mean.\n\nThe interactive graph figure uses a three-node chain with initial scalar features $[1,0,0]$. Each control step applies a self-inclusive neighbor mean. Predict whether the rightmost node becomes nonzero after one or two steps. It becomes reachable after two. This correctly teaches hop-wise receptive-field growth, but its arithmetic deliberately omits the paper's symmetric degree normalization, learned matrices, nonlinearities, and training.",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c3",
+        "c5",
+        "c6"
+      ],
+      "figureId": "fig-graph"
+    },
+    {
+      "id": "s4",
+      "title": "A hand calculation on a three-node path",
+      "markdown": "Consider the illustrative undirected path $1\\!\\!\\text{--}\\!\\!2\\!\\!\\text{--}\\!\\!3$ and scalar features $X=[1,0,0]^\\top$. After adding self-loops,\n\n$$\\widetilde A=\\begin{bmatrix}1&1&0\\\\1&1&1\\\\0&1&1\\end{bmatrix},\\qquad \\widetilde D=\\operatorname{diag}(2,3,2).$$\n\nFor a single output channel, choose the illustrative weight $\\Theta=[1]$ and identity activation. Then $Z=\\widehat A X\\Theta$ is simply the first column of $\\widehat A$:\n\n$$Z=\\begin{bmatrix}1/2\\\\1/\\sqrt{6}\\\\0\\end{bmatrix}\\approx\\begin{bmatrix}0.500\\\\0.408\\\\0\\end{bmatrix}.$$\n\nThus node 2 receives information from node 1, while node 3 remains zero after one layer. A second application gives node 3\n\n$$Z^{(2)}_3=\\frac{1}{\\sqrt{6}}\\frac{1}{\\sqrt{6}}+\\frac{1}{2}\\cdot0=\\frac16\\approx0.167.$$\n\nThe calculation is illustrative, not a reported experiment. It demonstrates two exact structural facts of the stated operator: degree-dependent edge weights and one-hop expansion per layer. It does not show that deeper is always better; transformations, activations, training, and repeated mixing alter that conclusion.",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c3",
+        "c6"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s5",
+      "title": "Two propagation steps become a classifier",
+      "markdown": "The paper's two-layer forward model is\n\n$$Z=\\operatorname{softmax}\\!\\left(\\widehat A\\,\\operatorname{ReLU}(\\widehat A XW^{(0)})W^{(1)}\\right).$$\n\nHere $W^{(0)}\\in\\mathbb{R}^{C\\times H}$ maps $C$ input features to $H$ hidden features, $W^{(1)}\\in\\mathbb{R}^{H\\times F}$ maps them to $F$ class logits, and $Z\\in\\mathbb{R}^{N\\times F}$ contains class probabilities. Row-wise softmax is $Z_{if}=\\exp(s_{if})/\\sum_{g=1}^F\\exp(s_{ig})$, where $s_{if}$ is node $i$'s class-$f$ logit.\n\nTraining minimizes\n\n$$\\mathcal L=-\\sum_{l\\in\\mathcal Y_L}\\sum_{f=1}^F Y_{lf}\\ln Z_{lf},$$\n\nwhere $Y_{lf}$ is the target indicator. A frequent misconception is that this is ordinary label propagation. It is not: the propagated objects are feature-derived hidden representations, while labels appear in the loss only at $\\mathcal Y_L$. Shared weights learn how graph mixing and features should support classification.\n\nA second misconception is that two layers directly collect only immediate neighbors. Each multiplication is one local step, so the output can depend on nodes up to two hops away, subject to nonlinearities and graph paths.",
+      "sourceIds": [
+        "section-3"
+      ],
+      "claimIds": [
+        "c7",
+        "c8"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s6",
+      "title": "Optimization is separate from propagation",
+      "markdown": "Full-batch training means that every update evaluates the observed graph and its node features; it does not mean every node contributes a label term. The paper states that the weights are trained by gradient descent and that its experiments use Adam. Sparse adjacency makes graph multiplication scale with the number of stored edges, but full-graph activations still consume memory.\n\nThe optimizer figure isolates a much smaller idea. It starts at $x_0=3$ and applies ordinary gradient descent to the illustrative quadratic $f(x)=x^2/2$:\n\n$$x_{t+1}=x_t-\\eta x_t=(1-\\eta)x_t,$$\n\nfor 12 updates, where $\\eta$ is the learning rate. Predict how a larger $\\eta$ changes convergence. For $0<\\eta<1$, larger values contract faster here; beyond that range behavior can oscillate or diverge. This control is useful for separating parameter updates from graph propagation. It is not Adam, not GCN training, and says nothing about the paper's empirical learning-rate curve.",
+      "sourceIds": [
+        "section-3",
+        "section-5"
+      ],
+      "claimIds": [
+        "c9"
+      ],
+      "figureId": "fig-optimizer"
+    },
+    {
+      "id": "s7",
+      "title": "Reading the evidence without detaching its conditions",
+      "markdown": "The citation datasets used sparse bag-of-words features and citation links converted to undirected edges. Training used 20 labels per class, while all feature vectors were available. The main evaluation used the same splits as Yang et al., a 1,000-example test set, and a separate 500-example validation set for hyperparameter selection. Hyperparameters for the citation experiments were optimized on Cora and reused for Citeseer and Pubmed.\n\nUnder the reported fixed splits, GCN accuracy was 70.3% on Citeseer, 81.5% on Cora, and 79.0% on Pubmed; the table also reports 66.0% on NELL. These are conditional results, not universal performance guarantees. The accompanying times were measured on specified hardware and should not be treated as timeless throughput claims.\n\nThe propagation comparison is narrower but mechanistically informative: under its repeated-run setup, the renormalized rule scored highest among the displayed variants on all three citation datasets. That supports the chosen rule within those experiments. It does not independently establish which component—self-loops, normalization, parameter tying, or optimization—caused every improvement.",
+      "sourceIds": [
+        "section-5",
+        "section-6"
+      ],
+      "claimIds": [
+        "c10",
+        "c11"
+      ],
+      "figureId": null
+    },
+    {
+      "id": "s8",
+      "title": "Where the construction stops",
+      "markdown": "The model’s locality is both its computational principle and a practical boundary. Each layer mixes information across one graph step, so a $K$-layer GCN can depend on the $K$-hop neighborhood. An exact minibatch computation must retain that neighborhood for every selected node. On large or densely connected graphs, the required subgraph can expand rapidly; the paper therefore presents full-batch training and identifies memory-efficient stochastic training, potentially requiring further approximation, as future work.\n\nThe framework is formulated for symmetric adjacency matrices representing weighted or unweighted undirected graphs, and its propagation rule has no direct term for edge features. For NELL, the authors transform each directed, labeled relation $(e_1,r,e_2)$ into connections through additional relation nodes, construct a binary symmetric adjacency matrix, and assign relation nodes unique one-hot features. This makes the data compatible with the GCN, but it represents relations through graph structure and node features rather than directly learning arbitrary directed edge attributes.\n\nThe approximation also fixes the initial balance between self-information and neighboring information. With\n\n$$\\widetilde A=A+I_N,$$\n\nself-connections and graph edges enter with the same coefficient before degree normalization, although their final normalized contributions still depend on node degrees. The paper proposes the more general form\n\n$$\\widetilde A=A+\\lambda I_N,$$\n\nwhere $\\lambda$ controls the relative strength of the self-connection and can be learned by gradient descent. These are limitations of the presented construction, not universal limitations of graph neural networks or guarantees about how deeper or approximate variants will behave.",
+      "sourceIds": [
+        "section-7"
+      ],
+      "claimIds": [
+        "c12",
+        "c13",
+        "c14"
+      ],
+      "figureId": null
+    }
+  ],
+  "figures": [
+    {
+      "id": "fig-graph",
+      "kind": "graph",
+      "title": "How many propagation steps reach the far node?",
+      "question": "Starting from features [1,0,0], after how many self-inclusive neighbor-mean steps does node 3 first become nonzero?",
+      "caption": "Illustrative three-node chain: repeated self-inclusive neighbor means show one-hop-per-step information spread.",
+      "limitation": "This is not a trained GCN and does not implement the paper's symmetric degree normalization, weights, activations, or loss.",
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c3",
+        "c4",
+        "c6"
+      ],
+      "illustrative": true
+    },
+    {
+      "id": "fig-optimizer",
+      "kind": "optimizer",
+      "title": "Learning-rate behavior on a scalar quadratic",
+      "question": "From x=3, how does changing the learning rate alter 12 ordinary gradient-descent updates on f(x)=x²/2?",
+      "caption": "Illustrative plain gradient descent displays the iterates of x(t+1)=(1−η)x(t) on one scalar quadratic.",
+      "limitation": "This is not Adam or GCN training and provides no measured convergence result for the paper's datasets.",
+      "sourceIds": [
+        "section-3",
+        "section-5"
+      ],
+      "claimIds": [
+        "c9"
+      ],
+      "illustrative": true
+    }
+  ],
+  "quiz": [
+    {
+      "question": "Assume identity activations and nonzero compatible weights on a path graph. After two GCN propagation layers, which nodes can structurally influence a target node?",
+      "options": [
+        {
+          "text": "Only the target node itself",
+          "explanation": "Incorrect. Added self-loops preserve self-information, but graph edges also transmit neighboring representations."
+        },
+        {
+          "text": "Nodes reachable within at most two hops",
+          "explanation": "Correct. Each local layer extends the potential dependency by one graph hop."
+        },
+        {
+          "text": "Every node in the graph, regardless of distance",
+          "explanation": "Incorrect. Two localized layers do not create paths to nodes more than two hops away."
+        }
+      ],
+      "answer": 1,
+      "sourceIds": [
+        "section-2"
+      ],
+      "claimIds": [
+        "c4"
+      ]
+    },
+    {
+      "question": "What most directly distinguishes the paper's GCN training from ordinary label propagation?",
+      "options": [
+        {
+          "text": "It propagates learned feature representations and uses labels in a supervised loss",
+          "explanation": "Correct. Adjacency participates inside a trainable feature model, while cross-entropy is restricted to labeled indices."
+        },
+        {
+          "text": "It supplies guessed labels to every unlabeled node before training",
+          "explanation": "Incorrect. The stated loss uses known labels at labeled nodes; no guessed-target step is part of Equation 10."
+        },
+        {
+          "text": "It removes node features and operates only on class labels",
+          "explanation": "Incorrect. The forward model explicitly takes the feature matrix X as input."
+        }
+      ],
+      "answer": 0,
+      "sourceIds": [
+        "section-1",
+        "section-3"
+      ],
+      "claimIds": [
+        "c2",
+        "c7",
+        "c8"
+      ]
+    },
+    {
+      "question": "Which conclusion is justified by the reported propagation comparison?",
+      "options": [
+        {
+          "text": "Renormalization must outperform every graph model on every dataset",
+          "explanation": "Incorrect. The comparison covers specified variants, datasets, splits, and training conditions."
+        },
+        {
+          "text": "Symmetric normalization eliminates all deep-network instability",
+          "explanation": "Incorrect. The paper motivates improved behavior but does not establish elimination of every instability."
+        },
+        {
+          "text": "The renormalized variant led the listed variants on all three citation datasets",
+          "explanation": "Correct. That is the bounded comparison shown in the reported table."
+        }
+      ],
+      "answer": 2,
+      "sourceIds": [
+        "section-6"
+      ],
+      "claimIds": [
+        "c11"
+      ]
+    }
+  ],
+  "id": "semi-supervised-classification-with-graph-convolutional",
+  "createdAt": "2026-10-01T23:20:49.645Z",
+  "pipelineVersion": "subjects-lessons-v1",
+  "sources": [
+    {
+      "id": "abstract",
+      "label": "Original paper · abstract",
+      "url": "https://arxiv.org/abs/1609.02907",
+      "digest": "6d80c18a00aa7c722fcba227593d9e9353a334da7903088f47dfe3721644b822"
+    },
+    {
+      "id": "section-1",
+      "label": "1 Introduction",
+      "url": "https://arxiv.org/html/1609.02907#S1",
+      "digest": "e08b214d5a5691c06f4d94f6017770e69022fab15fc47ddc15dc6746374c304b"
+    },
+    {
+      "id": "section-2",
+      "label": "2 Fast Approximate Convolutions on Graphs",
+      "url": "https://arxiv.org/html/1609.02907#S2",
+      "digest": "9e8e49f5f8fc701764de5cb2ffa534f9463be692d3c894424c1fd90ce5d7789d"
+    },
+    {
+      "id": "section-3",
+      "label": "3 Semi-Supervised Node Classification",
+      "url": "https://arxiv.org/html/1609.02907#S3",
+      "digest": "0b9fd9ceb7f5359754237aa365d996ed5536e35b8de76181bc0027df63186a26"
+    },
+    {
+      "id": "section-4",
+      "label": "4 Related Work",
+      "url": "https://arxiv.org/html/1609.02907#S4",
+      "digest": "70b831012ac8ff230a84c9bda8e5ae8ab58b63be69bf7900653b504190edad4c"
+    },
+    {
+      "id": "section-5",
+      "label": "5 Experiments",
+      "url": "https://arxiv.org/html/1609.02907#S5",
+      "digest": "93c9725e6d39f726949d603747db0a18d8cd5ef1984573401e614f5591d25cc7"
+    },
+    {
+      "id": "section-6",
+      "label": "6 Results",
+      "url": "https://arxiv.org/html/1609.02907#S6",
+      "digest": "d393f9360b69862453d2e8a1e99e4bc36ec978b45aa51d57f20a5081e6cc83f5"
+    },
+    {
+      "id": "section-7",
+      "label": "7 Discussion",
+      "url": "https://arxiv.org/html/1609.02907#S7",
+      "digest": "c748e36704f080213b8b70eef462b656978281401b0576c4c9ed808cf8ce46ff"
+    },
+    {
+      "id": "section-8",
+      "label": "8 Conclusion",
+      "url": "https://arxiv.org/html/1609.02907#S8",
+      "digest": "f4fe47d1f466b29b16458b82bd19c8b43f9f64a025c65797f784fc3be0106adf"
+    }
+  ],
+  "review": {
+    "status": "passed",
+    "reviewedAt": "2026-10-02T02:07:06.747Z",
+    "contentDigest": "d171d81cae9ef38d0749b7f9fd2f7391d3a81d3c1ea5a1f980921c9ada2c7532"
+  }
+}

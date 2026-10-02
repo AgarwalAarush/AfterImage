@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { sourcesFromHtml } from "../src/lib/source-extraction";
+import { sourcesFromHtml,hasSubstantiveSourceBody } from "../src/lib/source-extraction";
 import type { Paper } from "../src/lib/types";
 const paper = {arxivId:"2503.01840",sources:[{id:"abstract",label:"Abstract",url:"https://arxiv.org/abs/2503.01840",excerpt:"Abstract"}]} as Paper;
 
@@ -28,4 +28,62 @@ test("long sections retain later tables in separately citable parts",()=>{
   assert.equal(new Set(sources.map(s=>s.id)).size,sources.length);
   assert.ok(sources.every(s=>s.excerpt.length<=10000));
   assert.ok(sources.slice(1).every(s=>s.url.endsWith("#S4")));
+});
+
+test("retains unsectioned scientific main text before sectioned supplementary methods",()=>{
+  const html=`<article class="ltx_document" id="paper"><div class="ltx_abstract"><p class="ltx_p">Abstract duplicate.</p></div><p class="ltx_p">A network returns policy and value. Search improves its policy target.</p><div class="ltx_equation"><math alttext="l=(z-v)^2-\\pi^\\top\\log p"><mi>loss</mi></math></div><figure><figcaption class="ltx_caption"><p class="ltx_p">Figure 1: main algorithm.</p></figcaption></figure><section class="ltx_section" id="methods"><h2>Methods</h2><p class="ltx_p">Supplementary board encoding.</p></section><div class="ltx_bibliography"><p class="ltx_p">Reference text.</p></div></article>`;
+  const sources=sourcesFromHtml(paper,html);
+  assert.equal(sources.length,3);
+  assert.equal(sources[1].id,"main-text");
+  assert.equal(sources[1].label,"Original paper · unsectioned main text");
+  assert.ok(sources[1].url.endsWith("#paper"));
+  assert.match(sources[1].excerpt,/Search improves its policy target/);
+  assert.match(sources[1].excerpt,/LATEX: l=\(z-v\)\^2/);
+  assert.equal(sources[1].excerpt.match(/Figure 1: main algorithm/g)?.length,1);
+  assert.equal(sources[2].id,"section-1");
+  assert.ok(sources[2].url.endsWith("#methods"));
+  assert.ok(!sources.slice(1).some(source=>/Abstract duplicate|Reference text/.test(source.excerpt)));
+  assert.equal(sources.filter(source=>source.excerpt.includes("Supplementary board encoding")).length,1);
+});
+
+test("nested section blocks occur once and acknowledgement/reference prose is omitted",()=>{
+  const html=`<article class="ltx_document"><section class="ltx_section" id="intro"><h2>Introduction</h2><p class="ltx_p">Outer mechanism.</p><section class="ltx_section" id="inner"><h3>Nested experiment</h3><p class="ltx_p">Inner measured result.</p></section></section><section class="ltx_section"><h2>Acknowledgements</h2><p class="ltx_p">Thanks to every colleague.</p></section><section class="ltx_section"><h2>References</h2><p class="ltx_p">Bibliographic listing.</p></section><section class="ltx_acknowledgments"><p class="ltx_p">More thanks.</p></section></article>`;
+  const sources=sourcesFromHtml(paper,html);
+  assert.equal(sources.filter(source=>source.excerpt.includes("Inner measured result")).length,1);
+  assert.equal(sources.filter(source=>source.excerpt.includes("Outer mechanism")).length,1);
+  assert.ok(!sources.some(source=>/Thanks|thanks|Bibliographic/.test(source.excerpt)));
+});
+
+test("unsectioned text shares the existing bounded excerpt and total source budgets",()=>{
+  const html=`<article class="ltx_document">${Array.from({length:20},(_,i)=>`<p class="ltx_p">Main argument ${i}. ${"Evidence. ".repeat(800)}</p>`).join("")}<section class="ltx_section"><h2>Methods</h2><p class="ltx_p">Later methods.</p></section></article>`;
+  const sources=sourcesFromHtml(paper,html);
+  assert.equal(sources.length,14);
+  assert.equal(new Set(sources.map(source=>source.id)).size,sources.length);
+  assert.ok(sources.every(source=>source.excerpt.length<=10000));
+  assert.match(sources.at(-1)!.excerpt,/SOURCE BUDGET REACHED/);
+});
+
+test("appendix wrappers do not consume the unsectioned main-body budget before main sections",()=>{
+  const html=`<article class="ltx_document"><section class="ltx_section" id="limits"><h2>Limitations</h2><p class="ltx_p">Main-paper limitations remain available.</p></section><section class="ltx_appendix"><h2>Appendix A</h2><p class="ltx_p">${"Long supplementary proof. ".repeat(600)}</p></section></article>`;
+  const sources=sourcesFromHtml(paper,html);
+  assert.ok(sources.length>2);
+  assert.equal(sources[1].id,"section-1");
+  assert.match(sources[1].excerpt,/Main-paper limitations remain available/);
+  assert.ok(!sources.some(source=>source.id.startsWith("main-text")));
+  assert.equal(sources[2].id,"appendix-1");
+});
+test("captures appendix algorithm equations and nested detail once after stable main sections",()=>{
+  const html='<article class="ltx_document"><section class="ltx_section" id="S1"><h2>Method</h2><p class="ltx_p">Use a trust region.</p></section><section class="ltx_appendix" id="A3"><h2>Appendix C Efficient solution</h2><p class="ltx_p">Shrink the step exponentially until the objective improves within the constraint.</p><section class="ltx_section"><h3>Fisher product</h3><div class="ltx_equation"><math alttext="A x = g"></math></div></section></section></article>';
+  const sources=sourcesFromHtml(paper,html);
+  assert.deepEqual(sources.map(source=>source.id),["abstract","section-1","appendix-1"]);
+  assert.equal(sources[2].url,"https://arxiv.org/html/2503.01840#A3");
+  assert.match(sources[2].excerpt,/Shrink the step exponentially/);
+  assert.equal(sources.filter(source=>source.excerpt.includes("LATEX: A x = g")).length,1);
+});
+test("embedded PDF pointers are not scientific body evidence or full-text scope",()=>{
+  const html='<article class="ltx_document"><div class="ltx_abstract"><p class="ltx_p">Abstract metadata.</p></div><p class="ltx_p">See pages 1-last of 0_adam_main.pdf</p></article>';
+  assert.deepEqual(sourcesFromHtml(paper,html),paper.sources);
+  assert.equal(hasSubstantiveSourceBody([...paper.sources,{id:"main-text",label:"Main",url:"https://arxiv.org/html/1412.6980",excerpt:"See pages 1-last of 0_adam_main.pdf"}]),false);
+  assert.equal(hasSubstantiveSourceBody([{...paper.sources[0],excerpt:"Long abstract. ".repeat(80)}]),false);
+  assert.equal(hasSubstantiveSourceBody([...paper.sources,{id:"section-1",label:"Mechanism",url:"https://arxiv.org/html/1412.6980",excerpt:"The algorithm estimates first and second moments of stochastic gradients. ".repeat(8)}]),true);
 });
