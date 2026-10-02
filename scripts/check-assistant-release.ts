@@ -9,6 +9,11 @@ try{
  if(mode==="idle"){
   const now=Date.now(),active=legacy.filter((t:{status:string;createdAt:string;leaseUntil?:string})=>t.status==="queued"?now-Date.parse(t.createdAt)<120000:t.status==="running"&&Date.parse(t.leaseUntil||"")>now);
   if(active.length)throw Error("Assistant work is active. Let it finish before installation.");
+  if(sql.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='assistant_turns'").get()){
+    const turns=sql.prepare("SELECT data FROM assistant_turns WHERE status IN ('queued','running')").all() as {data:string}[];
+    if(turns.some(row=>{const t=JSON.parse(row.data);return t.status==="queued"?now-Date.parse(t.createdAt)<120000:Date.parse(t.leaseUntil||"")>now;}))
+      throw Error("Assistant conversations have active work. Let it finish before installation.");
+  }
   console.log(JSON.stringify({activeLegacyTurns:0}));
  }else{
   if(mode==="restore")new AssistantDatabase(sql);

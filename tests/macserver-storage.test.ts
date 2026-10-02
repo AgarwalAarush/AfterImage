@@ -17,6 +17,7 @@ test("Vercel-to-macserver bridge authenticates requests and preserves SQLite ver
   const directory = mkdtempSync(path.join(os.tmpdir(), "afterimage-storage-"));
   const file = path.join(directory, "state.sqlite");
   const secret = "test-storage-credential-with-at-least-32-bytes";
+  const wakeToken = "separate-test-assistant-wake-credential-32-bytes";
   const db = new DatabaseSync(file);
   db.exec("CREATE TABLE state (id INTEGER PRIMARY KEY, version INTEGER NOT NULL, data TEXT NOT NULL)");
   db.prepare("INSERT INTO state VALUES (1,0,?)").run(JSON.stringify(initialState()));
@@ -29,11 +30,15 @@ test("Vercel-to-macserver bridge authenticates requests and preserves SQLite ver
       AFTERIMAGE_SQLITE_PATH: file,
       AFTERIMAGE_BACKEND_TOKEN: secret,
       AFTERIMAGE_BACKEND_PORT: "0",
+      AFTERIMAGE_ASSISTANT_WAKE_TOKEN: wakeToken,
+      AFTERIMAGE_ASSISTANT_WAKE_PORT: "0",
       NODE_ENV: "production",
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
   let childError = "";
+  let childOutput = "";
+  child.stdout.on("data", chunk => {childOutput += chunk.toString();});
   child.stderr.on("data", chunk => { childError += chunk.toString().slice(0, 1000); });
   let oldStorage = process.env.AFTERIMAGE_STORAGE;
   let oldUrl = process.env.AFTERIMAGE_BACKEND_URL;
@@ -44,7 +49,7 @@ test("Vercel-to-macserver bridge authenticates requests and preserves SQLite ver
       const timeout = setTimeout(() => reject(new Error(`Storage bridge did not start: ${childError}`)), 10_000);
       child.stdout.on("data", chunk => {
         output += chunk.toString();
-        const match = output.match(/listening on 127\.0\.0\.1:(\d+)/);
+        const match = output.match(/storage bridge listening on 127\.0\.0\.1:(\d+)/);
         if (match) { clearTimeout(timeout); resolve(Number(match[1])); }
       });
       child.once("error", error => { clearTimeout(timeout); reject(error); });
@@ -66,8 +71,18 @@ test("Vercel-to-macserver bridge authenticates requests and preserves SQLite ver
     assert.deepEqual(await macserverRequest({action: "compareAndSwap", version: 0, data: (await snapshot()).data}), {applied: false});
 
     const turnId=randomUUID(), conversationId=randomUUID();
+    const wakePort=childOutput.match(/assistant wake listening on 127\.0\.0\.1:(\d+)/)?.[1];
+    assert.ok(wakePort);
+    // The listener is deliberately absent from the port forwarded by Cloudflare.
+    assert.equal((await fetch(`${origin}/internal/assistant/events`,{headers:{Authorization:`Bearer ${wakeToken}`}})).status,404);
+    const wakeStop=new AbortController();
+    const wakeResponse=await fetch(`http://127.0.0.1:${wakePort}/internal/assistant/events`,{headers:{Authorization:`Bearer ${wakeToken}`},signal:wakeStop.signal});
+    const wakeReader=wakeResponse.body!.getReader(),wakeDecoder=new TextDecoder();
+    assert.equal(wakeDecoder.decode((await wakeReader.read()).value),"event: connected\ndata: {}\n\n");
     const asked=await macserverRequest<{id:string}>({action:"assistant",operation:{op:"enqueue",input:{action:"ask",id:turnId,conversationId,target:{kind:"subject",id:"attention-is-all-you-need"},question:"Explain attention",selection:""},evidence:{title:"Test lesson",arxivId:"1706.03762",digest:"a".repeat(64),sources:[],material:{},scope:"lesson"}}});
     assert.equal(asked.id,turnId);
+    assert.equal(wakeDecoder.decode((await wakeReader.read()).value),"event: ready\ndata: {}\n\n");
+    wakeStop.abort();
     const claimed=await macserverRequest<{request:{id:string;leaseToken:string}}>({action:"assistant",operation:{op:"claim"}});
     await macserverRequest({action:"assistant",operation:{op:"update",action:"complete",id:turnId,leaseToken:claimed.request.leaseToken,answer:"Test answer"}});
     const restored=await macserverRequest<{answer:string;leaseToken?:string}>({action:"assistant",operation:{op:"get",id:turnId}});

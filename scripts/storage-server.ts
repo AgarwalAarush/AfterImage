@@ -1,4 +1,5 @@
 import { assistantOperationSchema, localAssistantStore } from "../src/lib/assistant-storage";
+import { AssistantWakeServer } from "./assistant-wake-server";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { existsSync } from "node:fs";
 import { validBackendEnvelope, verifyBackendRequest } from "../src/lib/backend-auth";
@@ -23,6 +24,7 @@ import {
 
 const maxBodyBytes = 8 * 1024 * 1024;
 const seen = new Map<string, number>();
+let assistantWake: AssistantWakeServer | undefined;
 let invalidWindowStart = 0;
 let invalidRequests = 0;
 
@@ -85,7 +87,16 @@ export async function handleStorageRequest(req: IncomingMessage, res: ServerResp
       return reply(res, rejectedStatus(401), { error: "Unauthorized" });
     const request = JSON.parse(body) as Record<string, unknown>;
     switch (request.action) {
-      case "assistant": return reply(res, 200, localAssistantStore().execute(assistantOperationSchema.parse(request.operation)));
+      case "assistant": {
+        const operation = assistantOperationSchema.parse(request.operation);
+        const result = localAssistantStore().execute(operation);
+        // A notification failure must not turn an already committed write into an error.
+        try {
+          assistantWake?.refresh(operation.op === "enqueue" || operation.op === "cancel" ||
+            operation.op === "update" && ["complete", "fail"].includes(operation.action));
+        } catch {console.error("afterimage.assistant-wake", {phase:"notify",errorName:"Error"});}
+        return reply(res, 200, result);
+      }
       case "snapshot": return reply(res, 200, await snapshot());
       case "status": return reply(res, 200, await stateStatus());
       case "workerClaimStatus": return reply(res, 200, await workerClaimStatus());
@@ -155,6 +166,20 @@ async function start() {
     throw new Error("Invalid storage bridge port.");
   await stateStatus();
   await listDocuments();
+  if (process.env.AFTERIMAGE_ASSISTANT_WAKE_PORT && !process.env.AFTERIMAGE_ASSISTANT_WAKE_TOKEN)
+    throw Error("Assistant wake credential is missing.");
+  if (process.env.AFTERIMAGE_ASSISTANT_WAKE_TOKEN) {
+    if (process.env.AFTERIMAGE_ASSISTANT_WAKE_TOKEN === secret)
+      throw Error("Assistant wake credential must be separate from storage authentication.");
+    const wakePort = Number(process.env.AFTERIMAGE_ASSISTANT_WAKE_PORT || "3104");
+    if (wakePort === port && port !== 0) throw Error("Assistant wake listener requires a separate port.");
+    assistantWake = new AssistantWakeServer(process.env.AFTERIMAGE_ASSISTANT_WAKE_TOKEN,
+      () => localAssistantStore().queueReadiness());
+    await assistantWake.listen(wakePort);
+    const address = assistantWake.server.address();
+    if (address && typeof address !== "string")
+      console.log(`AfterImage assistant wake listening on 127.0.0.1:${address.port}`);
+  }
   const server = createServer(handleStorageRequest);
   server.headersTimeout = 10_000;
   server.requestTimeout = 15_000;
@@ -166,8 +191,8 @@ async function start() {
       console.log(`AfterImage storage bridge listening on 127.0.0.1:${address.port}`);
   });
   for (const signal of ["SIGINT", "SIGTERM"] as const)
-    process.on(signal, () => server.close());
+    process.on(signal, () => {void assistantWake?.close();server.close();});
 }
 
 if (process.argv[1]?.endsWith("storage-server.ts"))
-  start().catch(error => { console.error(error); process.exitCode = 1; });
+  start().catch(() => { console.error("afterimage.storage", {phase:"startup",errorName:"Error"}); process.exitCode = 1; });
