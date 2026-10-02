@@ -11,3 +11,5 @@ Local validation passes TypeScript and the Impeccable typography detector (zero 
 `npm run subjects:verify` rejects the fourteen stale mechanism presentation approvals as expected. A production build/release is therefore withheld; neither mechanism source approval nor old visual acceptance was changed to bypass this gate. The draft can be reviewed with `npm run dev -- --webpack --port 3021` at `/subjects/tutorial-on-diffusion-models-for-imaging#s1`.
 
 Follow-up header verification confirms the summary computes to 16px/26.4px, with no Useful background text or prerequisite block in the rendered reader. TypeScript passes and the browser reports no console errors. The shared reader removal applies to all Subjects articles; its obsolete prerequisite CSS was removed. Updated screenshot: `/private/tmp/afterimage-summary-refinement.jpg`.
+
+The “What you’ll be able to explain” heading is reduced from 25px to 20px, with 1.4 line height and 16px space below, following the owner's next refinement. The objective list and other section headings retain their sizes.
