@@ -32,4 +32,4 @@ See [Cloudflare ingress](cloudflare-storage-ingress-2026-10-01.md) for service i
 - Older hosting and outage documents preserve the original evidence, but are marked superseded for ingress operations. `.env.example` now shows a custom storage hostname, the isolated SQLite location, and explicit port 3102.
 - Tailscale itself, the private SSH alias, and unrelated Funnel port 443 were outside the AfterImage migration. Do not uninstall Tailscale, delete the SSH alias, reset shared Funnel configuration, or remove another application's route as AfterImage cleanup. A host-level removal would require checking those remaining uses first.
 
-The current release does not need a Tailscale runtime code removal or restart to serve traffic. Administrator access for the pending bridge installation is the separate outstanding step.
+The current release does not need a Tailscale runtime code removal or restart to serve traffic. The assistant bridge installation is complete. Administrator access is still needed for the final post-cutover backup/restore verification described in the assistant release note.
