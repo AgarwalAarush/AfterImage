@@ -6,23 +6,33 @@ accepting Cloudflare's HTTPS termination and visibility into AfterImage traffic.
 
 ## Verified prerequisites and remaining access
 
-At preparation time, `aarushagarwal.dev` uses `ns1.vercel-dns.com` and
+Before activation, `aarushagarwal.dev` used `ns1.vercel-dns.com` and
 `ns2.vercel-dns.com`. Vercel's complete records endpoint returned five records:
 three apex CAA records for `pki.goog`, `sectigo.com`, and `letsencrypt.org`, an apex
 ALIAS to `ce3d7291cb1bb41e.vercel-dns-017.com`, and a wildcard ALIAS to
 `cname.vercel-dns-017.com`. DNSSEC is disabled. This inventory must be checked
 again immediately before changing nameservers, alongside existing project domain
-assignments and public DNS responses. Preserve the apex and wildcard Vercel
+assignments and public DNS responses. That final inventory matched all five records. Preserve the apex and wildcard Vercel
 destinations using Cloudflare's supported DNS representation; keep existing
 Vercel sites DNS-only. Do not rely on Cloudflare's automatic record scan alone.
 
 The owner has signed in and activated **Zero Trust Free**. Its checkout states
 $0/month but requires a payment method and authorization for usage beyond free
 limits; the owner accepted that condition. The free DNS zone contains the five
-original records, with the Vercel destinations DNS-only. Nameservers have not
-changed. Direct checks against the staged DNS destinations preserve successful
+original records, with the Vercel destinations DNS-only. The registrar accepted
+the switch to `lisa.ns.cloudflare.com` and `yichun.ns.cloudflare.com`; Cloudflare
+reports the zone Active, and both independent public resolvers return that pair.
+Checks after activation preserve successful
 TLS and current HTTP statuses for the apex, www, AfterImage, Stratum, Ares and
 Chemo (the existing Chemo 404 also remains a 404).
+
+The named tunnel, exact-path localhost ingress, hostname cache bypass, dedicated
+service token and Access application are created. The application has exactly
+one Service Auth policy accepting only that token. The proxied storage hostname
+returns HTTP 403 without Access credentials. The tunnel remains inactive pending
+the restricted connector installation; no Vercel environment or deployment has
+switched. Management credentials and service-token values remain in ignored,
+mode-0600 preparation files.
 
 `cloudflared` is not currently installed as a service on macserver, and
 noninteractive administrator access is unavailable.
@@ -124,7 +134,7 @@ environment files; the Subjects reader trace includes all 114 lesson/mechanism
 files. Cloudflare Access environment names do not appear in browser JavaScript.
 Private validation evidence stays in ignored `.artifacts/cloudflare-ingress/`.
 These checks prove the prepared release; live Cloudflare cutover is still pending
-the owner-created management credential and administrator connector installation.
+administrator connector installation and the remaining live acceptance checks.
 
 Initial preparation also verified the Cloudflare authentication regression, existing bridge integration and private
 diagnostic tests all pass (three tests). TypeScript and `git diff --check` pass.
@@ -142,7 +152,6 @@ warnings in `subject-mechanism-store.ts`; these are outside the storage client
 change. Build-generated edits to `next-env.d.ts` were restored. The connector
 installer passes shell syntax checks and a read-only macserver preflight using
 a disposable placeholder token. No account or service was created by that check.
-A temporary management-token draft is
-restricted to the owner's Cloudflare account and this DNS zone; final creation
-remains an owner handoff. No deployment, nameserver change, tunnel credential or
-connector service installation has occurred.
+The owner-created management token is restricted to the owner's Cloudflare
+account and this DNS zone. Resource configuration and nameserver activation are
+complete; no Vercel deployment or connector service installation has occurred.
