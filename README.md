@@ -1,5 +1,7 @@
 # AfterImage
 
+The local [Subjects reading typography iteration](docs/subjects-reading-typography-2026-10-02.md) replaces serif body copy with the existing interface sans-serif, strengthens section headings, and improves paragraph spacing. It is a design draft pending renewed diagram presentation approval before release.
+
 Readable Subjects titles open their lesson, alongside the existing “Read lesson” link. See [Subjects title navigation](docs/subjects-title-navigation-2026-10-02.md).
 
 Subjects and Library now share the same quiz component, answer feedback and question navigation. The [quiz alignment note](docs/subjects-quiz-reader-alignment-2026-10-01.md) documents the reader cleanup, preserved scientific content and renewed appearance checks.
