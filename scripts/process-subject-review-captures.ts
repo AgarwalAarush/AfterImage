@@ -12,7 +12,8 @@ const hash=(bytes:Buffer)=>createHash("sha256").update(bytes).digest("hex");
  * The independent critic must still verify complete diagram/narration/control coverage.
  */
 async function main(){
-  const root=path.resolve(".artifacts/subjects/system-review");
+  const root=path.resolve(process.argv[2]||".artifacts/subjects/system-review");
+  if(!root.startsWith(path.resolve(".artifacts/subjects")+path.sep))throw new Error("Capture batches must stay under private Subjects artifacts");
   const captures=JSON.parse(await readFile(path.join(root,"capture-manifest.json"),"utf8"));
   const bindings={rendererDigest:await subjectMechanismRendererDigest(),presentationDigest:await subjectVisualPresentationDigest()};
   const frames=[];

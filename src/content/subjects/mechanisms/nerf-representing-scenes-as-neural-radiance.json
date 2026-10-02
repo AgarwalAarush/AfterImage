@@ -706,13 +706,13 @@
     "reviewedAt": "2026-10-02T00:21:15.140Z",
     "contentDigest": "1cc3c1e6933ca4c60439fb95da0b8f5b37b2020c4334b1158558aa7a50095cbd",
     "rendererDigest": "83a7df171d30c59ad1eef731009edc62331803b8dcba7d6983b92d72bf27ea4a",
-    "visualReviewedAt": "2026-10-02T03:41:22.299Z",
+    "visualReviewedAt": "2026-10-02T05:06:36.713Z",
     "visualAcceptance": {
       "version": 2,
-      "reportDigest": "39628b88b929bfef0513e4b739b45f54d199c9ba664c595f3c0447be4cc9824e",
-      "presentationDigest": "56b720930a73cd93f181538f44fe716da56b2a1e4febafcc27f3ebbc6c4c1712",
+      "reportDigest": "1f7d7353f501051985cd99bf36633163d94880cdc54dd0b643dac64beded1780",
+      "presentationDigest": "415f1c323148b4b0f204dea8921d95c8519e516ea52c526ff05dd6e0564b526c",
       "semanticPolicyVersion": "mechanism-semantic-ownership-v1",
-      "reviewerId": "/root/generation_quality",
+      "reviewerId": "/root/experiment_polish",
       "viewCount": 4,
       "beatCount": 5,
       "transitionCount": 16
