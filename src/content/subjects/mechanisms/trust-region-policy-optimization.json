@@ -853,10 +853,20 @@
   "lessonId": "trust-region-policy-optimization",
   "parentContentDigest": "42b1036c8af032ab8e1f6ca6bf5c1e8ce891e0a9a885714f14aff6b9fc184f44",
   "review": {
-    "status": "source-passed",
+    "status": "passed",
     "reviewedAt": "2026-10-02T01:50:36.916Z",
     "contentDigest": "9c54eb1461ac140fc40e88f53f4372a23f59db976b5003fb05d64d115854b2e4",
     "rendererDigest": "83a7df171d30c59ad1eef731009edc62331803b8dcba7d6983b92d72bf27ea4a",
-    "visualReviewedAt": null
+    "visualReviewedAt": "2026-10-02T18:42:43.909Z",
+    "visualAcceptance": {
+      "version": 2,
+      "reportDigest": "c06f4b6df5dcae7a43bc01f7a3dd7e929741c24908b0fc5297731d2194f7a24a",
+      "presentationDigest": "ae2eb98b82e3253cda4d44572a49ce402842924f3f8abe800ff8802ef218536a",
+      "semanticPolicyVersion": "mechanism-semantic-ownership-v1",
+      "reviewerId": "/root/review_models",
+      "viewCount": 4,
+      "beatCount": 6,
+      "transitionCount": 20
+    }
   }
 }

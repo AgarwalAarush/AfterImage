@@ -1,6 +1,6 @@
 # AfterImage
 
-The local [Subjects reading typography iteration](docs/subjects-reading-typography-2026-10-02.md) replaces serif body copy with the existing interface sans-serif, strengthens section headings, and improves paragraph spacing. Article summaries and the objectives heading are smaller, and the Useful background block is removed from all Subjects articles. All 268 diagram states have fresh four-view captures; independent visual acceptance remains the required gate before merge and release.
+The [Subjects reading typography refinement](docs/subjects-reading-typography-2026-10-02.md) uses the existing interface sans-serif for article prose, smaller introductions and objectives headings, and clearer paragraph spacing. Useful background is removed from all Subjects articles. Fresh independent visual acceptance covers every mechanism state and adjacent transition at both desktop widths in Light and Dark.
 
 Readable Subjects titles open their lesson, alongside the existing “Read lesson” link. See [Subjects title navigation](docs/subjects-title-navigation-2026-10-02.md).
 

@@ -531,10 +531,20 @@
   "lessonId": "resnet",
   "parentContentDigest": "1615afd99d47bd190d19abb397184248fc754b8a27b16e1f35ba5f9fe0efce43",
   "review": {
-    "status": "source-passed",
+    "status": "passed",
     "reviewedAt": "2026-10-02T00:01:18.497Z",
     "contentDigest": "ed8248cbcaea7f1b03e2983f856f5dff17133e6fa16ef54c0dec16a2b24f83bb",
     "rendererDigest": "83a7df171d30c59ad1eef731009edc62331803b8dcba7d6983b92d72bf27ea4a",
-    "visualReviewedAt": null
+    "visualReviewedAt": "2026-10-02T18:42:43.499Z",
+    "visualAcceptance": {
+      "version": 2,
+      "reportDigest": "0da0a7e731ca88557c47490b8db1c4897b6e43a5a747cd2986708fd2ca0e32a5",
+      "presentationDigest": "ae2eb98b82e3253cda4d44572a49ce402842924f3f8abe800ff8802ef218536a",
+      "semanticPolicyVersion": "mechanism-semantic-ownership-v1",
+      "reviewerId": "/root/review_models",
+      "viewCount": 4,
+      "beatCount": 4,
+      "transitionCount": 12
+    }
   }
 }

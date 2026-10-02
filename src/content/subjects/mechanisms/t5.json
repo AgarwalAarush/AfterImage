@@ -431,10 +431,20 @@
   "lessonId": "t5",
   "parentContentDigest": "bfeaff6deb6b8c724bcc73de5945b5fedbd3ae89e3d33190f4bc9f6d87d337b2",
   "review": {
-    "status": "source-passed",
+    "status": "passed",
     "reviewedAt": "2026-10-02T01:52:55.754Z",
     "contentDigest": "b0fc843bf6ae9ccdb01df1bd8755f5d01c457b41ab305d0dd2f6a91541202771",
     "rendererDigest": "83a7df171d30c59ad1eef731009edc62331803b8dcba7d6983b92d72bf27ea4a",
-    "visualReviewedAt": null
+    "visualReviewedAt": "2026-10-02T18:42:20.828Z",
+    "visualAcceptance": {
+      "version": 2,
+      "reportDigest": "953426734e32663e683bf98e87a99e3c0fa24fe6eeddcb858a065ee8f9fdf9d2",
+      "presentationDigest": "ae2eb98b82e3253cda4d44572a49ce402842924f3f8abe800ff8802ef218536a",
+      "semanticPolicyVersion": "mechanism-semantic-ownership-v1",
+      "reviewerId": "/root/review_systems",
+      "viewCount": 4,
+      "beatCount": 3,
+      "transitionCount": 8
+    }
   }
 }

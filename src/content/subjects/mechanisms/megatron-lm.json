@@ -516,10 +516,20 @@
   "lessonId": "megatron-lm",
   "parentContentDigest": "0441dd9abda9ac8804db4eff5f6c00bae4137233636fcd4ce11dc3c3ae867e57",
   "review": {
-    "status": "source-passed",
+    "status": "passed",
     "reviewedAt": "2026-10-02T00:00:07.221Z",
     "contentDigest": "9ef84f4690a684f9d3ec9902fa21f83c82da0fd574353d8975e36ea2cbe42c03",
     "rendererDigest": "83a7df171d30c59ad1eef731009edc62331803b8dcba7d6983b92d72bf27ea4a",
-    "visualReviewedAt": null
+    "visualReviewedAt": "2026-10-02T18:42:20.465Z",
+    "visualAcceptance": {
+      "version": 2,
+      "reportDigest": "a45354efb10c6c6d5531aeb7c7cf8350e6ff1c2352546b256b1239b323a06779",
+      "presentationDigest": "ae2eb98b82e3253cda4d44572a49ce402842924f3f8abe800ff8802ef218536a",
+      "semanticPolicyVersion": "mechanism-semantic-ownership-v1",
+      "reviewerId": "/root/review_systems",
+      "viewCount": 4,
+      "beatCount": 4,
+      "transitionCount": 12
+    }
   }
 }

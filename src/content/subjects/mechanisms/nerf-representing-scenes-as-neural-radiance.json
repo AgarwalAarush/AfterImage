@@ -702,10 +702,20 @@
   "lessonId": "nerf-representing-scenes-as-neural-radiance",
   "parentContentDigest": "b3a1eb8a5d93aa51cc53b32c7174950b541f66c5d1326406f2c81374338b4ce4",
   "review": {
-    "status": "source-passed",
+    "status": "passed",
     "reviewedAt": "2026-10-02T00:21:15.140Z",
     "contentDigest": "1cc3c1e6933ca4c60439fb95da0b8f5b37b2020c4334b1158558aa7a50095cbd",
     "rendererDigest": "83a7df171d30c59ad1eef731009edc62331803b8dcba7d6983b92d72bf27ea4a",
-    "visualReviewedAt": null
+    "visualReviewedAt": "2026-10-02T18:42:43.047Z",
+    "visualAcceptance": {
+      "version": 2,
+      "reportDigest": "4c56ac7f207762b358ab011eaae76cbe5df63f896a2e9a38a0c511d4e069d4da",
+      "presentationDigest": "ae2eb98b82e3253cda4d44572a49ce402842924f3f8abe800ff8802ef218536a",
+      "semanticPolicyVersion": "mechanism-semantic-ownership-v1",
+      "reviewerId": "/root/review_models",
+      "viewCount": 4,
+      "beatCount": 5,
+      "transitionCount": 16
+    }
   }
 }

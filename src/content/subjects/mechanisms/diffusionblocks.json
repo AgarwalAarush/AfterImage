@@ -874,10 +874,20 @@
   "lessonId": "diffusionblocks",
   "parentContentDigest": "32dcb5bdcb4d7bd8eb9b80c4cd357b4e835705ba306eb2db82171a02f1e08e5b",
   "review": {
-    "status": "source-passed",
+    "status": "passed",
     "reviewedAt": "2026-10-02T01:53:01.308Z",
     "contentDigest": "0123ad73f478fdaff023108ca4e11814ab15701b3a693bfcdb7d67c080b50138",
     "rendererDigest": "83a7df171d30c59ad1eef731009edc62331803b8dcba7d6983b92d72bf27ea4a",
-    "visualReviewedAt": null
+    "visualReviewedAt": "2026-10-02T18:42:42.405Z",
+    "visualAcceptance": {
+      "version": 2,
+      "reportDigest": "baa2f6cb2e250d7350d59adcf565df66c49c4ad3123844ea16b2809da97cc7c7",
+      "presentationDigest": "ae2eb98b82e3253cda4d44572a49ce402842924f3f8abe800ff8802ef218536a",
+      "semanticPolicyVersion": "mechanism-semantic-ownership-v1",
+      "reviewerId": "/root/review_models",
+      "viewCount": 4,
+      "beatCount": 6,
+      "transitionCount": 20
+    }
   }
 }
