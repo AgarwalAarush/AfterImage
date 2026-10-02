@@ -565,10 +565,10 @@
   "lessonId": "you-only-look-once-unified-real",
   "parentContentDigest": "7923d670a45bc99adb0714cdeb258819007040cee2f2c826c0b91dd56bef0a91",
   "review": {
-    "status": "source-passed",
+    "status": "passed",
     "reviewedAt": "2026-10-02T00:18:00.706Z",
     "contentDigest": "d170ab102a17dfc2ae659f4d9f631c7c4af58dfb5c13dcea1f3376f7226658ea",
     "rendererDigest": "2cc690a7105c5faca75e22053e83674a2cf2e227ae22afe88cc4662d09c98bb4",
-    "visualReviewedAt": null
+    "visualReviewedAt": "2026-10-02T02:38:54.701Z"
   }
 }

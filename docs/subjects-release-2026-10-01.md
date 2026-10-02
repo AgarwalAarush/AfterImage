@@ -1,0 +1,9 @@
+# Subjects production release — October 1, 2026
+
+The release includes all 100 original lessons, 203 interactive figures across 25 experiment families, and fourteen source-reviewed mechanism walkthroughs. It integrates production main `55a97b9`, preserving newer title typography, curated paper worked examples, and immediate preparation with uncertain-write reconciliation.
+
+The final encoder correction puts single-identity module content in a centered horizontal group: title and detail share one left edge, with the complete token beside them at their vertical center. Whisper stays compact at 60px, and its introduction-to-diagram gap stays 40px. All fourteen walkthroughs have fresh visual approval against renderer `2cc690a7105c5faca75e22053e83674a2cf2e227ae22afe88cc4662d09c98bb4`, covering 1440px and 900px desktop views in Light and Dark, including lower outputs and explanations. Their reviewed scientific state and parent lesson digests are unchanged.
+
+Pre-release validation passes all 193 integrated tests, typecheck, production build, and exact 100-lesson/14-mechanism bindings. Fresh Next output traces contain all expected public content and renderer source files, with zero private audit or environment artifacts. Browser evidence remains under ignored `.artifacts/subjects/browser-review/`; deployment/test/build evidence remains under ignored `.artifacts/subjects/`.
+
+This is a web/content release. It requires no production database write, storage bridge update, worker restart, or historical paper regeneration. Existing production browser authentication is used for live reader verification; no production secret download is required. The previous production deployment is retained as the rollback target. Deployment status and actual live checks will be appended after release.

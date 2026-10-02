@@ -817,10 +817,10 @@
   "lessonId": "decision-transformer-reinforcement-learning-via-sequence",
   "parentContentDigest": "a97a9e6447e33636c663b7b3551ed90ed91a1562d848dba853f1cf70bcfa9408",
   "review": {
-    "status": "source-passed",
+    "status": "passed",
     "reviewedAt": "2026-10-02T00:21:25.349Z",
     "contentDigest": "aaa8a07e452b0c6f72008bfb21e8edd26b570bb94f3482cabc12a314d33b575f",
     "rendererDigest": "2cc690a7105c5faca75e22053e83674a2cf2e227ae22afe88cc4662d09c98bb4",
-    "visualReviewedAt": null
+    "visualReviewedAt": "2026-10-02T02:38:54.690Z"
   }
 }

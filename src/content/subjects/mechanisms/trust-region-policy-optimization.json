@@ -853,10 +853,10 @@
   "lessonId": "trust-region-policy-optimization",
   "parentContentDigest": "42b1036c8af032ab8e1f6ca6bf5c1e8ce891e0a9a885714f14aff6b9fc184f44",
   "review": {
-    "status": "source-passed",
+    "status": "passed",
     "reviewedAt": "2026-10-02T01:50:36.916Z",
     "contentDigest": "9c54eb1461ac140fc40e88f53f4372a23f59db976b5003fb05d64d115854b2e4",
     "rendererDigest": "2cc690a7105c5faca75e22053e83674a2cf2e227ae22afe88cc4662d09c98bb4",
-    "visualReviewedAt": null
+    "visualReviewedAt": "2026-10-02T02:38:54.700Z"
   }
 }

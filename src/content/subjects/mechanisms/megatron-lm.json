@@ -516,10 +516,10 @@
   "lessonId": "megatron-lm",
   "parentContentDigest": "0441dd9abda9ac8804db4eff5f6c00bae4137233636fcd4ce11dc3c3ae867e57",
   "review": {
-    "status": "source-passed",
+    "status": "passed",
     "reviewedAt": "2026-10-02T00:00:07.221Z",
     "contentDigest": "9ef84f4690a684f9d3ec9902fa21f83c82da0fd574353d8975e36ea2cbe42c03",
     "rendererDigest": "2cc690a7105c5faca75e22053e83674a2cf2e227ae22afe88cc4662d09c98bb4",
-    "visualReviewedAt": null
+    "visualReviewedAt": "2026-10-02T02:38:54.695Z"
   }
 }

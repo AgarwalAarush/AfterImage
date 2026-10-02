@@ -660,10 +660,10 @@
   "lessonId": "mastering-chess-and-shogi-by-self",
   "parentContentDigest": "0170ab67835a272d7a4ea16b1b6ed34ea63574668aebbcaaabfb9267aa86dff2",
   "review": {
-    "status": "source-passed",
+    "status": "passed",
     "reviewedAt": "2026-10-02T02:15:46.771Z",
     "contentDigest": "ef217481fbdc9779d2aa1c6dad064f252ec4b195b128d01be3225a40c88f2d26",
     "rendererDigest": "2cc690a7105c5faca75e22053e83674a2cf2e227ae22afe88cc4662d09c98bb4",
-    "visualReviewedAt": null
+    "visualReviewedAt": "2026-10-02T02:38:54.695Z"
   }
 }

@@ -431,10 +431,10 @@
   "lessonId": "t5",
   "parentContentDigest": "bfeaff6deb6b8c724bcc73de5945b5fedbd3ae89e3d33190f4bc9f6d87d337b2",
   "review": {
-    "status": "source-passed",
+    "status": "passed",
     "reviewedAt": "2026-10-02T01:52:55.754Z",
     "contentDigest": "b0fc843bf6ae9ccdb01df1bd8755f5d01c457b41ab305d0dd2f6a91541202771",
     "rendererDigest": "2cc690a7105c5faca75e22053e83674a2cf2e227ae22afe88cc4662d09c98bb4",
-    "visualReviewedAt": null
+    "visualReviewedAt": "2026-10-02T02:38:54.699Z"
   }
 }

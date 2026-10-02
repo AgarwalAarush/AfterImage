@@ -874,10 +874,10 @@
   "lessonId": "diffusionblocks",
   "parentContentDigest": "32dcb5bdcb4d7bd8eb9b80c4cd357b4e835705ba306eb2db82171a02f1e08e5b",
   "review": {
-    "status": "source-passed",
+    "status": "passed",
     "reviewedAt": "2026-10-02T01:53:01.308Z",
     "contentDigest": "0123ad73f478fdaff023108ca4e11814ab15701b3a693bfcdb7d67c080b50138",
     "rendererDigest": "2cc690a7105c5faca75e22053e83674a2cf2e227ae22afe88cc4662d09c98bb4",
-    "visualReviewedAt": null
+    "visualReviewedAt": "2026-10-02T02:38:54.693Z"
   }
 }

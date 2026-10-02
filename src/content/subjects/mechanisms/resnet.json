@@ -531,10 +531,10 @@
   "lessonId": "resnet",
   "parentContentDigest": "1615afd99d47bd190d19abb397184248fc754b8a27b16e1f35ba5f9fe0efce43",
   "review": {
-    "status": "source-passed",
+    "status": "passed",
     "reviewedAt": "2026-10-02T00:01:18.497Z",
     "contentDigest": "ed8248cbcaea7f1b03e2983f856f5dff17133e6fa16ef54c0dec16a2b24f83bb",
     "rendererDigest": "2cc690a7105c5faca75e22053e83674a2cf2e227ae22afe88cc4662d09c98bb4",
-    "visualReviewedAt": null
+    "visualReviewedAt": "2026-10-02T02:38:54.698Z"
   }
 }
