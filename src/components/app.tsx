@@ -39,6 +39,7 @@ import { readLibrary, readLibraryUpdate, SessionExpired } from "@/lib/library-cl
 import { LoadingStatus } from "./loading-status";
 import { LibraryContent } from "./library-content";
 import { ThemeControl } from "./theme-control";
+import type { PreparationRequest } from "@/lib/generation-progress";
 const Diagram = dynamic(() => import("./diagram").then(module => module.Diagram), {
   loading: () => <div className="diagram diagram-loading" aria-label="Loading diagram" />,
 });
@@ -47,6 +48,8 @@ import { download } from "@/lib/download";
 const Context = createContext<{
   state: AppState | null;
   act: (body: Record<string, unknown>) => Promise<any>;
+  prepareKit: (paperId: string, action?: "generate" | "study") => Promise<void>;
+  preparations: Record<string, PreparationRequest>;
   busy: boolean;
   refresh: () => Promise<void>;
   refreshing: boolean;
@@ -55,6 +58,8 @@ const Context = createContext<{
 }>({
   state: null,
   act: async () => {},
+  prepareKit: async () => {},
+  preparations: {},
   busy: false,
   refresh: async () => {},
   refreshing: false,
@@ -100,6 +105,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
     [refreshing, setRefreshing] = useState(false),
+    [preparations, setPreparations] = useState<Record<string, PreparationRequest>>({}),
     [paletteOpen, setPaletteOpen] = useState(false),
     [message, setMessage] = useState("");
   const router = useRouter(),
@@ -109,6 +115,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     busyRef = useRef(false),
     versionRef = useRef<number | null>(null),
     lastLoaded = useRef(0);
+  const preparationRequests = useRef(new Map<string, Promise<void>>());
   const refresh = useCallback(async () => {
     if (busyRef.current || (requestRef.current && !requestRef.current.signal.aborted)) return;
     const controller = new AbortController();
@@ -125,6 +132,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (data) {
         stateRef.current = data;
         setState(data);
+        // A successful read reconciles an uncertain write; never replay it.
+        setPreparations(current => Object.fromEntries(Object.entries(current).filter(([, request]) => request.status === "submitting")));
       } else if (stateRef.current && stateRef.current.workerSeenAt !== workerSeenAt) {
         stateRef.current = {...stateRef.current, workerSeenAt};
         setState(stateRef.current);
@@ -150,6 +159,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       lastLoaded.current = 0;
       setState(null);
       setError("");
+      setPreparations({});
     } else if (!pathname.startsWith("/documents") && (!stateRef.current || Date.now() - lastLoaded.current > 30000)) void refresh();
   }, [refresh, pathname]);
   useEffect(() => () => { requestRef.current?.abort(); }, []);
@@ -218,12 +228,33 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setBusy(false);
     }
   }, [router]);
+  const prepareKit = useCallback((paperId: string, action: "generate" | "study" = "generate") => {
+    const pending = preparationRequests.current.get(paperId);
+    if (pending) return pending;
+    if (stateRef.current?.jobs.some(job => job.paperId === paperId && job.type === action && ["queued", "running"].includes(job.status))) return Promise.resolve();
+    const startedAt = new Date().toISOString();
+    setPreparations(current => ({...current, [paperId]: {status: "submitting", startedAt}}));
+    const request = act({action, paperId}).then(() => {
+      setPreparations(current => {
+        const next = {...current};
+        delete next[paperId];
+        return next;
+      });
+    }).catch((cause: Error) => {
+      versionRef.current = null;
+      setPreparations(current => ({...current, [paperId]: {status: "unconfirmed", startedAt, message: cause.message}}));
+    }).finally(() => preparationRequests.current.delete(paperId));
+    preparationRequests.current.set(paperId, request);
+    return request;
+  }, [act]);
   if (pathname === "/login") return children;
   return (
     <Context.Provider
       value={{
         state,
         act,
+        prepareKit,
+        preparations,
         busy,
         refresh,
         refreshing,
@@ -747,14 +778,15 @@ function RecommendationCard({
   recommendation: Recommendation;
   index: number;
 }) {
-  const { state, act, busy, toast } = useApp();
+  const { state, act, busy, toast, prepareKit, preparations } = useApp();
   const router = useRouter();
   const saved = !!state?.entries[p.id];
-  const preparing = state?.jobs.some(j => j.paperId === p.id && j.type === "generate" && ["queued", "running"].includes(j.status));
+  const preparing = preparations[p.id]?.status === "submitting" || state?.jobs.some(j => j.paperId === p.id && j.type === "generate" && ["queued", "running"].includes(j.status));
   const paperHref = `/papers/${encodeURIComponent(p.id)}`;
-  const prepare = () => act({action: "generate", paperId: p.id})
-    .then(() => { toast("Reading kit queued and saved to your library."); router.push(paperHref); })
-    .catch(() => {});
+  const prepare = () => {
+    void prepareKit(p.id);
+    router.push(paperHref);
+  };
   return (
     <article className={`paper-card next-read-card ${p.accent}`}>
       <div className="card-top">

@@ -9,7 +9,7 @@ import { useApp } from "./app";
 import { Diagram } from "./diagram";
 import { eagleCaption } from "./eagle-diagram";
 import { MathText, RecallText, InlineText } from "./math";
-import { paperPreparationModel } from "@/lib/generation-progress";
+import { paperPreparationModel, withPreparationRequest } from "@/lib/generation-progress";
 import { readerUrl } from "@/lib/identity";
 import { download } from "@/lib/download";
 import { workedExampleForEquation } from "@/lib/worked-examples";
@@ -17,7 +17,7 @@ import { WorkedExampleAnimation } from "./worked-example";
 import "katex/dist/katex.min.css";
 
 export function PaperView({ id }: { id: string }) {
-  const { state, act, busy, toast } = useApp();
+  const { state, act, busy, toast, preparations } = useApp();
   if (!state) return null;
   const p = state.papers.find((p) => p.id === id);
   if (!p)
@@ -29,7 +29,7 @@ export function PaperView({ id }: { id: string }) {
     );
   const e = state.entries[id];
   const r = p.recall;
-  const preparation = paperPreparationModel(p, state.jobs, state.workerSeenAt);
+  const preparation = withPreparationRequest(paperPreparationModel(p, state.jobs, state.workerSeenAt), preparations[id]);
   const ready = Boolean(preparation.readable);
   const workedEquationIndex = r?.equations?.findIndex(eq => workedExampleForEquation(p, eq)) ?? -1;
   const related = state.papers
@@ -40,7 +40,7 @@ export function PaperView({ id }: { id: string }) {
       <div className="paper-breadcrumb">
         <Link href="/library">Library</Link>
         <span>/</span>
-        <span>{ready ? "Notecard" : ["queued", "running"].includes(preparation.status) ? "Preparing" : "Paper"}</span>
+        <span>{ready ? "Notecard" : ["submitting", "queued", "running"].includes(preparation.status) ? "Preparing" : "Paper"}</span>
         {ready && (
           <button
             className="text-button"
@@ -79,6 +79,7 @@ export function PaperView({ id }: { id: string }) {
           {e && (
             <select
               className="paper-status"
+              disabled={busy}
               aria-label="Reading status"
               value={e.status}
               onChange={(ev) =>
