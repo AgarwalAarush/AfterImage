@@ -1,6 +1,6 @@
 # Cloudflare storage ingress — October 1, 2026
 
-Status: prepared locally; **production has not switched**. The owner authorized
+Status: **live and verified** on October 1, 2026 (Pacific). The owner authorized
 replacing the recurring failing Funnel public path with Cloudflare Tunnel after
 accepting Cloudflare's HTTPS termination and visibility into AfterImage traffic.
 
@@ -30,9 +30,9 @@ The named tunnel, exact-path localhost ingress, hostname cache bypass, dedicated
 service token and Access application are created. The application has exactly
 one Service Auth policy accepting only that token. The proxied storage hostname
 returns HTTP 403 without Access credentials. The isolated connector is installed
-and Cloudflare reports Healthy with four connections; no Vercel environment or deployment has
-switched. Management credentials and service-token values remain in ignored,
-mode-0600 preparation files.
+and Cloudflare reports Healthy with four connections. Vercel production uses the
+Cloudflare storage origin and paired sensitive Access variables. Preparation
+credentials are excluded from source, deployment uploads and browser bundles.
 
 The connector recovery completed after an independent agent audit. The owner
 authorized non-destructive administrator operations after that review.
@@ -131,48 +131,59 @@ deployment/environment only if the old transport is verified usable; never
 promote stale Supabase state. Keep the old forwarding definition until cutover
 acceptance, and do not reset shared Funnel configuration as part of cleanup.
 
-## Local checks
+## Verified production cutover
 
-The migration commits have been rebased onto `be74949`, which adds release notes
-to the `1850878` production source. Current Vercel inspection still identifies
-`dpl_ARPmkGgeCoxKLyYSvvvQCn9oEMn3` as Ready with the public alias, matching that
-release's recorded deployment. This preserves the newer systemic diagram and
-publication gates rather than deploying the older `523d25b` source.
+The production custom domain serves Ready deployment
+`dpl_9MEbxmJauTsuhh2Ui68YowFYQMt2`, source
+`e36557d2a9c41dd3475cb0235b80e937585a4fbe`. This combines the Cloudflare
+client/connector changes with the independently reviewed Subjects typography
+release. A concurrent typography-only deployment briefly omitted the Access
+headers and received upstream 403s. Restoring the compatible deployment recovered
+storage; the coordinated combined release preserves both changes. Every future
+production deployment must include the Access-capable storage client while these
+production environment values are active.
 
-On the updated base, all **220 integrated tests**, typecheck and the webpack
-production build pass. The publication audit retains 100 lessons, 203 figures
-and fourteen approved mechanisms with zero findings. The build audit checks all
-21 server traces: no private artifacts, SQLite data, assistant runtime or
-environment files; the Subjects reader trace includes all 114 lesson/mechanism
-files. Cloudflare Access environment names do not appear in browser JavaScript.
-Private validation evidence stays in ignored `.artifacts/cloudflare-ingress/`.
-These checks prove the prepared release. External Cloudflare verification now
-passes: missing Access credentials 403, valid Access without HMAC 401, unmatched
-path 404, correctly signed reads 200 and replay rejection 401. The authoritative
-read reported 15 papers, five documents, version 10368 and a worker heartbeat
-44 seconds old. Nine prior local snapshots existed, the latest 19.1 hours old;
-a fresh snapshot restored with integrity `ok` and the documents table intact.
-The temporary Access probe credential and disposable restore were removed.
-Backups remain only on macserver, so losing that machine could destroy both the
-database and its backups. Vercel cutover and desktop acceptance remain pending.
+All **223 tests**, typecheck and the webpack production build pass. Publication
+checks preserve 100 lessons, 203 figures and fourteen approved mechanisms.
+All 23 fresh server traces exclude private artifacts, SQLite data, assistant
+runtime and environment files. Access environment names are absent from browser
+JavaScript. Private evidence remains in ignored `.artifacts/cloudflare-ingress/`.
 
-Initial preparation also verified the Cloudflare authentication regression, existing bridge integration and private
-diagnostic tests all pass (three tests). TypeScript and `git diff --check` pass.
-The integration test uses a disposable SQLite database and proves signed reads,
-version preservation and document operations; it required localhost networking
-outside the default sandbox. The new regression proves Access headers and bridge
-signatures coexist, rejected Access credentials are not retried or logged, and
-partial/malformed configuration cannot send library data. Live acceptance remains
-unverified until the prerequisites above are complete.
+External verification passes: missing Access credentials 403, valid Access
+without HMAC 401, unmatched path 404, signed reads 200 and replay rejection 401.
+The initial signed authoritative read reported 15 total paper records, five
+documents, version 10368 and a worker heartbeat 44 seconds old. Nine prior local
+snapshots existed, the latest 19.1 hours old. A fresh snapshot restored with
+integrity `ok` and the documents table intact; the disposable restore and its
+transient credential were removed. Backups remain only on macserver, so machine
+loss could destroy the database and its backups.
 
-The Next.js 16.3.5 production build also passes after copying the existing
-dependencies into this worktree (Turbopack does not accept an out-of-root
-`node_modules` symlink). The build reports two existing broad filesystem-tracing
-warnings in `subject-mechanism-store.ts`; these are outside the storage client
-change. Build-generated edits to `next-env.d.ts` were restored. The connector
-installer passes shell syntax checks and a read-only macserver preflight using
-a disposable placeholder token. No account or service was created by that check.
-The owner-created management token is restricted to the owner's Cloudflare
-account and this DNS zone. Resource configuration and nameserver activation are
-complete, and the isolated connector is installed. No Vercel cutover deployment
-has occurred.
+Live owner desktop checks, including explicit Command–Shift–R hard reloads of
+the reader and Documents shelf after retiring Funnel, load seven saved Library
+cards, the reviewed EAGLE-3
+notecard and diagram, all five Documents entries and an existing document's
+rendered content. Production logs show library reads 200, unchanged-version
+polling 204, document reads 200 and both actual worker endpoints 200. No storage
+transport failures appear for the combined deployment in the verification window.
+No model generation was started for these checks. MegaBlocks' previous failed
+reading-kit preparation remains a separate content issue.
+
+A uniquely generated, non-sensitive disposable Markdown fixture passed one
+signed save, exact-byte read and one delete through the Cloudflare bridge. A
+successful final list confirmed its removal and all five original documents
+remained. This tests the bridge document lifecycle; live desktop/API checks test
+Vercel document reads. Uncertain writes are reconciled by reads, never replayed.
+
+After these checks, only the AfterImage TLS-terminated TCP mapping on Funnel
+port 8443 was disabled. A private pre-change snapshot was retained, and every
+unrelated configuration field matched afterward, including Ares port 443.
+This Tailscale CLI retains the unused `AllowFunnel` permission for 8443; there is
+no forwarding handler on that port. No shared reset was performed. A bounded
+external 8443 request times out, while Cloudflare remains Healthy with four
+connections and both authentication gates still reject unauthorized requests.
+The preserved 443 endpoint responds with its existing HTTP 404.
+
+The isolated connector, bridge and worker boundaries are unchanged. SQLite
+remains authoritative. Re-enabling an old transport for rollback requires
+verification and an explicit port-specific change; never restore stale Supabase
+state or deploy an Access-incompatible client against the Cloudflare origin.
