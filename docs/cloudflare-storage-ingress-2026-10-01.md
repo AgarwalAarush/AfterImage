@@ -82,7 +82,13 @@ code under `/Users/Shared/AfterImageTunnel`. Its token is stored in a mode-0700
 directory, read with `--token-file`, and removed from the ordinary user's staging
 directory after installation. The installer verifies that the connector cannot
 read the SQLite database or storage credential, leaves the bridge untouched,
-and refuses an existing or partial installation. Readiness/metrics bind only to
+and refuses an existing filesystem installation. An explicit `--resume-account`
+option permits only the exact UID, group, no-login shell, empty home and valid
+identity of a pre-created staging account, with no authentication authority or
+administrator/wheel membership. The first privileged attempt created that account
+but macOS rejected rewriting its automatically assigned `GeneratedUID`; the
+installer now preserves that identity. No connector files or bridge changes
+occurred in that attempt. Readiness/metrics bind only to
 `127.0.0.1:3103`. Connector output is discarded to avoid storing raw transport
 URLs/errors; use readiness, connection counts and sanitized API checks for
 verification. Automatic binary updates are disabled for this root-owned release.
