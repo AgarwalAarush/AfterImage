@@ -26,8 +26,8 @@ test('paper preparation retains review stages while allowing a validated notecar
  let model=paperPreparationModel(paper,[{id:'g',type:'generate',paperId:paper.id,status:'queued',createdAt:'2026-09-12',attempts:0}]);
  assert.equal(model.status,'queued');
  assert.equal(model.orbState,'working');
- assert.deepEqual(model.steps.map(step=>step.state),['active','upcoming','upcoming','upcoming','upcoming']);
- assert.match(model.detail,/prepare and review your notecard/i);
+ assert.deepEqual(model.steps.map(step=>step.state),['upcoming','upcoming','upcoming','upcoming','upcoming']);
+ assert.match(model.detail,/notecard is prepared and reviewed/i);
  assert.equal(model.readable,false);
 
  paper.generationStatus='running';paper.generationStep='reviewing';
