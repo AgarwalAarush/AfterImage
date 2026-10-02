@@ -1,5 +1,7 @@
 # AfterImage
 
+Readable Subjects titles open their lesson, alongside the existing “Read lesson” link. See [Subjects title navigation](docs/subjects-title-navigation-2026-10-02.md).
+
 Subjects and Library now share the same quiz component, answer feedback and question navigation. The [quiz alignment note](docs/subjects-quiz-reader-alignment-2026-10-01.md) documents the reader cleanup, preserved scientific content and renewed appearance checks.
 
 A personal reading compass and visual memory for research papers. The web app holds a short-lived shortlist, a searchable library, source-grounded notecards, and reading history. Reading happens in alphaXiv. Press <kbd>⌘K</kbd> anywhere in the signed-in app to search every known paper or paste an arXiv/alphaXiv link to add it to the library.
