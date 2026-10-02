@@ -3,7 +3,7 @@ import { mkdir, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { createInterface } from "node:readline";
-import { assistantInstructions } from "../src/lib/assistant";
+import { assistantInstructions, normalizeLessonCitations } from "../src/lib/assistant";
 
 /** An independent, tool-disabled Codex app-server over stdio. No listening socket. */
 export async function streamCodex(context: unknown, onText: (text:string)=>void, signal: AbortSignal) {
@@ -38,6 +38,8 @@ enabled = false
   const child=spawn(process.env.CODEX_BIN||"codex",["app-server","--stdio"],{
     cwd:work,stdio:["pipe","pipe","pipe"],env:{NODE_ENV:"production",HOME:os.homedir(),CODEX_HOME:runtime,PATH:"/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin",LANG:"en_US.UTF-8",TMPDIR:os.tmpdir()},
   });
+  const sourceIds = typeof context === "object" && context !== null && "sources" in context && Array.isArray(context.sources)
+    ? context.sources.flatMap(source => typeof source?.id === "string" ? [source.id] : []) : [];
   let seq=0,answer="",settled=false,stderr="";
   const pending=new Map<number,{resolve:(v:any)=>void;reject:(e:Error)=>void}>();
   let doneResolve:()=>void=()=>{},doneReject:(e:Error)=>void=()=>{};
@@ -64,7 +66,7 @@ enabled = false
         if(item.type==="agentMessage")phases.set(item.id,item.phase||"final_answer");
       }
       if(m.method==="item/agentMessage/delta"&&phases.get(p.itemId)!=="commentary"){
-        answer+=p.delta;if(answer.length>32000){finish(new Error("Reply exceeded limit"));child.kill();return;}onText(answer);
+        answer+=p.delta;const normalized=normalizeLessonCitations(answer,sourceIds);if(normalized.length>32000){finish(new Error("Reply exceeded limit"));child.kill();return;}onText(normalized);
       }
       if(m.method==="turn/completed")p.turn.status==="completed"?finish():finish(new Error(p.turn.error?.message||"Codex turn failed"));
     }catch(e){finish(e as Error);}
@@ -79,6 +81,6 @@ enabled = false
     await rpc("turn/start",{threadId:started.thread.id,input:[{type:"text",text:JSON.stringify(context),text_elements:[]}],effort:"low",summary:"none"});
     await done;
     if(!answer.trim())throw new Error("Codex returned no text");
-    return answer;
+    return normalizeLessonCitations(answer,sourceIds);
   }finally{clearTimeout(timer);signal.removeEventListener("abort",stop);lines.close();child.kill("SIGTERM");setTimeout(()=>child.kill("SIGKILL"),2000).unref();}
 }
