@@ -28,6 +28,20 @@ input::placeholder, textarea::placeholder { font-size: inherit; color: var(--mut
 .page-intro, .home .page-intro { padding: 44px 0 32px; }
 .page-intro h1 { font-size: 44px; line-height: 1.12; letter-spacing: -1.1px; margin-bottom: 12px; }
 .page-intro p { max-width: 65ch; font-size: 14px; }
+/* Home headings share the paper-title face and weight. */
+.home :is(h1, h2, h3) {
+  font-family: var(--font-sans);
+  font-weight: 550;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+  overflow-wrap: anywhere;
+}
+.home .page-intro h1 { line-height: 1.16; letter-spacing: -0.025em; }
+.home .shortlist-title h2,
+.home .recall-heading h2,
+.home .next-read-card .card-title h2,
+.home .recall-empty h3,
+.home .empty h2 { line-height: 1.22; }
 .shortlist-actions { display: flex; align-items: center; justify-content: flex-end; gap: 20px; flex-wrap: wrap; }
 .shortlist-actions .text-button { color: var(--muted); }
 .shortlist-actions .text-button:hover { color: var(--ink); }

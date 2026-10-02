@@ -108,6 +108,8 @@ The paper assistant acknowledges questions immediately, shows cached source prev
 
 ## Typography and recall
 
+Home-page headlines, section titles and paper cards share the reader's Overused Grotesk title typography, including medium weight and balanced wrapping. The home-page heading refinement lives in the shared UI layer.
+
 New diagram generation uses a versioned semantic graph: code places nodes and routes arrows around text and shapes, with separate desktop and mobile layouts. Diagram-only repairs preserve the recall, and recall-only repairs preserve the graph. See `docs/diagram-generation-v2.md` for regression evidence and the required web-before-worker release order. `node --import tsx worker/index.ts --evaluate-paper 2312.07104` exercises generation and review without publishing or touching the queue.
 
 Newsreader handles reading text, Overused Grotesk the interface, paper titles and diagram labels, Departure Mono conceptual headings, and IBM Plex Mono metadata. Paper titles use medium weight and balanced wrapping across the reader, discovery, library and related/recall links; see `docs/article-title-typography-2026-10-01.md`. Fonts and their OFL licenses are self-hosted under `public/fonts/`; review-time OpenType fonts live in `worker/fonts/`. SVG export captures the displayed diagram and embeds the fonts. The authored LoRA diagram has distinct desktop and mobile layouts, preserves A-then-B multiplication order, and keeps output notation clear of connectors.
