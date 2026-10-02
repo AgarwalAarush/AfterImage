@@ -763,20 +763,10 @@
   "lessonId": "soft-actor-critic-off-policy-maximum",
   "parentContentDigest": "05a05ad0501d9310f9c1213529683a1f2b17f4982be2a5dbc8577efca1c00cb2",
   "review": {
-    "status": "passed",
+    "status": "source-passed",
     "reviewedAt": "2026-10-02T00:16:57.392Z",
     "contentDigest": "2bea7d23f011d9e28a23299eb0f183c5168ba2521070777b9faff0cef1a8516f",
     "rendererDigest": "83a7df171d30c59ad1eef731009edc62331803b8dcba7d6983b92d72bf27ea4a",
-    "visualReviewedAt": "2026-10-02T06:53:12.129Z",
-    "visualAcceptance": {
-      "version": 2,
-      "reportDigest": "43c7b5c6c6a4097d77024f1ff5786a9c4482e7b599bc292dec7a13e68fbba3ac",
-      "presentationDigest": "7a1f035bb839d32e1bbed1fa4d4de9ed550fde4f7e6c9e59820c361de65fc419",
-      "semanticPolicyVersion": "mechanism-semantic-ownership-v1",
-      "reviewerId": "/root/experiment_polish",
-      "viewCount": 4,
-      "beatCount": 5,
-      "transitionCount": 16
-    }
+    "visualReviewedAt": null
   }
 }

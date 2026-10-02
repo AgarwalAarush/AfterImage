@@ -565,20 +565,10 @@
   "lessonId": "you-only-look-once-unified-real",
   "parentContentDigest": "7923d670a45bc99adb0714cdeb258819007040cee2f2c826c0b91dd56bef0a91",
   "review": {
-    "status": "passed",
+    "status": "source-passed",
     "reviewedAt": "2026-10-02T00:18:00.706Z",
     "contentDigest": "d170ab102a17dfc2ae659f4d9f631c7c4af58dfb5c13dcea1f3376f7226658ea",
     "rendererDigest": "83a7df171d30c59ad1eef731009edc62331803b8dcba7d6983b92d72bf27ea4a",
-    "visualReviewedAt": "2026-10-02T07:20:24.987Z",
-    "visualAcceptance": {
-      "version": 2,
-      "reportDigest": "9f4d7c39ca037b2171b3f2c896a47adfb6115d66416d2321b87d3c66552df259",
-      "presentationDigest": "7a1f035bb839d32e1bbed1fa4d4de9ed550fde4f7e6c9e59820c361de65fc419",
-      "semanticPolicyVersion": "mechanism-semantic-ownership-v1",
-      "reviewerId": "/root/experiment_polish",
-      "viewCount": 4,
-      "beatCount": 4,
-      "transitionCount": 12
-    }
+    "visualReviewedAt": null
   }
 }

@@ -548,20 +548,10 @@
   "lessonId": "zero-memory-optimizations-toward-training-trillion",
   "parentContentDigest": "7e29e7f53b95476555ff42034ed6c1af687b9dbf158331228ebe0dd0e1e6f944",
   "review": {
-    "status": "passed",
+    "status": "source-passed",
     "reviewedAt": "2026-10-02T00:19:59.909Z",
     "contentDigest": "a048e0ef06e8ae6a29f2364ad5130957b4421e66eebd73b190d734c75eeb6f09",
     "rendererDigest": "83a7df171d30c59ad1eef731009edc62331803b8dcba7d6983b92d72bf27ea4a",
-    "visualReviewedAt": "2026-10-02T07:10:50.467Z",
-    "visualAcceptance": {
-      "version": 2,
-      "reportDigest": "7adf64e4eeedabc67352ec1802b32d964c0a3092152dac43e542d6f943878788",
-      "presentationDigest": "7a1f035bb839d32e1bbed1fa4d4de9ed550fde4f7e6c9e59820c361de65fc419",
-      "semanticPolicyVersion": "mechanism-semantic-ownership-v1",
-      "reviewerId": "/root/reader_polish",
-      "viewCount": 4,
-      "beatCount": 4,
-      "transitionCount": 12
-    }
+    "visualReviewedAt": null
   }
 }

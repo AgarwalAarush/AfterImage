@@ -681,20 +681,10 @@
   "lessonId": "mastering-atari-go-chess-and-shogi",
   "parentContentDigest": "8ae4425963d8481985f24709d64c909dd90a9219b8b9d0308c829654b442adb3",
   "review": {
-    "status": "passed",
+    "status": "source-passed",
     "reviewedAt": "2026-10-02T01:47:42.649Z",
     "contentDigest": "49b88d957fc405201e420df0d76dfb14f48a49fea2af78f5c1be7ca9954c3b90",
     "rendererDigest": "83a7df171d30c59ad1eef731009edc62331803b8dcba7d6983b92d72bf27ea4a",
-    "visualReviewedAt": "2026-10-02T06:33:46.474Z",
-    "visualAcceptance": {
-      "version": 2,
-      "reportDigest": "08eca137e67c09882c56e2fbee0da2d6ef041a628fa94c8ad381d501d91d93a4",
-      "presentationDigest": "7a1f035bb839d32e1bbed1fa4d4de9ed550fde4f7e6c9e59820c361de65fc419",
-      "semanticPolicyVersion": "mechanism-semantic-ownership-v1",
-      "reviewerId": "/root/generation_quality",
-      "viewCount": 4,
-      "beatCount": 5,
-      "transitionCount": 16
-    }
+    "visualReviewedAt": null
   }
 }

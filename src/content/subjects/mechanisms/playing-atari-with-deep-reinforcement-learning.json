@@ -776,20 +776,10 @@
   "lessonId": "playing-atari-with-deep-reinforcement-learning",
   "parentContentDigest": "dea357e042e145f76f7254448988d0f29c625604fe3dadb2c25619e8633a047e",
   "review": {
-    "status": "passed",
+    "status": "source-passed",
     "reviewedAt": "2026-10-01T23:40:16.924Z",
     "contentDigest": "f502e323d5e52c577efd3840243f320ace1a27806e9827fd3a658ca0c4c1ff9b",
     "rendererDigest": "83a7df171d30c59ad1eef731009edc62331803b8dcba7d6983b92d72bf27ea4a",
-    "visualReviewedAt": "2026-10-02T06:48:02.849Z",
-    "visualAcceptance": {
-      "version": 2,
-      "reportDigest": "6a20e28b689409cd6bd8e90e51ce917821abd6e1fde62207db2b0fcea1d08923",
-      "presentationDigest": "7a1f035bb839d32e1bbed1fa4d4de9ed550fde4f7e6c9e59820c361de65fc419",
-      "semanticPolicyVersion": "mechanism-semantic-ownership-v1",
-      "reviewerId": "/root/generation_quality",
-      "viewCount": 4,
-      "beatCount": 6,
-      "transitionCount": 20
-    }
+    "visualReviewedAt": null
   }
 }

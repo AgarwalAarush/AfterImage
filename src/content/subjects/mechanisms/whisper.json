@@ -654,20 +654,10 @@
   "lessonId": "whisper",
   "parentContentDigest": "63276c094de07f8af81a33c2ddc06a5d397f4d6417b9c030903da9e3ea22ce83",
   "review": {
-    "status": "passed",
+    "status": "source-passed",
     "reviewedAt": "2026-10-01T23:43:08.417Z",
     "contentDigest": "d9e8d7f3f7ee43bd173e5e5ec1474a8d5328aa0439456542f66d634040e40184",
     "rendererDigest": "83a7df171d30c59ad1eef731009edc62331803b8dcba7d6983b92d72bf27ea4a",
-    "visualReviewedAt": "2026-10-02T07:03:07.018Z",
-    "visualAcceptance": {
-      "version": 2,
-      "reportDigest": "ac479e5f1174736029c1db852141b75bbbacec295aaa50c4c14a9423c502c6a9",
-      "presentationDigest": "7a1f035bb839d32e1bbed1fa4d4de9ed550fde4f7e6c9e59820c361de65fc419",
-      "semanticPolicyVersion": "mechanism-semantic-ownership-v1",
-      "reviewerId": "/root/reader_polish",
-      "viewCount": 4,
-      "beatCount": 5,
-      "transitionCount": 16
-    }
+    "visualReviewedAt": null
   }
 }
