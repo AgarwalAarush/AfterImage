@@ -1,12 +1,19 @@
 import { request } from "node:https";
 import { isIP } from "node:net";
 
+// Historical Funnel-only diagnostic. Production now uses Cloudflare Access.
+// Explicit opt-in prevents treating Cloudflare's expected unsigned 403 as an outage.
+const args = process.argv.slice(2);
+if (args.shift() !== "--legacy-funnel")
+  throw new Error("Retired Funnel diagnostic. See docs/current-operations.md; use --legacy-funnel only for an explicitly selected historical route.");
 // MagicDNS can route the ordinary hostname privately and hide a Funnel outage.
 // Query public DNS and pin each public relay while retaining SNI/TLS validation.
-const origin = new URL(process.argv[2] || process.env.AFTERIMAGE_BACKEND_URL || "");
+const origin = new URL(args[0] || "");
 if (origin.protocol !== "https:" || origin.username || origin.password ||
     origin.pathname !== "/" || origin.search || origin.hash)
   throw new Error("Pass an HTTPS bridge origin without credentials or a path.");
+if (!origin.hostname.endsWith(".ts.net") || origin.port !== "8443")
+  throw new Error("This legacy check only supports the retired AfterImage ts.net:8443 route.");
 const dns = await fetch(`https://dns.google/resolve?name=${encodeURIComponent(origin.hostname)}&type=A`, {
   signal: AbortSignal.timeout(10_000),
 });

@@ -1,5 +1,7 @@
 # Storage connection diagnosis — October 1, 2026
 
+> Historical record: the Funnel ingress and recovery steps below were superseded by the verified Cloudflare cutover. Use [current operations](current-operations.md) for production topology and access. Do not restore port 8443 or reset shared Funnel routes to diagnose the current deployment.
+
 Authenticated library and Documents reads returned HTTP 503 while macserver,
 its isolated bridge, and Funnel were running. The prior scientific-diagram
 deployment also failed before the dark-mode promotion. Fast failures do not
@@ -46,7 +48,7 @@ worker heartbeat advanced again and there were no active paper jobs. Both public
 relays returned the expected 401 for unsigned probes. The database, credentials,
 storage bridge process, and generation workers were not replaced or restarted.
 
-Run `node scripts/check-storage-relay.mjs https://macserver.tail537cdd.ts.net:8443`
+Run `node scripts/check-storage-relay.mjs --legacy-funnel https://macserver.tail537cdd.ts.net:8443`
 for a bounded, credential-free public-path check. It queries public DNS and pins
 each public IPv4 relay while preserving hostname/certificate validation. Every
 relay must return HTTP 401 for the unsigned storage request. It exits nonzero

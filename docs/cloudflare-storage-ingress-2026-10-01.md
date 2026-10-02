@@ -4,6 +4,8 @@ Status: **live and verified** on October 1, 2026 (Pacific). The owner authorized
 replacing the recurring failing Funnel public path with Cloudflare Tunnel after
 accepting Cloudflare's HTTPS termination and visibility into AfterImage traffic.
 
+For the concise current runbook and the distinction between production transport and private SSH, see [current operations](current-operations.md).
+
 ## Verified prerequisites and remaining access
 
 Before activation, `aarushagarwal.dev` used `ns1.vercel-dns.com` and

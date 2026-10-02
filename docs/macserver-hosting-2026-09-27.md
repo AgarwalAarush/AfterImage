@@ -1,5 +1,7 @@
 # Macserver hosting migration
 
+> Historical record: the Funnel ingress and recovery steps below were superseded by the verified Cloudflare cutover. Use [current operations](current-operations.md) for production topology and access. Do not restore port 8443 or reset shared Funnel routes to diagnose the current deployment.
+
 This records the earlier full-hosting proposal. The owner subsequently chose to keep Vercel serving the public site and use macserver for SQLite and workers. See `docs/macserver-hybrid-hosting.md` for the active plan. No full-hosting cutover occurred.
 
 Status on September 27, 2026: **staged, not cut over**. Vercel still serves `afterimage.aarushagarwal.dev`; the existing macserver generation and assistant LaunchAgents still use `~/Projects/AfterImage` and the Vercel API. No production credential or library database has been transferred to the new host directory.

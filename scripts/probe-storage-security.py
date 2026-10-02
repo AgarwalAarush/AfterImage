@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Bounded HTTP security checks against the owner's AfterImage Funnel endpoint.
+"""Historical checks against the retired AfterImage Funnel endpoint.
+Production uses Cloudflare Access; see docs/current-operations.md.
 
 No bridge secret is accepted. Optional stdin contains short-lived signatures for
 fixed read-only or invalid requests, minted on macserver by its service account.
@@ -56,10 +57,13 @@ def request(relay, method="POST", route=ROUTE, body="{}", headers=None, incomple
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--legacy-funnel", action="store_true", help="Explicitly select the retired Funnel route; never a current production health check")
     parser.add_argument("--relay", required=True)
     parser.add_argument("--signed", action="store_true")
     parser.add_argument("--expected-version", type=int, help="Optional known state version for signed status")
     args = parser.parse_args()
+    if not args.legacy_funnel:
+        parser.error("Retired Funnel diagnostic; see docs/current-operations.md. Explicit --legacy-funnel is required.")
     if not ipaddress.ip_address(args.relay).is_global:
         parser.error("Use a public Funnel relay address, not a LAN or tailnet IP.")
     results = []

@@ -1,5 +1,7 @@
 # Vercel site with macserver storage
 
+> Historical record: the Funnel ingress and recovery steps below were superseded by the verified Cloudflare cutover. Use [current operations](current-operations.md) for production topology and access. Do not restore port 8443 or reset shared Funnel routes to diagnose the current deployment.
+
 Status (September 28): **hybrid production cutover completed**. Deployment `dpl_8kasqLKqReMxmLyBM5FErcyTkGmg` (`afterimage-jqomn4na4-aarush-agarwals-projects.vercel.app`) now serves `afterimage.aarushagarwal.dev`. The live route returned the private 14-paper library from SQLite at version 10,208 after a verified save. Vercel holds the sensitive dedicated bridge credential and production backend selector/URL. Macserver runs both worker agents from `/Users/agarwalaarush/Projects/AfterImage-worker-20260928`. No Git commit or push was performed; the release includes the current workspace source.
 
 The restricted `_afterimage` account holds SQLite, backups, export, and credential. Root owns service code. The regular worker account was denied reads of these private files. The owner specifically authorized public port 8443 and external tests; it now terminates TLS through Funnel and forwards TCP to the localhost-only bridge at port 3102.
