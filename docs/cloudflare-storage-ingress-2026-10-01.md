@@ -110,7 +110,23 @@ acceptance, and do not reset shared Funnel configuration as part of cleanup.
 
 ## Local checks
 
-The Cloudflare authentication regression, existing bridge integration and private
+The migration commits have been rebased onto `be74949`, which adds release notes
+to the `1850878` production source. Current Vercel inspection still identifies
+`dpl_ARPmkGgeCoxKLyYSvvvQCn9oEMn3` as Ready with the public alias, matching that
+release's recorded deployment. This preserves the newer systemic diagram and
+publication gates rather than deploying the older `523d25b` source.
+
+On the updated base, all **220 integrated tests**, typecheck and the webpack
+production build pass. The publication audit retains 100 lessons, 203 figures
+and fourteen approved mechanisms with zero findings. The build audit checks all
+21 server traces: no private artifacts, SQLite data, assistant runtime or
+environment files; the Subjects reader trace includes all 114 lesson/mechanism
+files. Cloudflare Access environment names do not appear in browser JavaScript.
+Private validation evidence stays in ignored `.artifacts/cloudflare-ingress/`.
+These checks prove the prepared release; live Cloudflare cutover is still pending
+the owner-created management credential and administrator connector installation.
+
+Initial preparation also verified the Cloudflare authentication regression, existing bridge integration and private
 diagnostic tests all pass (three tests). TypeScript and `git diff --check` pass.
 The integration test uses a disposable SQLite database and proves signed reads,
 version preservation and document operations; it required localhost networking
