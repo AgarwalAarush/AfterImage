@@ -29,13 +29,13 @@ Chemo (the existing Chemo 404 also remains a 404).
 The named tunnel, exact-path localhost ingress, hostname cache bypass, dedicated
 service token and Access application are created. The application has exactly
 one Service Auth policy accepting only that token. The proxied storage hostname
-returns HTTP 403 without Access credentials. The tunnel remains inactive pending
-the restricted connector installation; no Vercel environment or deployment has
+returns HTTP 403 without Access credentials. The isolated connector is installed
+and Cloudflare reports Healthy with four connections; no Vercel environment or deployment has
 switched. Management credentials and service-token values remain in ignored,
 mode-0600 preparation files.
 
-`cloudflared` is not currently installed as a service on macserver, and
-noninteractive administrator access is unavailable.
+The connector recovery completed after an independent agent audit. The owner
+authorized non-destructive administrator operations after that review.
 Do not store an administrator password in source, logs, chat, or a credentials
 file. Authenticate interactively when installing the restricted service.
 
@@ -88,7 +88,14 @@ identity of a pre-created staging account, with no authentication authority or
 administrator/wheel membership. The first privileged attempt created that account
 but macOS rejected rewriting its automatically assigned `GeneratedUID`; the
 installer now preserves that identity. No connector files or bridge changes
-occurred in that attempt. Readiness/metrics bind only to
+occurred in that attempt. The next attempt copied the reviewed binary and private
+token, then stopped because `/usr/bin/test` does not exist on this Mac. The
+isolation check now uses the verified `/bin/test` path; the previous failure did
+not demonstrate credential access. An explicit administrator-only
+`--resume-files` mode verifies exact directory contents, ownership, modes, binary
+SHA256 and the same restricted account before completing that known partial
+installation. It refuses an existing plist and never recopies or exposes the
+installed credential. The bridge remains unchanged. Readiness/metrics bind only to
 `127.0.0.1:3103`. Connector output is discarded to avoid storing raw transport
 URLs/errors; use readiness, connection counts and sanitized API checks for
 verification. Automatic binary updates are disabled for this root-owned release.
@@ -139,8 +146,15 @@ and fourteen approved mechanisms with zero findings. The build audit checks all
 environment files; the Subjects reader trace includes all 114 lesson/mechanism
 files. Cloudflare Access environment names do not appear in browser JavaScript.
 Private validation evidence stays in ignored `.artifacts/cloudflare-ingress/`.
-These checks prove the prepared release; live Cloudflare cutover is still pending
-administrator connector installation and the remaining live acceptance checks.
+These checks prove the prepared release. External Cloudflare verification now
+passes: missing Access credentials 403, valid Access without HMAC 401, unmatched
+path 404, correctly signed reads 200 and replay rejection 401. The authoritative
+read reported 15 papers, five documents, version 10368 and a worker heartbeat
+44 seconds old. Nine prior local snapshots existed, the latest 19.1 hours old;
+a fresh snapshot restored with integrity `ok` and the documents table intact.
+The temporary Access probe credential and disposable restore were removed.
+Backups remain only on macserver, so losing that machine could destroy both the
+database and its backups. Vercel cutover and desktop acceptance remain pending.
 
 Initial preparation also verified the Cloudflare authentication regression, existing bridge integration and private
 diagnostic tests all pass (three tests). TypeScript and `git diff --check` pass.
@@ -160,4 +174,5 @@ installer passes shell syntax checks and a read-only macserver preflight using
 a disposable placeholder token. No account or service was created by that check.
 The owner-created management token is restricted to the owner's Cloudflare
 account and this DNS zone. Resource configuration and nameserver activation are
-complete; no Vercel deployment or connector service installation has occurred.
+complete, and the isolated connector is installed. No Vercel cutover deployment
+has occurred.
