@@ -18,7 +18,7 @@ export type PreparationStep = {
 };
 
 export type PaperPreparationModel = {
-  status: "ready" | "queued" | "running" | "failed" | "idle";
+  status: "ready" | "submitting" | "unconfirmed" | "queued" | "running" | "failed" | "idle";
   title: string;
   detail: string;
   orbState: PreparationOrbState;
@@ -31,6 +31,32 @@ export type PaperPreparationModel = {
   workerState?: "online" | "unconfirmed" | "offline";
   attempt?: number;
 };
+
+/** Browser-only request state; never persisted as a job or library entry. */
+export type PreparationRequest = {
+  status: "submitting" | "unconfirmed";
+  startedAt: string;
+  message?: string;
+};
+
+export function withPreparationRequest(model: PaperPreparationModel, request?: PreparationRequest): PaperPreparationModel {
+  if (!request) return model;
+  if (request.status === "unconfirmed" && ["queued", "running"].includes(model.status)) return model;
+  return {
+    ...model,
+    status: request.status,
+    title: request.status === "submitting" ? "Starting preparation…" : "Preparation couldn’t be confirmed.",
+    detail: request.status === "submitting"
+      ? "Saving your request. Preparation begins once it’s confirmed."
+      : request.message || "Check status to see whether your request was saved before trying again.",
+    retryAction: null,
+    startedAt: request.startedAt,
+    queuePosition: undefined,
+    workerState: undefined,
+    activityAt: undefined,
+    steps: model.steps.map(step => ({...step, state: step.state === "complete" ? "complete" : "upcoming"})),
+  };
+}
 
 const stages: Array<Pick<PreparationStep, "id" | "label">> = [
   { id: "sources", label: "Evidence" },
@@ -90,16 +116,16 @@ function generationModel(paper: Paper): PaperPreparationModel {
     status: paper.generationStatus === "queued" ? "queued" : "running",
     title:
       paper.generationStatus === "queued"
-        ? "Your paper is in the preparation queue."
+        ? "Your reading kit is queued."
         : copy[stage].title,
     detail:
       paper.generationStatus === "queued"
-        ? "The worker will prepare and review your notecard first, then its visual guide and questions."
+        ? "Your notecard is prepared and reviewed first, then the visual guide and questions."
         : copy[stage].detail,
     orbState:
       paper.generationStatus === "queued" ? "working" : orbByStage[stage],
     retryAction: null,
-    steps: progress(activeIndex),
+    steps: paper.generationStatus === "queued" ? progress(activeIndex).map(step => ({...step, state: "upcoming"})) : progress(activeIndex),
   };
 }
 
@@ -119,7 +145,7 @@ function preparationModel(
   );
   const latestStudy = paperJobs.filter((job) => job.type === "study").at(-1);
 
-  if (activeGenerate) return generationModel(paper);
+  if (activeGenerate) return generationModel({...paper, generationStatus: activeGenerate.status === "queued" ? "queued" : "running"});
 
   if (activeStudy)
     return {

@@ -9,13 +9,15 @@ import { useApp } from "./app";
 import { Diagram } from "./diagram";
 import { eagleCaption } from "./eagle-diagram";
 import { MathText, RecallText, InlineText } from "./math";
-import { paperPreparationModel } from "@/lib/generation-progress";
+import { paperPreparationModel, withPreparationRequest } from "@/lib/generation-progress";
 import { readerUrl } from "@/lib/identity";
 import { download } from "@/lib/download";
+import { workedExampleForEquation } from "@/lib/worked-examples";
+import { WorkedExampleAnimation } from "./worked-example";
 import "katex/dist/katex.min.css";
 
 export function PaperView({ id }: { id: string }) {
-  const { state, act, busy, toast } = useApp();
+  const { state, act, busy, toast, preparations } = useApp();
   if (!state) return null;
   const p = state.papers.find((p) => p.id === id);
   if (!p)
@@ -27,8 +29,9 @@ export function PaperView({ id }: { id: string }) {
     );
   const e = state.entries[id];
   const r = p.recall;
-  const preparation = paperPreparationModel(p, state.jobs, state.workerSeenAt);
+  const preparation = withPreparationRequest(paperPreparationModel(p, state.jobs, state.workerSeenAt), preparations[id]);
   const ready = Boolean(preparation.readable);
+  const workedEquationIndex = r?.equations?.findIndex(eq => workedExampleForEquation(p, eq)) ?? -1;
   const related = state.papers
     .filter((x) => x.id !== id && x.topics.some((t) => p.topics.includes(t)))
     .slice(0, 2);
@@ -37,7 +40,7 @@ export function PaperView({ id }: { id: string }) {
       <div className="paper-breadcrumb">
         <Link href="/library">Library</Link>
         <span>/</span>
-        <span>{ready ? "Notecard" : ["queued", "running"].includes(preparation.status) ? "Preparing" : "Paper"}</span>
+        <span>{ready ? "Notecard" : ["submitting", "queued", "running"].includes(preparation.status) ? "Preparing" : "Paper"}</span>
         {ready && (
           <button
             className="text-button"
@@ -76,6 +79,7 @@ export function PaperView({ id }: { id: string }) {
           {e && (
             <select
               className="paper-status"
+              disabled={busy}
               aria-label="Reading status"
               value={e.status}
               onChange={(ev) =>
@@ -194,13 +198,15 @@ export function PaperView({ id }: { id: string }) {
               {!!r.equations?.length && (
                 <section className="recall-equations">
                   <span className="eyebrow">THE MECHANISM IN MATH</span>
-                  {r.equations.map((eq, i) => (
+                  {r.equations.map((eq, i) => {
+                    const animation = i === workedEquationIndex ? workedExampleForEquation(p, eq) : null;
+                    return (
                     <figure key={i}>
                       <h3><span className="math-step-number">{String(i + 1).padStart(2, "0")}</span>{eq.title || `Equation ${i + 1}`}</h3>
                       <MathText latex={eq.latex} display />
                       <figcaption>
                         <RecallText text={eq.explanation} />
-                        {eq.example && <div className="math-example"><span className="eyebrow">WORK IT THROUGH</span><RecallText text={eq.example} /></div>}
+                        {(eq.example || animation) && <div className="math-example"><span className="eyebrow">WORK IT THROUGH</span>{animation ? <WorkedExampleAnimation example={animation} fallback={<RecallText text={eq.example || animation.intro} />} /> : <RecallText text={eq.example!} />}</div>}
                         {p.sources.find((src) => src.id === eq.sourceId) && (
                           <a
                             href={
@@ -215,7 +221,7 @@ export function PaperView({ id }: { id: string }) {
                         )}
                       </figcaption>
                     </figure>
-                  ))}
+                  );})}
                 </section>
               )}
               {r.walkthrough && <section className="recall-walkthrough">

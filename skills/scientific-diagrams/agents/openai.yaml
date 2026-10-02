@@ -1,0 +1,4 @@
+interface:
+  display_name: "Scientific Diagrams"
+  short_description: "Source-grounded diagrams and animated worked examples"
+  default_prompt: "Use $scientific-diagrams to build this explanation with a shared semantic scene, deliberate typography, and a bounded render-review-repair loop. Add animation when changing state carries the mechanism."

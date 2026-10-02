@@ -1,0 +1,101 @@
+{
+  "version": 1,
+  "title": "Online softmax accumulator",
+  "visibleProof": "Rescaling previous contributions preserves the exact weighted average while the row maximum grows.",
+  "provenance": "Source-backed mechanism with invented illustrative numbers.",
+  "sources": [
+    {
+      "id": "online-softmax",
+      "url": "https://arxiv.org/pdf/2205.14135",
+      "location": "\u00a73.1 Algorithm1 lines10\u201312, p5"
+    }
+  ],
+  "objects": [
+    {
+      "id": "block-1"
+    },
+    {
+      "id": "block-2"
+    },
+    {
+      "id": "accumulator"
+    },
+    {
+      "id": "output"
+    }
+  ],
+  "beats": [
+    {
+      "id": "initial",
+      "input": "m=-infinity, ell=0,u=0",
+      "operation": "Initialize an empty row summary.",
+      "output": "No values processed",
+      "visibleChange": "No values processed",
+      "sourceIds": [
+        "online-softmax"
+      ],
+      "location": "\u00a73.1 Algorithm1 lines10\u201312, p5"
+    },
+    {
+      "id": "first-block",
+      "input": "score0, value4",
+      "operation": "New max0; exp(0-0)=1.",
+      "output": "m=0, ell=1,u=4",
+      "visibleChange": "m=0, ell=1,u=4",
+      "sourceIds": [
+        "online-softmax"
+      ],
+      "location": "\u00a73.1 Algorithm1 lines10\u201312, p5"
+    },
+    {
+      "id": "rescale-previous",
+      "input": "Previous m0, ell1,u4; next scoreln2",
+      "operation": "New maxln2; multiply only previous ell and u by exp(0-ln2)=1/2.",
+      "output": "Intermediate m=ln2, ell=1/2,u=2",
+      "visibleChange": "Intermediate m=ln2, ell=1/2,u=2",
+      "sourceIds": [
+        "online-softmax"
+      ],
+      "location": "\u00a73.1 Algorithm1 lines10\u201312, p5"
+    },
+    {
+      "id": "add-second",
+      "input": "Previous contribution ell1/2,u2; next value8",
+      "operation": "New weight exp(ln2-ln2)=1; add 1 to ell and 8 to u.",
+      "output": "ell=3/2,u=10",
+      "visibleChange": "ell=3/2,u=10",
+      "sourceIds": [
+        "online-softmax"
+      ],
+      "location": "\u00a73.1 Algorithm1 lines10\u201312, p5"
+    },
+    {
+      "id": "normalize",
+      "input": "u10,ell3/2",
+      "operation": "Return u/ell.",
+      "output": "20/3; same as softmax([0,ln2]) dot [4,8]",
+      "visibleChange": "20/3; same as softmax([0,ln2]) dot [4,8]",
+      "sourceIds": [
+        "online-softmax"
+      ],
+      "location": "\u00a73.1 Algorithm1 lines10\u201312, p5"
+    }
+  ],
+  "omissions": [
+    "GPU storage, matrix tiling, masks, dropout and runtime",
+    "u=ell*O is a derived equivalent numerator, not a claim that Algorithm1 stores u.",
+    "Rescale-only frame is a calculation within the update, not a separate GPU write."
+  ],
+  "playback": {
+    "cycleMs": 16000,
+    "timing": "Pedagogical, not measured latency",
+    "control": "play-pause"
+  },
+  "scope": "One illustrative worked calculation; pacing does not represent measured computation.",
+  "initialFacts": [
+    "Scores [0,ln2] and values [4,8] are invented teaching values",
+    "u=ell*O is an equivalent derived numerator representation",
+    "One row, one score per teaching block; no physical GPU layout claim"
+  ],
+  "finalInvariant": "Output equals exact softmax weighted sum despite changing the running maximum."
+}
