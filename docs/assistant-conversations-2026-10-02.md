@@ -37,7 +37,7 @@ Local tests cover legacy migration, isolation, idempotency, target validation, l
 
 ### Local acceptance recorded
 
-- Full suite: 227 tests passed, including the signed localhost storage bridge; type checking and the production webpack build passed.
+- Full suite: 227 tests passed initially; the merge with production main passes 236 tests, including Cloudflare authentication, shared quizzes, and the signed localhost storage bridge; type checking and the production webpack build passed.
 - Independent Subjects visual approval renewed for every required beat and adjacent transition at both desktop widths in Light/Dark, including assistant-open layouts. Scientific content and parent digests remain unchanged. Publication audit: 100 lessons, 203 figures, 14 mechanisms, zero issues.
 - Fresh production output traces: 25 traces inspected, no private artifacts, databases, runtime directories, or environment files; required Subjects and PDF assets included.
 - Production-build browser checks used the real login flow with an ephemeral local key. Assistant/PDF endpoints rejected unauthenticated access; authenticated history, bundled PDF worker/text layer, Subjects math selection, and both desktop widths/themes passed with no page errors.
@@ -47,3 +47,11 @@ Local tests cover legacy migration, isolation, idempotency, target validation, l
 - Fault injection: lost pre-save response blocks retries; successful reconciliation permits a deliberate retry with the same request ID; lost post-save response recovers one stored turn; background completion remains isolated and appears when reopening its chat.
 - Existing backup script: restored temporary fixture database contains all conversation/turn/migration tables and passes SQLite integrity check. No production database or backup was accessed.
 - Model output in browser tests is a deterministic fixture; live model completion and production release remain unverified until the authorized release.
+
+## Merge and deployment preparation
+
+The release integrates production main `9e26b85`, retaining the Cloudflare Access storage client, shared Library/Subjects typography, simplified lesson introductions, and shared quiz component. This combination passed a fresh production webpack build and independent visual approval for presentation `9a40d29e92683552c8243764a1e18206a35c886fbea601c5b98195267df283e3`; earlier assistant-only approval was not reused. The renewed review covered 536 beat captures, 424 adjacent state pairs, and 56 whole-viewport captures, with no unresolved findings. All 14 scientific scenes and parent content remain unchanged. Fresh output inspection covered 25 traces and 1,384 files, with no private files.
+
+The administrator-run `scripts/install-assistant-storage-macserver.sh <stage> --install` updates only the isolated bridge sources. It checks the staged manifest, takes a macserver-only backup, rejects active legacy assistant work, rehearses migration on a disposable private restore, retains rollback code, and verifies signed status. Live migration waits for the new web/API's first assistant access. After cutover, `--verify` creates and restores another private snapshot and verifies retained legacy content, new tables, and Documents. No private backup is copied off macserver; losing that machine could destroy both the database and its backups.
+
+The web project currently has no Git integration, so merging/pushing main and promoting a Vercel production deployment are separate steps. The active storage bridge requires an administrator password; ordinary worker access intentionally cannot modify its root-owned code or private database.

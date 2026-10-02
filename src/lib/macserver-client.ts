@@ -20,6 +20,18 @@ export async function macserverRequest<T>(request: BackendAction): Promise<T> {
   if (url.username || url.password || url.search || url.hash || url.pathname !== "/" ||
     (url.protocol !== "https:" && !(local && process.env.NODE_ENV !== "production")))
     throw new Error("Macserver storage URL must be a secure origin.");
+  const accessId = process.env.AFTERIMAGE_CF_ACCESS_CLIENT_ID;
+  const accessSecret = process.env.AFTERIMAGE_CF_ACCESS_CLIENT_SECRET;
+  const accessHeaders: Record<string, string> = {};
+  if (accessId !== undefined || accessSecret !== undefined) {
+    // Fail before sending library data if either half of Access authentication is
+    // missing or malformed. These credentials are server-only and never logged.
+    if (!accessId || !accessSecret || url.protocol !== "https:" || local ||
+      !/^[\x21-\x7e]{1,512}$/.test(accessId) || !/^[\x21-\x7e]{1,512}$/.test(accessSecret))
+      throw new Error("Cloudflare Access is not configured correctly.");
+    accessHeaders["CF-Access-Client-Id"] = accessId;
+    accessHeaders["CF-Access-Client-Secret"] = accessSecret;
+  }
   const body = JSON.stringify(request);
   const startedAt = performance.now();
   const readOnly = ["snapshot", "status", "workerClaimStatus", "assistantSnapshot", "documentList", "documentGet", "documentMetadata"].includes(request.action) || request.action === "assistant" && ["list", "turns", "get", "source"].includes(request.operation.op);
@@ -32,6 +44,7 @@ export async function macserverRequest<T>(request: BackendAction): Promise<T> {
         body,
         headers: {
           "content-type": "application/json",
+          ...accessHeaders,
           ...signedBackendHeaders(body, secret),
         },
         cache: "no-store",

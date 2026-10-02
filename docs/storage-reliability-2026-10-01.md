@@ -69,3 +69,9 @@ heartbeat at `2026-10-01T19:28:10.679Z`. The public-relay script returned 401
 from both public IPv4 addresses. The final deployment's storage-diagnostic log
 scan returned no failures. These are API/network checks; the desktop visual
 check was unavailable because the owner's Mac was locked.
+
+## Evening recurrence during Subjects release verification
+
+The public relay failure recurred while verifying the Subjects corrective web release `1850878`. Both pinned public paths initially returned `ECONNRESET`; localhost unsigned storage returned 401 and the bridge service remained running. A temporary rollback to the previous compatible web release also showed the same Library failure. No storage-client/backend changes exist between these two web releases.
+
+The documented reset and immediate restoration of the exact existing two Funnel routes recovered the connection. One public relay recovered first; after convergence both pinned public paths returned unsigned HTTP 401. The bridge, SQLite database, credentials and worker processes were not replaced or restarted. The reviewed web deployment `dpl_ARPmkGgeCoxKLyYSvvvQCn9oEMn3` again owns the production alias. Authenticated Library and Documents visibly load, and filtered Vercel error records since `2026-10-02T04:00:20Z` are empty. This confirms current recovery, not the vendor trigger or prevention of recurrence. Direct browser JSON navigation was blocked; this check does not assert a state version or fresh worker heartbeat.

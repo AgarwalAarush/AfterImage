@@ -1,0 +1,31 @@
+/* Consume the established Subjects prose preset rather than copy its type rules. */
+.prose {
+  composes: subject-prose from global;
+}
+
+.reader {
+  --font-serif: var(--font-sans);
+}
+
+.reader :global(.paper-header) > p {
+  font: 400 16px/1.65 var(--font-sans);
+  max-width: 68ch;
+}
+
+.reader :global(.recap-panel) {
+  --recall-font-size: 17px;
+}
+
+.reader :global(.recap-panel) h2 {
+  font: 550 25px/1.3 var(--font-sans);
+}
+
+.prose > p {
+  max-width: 68ch;
+}
+
+@media (max-width: 760px) {
+  .reader :global(.recap-panel) {
+    --recall-font-size: 15px;
+  }
+}
