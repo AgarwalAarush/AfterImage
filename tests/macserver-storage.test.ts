@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { request as httpRequest } from "node:http";
@@ -63,6 +64,15 @@ test("Vercel-to-macserver bridge authenticates requests and preserves SQLite ver
     await touchWorkerSeenAt("2026-09-28T00:00:00.000Z");
     assert.deepEqual(await stateStatus(), {version: 1, workerSeenAt: "2026-09-28T00:00:00.000Z"});
     assert.deepEqual(await macserverRequest({action: "compareAndSwap", version: 0, data: (await snapshot()).data}), {applied: false});
+
+    const turnId=randomUUID(), conversationId=randomUUID();
+    const asked=await macserverRequest<{id:string}>({action:"assistant",operation:{op:"enqueue",input:{action:"ask",id:turnId,conversationId,target:{kind:"subject",id:"attention-is-all-you-need"},question:"Explain attention",selection:""},evidence:{title:"Test lesson",arxivId:"1706.03762",digest:"a".repeat(64),sources:[],material:{},scope:"lesson"}}});
+    assert.equal(asked.id,turnId);
+    const claimed=await macserverRequest<{request:{id:string;leaseToken:string}}>({action:"assistant",operation:{op:"claim"}});
+    await macserverRequest({action:"assistant",operation:{op:"update",action:"complete",id:turnId,leaseToken:claimed.request.leaseToken,answer:"Test answer"}});
+    const restored=await macserverRequest<{answer:string;leaseToken?:string}>({action:"assistant",operation:{op:"get",id:turnId}});
+    assert.equal(restored.answer,"Test answer");assert.equal(restored.leaseToken,undefined);
+    assert.equal((await snapshot()).version,1);
 
     const content = Buffer.from("# Private guide\n\nA useful explanation saved outside the paper state.\n");
     const prepared = prepareDocument("guide.md", content);

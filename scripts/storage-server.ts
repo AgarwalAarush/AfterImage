@@ -1,3 +1,4 @@
+import { assistantOperationSchema, localAssistantStore } from "../src/lib/assistant-storage";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { existsSync } from "node:fs";
 import { validBackendEnvelope, verifyBackendRequest } from "../src/lib/backend-auth";
@@ -84,6 +85,7 @@ export async function handleStorageRequest(req: IncomingMessage, res: ServerResp
       return reply(res, rejectedStatus(401), { error: "Unauthorized" });
     const request = JSON.parse(body) as Record<string, unknown>;
     switch (request.action) {
+      case "assistant": return reply(res, 200, localAssistantStore().execute(assistantOperationSchema.parse(request.operation)));
       case "snapshot": return reply(res, 200, await snapshot());
       case "status": return reply(res, 200, await stateStatus());
       case "workerClaimStatus": return reply(res, 200, await workerClaimStatus());

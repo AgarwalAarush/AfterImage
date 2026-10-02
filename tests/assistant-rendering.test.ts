@@ -5,7 +5,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { AssistantMarkdown } from "../src/components/assistant-answer";
 const citation = { show() {}, hide() {}, keep() {}, current: null };
 function render(text: string) {
-  return renderToStaticMarkup(createElement(AssistantMarkdown, { text, sources: ["evidence"], citation }));
+  return renderToStaticMarkup(createElement(AssistantMarkdown, { text, sources: ["evidence"], labels: {evidence:"Training-time test"}, citation }));
 }
 test("assistant renders real tables, ordered lists and math with verified citation controls", () => {
   const html = render("| Property | Value |\n|---|---|\n| Capacity | Fixed |\n\n1. Choose $k$ tokens. [source:evidence]\n2. Combine outputs. [notecard]");
@@ -14,7 +14,7 @@ test("assistant renders real tables, ordered lists and math with verified citati
   assert.match(html, /<td>Fixed<\/td>/);
   assert.match(html, /<ol>/);
   assert.match(html, /class="katex"/);
-  assert.match(html, /source 1<\/button>/);
+  assert.match(html, /Training-time test<\/button>/);
   assert.match(html, /notecard<\/button>/);
 });
 test("assistant Markdown rejects unknown citations, HTML, images and model links", () => {

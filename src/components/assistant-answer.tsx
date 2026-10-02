@@ -11,6 +11,7 @@ export type CitationHandlers = {
   hide: () => void;
   keep: () => void;
   current: string | null;
+  navigate?: (id: string) => void;
 };
 
 // Controlled internal links let Markdown parse tables, lists and math without
@@ -30,9 +31,9 @@ export function citationMarkdown(text: string) {
 const remarkPlugins = [remarkGfm, remarkMath];
 const rehypePlugins = [[rehypeKatex, { trust: false, strict: "ignore", throwOnError: false, maxExpand: 500 }]] as NonNullable<Parameters<typeof ReactMarkdown>[0]["rehypePlugins"]>;
 
-const CitationContext = createContext<{sources: string[]; citation: CitationHandlers} | null>(null);
+const CitationContext = createContext<{sources: string[]; labels?: Record<string,string>; citation: CitationHandlers} | null>(null);
 function CitationLink({href, children}: {href?: string; children?: ReactNode}) {
-  const {sources, citation} = useContext(CitationContext)!;
+  const {sources, labels, citation} = useContext(CitationContext)!;
   const prefix = "#afterimage-cite-";
   if (!href?.startsWith(prefix)) return <>{children}</>;
   let id: string;
@@ -41,8 +42,8 @@ function CitationLink({href, children}: {href?: string; children?: ReactNode}) {
   return <button className="assistant-citation" aria-haspopup="dialog" aria-expanded={citation.current === id} aria-controls={citation.current === id ? "assistant-source-preview" : undefined}
     onMouseEnter={e => citation.show(id, e.currentTarget)} onMouseLeave={citation.hide}
     onFocus={e => citation.show(id, e.currentTarget)} onBlur={citation.hide}
-    onClick={e => citation.show(id, e.currentTarget)}>
-    {id === "notecard" ? "notecard" : `source ${sources.indexOf(id) + 1}`}
+    onClick={e => citation.navigate ? citation.navigate(id) : citation.show(id, e.currentTarget)}>
+    {labels?.[id] || (id === "notecard" ? "AfterImage notecard" : "Original paper")}
   </button>;
 }
 const components: Components = {
@@ -50,14 +51,14 @@ const components: Components = {
   img() { return null; },
   table({ children }) { return <div className="assistant-table-scroll" tabIndex={0} role="region" aria-label="Answer table"><table>{children}</table></div>; },
 };
-export const AssistantMarkdown = memo(function AssistantMarkdown({text, sources, citation}: {
-  text: string; sources: string[]; citation: CitationHandlers;
+export const AssistantMarkdown = memo(function AssistantMarkdown({text, sources, labels, citation}: {
+  text: string; sources: string[]; labels?: Record<string,string>; citation: CitationHandlers;
 }) {
-  return <CitationContext.Provider value={{sources, citation}}><ReactMarkdown skipHtml remarkPlugins={remarkPlugins} rehypePlugins={rehypePlugins} components={components}>{citationMarkdown(text)}</ReactMarkdown></CitationContext.Provider>;
+  return <CitationContext.Provider value={{sources, labels, citation}}><ReactMarkdown skipHtml remarkPlugins={remarkPlugins} rehypePlugins={rehypePlugins} components={components}>{citationMarkdown(text)}</ReactMarkdown></CitationContext.Provider>;
 });
 
-export const AssistantAnswer = memo(function AssistantAnswer({ text, status, sources, citation, onReveal }: {
-  text: string; status: string; sources: string[]; citation: CitationHandlers; onReveal: () => void;
+export const AssistantAnswer = memo(function AssistantAnswer({ text, status, sources, labels, citation, onReveal }: {
+  text: string; status: string; sources: string[]; labels?: Record<string,string>; citation: CitationHandlers; onReveal: () => void;
 }) {
   // Completed history appears immediately. Newly received cumulative snapshots
   // are revealed locally; the server answer remains the source of truth.
@@ -86,5 +87,5 @@ export const AssistantAnswer = memo(function AssistantAnswer({ text, status, sou
     return () => cancelAnimationFrame(frame);
   }, [text, status]);
   const revealing = shown !== text;
-  return <><AssistantMarkdown text={shown} sources={sources} citation={citation}/>{(revealing || Boolean(shown) && (status === "queued" || status === "running")) && <span className="stream-cursor" aria-label="Generating"/>}</>;
+  return <><AssistantMarkdown text={shown} sources={sources} labels={labels} citation={citation}/>{(revealing || Boolean(shown) && (status === "queued" || status === "running")) && <span className="stream-cursor" aria-label="Generating"/>}</>;
 });

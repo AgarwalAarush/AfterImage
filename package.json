@@ -27,9 +27,9 @@
     "katex": "^0.18.7",
     "lucide-react": "latest",
     "next": "latest",
+    "pdfjs-dist": "6.3.289",
     "react": "latest",
     "react-dom": "latest",
-    "thinking-orbs": "^0.3.1",
     "react-markdown": "^10.1.0",
     "rehype-katex": "^7.0.1",
     "rehype-raw": "^7.0.0",
@@ -37,8 +37,9 @@
     "rehype-slug": "^6.0.0",
     "remark-gfm": "^4.0.1",
     "remark-math": "^6.0.0",
-    "zod": "latest",
-    "sharp": "0.35.4"
+    "sharp": "0.35.4",
+    "thinking-orbs": "^0.3.1",
+    "zod": "latest"
   },
   "devDependencies": {
     "@types/katex": "^0.16.8",

@@ -9,7 +9,7 @@ async function api(body:unknown){
   if(!response.ok)throw new Error(`Assistant service ${response.status}`);return response.json();
 }
 async function run(){
-  const {request,context}=await api({action:"claim"});if(!request)return false;
+  const {request,context}=await api({action:"claim",protocol:2});if(!request)return false;
   const credentials={id:request.id,leaseToken:request.leaseToken};current=new AbortController();
   let text="",sent="",sending=false;
   // Deliver true model deltas in short batches, never a fabricated typing animation.

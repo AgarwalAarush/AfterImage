@@ -658,13 +658,13 @@
     "reviewedAt": "2026-10-01T23:43:08.417Z",
     "contentDigest": "d9e8d7f3f7ee43bd173e5e5ec1474a8d5328aa0439456542f66d634040e40184",
     "rendererDigest": "83a7df171d30c59ad1eef731009edc62331803b8dcba7d6983b92d72bf27ea4a",
-    "visualReviewedAt": "2026-10-02T03:04:24.280Z",
+    "visualReviewedAt": "2026-10-02T19:35:21.798Z",
     "visualAcceptance": {
       "version": 2,
-      "reportDigest": "17ff220c423b866193a0c9319e1f011fdc33def78248b8f553898c6df0cb1ccc",
-      "presentationDigest": "56b720930a73cd93f181538f44fe716da56b2a1e4febafcc27f3ebbc6c4c1712",
+      "reportDigest": "3aed33e79a41da89fa2511565ab56c96f91ad63f3387d4370b3b25c0621c1406",
+      "presentationDigest": "8f760eeae102356bf755a252ffc00d2f1c3f431c0cd007d7ef2595e41609e3ae",
       "semanticPolicyVersion": "mechanism-semantic-ownership-v1",
-      "reviewerId": "/root/experiment_polish",
+      "reviewerId": "independent-visual-review-2026-10-02",
       "viewCount": 4,
       "beatCount": 5,
       "transitionCount": 16

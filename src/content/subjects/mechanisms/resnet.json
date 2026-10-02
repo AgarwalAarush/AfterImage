@@ -535,13 +535,13 @@
     "reviewedAt": "2026-10-02T00:01:18.497Z",
     "contentDigest": "ed8248cbcaea7f1b03e2983f856f5dff17133e6fa16ef54c0dec16a2b24f83bb",
     "rendererDigest": "83a7df171d30c59ad1eef731009edc62331803b8dcba7d6983b92d72bf27ea4a",
-    "visualReviewedAt": "2026-10-02T03:17:17.671Z",
+    "visualReviewedAt": "2026-10-02T19:35:23.283Z",
     "visualAcceptance": {
       "version": 2,
-      "reportDigest": "df10f9cb9e8a1944a5ed8b052cd0f729adba0321250038ec48c4c0fe9d2f684f",
-      "presentationDigest": "56b720930a73cd93f181538f44fe716da56b2a1e4febafcc27f3ebbc6c4c1712",
+      "reportDigest": "d787eb48706a5854dd02af47ca10fe77e7d79f17dc9030adf3ecc4f1a5a3d4cb",
+      "presentationDigest": "8f760eeae102356bf755a252ffc00d2f1c3f431c0cd007d7ef2595e41609e3ae",
       "semanticPolicyVersion": "mechanism-semantic-ownership-v1",
-      "reviewerId": "/root/experiment_polish",
+      "reviewerId": "independent-visual-review-2026-10-02",
       "viewCount": 4,
       "beatCount": 4,
       "transitionCount": 12

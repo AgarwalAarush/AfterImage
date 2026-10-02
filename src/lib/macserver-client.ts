@@ -5,6 +5,7 @@ export type BackendAction =
   | { action: "snapshot" | "status" | "workerClaimStatus" | "assistantSnapshot" }
   | { action: "touchWorkerSeenAt"; now: string }
   | { action: "compareAndSwap"; version: number; data: unknown }
+  | { action: "assistant"; operation: import("./assistant-storage").AssistantOperation }
   | { action: "documentList" }
   | { action: "documentGet" | "documentMetadata" | "documentDelete"; id: string }
   | { action: "documentSave"; filename: string; content: string };
@@ -21,7 +22,7 @@ export async function macserverRequest<T>(request: BackendAction): Promise<T> {
     throw new Error("Macserver storage URL must be a secure origin.");
   const body = JSON.stringify(request);
   const startedAt = performance.now();
-  const readOnly = ["snapshot", "status", "workerClaimStatus", "assistantSnapshot", "documentList", "documentGet", "documentMetadata"].includes(request.action);
+  const readOnly = ["snapshot", "status", "workerClaimStatus", "assistantSnapshot", "documentList", "documentGet", "documentMetadata"].includes(request.action) || request.action === "assistant" && ["list", "turns", "get", "source"].includes(request.operation.op);
   for (let attempt = 1; attempt <= (readOnly ? 2 : 1); attempt++) {
     let status: number | undefined;
     let phase: "request" | "response" = "request";
