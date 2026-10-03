@@ -149,3 +149,70 @@ test("preparation queue positions match recommendation priority rather than inse
     {id: "r", type: "recommend", status: "queued", createdAt: at, attempts: 0}];
   assert.equal(paperPreparationModel(state.papers[0], jobs).queuePosition, 2);
 });
+
+
+test("an interrupted recommendation is reclaimed promptly and rejects its old lease", async () => {
+  const originalNow = Date.now;
+  let clock = originalNow();
+  Date.now = () => clock;
+  try {
+    const seed = fixture();
+    seed.jobs = [{id: "interrupted", type: "recommend", status: "queued", attempts: 0, createdAt: at}];
+    await reset(seed);
+    const first = await post(workerRoute, {action: "claim"}, true);
+    clock += 4 * 60000;
+    const recovered = await post(workerRoute, {action: "claim"}, true);
+    assert.equal(recovered.job.id, first.job.id);
+    assert.equal(recovered.job.attempts, 2);
+    assert.notEqual(recovered.job.leaseToken, first.job.leaseToken);
+    const stale = await workerRoute.POST(new Request("http://localhost/api/worker", {
+      method: "POST", headers: {"Content-Type": "application/json", Authorization: "Bearer isolated-test-worker"},
+      body: JSON.stringify({action: "heartbeat", jobId: first.job.id, leaseToken: first.job.leaseToken}),
+    }));
+    assert.equal(stale.status, 400);
+    await post(workerRoute, {action: "complete", jobId: recovered.job.id, leaseToken: recovered.job.leaseToken,
+      result: {recommendations: seed.recommendations}}, true);
+    assert.equal((await store.snapshot()).data.jobs[0].status, "complete");
+  } finally { Date.now = originalNow; }
+});
+
+test("heartbeats keep a long discovery run alive beyond its original short lease", async () => {
+  const originalNow = Date.now;
+  let clock = originalNow();
+  Date.now = () => clock;
+  try {
+    const seed = fixture();
+    seed.jobs = [{id: "healthy", type: "recommend", status: "queued", attempts: 0, createdAt: at}];
+    await reset(seed);
+    const claimed = await post(workerRoute, {action: "claim"}, true);
+    for (let minute = 1; minute <= 6; minute++) {
+      clock += 60000;
+      await post(workerRoute, {action: "heartbeat", jobId: claimed.job.id, leaseToken: claimed.job.leaseToken}, true);
+      assert.equal((await post(workerRoute, {action: "claim"}, true)).job, null);
+    }
+    const job = (await store.snapshot()).data.jobs[0];
+    assert.equal(job.status, "running");
+    assert.equal(job.attempts, 1);
+    assert.equal(job.leaseToken, claimed.job.leaseToken);
+  } finally { Date.now = originalNow; }
+});
+
+test("generation and study retain their longer lease and heartbeat renewal", async () => {
+  const originalNow = Date.now;
+  let clock = originalNow();
+  Date.now = () => clock;
+  try {
+    for (const type of ["generate", "study"] as const) {
+      const seed = fixture();
+      seed.jobs = [{id: type, type, paperId: seed.papers[0].id, status: "queued", attempts: 0, createdAt: at}];
+      await reset(seed);
+      const claimed = await post(workerRoute, {action: "claim"}, true);
+      clock += 4 * 60000;
+      assert.equal((await post(workerRoute, {action: "claim"}, true)).job, null);
+      await post(workerRoute, {action: "heartbeat", jobId: claimed.job.id, leaseToken: claimed.job.leaseToken}, true);
+      clock += 12 * 60000;
+      assert.equal((await post(workerRoute, {action: "claim"}, true)).job, null);
+      assert.equal((await store.snapshot()).data.jobs[0].attempts, 1);
+    }
+  } finally { Date.now = originalNow; }
+});
