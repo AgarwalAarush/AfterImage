@@ -1,0 +1,39 @@
+/* Library study captions stay subordinate to the figure and article prose. */
+.figure .caption {
+  margin-top: 12px;
+}
+
+.figure .caption .explanation {
+  margin: 0;
+  font: 400 14px/1.65 var(--font-sans);
+  color: var(--muted);
+}
+
+.figure .caption .footer {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  margin-top: 8px;
+  font: 400 12px/1.6 var(--font-sans);
+  color: var(--muted);
+}
+
+.source {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  min-width: 0;
+}
+
+.source a {
+  overflow-wrap: anywhere;
+}
+
+.figure .download {
+  flex-shrink: 0;
+  padding: 4px 0;
+  font: inherit;
+}
