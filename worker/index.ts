@@ -1,7 +1,9 @@
+import { relationReviewContract, relationProvenancePrompt, relationProvenanceFailures } from "./equation-provenance";
 import { generateKit } from "./component-pipeline";
 import { implementationDigest } from "./implementation";
 import { publishKitComponent, markKitComponent } from "../src/lib/kit-publication";
 import { retryModelCapacity } from "./model-retry";
+import { invocationFailure, executionFacts } from "./model-execution";
 import { studySchema, figureSchema, validateStudy, studySvg, studyPrompt, arrangeQuiz, type StudyFigure } from "../src/lib/study";
 import { spawn } from "node:child_process";
 import { mkdtemp, writeFile, readFile, rm, mkdir, readdir } from "node:fs/promises";
@@ -12,7 +14,7 @@ import { outputSchema } from "./output-schema";
 import { validateIllustrationSources } from "../src/lib/scene-illustration";
 import { generationSchemas } from "./generation-schema";
 import { capabilityPrompt, candidateExampleDefects } from "./capabilities";
-import { repairCandidate, RepairFailure, fingerprint, type RepairContext, type RepairDefect, type Target, type Review } from "./repair-controller";
+import { repairCandidate, RepairFailure, fingerprint, canonicalizeDefects, type RepairContext, type RepairDefect, type Target, type Review } from "./repair-controller";
 import { targetedTechnicalSchema, targetedVisualSchema, equationAuditSchema, assessRepresentationEdits, targetingPrompt, finding, verifyObligations, requestEdit, parseModelOutput, auditEquationPatch, auditSupplementPatch, reviewTargets, reviewCitations, technicalSchemaFor, visualSchemaFor, type Model } from "./repair-model";
 import { qualityVersion, mechanismPlanSchema, planningPrompt, technicalReviewPrompt, technicalReviewSchema, validateMechanismPlan, technicalDefects } from "./quality";
 import { Resvg } from "@resvg/resvg-js";
@@ -28,7 +30,7 @@ import {
 import { importPaper } from "../src/lib/papers";
 import { researchSources, supplementPdf } from "./sources";
 import { researchText } from "../src/lib/research-bundle";
-import { EvidenceSession, reconcileEvidence, scientificFinding, referencedSourceIds, selectEvidence, passageSelection, passageSourceText } from "./evidence";
+import { EvidenceSession, reconcileEvidence, bindScientificAuthority, scientificFinding, referencedSourceIds, selectEvidence, passageSelection, passageSourceText } from "./evidence";
 import { discoverPapers, roundRobinCandidates } from "./discovery";
 import { validateRecall } from "../src/lib/recall-validation";
 import {
@@ -104,7 +106,9 @@ async function codex<T>(
     for (const file of Array.isArray(image) ? image : [image])
       args.push("--image", file);
   args.push("-");
+  let invocationAttempt = 0;
   try { await retryModelCapacity(() => new Promise<void>((resolve, reject) => {
+    const attempt = ++invocationAttempt;
     const child = spawn(process.env.CODEX_BIN || "codex", args, {
       stdio: ["pipe", "ignore", "pipe"],
       env: {
@@ -126,29 +130,29 @@ async function codex<T>(
     }, 10 * 60000);
     child.on("error", (e) => {
       clearTimeout(t);
-      reject(e);
+      reject(invocationFailure({ kind: "spawn", attempt, code: (e as NodeJS.ErrnoException).code }));
     });
-    child.on("close", (code) => {
+    child.on("close", (code, signal) => {
       clearTimeout(t);
       timedOut
-        ? reject(new Error(`Model step ${name} timed out after 10 minutes.`))
+        ? reject(invocationFailure({ kind: "timeout", attempt, exitCode: code, signal }))
         : code === 0
         ? resolve()
-        : reject(new Error(`Codex exited ${code}. ${error.slice(-350)}`));
+        : reject(invocationFailure({ kind: "nonzero-exit", attempt, exitCode: code, signal }, error));
     });
     child.stdin.end(boundary + "\n\n" + prompt);
   }), undefined, attempt => console.log(`${new Date().toISOString()} Model step ${name} capacity retry ${attempt}/2`));
-  } catch {
-    await writeFile(path.join(dir, `${name}.execution.json`), JSON.stringify({ step: name, status: "failed", owner: "execution", elapsedMs: Date.now() - stepStarted }));
+  } catch (error) {
+    await writeFile(path.join(dir, `${name}.execution.json`), JSON.stringify({ step: name, status: "failed", owner: "execution", ...executionFacts(error, invocationAttempt), elapsedMs: Date.now() - stepStarted }));
     throw new RepairFailure("execution", `Model step ${name} did not complete.`);
   }
   console.log(`${new Date().toISOString()} Model step finished ${name} in ${Date.now() - stepStarted}ms`);
   try {
     const result = parseModelOutput(await readFile(out, "utf8"), schema, name.endsWith("-draft") || name === "kit-plan");
-    await writeFile(path.join(dir, `${name}.execution.json`), JSON.stringify({ step: name, status: "passed", elapsedMs: Date.now() - stepStarted, schema: fingerprint(z.toJSONSchema(schema)), output: fingerprint(result) }));
+    await writeFile(path.join(dir, `${name}.execution.json`), JSON.stringify({ step: name, status: "passed", attempt: invocationAttempt, exitCode: 0, signal: null, elapsedMs: Date.now() - stepStarted, schema: fingerprint(z.toJSONSchema(schema)), output: fingerprint(result) }));
     return result;
   } catch (error) {
-    await writeFile(path.join(dir, `${name}.execution.json`), JSON.stringify({ step: name, status: "failed", owner: "schema", elapsedMs: Date.now() - stepStarted }));
+    await writeFile(path.join(dir, `${name}.execution.json`), JSON.stringify({ step: name, status: "failed", owner: "schema", ...executionFacts(invocationFailure({ kind: "schema", attempt: invocationAttempt, exitCode: 0, signal: null }), invocationAttempt), elapsedMs: Date.now() - stepStarted }));
     throw error;
   }
 }
@@ -163,6 +167,7 @@ async function reviewBinding(schema: z.ZodType, sources: unknown) {
 }
 async function reconcileReviewEvidence(model: Model, defects: RepairDefect[], candidate: unknown, context: RepairContext,
   session: EvidenceSession, paper: Paper, plan: unknown, record: (name: string, data: unknown) => Promise<void>, refresh: () => Promise<void>, reviews: unknown): Promise<Review | undefined> {
+  defects.splice(0, defects.length, ...canonicalizeDefects(defects, { discardProofs: true }));
   const decisions = await reconcileEvidence(model, defects, candidate, context, session.bundle, paper.title, { mechanismPlan: plan, reviews });
   if (!decisions.length) return;
   await record(`evidence-decisions-${context.round}-${session.passes}`, { candidate: context.fingerprint, binding: context.binding, decisions });
@@ -184,10 +189,7 @@ async function reconcileReviewEvidence(model: Model, defects: RepairDefect[], ca
   if (adjudications.length) return { defects: defects.filter(d => !adjudications.some(a => a.defect.id === d.id)), verified: [], complete: false, refresh: true, adjudications };
   for (const defect of defects.filter(scientificFinding)) {
     const decision = decisions.find(d => d.id === defect.id)!;
-    defect.sourceIds = [...new Set(decision.support.map(s => s.sourceId))];
-    defect.sourceProof = { sources: fingerprint(session.bundle.sources), support: decision.support, requirement: decision.requirement };
-    defect.evidence += "\nSource adjudication: " + decision.rationale;
-    defect.acceptance += "\nEssential requirement: " + decision.requirement;
+    Object.assign(defect, bindScientificAuthority(defect, decision, context, session.bundle.sources));
   }
 }
 async function saveReviewImages(svg:string,file:string,width:number){
@@ -286,12 +288,14 @@ async function generateCandidate(
         const technicalResponse = await model(technicalReviewPrompt + capabilityPrompt + planningContext + targetingPrompt(context) +
           "\nAssess ALL mathematical coverage against PLAN now, including exceptional null/empty branches, normalization, dimensions and training proxies versus executed work. Later expansions require a missed essential plan requirement or concrete scientific defect; optional elaboration is a suggestion. For equationAudits return one entry for EVERY equation with its zero-based index and fingerprint. Audit EACH symbol's actual definition against the cited source, dimensions, and routing cardinality. Identify source vs derived origin; every derived equation needs its own explicit disclosure. Record exact result passages in symbol definitions AND select received passageIds for exact source support; do not transcribe quotations. A generic category pass is insufficient.\nEQUATION FINGERPRINTS:\n" + JSON.stringify(candidate.recall.equations.map((eq, index) => ({ index, fingerprint: fingerprint(eq) }))) +
           "\nRESULT:\n" + JSON.stringify(candidate) + "\nSOURCE DATA:\n" + passageSourceText(sourceText), technicalSchema, `technical-review-${context.round}-${context.binding!.slice(0, 8)}`);
-        const technical = { ...technicalResponse, equationAudits: technicalResponse.equationAudits.map(({ passageIds, ...audit }) => ({ ...audit, ...passages.proof(passageIds) })) };
+        const provenance=relationReviewContract(candidate,candidate.recall.equations,"/recall/equations",context.binding!,sources);
+        const relationAudits=candidate.recall.equations.length?provenance.validate(await model(relationProvenancePrompt+"\nRELATION SCOPES:\n"+JSON.stringify(provenance.scopes)+"\nCANDIDATE ATTRIBUTION SPANS:\n"+JSON.stringify(provenance.spans)+"\nRESULT:\n"+JSON.stringify(candidate)+"\nSOURCE DATA:\n"+passageSourceText(sourceText),provenance.schema,`relation-review-${context.round}-${context.binding!.slice(0,8)}`)).receipts:[];
+        const technical = { ...technicalResponse, relationAudits, equationAudits: technicalResponse.equationAudits.map(({ passageIds, ...audit }) => ({ ...audit, ...passages.proof(passageIds) })) };
         // Collect visual findings even when a technical check fails on a safely renderable candidate.
         const visual = await model(reviewRubric + capabilityPrompt + planningContext + targetingPrompt(context) + "\nRESULT:\n" + JSON.stringify(candidate) + "\nSOURCE DATA:\n" + sourceText, visualSchemaFor(context, sources.map(s => s.id)).extend({ binding: z.literal(context.binding!) }), `critique-${context.round}-${context.binding!.slice(0, 8)}`, images);
         const defects: RepairDefect[] = [];
         for (const [key, check] of Object.entries(technical)) {
-          if (key === "equationAudits" || key === "binding") continue;
+          if (key === "equationAudits" || key === "relationAudits" || key === "binding") continue;
           const detail = check as z.infer<typeof targetedTechnicalSchema>[keyof z.infer<typeof targetedTechnicalSchema>];
           if (detail.verdict === "fail") defects.push(finding(key, detail, context));
         }
@@ -306,6 +310,7 @@ async function generateCandidate(
           indices.add(audit.index);
           if (audit.verdict === "fail") defects.push(finding(`equation-${audit.index}`, { ...audit, evidence: audit.definitionEvidence }, context));
         }
+        for(const failed of relationProvenanceFailures(relationAudits))defects.push({...failed,id:fingerprint([failed.objectId,failed.invariant]).slice(0,32),category:"scientific-relation-provenance"});
         for (const issue of visual.issues.filter(issue => issue.severity === "must-fix")) defects.push(finding(issue.category, issue, context));
         if (!visual.approved && !visual.issues.some(issue => issue.severity === "must-fix")) throw new RepairFailure("schema", "Visual review rejected without a blocking finding.");
         const verified = await verifyObligations(model, candidate, context, sourceText, images);
@@ -557,7 +562,8 @@ async function run() {
       const result = await generateKit(data.paper, {
         model: (prompt, schema, name, images) => codex(prompt, schema, dir, name, images),
         render: saveReviewImages, dir, checkpointRoot: path.resolve(process.env.AFTERIMAGE_CHECKPOINT_DIR || ".assistant-runtime/library-checkpoints"),
-        runId: job.id, assertLease: () => api({ action: "heartbeat", ...credentials }), implementationDigest: await implementationDigest(), target: job.componentId, studyOnly: job.type === "study",
+        runId: job.id, runMode: job.attempts > 1 ? "resume" : "new", assertLease: () => api({ action: "heartbeat", ...credentials }), implementationDigest: await implementationDigest(), target: job.componentId, studyOnly: job.type === "study",
+        committedComponents: job.componentReceipts?.map(({ componentId, revision }: { componentId: string; revision: string }) => ({ componentId, revision })),
         progress: stage => api({ action: "heartbeat", ...credentials, stage: job.type === "study" && stage !== "publishing" ? `study-${stage === "planning" ? "drafting" : stage}` : stage }),
         status: (componentId, state) => api({ action: "component-status", ...credentials, componentId, state }),
         publish: async publication => {

@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { ResearchBundle } from "../src/lib/research-bundle";
 import { sourceLimits, researchText } from "../src/lib/research-bundle";
-import { fingerprint, RepairFailure, type RepairDefect, type RepairContext } from "./repair-controller";
+import { fingerprint, RepairFailure, canonicalizeDefects, defectScope, type RepairDefect, type RepairContext } from "./repair-controller";
 import type { Model } from "./repair-model";
 
 /** Selection previews expose listing endings without changing the authoritative excerpt. */
@@ -17,6 +17,12 @@ export const supportSchema = z.object({ sourceId: z.string().min(1), passage: z.
 export const evidenceDecisionSchema = z.object({ id: z.string(), disposition: evidenceDisposition, rationale: z.string().min(1).max(2000),
   support: z.array(supportSchema).max(8), requirement: z.string().max(1000) });
 export type EvidenceDecision = z.infer<typeof evidenceDecisionSchema>;
+export type AdjudicatedEvidenceDecision = EvidenceDecision & { receipt: { version: 1; candidate: string; binding: string; scope: string; decision: string; sources: string; sourceIds: string[] } };
+
+export function evidenceDecisionDigest(decision: Pick<EvidenceDecision, "id" | "disposition" | "support" | "requirement">): string {
+  return fingerprint({ id: decision.id, disposition: decision.disposition, requirement: decision.requirement,
+    support: [...decision.support].sort((a,b)=>fingerprint(a).localeCompare(fingerprint(b))) });
+}
 const normal = (text: string) => text.replace(/\s+/g, " ").trim();
 export function sourcePassages(sources: ResearchBundle["sources"]) {
   return sources.flatMap(source => {
@@ -78,9 +84,9 @@ export function selectEvidence(bundle: ResearchBundle, requested: string[], pinn
   const chosen = new Set([...new Set([...requested, ...pinned, ...bundle.sources.map(s => s.id), ...bundle.catalogue.map(s => s.id)])].slice(0, sourceLimits.active));
   return { ...bundle, sources: bundle.catalogue.filter(s => chosen.has(s.id)), coverage: { ...bundle.coverage, omittedActiveIds: bundle.catalogue.filter(s => !chosen.has(s.id)).map(s => s.id) } };
 }
-export async function reconcileEvidence(model: Model, defects: RepairDefect[], candidate: unknown, context: RepairContext, bundle: ResearchBundle, title: string, plan: unknown): Promise<EvidenceDecision[]> {
+export async function reconcileEvidence(model: Model, defects: RepairDefect[], candidate: unknown, context: RepairContext, bundle: ResearchBundle, title: string, plan: unknown): Promise<AdjudicatedEvidenceDecision[]> {
   const scientific = defects.filter(scientificFinding);
-  const unique = [...new Map(scientific.map(d => [d.id, d])).values()];
+  const unique = canonicalizeDefects(scientific, { discardProofs: true });
   if (!unique.length) return [];
   const id = z.enum(unique.map(d => d.id) as [string, ...string[]]);
   const selection = passageSelection(bundle.sources);
@@ -90,28 +96,49 @@ export async function reconcileEvidence(model: Model, defects: RepairDefect[], c
   if (new Set(result.decisions.map(d => d.id)).size !== unique.length) throw new RepairFailure("schema", "Incomplete evidence adjudication.");
   const decisions = result.decisions.map(({ passageIds, ...decision }) => ({ ...decision, support: selection.resolve(passageIds) }));
   decisions.forEach(d => validateEvidenceDecision(d, bundle));
-  return decisions;
+  return decisions.map(decision => {
+    const defect = unique.find(d => d.id === decision.id)!;
+    const bound = { ...defect, sourceIds: [...new Set([...defect.sourceIds, ...decision.support.map(s => s.sourceId)])].sort() };
+    return { ...decision, receipt: { version: 1, candidate: context.fingerprint, binding: context.binding!, scope: defectScope(bound), decision: evidenceDecisionDigest(decision),
+      sources: fingerprint(bundle.sources), sourceIds: bundle.sources.map(s => s.id) } };
+  });
 }
 /** At most two enrichments per stage. Selection names catalogue IDs, never URLs. */
 export class EvidenceSession {
   passes = 0;
   constructor(public bundle: ResearchBundle, private title: string) {}
-  async enrich(model: Model, defects: RepairDefect[], candidate: unknown, context: RepairContext, plan: unknown): Promise<void> {
+  async enrich(model: Model, defects: RepairDefect[], candidate: unknown, context: RepairContext, plan: unknown, reserve?: (passes: number) => Promise<void>): Promise<void> {
     if (this.passes >= 2) throw new RepairFailure("content", "Evidence enrichment exhausted with unresolved source findings.");
     const available = this.bundle.catalogue.filter(s => !this.bundle.sources.some(a => a.id === s.id));
     if (!available.length) throw new RepairFailure("content", "No additional same-paper evidence is available.");
     const id = z.enum(available.map(s => s.id) as [string, ...string[]]);
-    const response = await model("Choose up to four omitted same-paper catalogue chunks needed to resolve these findings. Only IDs; do not supply URLs or new content. All citations remain retained in the private catalogue; this call selects a focused review context. An empty choice cannot resolve missing evidence.\nFINDINGS:\n" + JSON.stringify(defects) + "\nCATALOGUE:\n" + JSON.stringify(available.map(s => ({ id: s.id, label: s.label, preview: cataloguePreview(s.excerpt, 1600) }))), z.object({ candidate: z.literal(context.fingerprint), binding: z.literal(context.binding!), sourceIds: z.array(id).min(1).max(4) }), `evidence-select-${context.round}-${this.passes}`);
+    const attempt = this.passes++;
+    await reserve?.(this.passes);
+    const response = await model("Choose up to four omitted same-paper catalogue chunks needed to resolve these findings. Only IDs; do not supply URLs or new content. All citations remain retained in the private catalogue; this call selects a focused review context. An empty choice cannot resolve missing evidence.\nFINDINGS:\n" + JSON.stringify(defects) + "\nCATALOGUE:\n" + JSON.stringify(available.map(s => ({ id: s.id, label: s.label, preview: cataloguePreview(s.excerpt, 1600) }))), z.object({ candidate: z.literal(context.fingerprint), binding: z.literal(context.binding!), sourceIds: z.array(id).min(1).max(4) }), `evidence-select-${context.round}-${attempt}`);
     this.bundle = selectEvidence(this.bundle, response.sourceIds, referencedSourceIds(defects));
-    this.passes++;
   }
 }
 
-export function validateScientificAuthority(defects: RepairDefect[], sources: ResearchBundle["sources"]): void {
+/** Attach only a worker-issued decision for this exact canonical obligation and component binding. */
+export function bindScientificAuthority(defect: RepairDefect, decision: AdjudicatedEvidenceDecision, context: RepairContext, sources: ResearchBundle["sources"]): RepairDefect {
+  if (decision.id !== defect.id || decision.disposition !== "supported-defect" || !decision.receipt || decision.receipt.decision !== evidenceDecisionDigest(decision))
+    throw new RepairFailure("content", "Scientific edit lacks a bound adjudication decision.");
+  const bound = { ...defect, sourceIds: [...new Set([...defect.sourceIds, ...decision.support.map(s => s.sourceId)])].sort(),
+    sourceProof: { ...decision.receipt, support: decision.support, requirement: decision.requirement } };
+  validateScientificAuthority([bound], sources, context);
+  return bound;
+}
+export function validateScientificAuthority(defects: RepairDefect[], sources: ResearchBundle["sources"], context?: RepairContext): void {
   for (const defect of defects.filter(scientificFinding)) {
     const proof = defect.sourceProof;
-    if (!proof || proof.sources !== fingerprint(sources)) throw new RepairFailure("content", "Scientific edit lacks current source authority.");
-    validateEvidenceDecision({ id: defect.id, disposition: "supported-defect", rationale: defect.evidence, support: proof.support, requirement: proof.requirement }, { sources } as ResearchBundle);
+    if (!proof || proof.version !== 1 || !context || proof.candidate !== context.fingerprint || proof.binding !== (context.binding ?? context.fingerprint)
+      || proof.scope !== defectScope(defect) || !proof.sourceIds || new Set(proof.sourceIds).size !== proof.sourceIds.length)
+      throw new RepairFailure("content", "Scientific edit lacks current source authority for its bound candidate and obligation scope.");
+    if (proof.decision !== evidenceDecisionDigest({ id: defect.id, disposition: "supported-defect", support: proof.support, requirement: proof.requirement }))
+      throw new RepairFailure("content", "Scientific edit authority receipt does not bind this evidence decision.");
+    const adjudicated = proof.sourceIds.map(id => sources.find(s => s.id === id));
+    if (adjudicated.some(s => !s) || proof.sources !== fingerprint(adjudicated)) throw new RepairFailure("content", "Scientific edit lacks current source authority for its adjudicated sources.");
+    validateEvidenceDecision({ id: defect.id, disposition: "supported-defect", rationale: defect.evidence, support: proof.support, requirement: proof.requirement }, { sources: adjudicated } as ResearchBundle);
     if (proof.support.some(s => !defect.sourceIds.includes(s.sourceId))) throw new RepairFailure("schema", "Scientific edit support is not cited by its finding.");
   }
 }

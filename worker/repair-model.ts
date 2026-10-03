@@ -1,9 +1,11 @@
+import { relationReviewContract, relationProvenancePrompt } from "./equation-provenance";
 import { candidateSchema } from "./text-bounds";
+import type { ResearchBundle } from "../src/lib/research-bundle";
 import { z } from "zod";
 import { validateScientificAuthority, scientificFinding, passageSelection, passageSourceText } from "./evidence";
 import { technicalReviewSchema } from "./quality";
 import { critiqueSchema } from "./diagram-review";
-import { RepairFailure, defectOwnerSchema, fingerprint, patchSchema, type Target, type RepairContext, type RepairDefect, type Verification } from "./repair-controller";
+import { RepairFailure, defectOwnerSchema, fingerprint, patchSchema, canonicalizeDefects, type Target, type RepairContext, type RepairDefect, type Verification } from "./repair-controller";
 
 const targeting = {
   targets: z.array(z.string().max(300)).max(24),
@@ -31,7 +33,7 @@ export function visualSchemaFor(context: RepairContext, sourceIds?: string[]) {
 }
 export const equationAuditSchema = z.object({
   index: z.number().int().min(0).max(4), fingerprint: z.string().length(64),
-  origin: z.enum(["source", "derived"]), definitionEvidence: z.string().min(1).max(2400),
+  origin: z.enum(["source", "derived", "implementation"]), definitionEvidence: z.string().min(1).max(2400),
   symbols: z.array(z.object({ symbol: z.string().min(1).max(100), definition: z.string().min(1).max(500), resultPassage: z.string().min(1).max(800) })).min(1).max(24),
   verdict: z.enum(["pass", "fail"]), repair: z.string().max(2000), ...targeting,
   sourceIds: z.array(z.string()).min(1).max(14),
@@ -42,12 +44,35 @@ export function targetDescription(catalog: Target[]) {
   return catalog.map(t => {
     const outer = t.constraints as Record<string, unknown>;
     const schema = (Array.isArray(outer.anyOf) ? outer.anyOf.find((s: Record<string, unknown>) => s.type !== "null") : outer) as Record<string, unknown>;
-    return { path: t.path, type: schema.type, maxLength: schema.maxLength, minItems: schema.minItems, maxItems: schema.maxItems, description: schema.description };
+    return { path: t.path, type: schema.type, maxLength: schema.maxLength, minItems: schema.minItems, maxItems: schema.maxItems, description: schema.description, variants: outer.oneOf ?? outer.anyOf };
   });
+}
+export function nativeTargetViability(target: Target, requiredValue: unknown): boolean { return target.schema.safeParse(requiredValue).success; }
+export type NativeRequiredValue = { target: string; value: string };
+function nativeGlyphOwnerAccepts(target: Target, requiredValue: string): boolean {
+ let schema: any = target.schema;
+ while (schema instanceof z.ZodOptional || schema instanceof z.ZodNullable || schema instanceof z.ZodDefault) schema = schema.unwrap();
+ if (!(schema instanceof z.ZodDiscriminatedUnion) || schema.def.discriminator !== "glyph") return false;
+ // Preserve received shared fields. Only promote when a native glyph variant can visibly encode the complete operand.
+ return schema.options.some((option: any) => option instanceof z.ZodObject && option.shape.glyph instanceof z.ZodLiteral && option.shape.label?.safeParse(requiredValue).success && option.safeParse({ ...(target.value as object), glyph: option.shape.glyph.value, label: requiredValue }).success);
+}
+/** Promote an infeasible exact value before identity reconciliation and scientific adjudication. */
+export function viableNativeFinding<T extends { owner: string; targets: string[]; dependencies?: string[]; evidence: string; acceptance: string; artifact?: string | null; requiredValues?: NativeRequiredValue[] }>(finding: T, context: RepairContext): T {
+ let targets=[...finding.targets];
+ for(const required of finding.requiredValues??[]) {
+  const leaf=context.catalog.find(t=>t.path===required.target);
+  if(!leaf||!finding.targets.includes(required.target))throw new RepairFailure("schema","Exact correction names an unbound native target.");
+  if(nativeTargetViability(leaf,required.value))continue;
+  const owner=context.catalog.filter(t=>required.target.startsWith(t.path+"/")&&nativeGlyphOwnerAccepts(t,required.value)).sort((a,b)=>b.path.length-a.path.length)[0];
+  if(!owner)return {...finding,owner:"representation",targets:[],artifact:finding.artifact??"/content",acceptance:finding.acceptance+"\nPreserve these exact minimum corrections: "+JSON.stringify(finding.requiredValues),evidence:finding.evidence+"\nThe complete required value exceeds its native target; a bounded representation correction is necessary.\nExact minimum corrections: "+JSON.stringify(finding.requiredValues)};
+  targets=targets.filter(path=>!path.startsWith(owner.path+"/"));targets.push(owner.path);
+ }
+ const unique=[...new Set(targets)];
+ return {...finding,targets:unique.filter(path=>!unique.some(parent=>parent!==path&&path.startsWith(parent+"/"))),acceptance:finding.acceptance+(finding.requiredValues?.length?"\nPreserve these exact minimum corrections: "+JSON.stringify(finding.requiredValues):""),evidence:finding.evidence+(finding.requiredValues?.length?"\nExact minimum corrections: "+JSON.stringify(finding.requiredValues):"")};
 }
 export function targetingPrompt(context: RepairContext) {
   return "\nTARGET CATALOG:\n" + JSON.stringify(targetDescription(context.catalog)) +
-    "\nFor every failure name only exact target paths from this catalog, including necessary dependencies. Prefer one label, one equation explanation, or a specific prose field; never select unrelated fields. Supply an acceptance condition and owner: content for semantic/text edits, representation only for an infeasible example/primitive change; missing operand arrows, incorrect labels and source claims use content when native fields can express the correction, renderer for unsupported geometry, schema for malformed data, execution for interrupted work. A renderer/representation finding may have no editable target, but MUST identify its affected artifact as /scene or /figures/INDEX (zero-based). artifact locates an object for a bounded replan; it does not authorize a normal replacement. Content findings may use artifact:null. Passes/suggestions use targets:[], owner:null, acceptance:null, artifact:null. Check field limits before proposing a correction. Scientific failures require supplied source IDs; exact supporting passages are adjudicated separately before edits. Later coverage expansions must identify a missed PLAN requirement or concrete scientific defect; optional elaboration is a suggestion. Keep short units such as token slots; put full explanations in captions.\nCURRENT CANDIDATE FINGERPRINT: " + context.fingerprint + "\nREVIEW INPUT BINDING: " + (context.binding || context.fingerprint) + "\nCURRENT ADJUDICATION RECEIPTS (recheck the exact source proof; do not repeat an unsupported preference):\n" + JSON.stringify(context.adjudications || []);
+    "\nFor every failure name only exact target paths from this catalog, including necessary dependencies. Prefer one label, one equation explanation, or a specific prose field; never select unrelated fields. Supply an acceptance condition and owner: content for semantic/text edits, representation only for an infeasible example/primitive change; missing operand arrows, incorrect labels and source claims use content when native fields can express the correction, renderer for unsupported geometry, schema for malformed data, execution for interrupted work. A renderer/representation finding may have no editable target, but MUST identify its affected artifact as /scene or /figures/INDEX (zero-based). artifact locates an object for a bounded replan; it does not authorize a normal replacement. Content findings may use artifact:null. Passes/suggestions use targets:[], owner:null, acceptance:null, artifact:null. Check field limits before proposing a correction. For an exact operand or notation correction include requiredValues with its target and complete minimum string; never abbreviate a required operand to fit. Use the smallest owning native union object for a primitive/discriminator change, retaining its identity and unaffected fields. Immutable discriminator leaves are not editable. If no native owner can express the complete correction, mark representation ownership instead of spending an impossible edit. Scientific failures require supplied source IDs; exact supporting passages are adjudicated separately before edits. Later coverage expansions must identify a missed PLAN requirement or concrete scientific defect; optional elaboration is a suggestion. Keep short units such as token slots; put full explanations in captions.\nCURRENT CANDIDATE FINGERPRINT: " + context.fingerprint + "\nREVIEW INPUT BINDING: " + (context.binding || context.fingerprint) + "\nCURRENT ADJUDICATION RECEIPTS (recheck the exact source proof; do not repeat an unsupported preference):\n" + JSON.stringify(context.adjudications || []);
 }
 export function finding(category: string, detail: { targets?: string[]; owner?: string | null; artifact?: string | null; evidence: string; acceptance?: string | null; repair?: string; sourceIds?: string[] }, context: RepairContext): RepairDefect {
   const targets = detail.targets || [];
@@ -70,8 +95,8 @@ export async function verifyObligations(model: Model, candidate: unknown, contex
   const verification = await model("Independently verify EVERY open defect against CURRENT RESULT, SOURCE DATA and the attached current rendered images when available. Use those images for visual acceptance conditions; encoded data alone cannot establish label/connector visibility. A new reviewer omitting a defect does not resolve it. For each resolved claim cite the exact changed result passage/object and source evidence or rendered encoding that satisfies its acceptance condition. If the target is unchanged and still wrong, return false. Only an obligation carrying a current candidate/binding adjudication receipt may use resolution:adjudication for a source-proven unsupported review demand after a fresh passing review. This cannot resolve a genuine defect. Independently check its exact source proof. Only ledger entries carrying replacement evidence came from an ADOPTED artifact replan. For those renderer/representation findings, resolution:replacement may verify that the new rendered representation coherently carries the source-supported meaning and passes current review, without requiring obsolete arrows or shapes from the prior plot kind. Never use replacement for an ordinary edit or a scientific content finding, and never resolve merely because a plot kind changed. Otherwise use resolution:same-representation. Do not accept a model's assertion that it repaired something.\nOBLIGATIONS:\n" + JSON.stringify(context.obligations) + "\nCURRENT RESULT:\n" + JSON.stringify(candidate) + "\nSOURCE DATA:\n" + sourceContext, schema, `verify-defects-${context.round}`, images);
   return verification.checks;
 }
-export async function requestEdit(model: Model, candidate: unknown, targets: Target[], defects: RepairDefect[], context: RepairContext, sourceContext: string) {
-  if (defects.some(scientificFinding)) validateScientificAuthority(defects, JSON.parse(sourceContext.split("\n")[0]).sources);
+export async function requestEdit(model: Model, candidate: unknown, targets: Target[], defects: RepairDefect[], context: RepairContext, sourceContext: string, authoritySources?: ResearchBundle["sources"]) {
+  if (defects.some(scientificFinding)) validateScientificAuthority(defects, authoritySources ?? JSON.parse(sourceContext.split("\n")[0]).sources, context);
   const schema = patchSchema(targets, context.fingerprint);
   return model("Edit CURRENT RESULT only at the supplied targets. Return replacement values in t0,t1,..., with the exact base and preimage fingerprints. Preserve all other native fields exactly. Within a targeted text field, change the smallest clauses needed and preserve the meaning of every unaffected claim; do not add optional elaboration. When adding to an owning array, copy unrelated existing entries exactly. Do not rewrite an array to fix a single element unless the target explicitly permits the whole array. Coordinate dependent symbol definitions/examples/quiz answers only when explicitly targeted. Text must be COMPLETE and fit its native schema; shorten wording rather than truncate clauses. Correct actual source fidelity, not just a reviewer's wording.\nTARGETS:\n" + JSON.stringify(targets.map((t, i) => ({ key: `t${i}`, path: t.path, preimage: t.fingerprint, value: t.value, constraints: t.constraints }))) + "\nBASE: " + context.fingerprint + "\nDEFECTS:\n" + JSON.stringify(defects) + "\nCURRENT RESULT:\n" + JSON.stringify(candidate) + "\nSOURCE DATA:\n" + sourceContext, schema, `edit-${context.round}`);
 }
@@ -119,6 +144,13 @@ export async function auditEquationPatch(model: Model, previous: unknown, propos
     }
     if (audit.verdict === "fail") throw new RepairFailure("content", "Proposed mathematics failed source/edge-case audit.");
   }
+  const indices=changed.filter(entry=>entry.eq!==null).map(entry=>entry.index);
+  if(indices.length){
+    const provenance=relationReviewContract(proposed,after,"/recall/equations",context.binding!,data.sources,indices);
+    const received=await model(relationProvenancePrompt+"\nRELATION SCOPES:\n"+JSON.stringify(provenance.scopes)+"\nCANDIDATE ATTRIBUTION SPANS:\n"+JSON.stringify(provenance.spans)+"\nPROPOSED RESULT:\n"+JSON.stringify(proposed)+"\nSOURCE DATA:\n"+passageSourceText(sourceText),provenance.schema,`patch-relations-${context.round}`);
+    const audited=provenance.validate(received);
+    if(audited.receipts.some(receipt=>!receipt.passed))throw new RepairFailure("content","Proposed relation failed independent source/provenance review.");
+  }
 }
 
 export async function auditSupplementPatch(model: Model, previous: unknown, proposed: unknown, targets: Target[], context: RepairContext, sourceText: string) {
@@ -138,8 +170,10 @@ export async function reconcileDefectIdentities(model: Model, findings: RepairDe
   const history = context.history ?? context.obligations;
   const known = new Map(history.map(d => [d.id, d]));
   const owners = new Map<string,RepairDefect>(known);
-  const normalized = findings.map(d=>{const old=owners.get(d.id);if(!old){owners.set(d.id,d);return d;}return {...d,owner:old.owner,category:old.category};});
-  const pending = [...new Map(normalized.filter(d => !known.has(d.id)).map(d=>[d.id,d])).values()];
+  const ordered = [...findings].sort((a,b) => a.id.localeCompare(b.id) || (["content","representation","renderer","schema","execution"].indexOf(a.owner) - ["content","representation","renderer","schema","execution"].indexOf(b.owner)) || a.category.localeCompare(b.category));
+  for (const d of ordered) if (!owners.has(d.id)) owners.set(d.id, d);
+  const normalized = findings.map(d => ({ ...d, owner: owners.get(d.id)!.owner, category: owners.get(d.id)!.category }));
+  const pending = canonicalizeDefects(normalized.filter(d => !known.has(d.id)), { discardProofs: true }).sort((a,b) => normalized.findIndex(d=>d.id===a.id) - normalized.findIndex(d=>d.id===b.id));
   if (!pending.length || (!history.length && pending.length < 2)) return normalized;
   if (history.length > 128 || pending.length > 64) throw new RepairFailure("schema", "Defect identity catalogue exceeded its bound");
   const mappings = Object.fromEntries(pending.map((_,i)=>{

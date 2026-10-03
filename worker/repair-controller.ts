@@ -7,11 +7,14 @@ export const defectOwnerSchema = z.enum(["content", "representation", "renderer"
 export type DefectOwner = z.infer<typeof defectOwnerSchema>;
 export const defectSchema = z.object({
   id: z.string().min(1).max(80), category: z.string().min(1).max(80), owner: defectOwnerSchema,
-  targets: z.array(z.string().min(1).max(300)).max(24), evidence: z.string().min(1).max(4000),
+  targets: z.array(z.string().min(1).max(300)).max(24), dependencies: z.array(z.string().min(1).max(300)).max(24).optional(), evidence: z.string().min(1).max(4000),
   invariant: z.string().max(160).optional(), objectId: z.string().max(160).optional(),
   acceptance: z.string().min(1).max(4000), sourceIds: z.array(z.string()).max(14),
   artifact: z.string().max(300).nullish(),
-  sourceProof: z.object({ sources: z.string().length(64), support: z.array(z.object({ sourceId: z.string(), passage: z.string().min(1).max(1800) })).min(1).max(8), requirement: z.string().min(1).max(1000) }).optional(),
+  sourceProof: z.object({
+    // Legacy checkpoint proofs remain readable diagnostics, never edit authority.
+    version: z.literal(1).optional(), candidate: z.string().length(64).optional(), binding: z.string().length(64).optional(), scope: z.string().length(64).optional(), decision: z.string().length(64).optional(),
+    sourceIds: z.array(z.string()).min(1).max(14).optional(), sources: z.string().length(64), support: z.array(z.object({ sourceId: z.string(), passage: z.string().min(1).max(1800) })).min(1).max(8), requirement: z.string().min(1).max(1000) }).optional(),
 });
 function controlledDefect(raw: RepairDefect): RepairDefect {
   const defect = defectSchema.parse(raw);
@@ -30,6 +33,37 @@ export function fingerprint(value: unknown): string {
 }
 export class RepairFailure extends Error {
   constructor(public owner: DefectOwner, message: string, public ledger: LedgerEntry[] = [], public rounds?: number) { super(message); this.name = "RepairFailure"; }
+}
+const canonicalLines = (values: string[]) => [...new Set(values)].sort().join("\n");
+/** Receipt scope includes every authorized target and acceptance condition, not ledger bookkeeping. */
+export function defectScope(defect: RepairDefect): string {
+  return fingerprint({ id: defect.id, objectId: defect.objectId, invariant: defect.invariant, owner: defect.owner, category: defect.category,
+    artifact: defect.artifact ?? null, targets: [...defect.targets].sort(), dependencies: [...(defect.dependencies ?? [])].sort(), acceptance: canonicalLines([defect.acceptance]),
+    evidence: canonicalLines([defect.evidence]), sourceIds: [...defect.sourceIds].sort() });
+}
+/** One deterministic obligation owns its evidence. Never choose a duplicate's proof by arrival order. */
+export function canonicalizeDefects(findings: RepairDefect[], options: { discardProofs?: boolean } = {}): RepairDefect[] {
+  const groups = new Map<string, RepairDefect[]>();
+  for (const raw of findings) { const defect = defectSchema.parse(raw); groups.set(defect.id, [...(groups.get(defect.id) ?? []), defect]); }
+  return [...groups].sort(([a], [b]) => a.localeCompare(b)).map(([id, group]) => {
+    const first = group[0];
+    if (group.some(d => d.owner !== first.owner || d.category !== first.category || d.objectId !== first.objectId || d.invariant !== first.invariant))
+      throw new RepairFailure("schema", "Conflicting canonical defect identity or ownership.");
+    const artifacts = [...new Set(group.flatMap(d => d.artifact ? [d.artifact] : []))];
+    if (artifacts.length > 1) throw new RepairFailure("schema", "Conflicting canonical defect artifacts.");
+    let sourceProof: RepairDefect["sourceProof"];
+    const proofs = options.discardProofs ? [] : group.flatMap(d => d.sourceProof ? [d.sourceProof] : []);
+    if (proofs.length) {
+      const descriptor = ({ support, ...receipt }: NonNullable<RepairDefect["sourceProof"]>) => receipt;
+      if (proofs.some(p => fingerprint(descriptor(p)) !== fingerprint(descriptor(proofs[0])))) throw new RepairFailure("schema", "Conflicting scientific authority proofs.");
+      const orderedSupport = (proof: NonNullable<RepairDefect["sourceProof"]>) => [...proof.support].sort((a,b)=>fingerprint(a).localeCompare(fingerprint(b)));
+      if (proofs.some(p => fingerprint(orderedSupport(p)) !== fingerprint(orderedSupport(proofs[0])))) throw new RepairFailure("schema", "Conflicting scientific authority proof support.");
+      sourceProof = { ...proofs[0], support: orderedSupport(proofs[0]) };
+    }
+    return defectSchema.parse({ ...first, id, artifact: artifacts[0], targets: [...new Set(group.flatMap(d => d.targets))].sort(),
+      dependencies: [...new Set(group.flatMap(d => d.dependencies ?? []))].sort(), acceptance: canonicalLines(group.map(d => d.acceptance)), evidence: canonicalLines(group.map(d => d.evidence)),
+      sourceIds: [...new Set(group.flatMap(d => d.sourceIds))].sort(), sourceProof });
+  });
 }
 const escapePointer = (value: string) => value.replaceAll("~", "~0").replaceAll("/", "~1");
 function parts(path: string) {
@@ -57,6 +91,7 @@ export function targetCatalog(candidate: unknown, schema: z.ZodType): Target[] {
   function visit(value: any, original: z.ZodType, path: string) {
     let inner: any = original;
     while (inner instanceof z.ZodOptional || inner instanceof z.ZodNullable || inner instanceof z.ZodDefault) inner = inner.unwrap();
+    const variantOwner = inner instanceof z.ZodDiscriminatedUnion && inner.def.discriminator === "glyph";
     if (inner instanceof z.ZodUnion || inner instanceof z.ZodDiscriminatedUnion) {
       const option = inner.options.find((s: any) => candidateSchema(s).safeParse(value).success);
       if (!option) return; inner = option;
@@ -64,8 +99,9 @@ export function targetCatalog(candidate: unknown, schema: z.ZodType): Target[] {
     const isObject = inner instanceof z.ZodObject, isArray = inner instanceof z.ZodArray;
     // Whole artifacts and panel lists are reserved for the explicit replan path.
     const container = ["", "/recall", "/scene", "/scene/illustration", "/scene/illustration/panels", "/figures", "/quiz"].includes(path)
-      || /^\/figures\/\d+\/illustration(?:\/panels)?$/.test(path);
-    if (path && !container && (!isObject || value == null) && !(isArray && path.endsWith("/panels"))) {
+      || /^\/(?:content|figures\/\d+)\/illustration(?:\/panels)?$/.test(path);
+    const immutable = inner instanceof z.ZodLiteral;
+    if (path && !container && !immutable && (!isObject || value == null || variantOwner) && !(isArray && path.endsWith("/panels"))) {
       targets.push({ path, schema: original, value, fingerprint: fingerprint(value), constraints: z.toJSONSchema(original) });
     }
     if (value == null) return;
@@ -125,13 +161,18 @@ export async function repairCandidate<T>(initial: T, adapters: RepairAdapters<T>
   while (round <= adapters.maxRepairs) {
     const catalog = targetCatalog(candidate, schema()), hash = fingerprint(candidate);
     const binding = fingerprint({ candidate: hash, inputs: adapters.binding });
-    const context: RepairContext = { round, fingerprint: hash, binding, catalog, history: [...ledger.values()], obligations: [...ledger.values()].filter(d => d.status !== "resolved"), adjudications: [...ledger.values()].flatMap(d => d.adjudication && d.adjudication.candidate === hash && d.adjudication.binding === binding ? [d.adjudication] : []) };
+    const context: RepairContext = { round, fingerprint: hash, binding, catalog, history: [...ledger.values()], obligations: [...ledger.values()].filter(d => d.status !== "resolved"), adjudications: [...ledger.values()].flatMap(d => d.adjudication && d.adjudication.candidate === hash && d.adjudication.binding === binding && defectScope(d.adjudication.defect) === defectScope(d) ? [d.adjudication] : []) };
     await adapters.checkpoint?.({ candidate, ledger: [...ledger.values()], round, replanned, seen: [...seen] });
     await adapters.record(`candidate-${round}`, { candidate, fingerprint: hash, binding, inputs: adapters.binding });
     let review: Review;
     try { review = await adapters.review(candidate, context); }
     catch (error) {
-      if (error instanceof RepairFailure) throw new RepairFailure(error.owner, error.message, [...new Map([...ledger.values(), ...error.ledger].map(d => [d.id, d])).values()], round);
+      if (error instanceof RepairFailure) {
+        for (const entry of error.ledger) ledger.set(entry.id, entry);
+        await adapters.checkpoint?.({ candidate, ledger: [...ledger.values()], round, replanned, seen: [...seen] });
+        throw new RepairFailure(error.owner, error.message, [...ledger.values()], round);
+      }
+      await adapters.checkpoint?.({ candidate, ledger: [...ledger.values()], round, replanned, seen: [...seen] });
       throw new RepairFailure("execution", "Review did not complete.", [...ledger.values()], round);
     }
     const bounds = textBoundFindings(candidate, schema());
@@ -148,6 +189,7 @@ export async function repairCandidate<T>(initial: T, adapters: RepairAdapters<T>
         const previous = ledger.get(receipt.defect.id);
         ledger.set(receipt.defect.id, { ...receipt.defect, occurrences: previous?.occurrences || 1, status: "disputed", adjudication: receipt });
       }
+      await adapters.checkpoint?.({ candidate, ledger: [...ledger.values()], round, replanned, seen: [...seen] });
       await adapters.record(`adjudication-${round}-${refreshes}`, review.adjudications);
     }
     if (review.refresh) {
@@ -156,6 +198,7 @@ export async function repairCandidate<T>(initial: T, adapters: RepairAdapters<T>
         if (defect.targets.some(t => !catalog.some(c => c.path === t))) throw new RepairFailure("schema", "Refresh supplied an unavailable target.");
         ledger.set(defect.id, { ...previous, ...defect, status: "open", occurrences: previous?.occurrences || 1 });
       }
+      await adapters.checkpoint?.({ candidate, ledger: [...ledger.values()], round, replanned, seen: [...seen] });
       if (++refreshes > 4) throw new RepairFailure("content", "Evidence/adjudication review refresh bound exhausted.", [...ledger.values()], round);
       await adapters.record(`evidence-refresh-${round}-${refreshes}`, { fingerprint: hash, binding, review });
       continue; // Sources changed or a disputed demand needs a fresh review; no content edit consumed.
@@ -167,9 +210,9 @@ export async function repairCandidate<T>(initial: T, adapters: RepairAdapters<T>
       const obligation = context.obligations.find(d => d.id === check.id);
       if (check.resolution === "replacement" && (!obligation?.replacement || !["renderer", "representation"].includes(obligation.owner)))
         throw new RepairFailure("schema", "Replacement verification needs an adopted artifact replan.", [...ledger.values()], round);
-      if (check.resolution === "adjudication" && (!obligation?.adjudication || obligation.adjudication.candidate !== hash || obligation.adjudication.binding !== binding || review.defects.some(d => d.id === check.id)))
+      if (check.resolution === "adjudication" && (!obligation?.adjudication || obligation.adjudication.candidate !== hash || obligation.adjudication.binding !== binding || defectScope(obligation.adjudication.defect) !== defectScope(obligation) || review.defects.some(d => d.id === check.id)))
         throw new RepairFailure("schema", "Adjudication resolution lacks current proof and a passing fresh review.", [...ledger.values()], round);
-      if (check.resolved && obligation?.adjudication && obligation.adjudication.candidate === hash && check.resolution !== "adjudication") throw new RepairFailure("schema", "Unchanged adjudicated demand requires explicit current adjudication verification.");
+      if (check.resolved && obligation?.adjudication && obligation.adjudication.candidate === hash && obligation.adjudication.binding === binding && defectScope(obligation.adjudication.defect) === defectScope(obligation) && check.resolution !== "adjudication") throw new RepairFailure("schema", "Unchanged adjudicated demand requires explicit current adjudication verification.");
       verified.set(check.id, check);
     }
     for (const obligation of context.obligations) {
@@ -180,20 +223,8 @@ export async function repairCandidate<T>(initial: T, adapters: RepairAdapters<T>
     const findings = [...review.defects];
     if (rejectedPatch) findings.push(rejectedPatch);
     rejectedPatch = undefined;
-    const unique = new Map<string, RepairDefect>();
-    for (const raw of findings) {
-      const defect = controlledDefect(raw), duplicate = unique.get(defect.id);
-      if (duplicate) {
-        if (defect.owner !== duplicate.owner)
-          throw new RepairFailure("schema", "Review gave contradictory defect ownership or targets.", [...ledger.values()], round);
-        unique.set(defect.id, defectSchema.parse({ ...defect, targets: [...new Set([...duplicate.targets, ...defect.targets])],
-          evidence: [...new Set([duplicate.evidence, defect.evidence])].join("\n"),
-          acceptance: [...new Set([duplicate.acceptance, defect.acceptance])].join("\n"),
-          sourceIds: [...new Set([...duplicate.sourceIds, ...defect.sourceIds])],
-        }));
-      } else unique.set(defect.id, defect);
-    }
-    for (const defect of unique.values()) {
+    const unique = canonicalizeDefects(findings.map(controlledDefect));
+    for (const defect of unique) {
       const previous = ledger.get(defect.id);
       if (defect.artifact && (!/^\/(?:content|scene|figures\/\d+)$/.test(defect.artifact) || !catalog.some(t => t.path.startsWith(defect.artifact + "/"))))
         throw new RepairFailure("schema", "Reviewer named an unavailable artifact.", [...ledger.values()], round);
@@ -204,8 +235,8 @@ export async function repairCandidate<T>(initial: T, adapters: RepairAdapters<T>
     const open = [...ledger.values()].filter(d => d.status !== "resolved");
     // Editors and adoption audits must see this review's newly registered defects.
     context.obligations = open; context.history = [...ledger.values()];
-    await adapters.record(`review-${round}`, { fingerprint: hash, binding, review, ledger: [...ledger.values()] });
     await adapters.checkpoint?.({ candidate, ledger: [...ledger.values()], round, replanned, seen: [...seen] });
+    await adapters.record(`review-${round}`, { fingerprint: hash, binding, review, ledger: [...ledger.values()] });
     if (!open.length && review.complete) { schema().parse(candidate); adapters.validate(candidate); return { candidate, ledger: [...ledger.values()], rounds: round }; }
     if (!open.length) throw new RepairFailure("execution", "Incomplete final review.", [...ledger.values()], round);
     if (round === adapters.maxRepairs) throw new RepairFailure(open[0].owner, "Repair budget exhausted with unresolved findings.", [...ledger.values()], round);
@@ -233,6 +264,7 @@ export async function repairCandidate<T>(initial: T, adapters: RepairAdapters<T>
           const kind = (artifact: unknown) => { const value = artifact as { kind?: string; illustration?: { panels: { kind: string }[] } }; return [value?.kind, value?.illustration?.panels.map(p => p.kind).join(",")].filter(Boolean).join(":") || "flow"; };
           defect.replacement = { artifact: defect.artifact, before: fingerprint(before), after: fingerprint(after), round, beforeKind: kind(before), afterKind: kind(after) };
         }
+        await adapters.checkpoint?.({ candidate, ledger: [...ledger.values()], round, replanned, seen: [...seen] });
         await adapters.record(`replan-${round}`, { targets: replacement.targets.map(t => t.path), fingerprint: fingerprint(candidate) });
       } else {
         const paths = [...new Set(actionable.flatMap(d => d.targets))];
@@ -242,6 +274,7 @@ export async function repairCandidate<T>(initial: T, adapters: RepairAdapters<T>
         const minimal = targets.filter(t => !targets.some(parent => t.path.startsWith(parent.path + "/")));
         const patch = await adapters.edit(candidate, minimal, actionable, context);
         candidate = await checkedPatch(candidate, minimal, patch, context);
+        await adapters.checkpoint?.({ candidate, ledger: [...ledger.values()], round, replanned, seen: [...seen] });
         await adapters.record(`patch-${round}`, { targets: minimal.map(t => t.path), fingerprint: fingerprint(candidate) });
       }
     } catch (error) {

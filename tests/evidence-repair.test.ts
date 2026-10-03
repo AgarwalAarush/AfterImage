@@ -4,8 +4,8 @@ import { readFileSync } from "node:fs";
 import { z } from "zod";
 import { researchFromHtml } from "../src/lib/source-extraction";
 import { abstractResearch, researchPaperId, researchText, type ResearchBundle } from "../src/lib/research-bundle";
-import { validateEvidenceDecision, selectEvidence, EvidenceSession, reconcileEvidence, referencedSourceIds, sourcePassages, passageSelection, validateScientificAuthority } from "../worker/evidence";
-import { repairCandidate, fingerprint, RepairFailure, type RepairDefect, type RepairContext, type Target } from "../worker/repair-controller";
+import { validateEvidenceDecision, selectEvidence, EvidenceSession, reconcileEvidence, referencedSourceIds, sourcePassages, passageSelection, validateScientificAuthority, bindScientificAuthority, evidenceDecisionDigest } from "../worker/evidence";
+import { repairCandidate, fingerprint, defectScope, RepairFailure, type RepairDefect, type RepairContext, type Target } from "../worker/repair-controller";
 import { auditEquationPatch, targetingPrompt, reviewTargets, reviewCitations, requestEdit, type Model } from "../worker/repair-model";
 import type { Paper } from "../src/lib/types";
 
@@ -56,7 +56,7 @@ test("bounded enrichment preserves pinned sources and cannot replace cited evide
   assert.deepEqual(focused.catalogue, data.catalogue);
   assert.throws(() => selectEvidence(data, ["http://other-paper"], pins), /Invalid bounded/);
   const session = new EvidenceSession(data, "Paper");
-  const model: Model = async (_, schema) => schema.parse({ candidate: context.fingerprint, binding: context.binding, sourceIds: [session.passes ? "s18" : "s19"] });
+  const model: Model = async (_, schema, name) => schema.parse({ candidate: context.fingerprint, binding: context.binding, sourceIds: [name.endsWith("-0") ? "s19" : "s18"] });
   await session.enrich(model, [], {}, context, {});
   await session.enrich(model, [], {}, context, {});
   await assert.rejects(session.enrich(model, [], {}, context, {}), /enrichment exhausted/);
@@ -110,12 +110,12 @@ test("source refresh cannot discard a genuine finding when a fresh reviewer omit
   (error: unknown) => error instanceof RepairFailure && error.ledger.some(d => d.id === demand.id && d.status === "disputed"));
 });
 test("scientific edit authority binds exact passages to the current active sources", () => {
-  const supported = { ...defect, sourceIds: ["appendix-a3"], sourceProof: { sources: fingerprint(bundle.sources), support: [{ sourceId: "appendix-a3", passage: excerpt }], requirement: defect.acceptance } };
-  validateScientificAuthority([supported], bundle.sources);
-  assert.throws(() => validateScientificAuthority([defect], bundle.sources), /lacks current/);
-  assert.throws(() => validateScientificAuthority([supported], [...bundle.sources, { id: "changed", label: "Changed", url: "https://arxiv.org/html/2607.06601v1", excerpt: "New evidence" }]), /lacks current/);
-  assert.throws(() => validateScientificAuthority([{ ...supported, sourceIds: [] }], bundle.sources), /not cited/);
-  assert.throws(() => validateScientificAuthority([{ ...defect, owner: "representation" }], bundle.sources), /lacks current/);
+  const supported = { ...defect, sourceIds: ["appendix-a3"], sourceProof: { version:1 as const, candidate:context.fingerprint, binding:context.binding!, scope:defectScope({...defect,sourceIds:["appendix-a3"]}), decision:evidenceDecisionDigest({id:defect.id,disposition:"supported-defect",requirement:defect.acceptance,support:[{sourceId:"appendix-a3",passage:excerpt}]}), sourceIds:bundle.sources.map(s=>s.id), sources: fingerprint(bundle.sources), support: [{ sourceId: "appendix-a3", passage: excerpt }], requirement: defect.acceptance } };
+  validateScientificAuthority([supported], bundle.sources, context);
+  assert.throws(() => validateScientificAuthority([defect], bundle.sources, context), /lacks current/);
+  assert.throws(() => validateScientificAuthority([supported], bundle.sources.map(s=>({...s,excerpt:s.excerpt+" Changed evidence."})), context), /lacks current/);
+  assert.throws(() => validateScientificAuthority([{ ...supported, sourceIds: [] }], bundle.sources, context), /not cited|scope/);
+  assert.throws(() => validateScientificAuthority([{ ...defect, owner: "representation" }], bundle.sources, context), /lacks current/);
 });
 
 test("audit citation IDs derive from received passages rather than a second model citation list", () => {
@@ -184,7 +184,7 @@ test("a scientific validation finding can acquire evidence authority before its 
     review: async (c, ctx) => {
       if (c.cost === 0) return { defects: [], complete: true, verified: ctx.obligations.map(d => ({ id: d.id, resolved: true, evidence: "Zero cost agrees with the selected null branch in Appendix C." })) };
       const [decision] = await reconcileEvidence(model, [located], c, ctx, bundle, "TriRoute", {});
-      return { defects: [{ ...located, sourceProof: { sources: fingerprint(bundle.sources), support: decision.support, requirement: decision.requirement } }], verified: [], complete: false };
+      return { defects: [bindScientificAuthority(located,decision,ctx,bundle.sources)], verified: [], complete: false };
     }, edit: (c, targets, defects, ctx) => requestEdit(model, c, targets, defects, ctx, researchText(bundle, "TriRoute")),
     replan: async () => { throw new Error("No representation replan needed"); } });
   assert.equal(result.candidate.cost, 0);

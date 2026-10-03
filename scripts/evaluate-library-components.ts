@@ -4,13 +4,14 @@ import { mkdir, writeFile, readFile } from "node:fs/promises";
 import { createWriteStream } from "node:fs";
 import path from "node:path";
 import { implementationDigest } from "../worker/implementation";
+import { mergeComponentRetry, completeEvaluationResult, reconcileEvaluationOutcomes } from "./library-evaluation-results";
 const cases = [
-  { name: "MegaBlocks", id: "2211.15841", role: "known" },
-  { name: "TriRoute", id: "2607.06601", role: "known" },
-  { name: "QLoRA", id: "2305.14314", role: "known" },
-  { name: "FlashAttention", id: "2205.14135", role: "known" },
-  { name: "LoRA", id: "2106.09685", role: "held-out" },
-  { name: "Mamba", id: "2312.00752", role: "held-out" },
+  { name: "MegaBlocks", id: "2211.15841", role: "regression", savedReplay: true },
+  { name: "TriRoute", id: "2607.06601", role: "regression", savedReplay: true },
+  { name: "QLoRA", id: "2305.14314", role: "regression", savedReplay: true },
+  { name: "FlashAttention", id: "2205.14135", role: "regression", savedReplay: true },
+  { name: "LoRA", id: "2106.09685", role: "regression", savedReplay: false },
+  { name: "Mamba", id: "2312.00752", role: "regression", savedReplay: false },
 ];
 let stopping = false;
 const children = new Set<number>();
@@ -45,11 +46,13 @@ async function main() {
  async function lane() {
   while (!stopping && cursor < cases.length) {
    const paper = cases[cursor++], start = Date.now(); console.log(`Starting ${paper.name}`);
-   const replay=paper.role==="known"&&replayDir ? path.join(replayDir,`${paper.id}.json`) : undefined;
+   const replay=paper.savedReplay&&replayDir ? path.join(replayDir,`${paper.id}.json`) : undefined;
    if(replay)await readFile(replay);
    const run = await command(["worker/index.ts", "--evaluate-paper", paper.id, ...(replay?["--candidate",replay]:[])], path.join(root, paper.name + ".log"));
    let result = run.dir ? await json(path.join(run.dir, "result.json")) : null;
    const report = run.dir ? await json(path.join(run.dir, "kit-quality-report.json")) : null;
+   const initialFailure = result?.failure;
+   if (result) result = { ...result, initialFailure };
    const retries: unknown[] = [];
    // This deliberately simulates ONE separately requested retry per failed unit. It is not worker auto-retry.
    if (exerciseRetries && result && run.dir && !stopping) {
@@ -62,18 +65,19 @@ async function main() {
      const retry = await command(["worker/index.ts", "--evaluate-file", input, "--component", target.id, "--checkpoint-root", path.join(run.dir, "checkpoints")], input.replace("-input.json", "-retry.log"));
      const next = retry.dir ? await json(path.join(retry.dir, "result.json")) : null;
      const retryReport = retry.dir ? await json(path.join(retry.dir, "kit-quality-report.json")) : null;
-     retries.push({ id: target.id, code: retry.code, dir: retry.dir, report: retryReport });
-     if (next) result = { ...result, paper: next.paper, outcomes: result.outcomes.map((o: any) => o.id === target.id ? next.outcomes[0] : o) };
+     retries.push({ id: target.id, code: retry.code, dir: retry.dir, report: retryReport, failure: next?.failure, outcomes: next?.outcomes });
+     result = mergeComponentRetry(result, target.id, next, retry.code, failed.map((outcome: any) => outcome.id));
     }
    }
+   if (result) result = reconcileEvaluationOutcomes(result);
    let nullCost = null;
    if (paper.name === "TriRoute" && result?.paper.recall && !stopping) {
     const finalFile = path.join(root, "TriRoute-final.json"); await writeFile(finalFile, JSON.stringify(result));
     const probe = await command(["scripts/evaluate-triroute-cost.ts", finalFile], path.join(root, "TriRoute-null-cost.log"));
-    nullCost = { code: probe.code, report: await json(path.join(root, "null-cost-acceptance.json")) };
+    nullCost = { code: probe.code, report: await json(path.join(root, "null-cost-acceptance-v2.json")) };
    }
-   const accepted = !!result && result.outcomes.every((o: any) => o.status === "passed") && (paper.name !== "TriRoute" || nullCost?.code === 0);
-   results.push({ ...paper, inputMode: replay ? "saved-failure-replay" : "fresh-generation", replay, initialCode: run.code, accepted, elapsedMs: Date.now()-start, dir: run.dir, report, retries, nullCost, finalOutcomes: result?.outcomes, unchanged: implementation === await implementationDigest() });
+   const accepted = completeEvaluationResult(result) && (paper.name !== "TriRoute" || nullCost?.code === 0);
+   results.push({ ...paper, inputMode: replay ? "saved-failure-replay" : "fresh-generation", replay, initialCode: run.code, initialFailure, accepted, elapsedMs: Date.now()-start, dir: run.dir, report, retries, nullCost, finalOutcomes: result?.outcomes, unchanged: implementation === await implementationDigest() });
    await writeFile(path.join(root, "results.json"), JSON.stringify({ implementation, startedAt, exerciseRetries, cases, results }, null, 2));
    if (result) await writeFile(path.join(root, `${paper.name}-final.json`), JSON.stringify(result, null, 2));
    console.log(`Finished ${paper.name}: ${accepted ? "passed" : "not accepted"}`);
