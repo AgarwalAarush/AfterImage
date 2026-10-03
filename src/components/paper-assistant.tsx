@@ -170,7 +170,7 @@ export function ReaderAssistant({target,title,arxivId,children,available=true}:{
   } satisfies CitationHandlers])),[messages,source,keepSource,hideSource,loadSource,tab]);
   const busy=sending||loading||uncertain;
   const assistantControl=target.kind==="subject"&&available&&!open?<button className="reader-assistant-launch" onClick={show} aria-label="Ask this lesson"><MessageSquare size={15}/><span>{tab==="paper"?"Ask":"Ask this lesson"}</span>{tab==="reading"&&<kbd>⌘ J</kbd>}</button>:null;
-  const viewControls=<nav className="reader-view-tabs" aria-label="Reading view"><div className="reader-view-switch"><button aria-pressed={tab==="reading"} onClick={()=>switchTab("reading")}>{target.kind==="subject"?"Lesson":"Notecard"}</button><button aria-pressed={tab==="paper"} onClick={()=>switchTab("paper")}>Paper</button></div>{tab==="reading"&&assistantControl}</nav>;
+  const viewControls=<nav className="reader-view-tabs" aria-label="Reading view"><div className="reader-view-switch"><button aria-pressed={tab==="reading"} onClick={()=>switchTab("reading")}>{target.kind==="subject"?"Lesson":"Analysis"}</button><button aria-pressed={tab==="paper"} onClick={()=>switchTab("paper")}>Paper</button></div>{tab==="reading"&&assistantControl}</nav>;
   return <div ref={root} onPointerDown={()=>{if(root.current)root.current.dataset.keyboardNavigation="false";}} data-reader-view={tab} className={`reader-workspace ${open?"assistant-open":""}`}>
     <div className="reader-main" inert={open&&narrow?true:undefined}>
       {tab==="reading"&&viewControls}

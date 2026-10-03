@@ -10,6 +10,7 @@
 .reader :global(.paper-header) > p {
   font: 400 16px/1.65 var(--font-sans);
   max-width: 68ch;
+  text-align: left;
 }
 
 .reader :global(.recap-panel) {

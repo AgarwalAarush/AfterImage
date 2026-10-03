@@ -2028,8 +2028,8 @@ input::placeholder {
 .notecard-status > span { width: 7px; height: 7px; flex: 0 0 7px; border-radius: 50%; background: var(--theme-violet, #aba4b8); }
 .notecard-status.ready > span { background: var(--theme-green, #68a087); }
 .notecard-status.running > span, .notecard-status.queued > span { background: var(--theme-violet, #8b78bf); }
-.library-card > .diagram.thumbnail { margin: 16px 16px 0; width: calc(100% - 32px); height: 202px; background: var(--theme-paper, #faf9fc); border: 1px solid var(--theme-violet-line, #eeeaf1); border-radius: 8px; }
-.library-card > .diagram.thumbnail.diagram-pending { border-color: transparent; background: transparent; }
+.library-card .diagram.thumbnail { margin: 16px 16px 0; width: calc(100% - 32px); height: 202px; background: var(--theme-paper, #faf9fc); border: 1px solid var(--theme-violet-line, #eeeaf1); border-radius: 8px; }
+.library-card .diagram.thumbnail.diagram-pending { border-color: transparent; background: transparent; }
 .library-card .notecard-glyph { width: 100px; height: 100px; border: 0; border-radius: 50%; background: var(--theme-violet-surface, #f3f0f9); }
 .library-card .notecard-glyph > svg { width: 42px; height: 42px; }
 .library-card .notecard-glyph > svg.glyph-mark { top: 26px; right: 20px; width: 22px; height: 22px; background: var(--theme-violet-surface, #f3f0f9); }
