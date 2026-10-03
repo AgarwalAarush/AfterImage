@@ -4,6 +4,8 @@ Library cards offer a hover/focus “Prepare again” action that queues the rea
 
 The Analysis/Paper switch stays at the left edge when changing reader views; Subjects retains Lesson/Paper. PDF page navigation, zoom and source actions are centered separately over the paper pane. Document search opens in a floating panel with ⌘F/Ctrl+F; selected controls use explicit high-contrast dark surfaces. See [reader toggle positioning](docs/reader-toggle-positioning-2026-10-03.md) and [reader toolbar alignment](docs/reader-toolbar-alignment-2026-10-02.md).
 
+Library recall headings and prose now share one reading column, widening to 960px on desktop when the assistant is closed and retaining a 760px cap beside the assistant. See [Library recall width](docs/library-recall-width-2026-10-03.md).
+
 Library notecards now reuse the Subjects prose preset and shared sans-serif font for consistent reading typography. See [Library reading typography](docs/library-reading-typography-2026-10-02.md).
 
 Paper abstracts and notecard introductions are left-aligned within their existing centered reading column. See [paper abstract alignment](docs/paper-abstract-alignment-2026-10-03.md).
