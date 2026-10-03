@@ -7,7 +7,7 @@ test('pasted paths yield canonical source IDs without trusting unrelated links o
   assert.deepEqual(readingContextIds('Read this [paper](https://arxiv.org/abs/2412.19437?utm_source=chatgpt.com), then https://arxiv.org/pdf/2412.19437v2.pdf and https://alphaxiv.org/abs/2401.04088. Ignore https://evil.example/abs/1234.56789 and prose 2510.26692'), ['2412.19437', '2401.04088']);
 });
 
-test('reading exclusions honor current progress, latest feedback, and the later cooldown', () => {
+test('discovery excludes every Library status, latest feedback, and the later cooldown', () => {
   const now = Date.parse('2026-09-12T12:00:00Z');
   const entries = Object.fromEntries(['read','reading','archived','saved'].map(status => [status, {paperId:status,status} as Entry]));
   const feedback: AppState['feedback'] = [
@@ -18,7 +18,7 @@ test('reading exclusions honor current progress, latest feedback, and the later 
     {paperId:'irrelevant',value:'irrelevant',at:'2026-07-01T00:00:00Z'},
     {paperId:'prerequisite',value:'advanced',at:'2026-09-11T00:00:00Z'},
   ];
-  assert.deepEqual([...excludedRecommendations({entries,feedback},now)].sort(), ['archived','irrelevant','read','reading','recent']);
+  assert.deepEqual([...excludedRecommendations({entries,feedback},now)].sort(), ['archived','irrelevant','read','reading','recent','saved']);
 });
 
 test('reading activity refreshes suggestions only when direction and worker capacity allow it', () => {
@@ -49,6 +49,7 @@ test('discovery merges OpenAlex with the arXiv fallback and records provider cov
   }) as typeof fetch;
   assert.deepEqual(await discoverPapers('MoE routing', true, request), {
     ids:['2401.04088','2509.01234'],
+    popularity:{},
     status:'ok',
     providers:[
       {provider:'arxiv-website',status:'ok',resultCount:1,candidateCount:1},
