@@ -552,13 +552,13 @@
     "reviewedAt": "2026-10-02T00:19:59.909Z",
     "contentDigest": "a048e0ef06e8ae6a29f2364ad5130957b4421e66eebd73b190d734c75eeb6f09",
     "rendererDigest": "83a7df171d30c59ad1eef731009edc62331803b8dcba7d6983b92d72bf27ea4a",
-    "visualReviewedAt": "2026-10-03T00:12:47.874Z",
+    "visualReviewedAt": "2026-10-03T02:00:11.861986Z",
     "visualAcceptance": {
       "version": 2,
-      "reportDigest": "ae745045cebc0fb0b07eb171aca93ef33c647ef4df01b44c8b461439be77bcd0",
-      "presentationDigest": "70cba0072d2215a8ec56cb3b215c0d278255274f074d06be56d9583c8c5158df",
+      "reportDigest": "96780125093a088cbc3bb32d94c0188c6a984d8139ea691c9247e3a456f313c0",
+      "presentationDigest": "2828755f26186c362b472c57f40f21347b625cb770afe4357a7b98e6ab69bfdf",
       "semanticPolicyVersion": "mechanism-semantic-ownership-v1",
-      "reviewerId": "independent-visual-review-2026-10-02",
+      "reviewerId": "/root/visual_review_b",
       "viewCount": 4,
       "beatCount": 4,
       "transitionCount": 12
