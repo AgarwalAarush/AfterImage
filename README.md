@@ -1,5 +1,7 @@
 # AfterImage
 
+The Lesson/Notecard and Paper switch now shares a centered, compact PDF toolbar with page navigation, grouped zoom and source actions. Document search opens in a floating panel with ⌘F/Ctrl+F; selected controls use explicit high-contrast dark surfaces. See [reader toolbar alignment](docs/reader-toolbar-alignment-2026-10-02.md) for UI verification and renewed independent Subjects publication acceptance.
+
 Library notecards now reuse the Subjects prose preset and shared sans-serif font for consistent reading typography. See [Library reading typography](docs/library-reading-typography-2026-10-02.md).
 
 The [Subjects reading typography refinement](docs/subjects-reading-typography-2026-10-02.md) uses the existing interface sans-serif for article prose, smaller introductions and objectives headings, and clearer paragraph spacing. Useful background is removed from all Subjects articles. Fresh independent visual acceptance covers every mechanism state and adjacent transition at both desktop widths in Light and Dark. This web release is live and verified on the production reader, Library, and Documents routes.

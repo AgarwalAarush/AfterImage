@@ -20,7 +20,7 @@ const config: NextConfig = {
       "./src/app/globals.css", "./src/app/theme.css", "./src/app/ui.css", "./src/app/layout.tsx",
       "./src/components/app.tsx", "./src/components/theme-control.tsx",
       "./src/components/paper-assistant.tsx", "./src/components/paper-pdf.tsx", "./src/components/assistant-answer.tsx",
-      "./src/lib/assistant-model.ts", "./src/lib/pdf-location.ts",
+      "./src/lib/assistant-model.ts", "./src/lib/pdf-location.ts", "./src/lib/pdf-search.ts",
       "./src/lib/theme.ts", "./src/components/subject-reader.tsx", "./src/components/subject-prose.tsx", "./src/components/reader-quiz.tsx",
       "./src/lib/subject-visual-review-schema.ts", "./src/lib/subject-visual-review.ts",
       "./src/lib/subject-mechanism-quality.ts", "./src/lib/subject-mechanism-store.ts",

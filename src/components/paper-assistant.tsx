@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { ArrowUp, X, MessageSquare, Square, Quote, Copy, Plus, History, BookOpen } from "lucide-react";
+import { ArrowUp, X, MessageSquare, Square, Quote, Copy, Plus, History } from "lucide-react";
 import dynamic from "next/dynamic";
 import { createPortal } from "react-dom";
 import type { Paper } from "@/lib/types";
@@ -117,6 +117,7 @@ export function ReaderAssistant({target,title,arxivId,children,available=true}:{
       const editable=(event.target as Element)?.closest("input,textarea,[contenteditable='true']");
       if((event.metaKey||event.ctrlKey)&&event.key.toLowerCase()==="e"&&!editable){const selected=captureSelection();if(selected){event.preventDefault();if(!running&&!loading&&!submitting.current&&!uncertain){show();void send("Explain this selection",selected.text);}return;}}
       if((event.metaKey||event.ctrlKey)&&event.key.toLowerCase()==="j"){event.preventDefault();if(open)close();else show();}
+      if(event.defaultPrevented)return;
       if(event.key==="Escape"){if(highlight){setHighlight(null);return;}if(source){setSource(null);return;}if(historyOpen){setHistoryOpen(false);return;}if(open)close();}
       if(open&&narrow&&event.key==="Tab"){
         const nodes=Array.from(root.current?.querySelectorAll<HTMLElement>(".paper-assistant button:not(:disabled),.paper-assistant textarea,.paper-assistant a,.assistant-table-scroll")||[]).filter(node=>node.offsetParent!==null);
@@ -168,11 +169,13 @@ export function ReaderAssistant({target,title,arxivId,children,available=true}:{
     navigate:(id:string)=>void navigateCitation(`${turn.id}|${id}`),
   } satisfies CitationHandlers])),[messages,source,keepSource,hideSource,loadSource,tab]);
   const busy=sending||loading||uncertain;
+  const assistantControl=target.kind==="subject"&&available&&!open?<button className="reader-assistant-launch" onClick={show} aria-label="Ask this lesson"><MessageSquare size={15}/><span>{tab==="paper"?"Ask":"Ask this lesson"}</span>{tab==="reading"&&<kbd>⌘ J</kbd>}</button>:null;
+  const viewControls=<nav className="reader-view-tabs" aria-label="Reading view"><div className="reader-view-switch"><button aria-pressed={tab==="reading"} onClick={()=>switchTab("reading")}>{target.kind==="subject"?"Lesson":"Notecard"}</button><button aria-pressed={tab==="paper"} onClick={()=>switchTab("paper")}>Paper</button></div>{tab==="reading"&&assistantControl}</nav>;
   return <div ref={root} onPointerDown={()=>{if(root.current)root.current.dataset.keyboardNavigation="false";}} data-reader-view={tab} className={`reader-workspace ${open?"assistant-open":""}`}>
     <div className="reader-main" inert={open&&narrow?true:undefined}>
-      <nav className="reader-view-tabs" aria-label="Reading view"><button aria-pressed={tab==="reading"} onClick={()=>switchTab("reading")}>{target.kind==="subject"?"Lesson":"Notecard"}</button><button aria-pressed={tab==="paper"} onClick={()=>switchTab("paper")}><BookOpen size={14}/>Paper</button>{target.kind==="subject"&&available&&!open&&<button className="reader-assistant-launch" onClick={show}><MessageSquare size={15}/>Ask this lesson<kbd>⌘ J</kbd></button>}</nav>
+      {tab==="reading"&&viewControls}
       <div data-assistant-content hidden={tab!=="reading"}>{children}</div>
-      {pdfOpened&&<div className="reader-pdf-view" data-assistant-content hidden={tab!=="paper"}><PaperPdf target={target} title={title} arxivId={arxivId} destination={destination}/></div>}
+      {pdfOpened&&<div className="reader-pdf-view" data-assistant-content hidden={tab!=="paper"}><PaperPdf target={target} title={title} arxivId={arxivId} destination={destination} viewControls={viewControls} toolbarActions={assistantControl}/></div>}
     </div>
     {target.kind==="paper"&&available&&!open&&<button className="assistant-launch button" onClick={show}><MessageSquare size={17}/>Ask this paper<kbd>⌘ J</kbd></button>}
     {available&&highlight&&<form className="selection-popover" style={{left:highlight.x,top:highlight.y}} onSubmit={event=>{event.preventDefault();show();void send(selectionQuestion,highlight.text);}} aria-label="Ask about selected text">
