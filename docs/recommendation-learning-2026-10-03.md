@@ -46,6 +46,8 @@ Dia confirms feedback choices, one-click dismissal/Undo, interest More/Off updat
 
 Dia verification uses disposable SQLite at `/private/tmp/afterimage-learning-dia.sqlite` and localhost port 3167. The production prebuild intentionally rejects all 14 mechanisms with stale presentation approval after shared shell/UI changes. Subjects content/scene, renderer and dependency bytes remain unchanged. Dia's currently supported native interface lacks DOM font-outline audit and exact viewport automation; the available browser connectors are MCP Apps and the in-app browser, which the owner forbids as a fallback. Do not relabel historical screenshots/receipts as current acceptance, remove reviewed mechanisms to pass the build, or weaken fingerprints.
 
+The final prebuild preserves renderer digest `83a7df171d30c59ad1eef731009edc62331803b8dcba7d6983b92d72bf27ea4a` and reviewed lock digest `4551ca961c528d4a4edb033d63dfef70bfe09ab1dda04306493ee59bd45abc2d`; the changed shared UI has presentation digest `b65b4f90b89c329e8dd5e1ddecbadcba9a16bdb855cb32ded5123158a5a4762a`. Historical approvals are retained but withheld by the current fingerprint check. Webpack compilation and fresh production trace acceptance remain pending the publication gate.
+
 ## Release and rollback
 
 1. Complete all 12 trials and renew fingerprint-bound independent Subjects visual review in **Dia only**, at 1440/900 in Light/Dark, every beat and adjacent transition. Hold release if unavailable.

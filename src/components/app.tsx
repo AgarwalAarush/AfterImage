@@ -49,6 +49,8 @@ const Diagram = dynamic(() => import("./diagram").then(module => module.Diagram)
 });
 import { readerUrl } from "@/lib/identity";
 import { download } from "@/lib/download";
+import { PaperFeedback, usePaperFeedback } from "./paper-feedback";
+import { InterestControls } from "./reading-interests";
 const Context = createContext<{
   state: AppState | null;
   act: (body: Record<string, unknown>) => Promise<any>;
@@ -58,7 +60,7 @@ const Context = createContext<{
   refresh: () => Promise<void>;
   refreshing: boolean;
   openAdd: () => void;
-  toast: (s: string) => void;
+  toast: (s: string, action?: {label: string; run: () => void}) => void;
 }>({
   state: null,
   act: async () => {},
@@ -112,6 +114,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [preparations, setPreparations] = useState<Record<string, PreparationRequest>>({}),
     [paletteOpen, setPaletteOpen] = useState(false),
     [message, setMessage] = useState("");
+  const [toastAction, setToastAction] = useState<{label: string; run: () => void} | undefined>();
   const [navigationExpanded, setNavigationExpanded] = useState(false);
   useEffect(() => { try { setNavigationExpanded(localStorage.getItem("afterimage-navigation-expanded") === "true"); } catch {} }, []);
   function toggleNavigation() { setNavigationExpanded(value => { const next = !value; try { localStorage.setItem("afterimage-navigation-expanded", String(next)); } catch {} return next; }); }
@@ -199,7 +202,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [refresh, activeJobs, pathname, error]);
   useEffect(() => {
     if (!message) return;
-    const t = setTimeout(() => setMessage(""), 4000);
+    const t = setTimeout(() => setMessage(""), 8000);
     return () => clearTimeout(t);
   }, [message]);
   const act = useCallback(async (body: Record<string, unknown>) => {
@@ -228,6 +231,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setError("");
       return data;
     } catch (e) {
+      setToastAction(undefined);
       setMessage((e as Error).message);
       throw e;
     } finally {
@@ -266,7 +270,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         refresh,
         refreshing,
         openAdd: () => setPaletteOpen(true),
-        toast: setMessage,
+        toast: (text, action) => {setMessage(text);setToastAction(action);},
       }}
     >
       <div className="app-shell" data-navigation-expanded={navigationExpanded}>
@@ -311,6 +315,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       {message && (
         <div className="toast" role="status">
           {message}
+          {toastAction && <button className="text-button" onClick={() => {toastAction.run();setToastAction(undefined);}}>{toastAction.label}</button>}
         </div>
       )}
       {paletteOpen && <PaperPalette close={() => setPaletteOpen(false)} />}
@@ -786,14 +791,7 @@ function RecommendationCard({
     void prepareKit(p.id);
     router.push(paperHref);
   };
-  const refine = (value: "useful" | "known" | "advanced" | "irrelevant" | "later") => {
-    void act({action: "feedback", paperId: p.id, value}).then(({state: updated}: {state: AppState}) => {
-      const replacing = updated.jobs.some(job => job.type === "recommend" && ["queued", "running"].includes(job.status));
-      toast(value === "later" ? "Saved to your Library." : value === "irrelevant"
-        ? replacing ? "Dismissed. Finding another paper." : "Dismissed."
-        : value === "known" ? "Removed from suggestions." : "Noted for your next shortlist.");
-    }).catch(() => {});
-  };
+  const refine = usePaperFeedback(p.id);
   return (
     <article className={`paper-card next-read-card ${p.accent}`}>
       <div className="card-top">
@@ -802,44 +800,7 @@ function RecommendationCard({
           {r.role}
         </span>
         <div className="card-tools">
-          <details
-            className="suggestion-feedback"
-            onKeyDown={(event) => {
-              if (event.key === "Escape") {
-                event.currentTarget.open = false;
-                event.currentTarget.querySelector("summary")?.focus();
-              }
-            }}
-            onBlur={(event) => {
-              if (!event.currentTarget.contains(event.relatedTarget)) event.currentTarget.open = false;
-            }}
-          >
-            <summary>
-              <MoreHorizontal size={18} />
-              <span className="sr-only">Refine this suggestion</span>
-            </summary>
-            <div>
-              {[
-                ["useful", "Useful"],
-                ["known", "Already know it"],
-                ["advanced", "Too advanced"],
-                ["irrelevant", "Not for me"],
-                ["later", "Save for later"],
-              ].map(([value, label]) => (
-                <button
-                  key={value}
-                  disabled={busy}
-                  onClick={(event) => {
-                    const menu = event.currentTarget.closest("details");
-                    if (menu) menu.open = false;
-                    refine(value as "useful" | "known" | "advanced" | "irrelevant" | "later");
-                  }}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          </details>
+          <PaperFeedback paperId={p.id} saveForLater />
           <button
             aria-label={`Dismiss recommendation: ${p.title}`}
             title="Not interested — show another paper"
@@ -1097,6 +1058,7 @@ function DirectionForm({
         <h1>What’s on your mind?</h1>
         <p>A reading list is better when it knows where you’re going.</p>
       </div>
+      <InterestControls />
       <div className="direction-grid">
         <form
           className="panel direction-form"
@@ -1193,8 +1155,8 @@ function DirectionForm({
             You’ll see why a paper belongs and what to look for.
           </p>
           <p>
-            Suggestions stay put until you ask for new ones. There’s no feed to
-            keep up with.
+            Choosing or dismissing a paper makes room for another. Refresh
+            suggestions when you want a whole new shortlist.
           </p>
           <div className="worker-status">
             <span

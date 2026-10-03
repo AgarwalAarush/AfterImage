@@ -521,3 +521,14 @@ html:has(.reader-workspace[data-reader-view="paper"]),body:has(.reader-workspace
 .pdf-toolbar-actions { grid-column:3; justify-self:end; margin:0; }
 .pdf-reading-controls .pdf-controls { flex:0 1 auto; }
 @media (max-width:600px) { .reader-pdf-view .pdf-toolbar { grid-template-columns:max-content minmax(0,1fr) auto; } }
+
+.reading-interests { margin-bottom: 2rem; padding: 1.5rem; }
+.reading-interests h2 { font-size: 1.25rem; margin: 0; }
+.engagement-switch { white-space: nowrap; display: flex; align-items: center; gap: .6rem; font-size: .85rem; color: var(--muted); }
+.interest-row { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .65rem 0; }
+.interest-row [role="group"] { display: flex; gap: .5rem; }
+.interest-row [aria-pressed="true"] { color: var(--accent); background: var(--surface); text-decoration: underline; text-underline-offset: 4px; }
+.reading-interests small { display: block; color: var(--muted); margin-top: .8rem; }
+.toast { display: flex; align-items: center; gap: 1.5rem; }
+
+.engagement-switch input { width: 16px; height: 16px; margin: 0; flex-shrink: 0; accent-color: var(--accent); }
