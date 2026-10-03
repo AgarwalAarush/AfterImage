@@ -101,3 +101,6 @@ export function sourcesFromHtml(paper: Paper, html: string): Source[] {
   });
   return sources;
 }
+
+// Rich worker evidence keeps legacy Subjects extraction identities and bytes unchanged.
+export { researchFromHtml } from "./research-extraction";

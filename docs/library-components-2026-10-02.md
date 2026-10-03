@@ -1,0 +1,53 @@
+# Library component generation and recovery
+
+## Scope and integration
+
+This is a local implementation; it has not been deployed and does not establish recovery of live Library entries. Subjects and owner documents retain their existing boundaries.
+
+The integration started at application commit `185087801753e6ac1601e57c1fb785fdb4b7d062`. The repair-controller work was read from worktree `53d9`, commit `94ca2ac8c2039fd1c0d8219c0cdddb7041df2d0a`, including its uncommitted changes. That worktree was left untouched. A private integration ledger records exact input hashes and merge provenance in `.artifacts/library-repair/integration.json`.
+
+The imported controller, extraction, source-number and renderer changes are combined with the current application. Legacy Subjects extraction remains separate from richer Library research extraction. The committed dependency lockfile is unchanged.
+
+## Contracts and publication
+
+`Paper.kit` version 1 identifies the explanation, opening diagram, each named study figure, and complete quiz. Each publication has a content/source revision, exact dependency revisions, source IDs, and reader-safe preparation status. An adapter reads legacy kits without writing a manifest or regenerating content.
+
+The worker claims using `componentProtocol: 1`. Older workers cannot claim component jobs or regenerate a paper that already has a component manifest. `publish-component` checks the current lease, expected previous component revision, dependency revisions, source identities, content/source review digests, and source/schema validation before merging only that component. Duplicate completion IDs must match their original payload and lease digest. A worker that loses a completion response reads `completion-status` and does not replay the mutation.
+
+A failed replacement retains the previous approved component while its dependencies remain current. A replacement explanation invalidates downstream revision bindings; old dependent content remains stored but is withheld from reader, assistant, and export projections. The worker produces standalone explanations and quizzes answerable from the explanation. Explicit additional dependency bindings are enforced by the API.
+
+Published study content may contain only figures or only a quiz. Draft generation still requires a complete quiz and a valid individual figure. Empty diagrams are omitted. Newly published diagram revisions supersede the legacy LoRA/EAGLE presentation without rewriting legacy kits. Preparation and cards distinguish readable content from unfinished components. Component retry uses the shared submission/reconciliation flow and deduplicates against active preparation for that paper. Reading state and quiz answer storage are independent of figure revisions.
+
+## Repair and evidence
+
+Tight string limits in decoder output were observed to produce incomplete text at the exact character boundary. Wire schemas now describe native limits while allowing a bounded complete private draft. Local validation turns excess length into field-specific repair obligations; the original schema limits still apply to edited fields and final publication. Text is never mechanically truncated. Rejected patches retain their exact private validation findings for the next editor call; text components cannot spend their retry allowance on a visual representation fallback.
+
+Panel validation keeps individual panel obligations separate from aggregate errors, so repairing one panel does not require an unrelated panel to pass. Rendering waits for its semantic preconditions. The controller compares bounded validation findings before and after a patch, preserves unrelated defects privately, rejects new or unsafe defects, validates preimages, and independently audits changed science and dependencies before adoption. The adoption audit receives newly registered findings from the current review and explicitly checks that unrelated fields, including sibling entries in an edited array, remain unchanged. Stable object/invariant identities control the ledger. A bounded independent identity check maps renamed or relocated findings back to controller-owned IDs across the full ledger, including resolved history; it cannot resolve findings or waive gates. Distinct invariants remain separate. Unresolved disputes remain private; supported independent edits can proceed.
+
+Validation compares the actual changed fields even when the patch replaces an owning array. Unchanged overlong siblings may remain in a private candidate; newly edited text must meet its native bound. An independent patch audit names at least one explicitly corrected obligation and checks for new errors and broken dependencies. Remaining obligations still need explicit final verification. Duplicate reports retain their original repair owner, and feasibility checks preserve defect identity. Rejected-patch bookkeeping supplies editing feedback without becoming a new scientific demand requiring source evidence.
+
+Four opening repair attempts and two supplement attempts are shared across components; planning corrections also consume the opening allowance. One representation fallback is available per stage. Checkpoints reserve an attempt before its model call, so execution interruption cannot recover a spent attempt. Every live checkpoint write first renews the current job lease; a superseded worker cannot overwrite the newer candidate or budget. Evidence-decision caches are bound to unchanged candidate, plan and exact source content. Explicit retry starts a new bounded run and resumes compatible candidate/ledger state. No exhausted component is automatically requeued for scientific rejection.
+
+Research retains up to 128 immutable excerpt identities, each bound to its exact URL/text hash. Model evidence contexts stay at 14 excerpts. Source review divides larger retained component registries into bounded groups, and requires exactly the equations assigned to each group (zero for figure/quiz reviews). Planning uses both opening and study renderer capabilities. Its citation list is rebound to explicitly selected evidence before feasibility review, and subsequent planning patches accept only received excerpt IDs. Bounded catalogue previews include both the beginning and ending of each excerpt so implementation branches near the end of a listing remain discoverable. Selection explicitly checks corresponding implementation evidence for cost and normalization claims. Enrichment can retrieve appendix evidence without filling every call with all earlier citations. Plans undergo source and representation feasibility review before freezing essential requirements, equations and examples. Optional elaboration is not a later scientific blocker.
+
+Candidate, ledger, evidence, budget and model diagnostics remain in worker-owned private files. `AFTERIMAGE_CHECKPOINT_DIR` should point to a stable private directory on macserver across worker release directories. The default is `.assistant-runtime/library-checkpoints`. Keep this directory private and excluded from deployment uploads/traces. It is not part of the browser state, library export, or public storage API. Review receipts and lease digests are private job fields stripped from both ordinary and full exports.
+
+## Verification
+
+- Unit and integration regressions cover partial publication, dependency withholding, lease expiry, duplicate completions, immutable sources, preserved previous content, explicit figure retry, private-field exclusion, intermediate repairs, persistent defects and interruption budgets.
+- The complete local suite passed 297 tests; TypeScript validation and the production webpack build passed after the controller corrections.
+- The local signed bridge roundtrip preserves component manifests and jobs through its existing generic state CAS contract. No new bridge action or database migration is required.
+- Browser acceptance uses a synthetic local SQLite fixture. At 1440px and 900px in Light/Dark, approved prose and quiz remain visible with a failed diagram. An explicit diagram retry preserves a checked quiz answer. Existing 390px compatibility has no horizontal overflow. No browser errors were observed. Screenshots and audit facts stay private.
+- The production webpack build passed the unchanged Subjects publication audit. All 23 fresh output traces excluded private artifacts, runtime files, database files and environment files. The exact committed lockfile is unchanged.
+- `node --import tsx scripts/evaluate-library-components.ts --exercise-retries --replay-dir .artifacts/library-repair/replays` replays the original saved failures for MegaBlocks, TriRoute, QLoRA and FlashAttention, then freshly generates held-out LoRA and Mamba with one implementation digest. The replay directory is private; its provenance ledger records original candidate hashes. The explicit retry exercise permits one separately requested retry per failed component; it does not add automatic production retries. Reports record component results, private ledgers, model calls, elapsed time and failure ownership. This is a deliberate model evaluation, not part of `npm test`.
+
+Model recovery acceptance is recorded separately after the final frozen runs. Tests and a successful build do not establish scientific recovery.
+
+## Release sequence
+
+1. Verify bridge compatibility and retained local backups. The tested bridge contract already carries the new fields; deploy a bridge change first only if the deployed version differs from that tested contract.
+2. Release compatible web/API validation, projection and reader behavior.
+3. Wait for active jobs to finish. Release the worker with a stable private checkpoint directory.
+4. Explicitly retry selected failed components. Verify live independent publication, dependency withholding and retry preservation before declaring those Library entries fixed.
+
+Deployment, worker restarts and live Library regeneration require the separate release authorization. No bulk regeneration or Subjects rollout is included.

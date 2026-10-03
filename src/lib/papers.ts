@@ -1,6 +1,7 @@
 import * as cheerio from "cheerio";
 import type { Paper, Source } from "./types";
-import { sourcesFromHtml,hasSubstantiveSourceBody } from "./source-extraction";
+import { researchFromHtml } from "./source-extraction";
+import { abstractResearch, researchPaperId, type ResearchBundle } from "./research-bundle";
 export async function importPaper(id: string): Promise<Paper> {
   const r = await fetch(`https://arxiv.org/abs/${id}`, {
     headers: { "User-Agent": "AfterImage/0.1 (personal research library)" },
@@ -58,16 +59,21 @@ export async function importPaper(id: string): Promise<Paper> {
 export async function extractSources(
   paper: Paper,
 ): Promise<{ scope: "abstract" | "full-text"; sources: Source[] }> {
+  const { scope, sources } = await extractResearch(paper);
+  return { scope, sources };
+}
+/** Private richer extraction, intentionally projected away from the public API. */
+export async function extractResearch(paper: Paper): Promise<ResearchBundle> {
+  const id = researchPaperId(paper.arxivId);
   try {
-    const r = await fetch(`https://arxiv.org/html/${paper.arxivId}`, {
-      signal: AbortSignal.timeout(30000),
+    const r = await fetch(`https://arxiv.org/html/${id}`, {
+      signal: AbortSignal.timeout(30000), redirect: "error",
     });
-    if (!r.ok) return { scope: "abstract", sources: paper.sources.slice(0, 1) };
+    if (!r.ok) return abstractResearch(paper.sources);
     const html = await r.text();
     if (html.length > 12_000_000) throw new Error("Too large");
-    const sources = sourcesFromHtml(paper, html);
-    return { scope: hasSubstantiveSourceBody(sources) ? "full-text" : "abstract", sources };
+    return researchFromHtml({ ...paper, arxivId: id }, html);
   } catch {
-    return { scope: "abstract", sources: paper.sources.slice(0, 1) };
+    return abstractResearch(paper.sources);
   }
 }

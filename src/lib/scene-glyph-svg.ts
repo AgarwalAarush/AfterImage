@@ -5,6 +5,12 @@ import { wrapDiagramText } from "./scene-layout";
 const fmt = (value: number) => Number(value.toPrecision(4)).toString();
 const text = (x: number, y: number, value: string, size = 14, fill = "#34332f", anchor = "middle") => `<text x="${x}" y="${y}" text-anchor="${anchor}" font-family="IBM Plex Mono, monospace" font-size="${size}" fill="${fill}">${diagramText(value)}</text>`;
 
+/** Shared shape geometry keeps token circles separate and connector tips on their outlines. */
+export function tokenGlyphGeometry(count: number, x: number, y: number, width: number) {
+  const columns = Math.min(count, width < 160 ? 2 : 3), cell = (width - 24) / columns;
+  return Array.from({ length: count }, (_, i) => ({ x: x + 12 + (i % columns + .5) * cell, y: y + 58 + Math.floor(i / columns) * 40, radius: 18 }));
+}
+
 /** Shapes carry data: angle, occupancy, repeated identity, or distribution parameters. */
 export function glyphSvg(glyph: Glyph, x: number, y: number, width: number, accent: string) {
   const cx = x + width / 2, cy = y + 74, inner = width - 24;
@@ -39,9 +45,10 @@ export function glyphSvg(glyph: Glyph, x: number, y: number, width: number, acce
     svg += `<path d="M${cx - 42} ${top}h-8v${total}h8 M${cx + 42} ${top}h8v${total}h-8" stroke="${accent}" stroke-width="2" fill="none"/>`;
     glyph.values.forEach((value, i) => { svg += text(cx, top + 19 + i * 27, value, 15); });
   } else if (glyph.glyph === "tokens") {
+    const circles = tokenGlyphGeometry(glyph.items.length, x, y, width);
     glyph.items.forEach((value, i) => {
-      const col = i % 3, row = Math.floor(i / 3), cell = inner / 3, px = x + 12 + (col + .5) * cell, py = cy - 16 + row * 40;
-      svg += `<circle cx="${px}" cy="${py}" r="16" fill="${accent}15" stroke="${accent}"/>${text(px, py + 4, value, 13)}`;
+      const circle = circles[i];
+      svg += `<circle data-token="${i}" cx="${circle.x}" cy="${circle.y}" r="${circle.radius}" fill="${accent}15" stroke="${accent}"/>${text(circle.x, circle.y + 4, value, 13)}`;
     });
   } else {
     svg += `<path d="M${x + 12} ${cy - 32}l10 -8h${inner - 10}v64l-10 8 M${x + width - 12} ${cy - 32}l10 -8" fill="${accent}10" stroke="${accent}80"/><rect x="${x + 12}" y="${cy - 32}" width="${inner}" height="64" rx="4" fill="${accent}15" stroke="${accent}"/>`;

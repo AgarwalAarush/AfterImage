@@ -48,7 +48,7 @@ import { download } from "@/lib/download";
 const Context = createContext<{
   state: AppState | null;
   act: (body: Record<string, unknown>) => Promise<any>;
-  prepareKit: (paperId: string, action?: "generate" | "study") => Promise<void>;
+  prepareKit: (paperId: string, action?: "generate" | "study" | "component", componentId?: string) => Promise<void>;
   preparations: Record<string, PreparationRequest>;
   busy: boolean;
   refresh: () => Promise<void>;
@@ -228,13 +228,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setBusy(false);
     }
   }, [router]);
-  const prepareKit = useCallback((paperId: string, action: "generate" | "study" = "generate") => {
+  const prepareKit = useCallback((paperId: string, action: "generate" | "study" | "component" = "generate", componentId?: string) => {
     const pending = preparationRequests.current.get(paperId);
     if (pending) return pending;
     if (stateRef.current?.jobs.some(job => job.paperId === paperId && job.type === action && ["queued", "running"].includes(job.status))) return Promise.resolve();
     const startedAt = new Date().toISOString();
     setPreparations(current => ({...current, [paperId]: {status: "submitting", startedAt}}));
-    const request = act({action, paperId}).then(() => {
+    const request = act({action, paperId, componentId}).then(() => {
       setPreparations(current => {
         const next = {...current};
         delete next[paperId];
@@ -756,7 +756,7 @@ function paperDisplayTitle(title: string) {
   return title.includes(":") && prefix.length <= 36 ? prefix : title;
 }
 function notecardStatus(paper: Paper) {
-  if (paper.recall) return "Notecard ready";
+  if (paper.recall) return paper.kit?.components.some(c => c.state !== "ready") ? "Readable · preparation remaining" : "Notecard ready";
   if (paper.generationStatus === "queued") return "Queued for preparation";
   if (paper.generationStatus === "running") return {
     sources: "Gathering evidence", planning: "Planning the explanation",
@@ -1001,7 +1001,7 @@ export function Library() {
                 </span>
                 <span className="status-label">{e.status === "saved" ? "To read" : e.status === "reading" ? "Reading" : e.status === "archived" ? "Archived" : "Read"}</span>
               </div>
-              <Diagram paper={p} thumbnail />
+              {(p.scene || p.visual) && <Diagram paper={p} thumbnail />}
               <h2 title={p.title}>{paperDisplayTitle(p.title)}</h2>
               <p>{p.recall?.idea || paperSummary(p.abstract)}</p>
             </Link>

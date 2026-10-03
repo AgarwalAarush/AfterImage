@@ -135,6 +135,13 @@ test("Vercel-to-macserver bridge authenticates requests and preserves SQLite ver
     assert.equal(copy.prepare("SELECT version FROM state WHERE id=1").get()!.version, 1);
     assert.equal(copy.prepare("SELECT count(*) AS count FROM documents").get()!.count, 0);
     copy.close();
+    await mutate(state => {
+      state.papers[0].kit = { version: 1, revision: 1, components: [{ id: "explanation", state: "ready", revision: "bound", dependencies: {}, sourceIds: ["abstract"] }] };
+      state.jobs.push({ id: "component-job", type: "component", componentId: "diagram", paperId: state.papers[0].id, status: "queued", createdAt: new Date().toISOString(), attempts: 0 });
+    });
+    const compatible = await snapshot();
+    assert.equal(compatible.data.papers[0].kit?.components[0].revision, "bound");
+    assert.equal(compatible.data.jobs.at(-1)?.componentId, "diagram");
   } finally {
     if (oldStorage === undefined) delete process.env.AFTERIMAGE_STORAGE;
     else process.env.AFTERIMAGE_STORAGE = oldStorage;

@@ -1,3 +1,4 @@
+import type { Kit } from "./kit";
 import type { AssistantRequest } from "./assistant";
 import type { StudyPack } from "./study";
 import type { Illustration } from "./scene-illustration";
@@ -69,6 +70,7 @@ export type Paper = {
   abstract: string;
   recall: Recall | null;
   study?: StudyPack;
+  kit?: Kit;
   scene: Scene | null;
   sources: Source[];
   visual?:
@@ -135,7 +137,10 @@ export type Feedback = {
 export type WorkerStage = GenerationStep | "study-sources" | "study-drafting" | "study-rendering" | "study-reviewing" | "study-repairing" | "publishing";
 export type Job = {
   id: string;
-  type: "generate" | "recommend" | "study";
+  type: "generate" | "recommend" | "study" | "component";
+  componentId?: string;
+  completionLeaseDigest?: string;
+  componentReceipts?: { id: string; digest: string; leaseDigest: string; revision: string; componentId: string }[];
   paperId?: string;
   status: "queued" | "running" | "complete" | "failed";
   createdAt: string;

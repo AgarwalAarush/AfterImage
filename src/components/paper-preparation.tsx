@@ -46,7 +46,7 @@ export function PaperPreparation({ paperId, model }: { paperId: string; model: P
           </button>}
         </div>}
       </div>
-      {active && <ol className="paper-preparation-steps" aria-label="Paper preparation stages">
+      {active && model.steps.length > 0 && <ol className="paper-preparation-steps" aria-label="Paper preparation stages">
         {model.steps.map(step => (
           <li className={step.state} key={step.id} aria-current={step.state === "active" && model.status === "running" ? "step" : undefined}>
             <span className="preparation-step-marker" aria-hidden="true">{step.state === "complete" && <Check size={13} />}</span>
@@ -60,6 +60,7 @@ export function PaperPreparation({ paperId, model }: { paperId: string; model: P
         : model.readable
           ? "Read your reviewed notecard below. Visuals and questions appear after review."
           : "This can take several minutes. You can leave this page; preparation continues and updates automatically."}</p>}
+      {model.retryComponents?.map(component => <button key={component.id} className="text-button preparation-action" disabled={busy} onClick={() => void prepareKit(paperId, "component", component.id)}><RefreshCw size={13} />Retry {component.label.toLowerCase()}</button>)}
       {model.retryAction && <button className="button primary preparation-action" disabled={busy} onClick={() => void prepareKit(paperId, model.retryAction!)}>
         <RefreshCw size={15} />{model.status === "failed" ? "Prepare again" : "Prepare reading kit"}
       </button>}

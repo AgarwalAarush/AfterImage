@@ -1,3 +1,5 @@
+import { componentIdSchema, paperKit } from "@/lib/kit";
+import { markKitComponent } from "@/lib/kit-publication";
 import { NextResponse } from "next/server";
 import { authenticated, sameOrigin } from "@/lib/auth";
 import { mutate, publicState, snapshot, stateStatus } from "@/lib/store";
@@ -150,18 +152,22 @@ export async function POST(req: Request) {
           if (value === "later") ensureEntry();
           break;
         }
+        case "component":
         case "study":
         case "generate":
         case "recommend": {
-          const type = z.enum(["generate", "recommend", "study"]).parse(body.action);
+          const type = z.enum(["generate", "recommend", "study", "component"]).parse(body.action);
           if (type !== "recommend" && !paper) throw new Error("Paper not found");
           if (type !== "recommend") ensureEntry();
+          const componentId = type === "component" ? componentIdSchema.parse(body.componentId) : undefined;
+          if (componentId && !paperKit(paper!).components.some(c => c.id === componentId)) throw new Error("Unknown component");
+          if (componentId && componentId !== "explanation" && !paper!.recall) throw new Error("Prepare the explanation first");
           if (type === "recommend" && !s.direction.goal.trim())
             throw new Error("Add a learning goal first.");
           if (
             s.jobs.some(
               (j) =>
-                j.type === type &&
+                (j.type === type || type !== "recommend" && ["generate", "study", "component"].includes(j.type)) &&
                 (type === "recommend" || j.paperId === id) &&
                 ["queued", "running"].includes(j.status),
             )
@@ -177,11 +183,13 @@ export async function POST(req: Request) {
           s.jobs.push({
             id: randomUUID(),
             type,
+            ...(componentId ? { componentId } : {}),
             ...(type !== "recommend" ? { paperId: id } : {}),
             status: "queued",
             createdAt: now,
             attempts: 0,
           });
+          if (paper && componentId) markKitComponent(paper, componentId, "pending");
           if (paper && type === "generate") {
             paper.generationStatus = "queued";
             delete paper.generationStep;

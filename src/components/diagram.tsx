@@ -24,8 +24,9 @@ export function Diagram({
 }) {
   const c = colors[paper.accent],
     light = c + "1a";
-  if (paper.id === "2503.01840") return <EagleDiagram thumbnail={thumbnail} />;
-  if (paper.visual === "lora") return <LoraDiagram thumbnail={thumbnail} />;
+  const publishedScene = Boolean(paper.scene && paper.kit?.components.some(c => c.id === "diagram" && c.revision && c.revision !== "legacy"));
+  if (!publishedScene && paper.id === "2503.01840") return <EagleDiagram thumbnail={thumbnail} />;
+  if (!publishedScene && paper.visual === "lora") return <LoraDiagram thumbnail={thumbnail} />;
   if (paper.scene) {
     try {
       return (

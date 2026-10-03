@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { sourceNumbers } from "./source-numbers";
 import type { Source } from "./types";
 import { illustrationSchema, validateIllustration, validateIllustrationSources } from "./scene-illustration";
 import { diagramText } from "./scene";
@@ -10,7 +11,7 @@ const base={id:z.string().regex(/^[a-z0-9-]+$/).max(40),title:z.string().min(1).
 export const figureSchema=z.discriminatedUnion("kind",[
   z.object({...base,kind:z.literal("illustration"),illustration:illustrationSchema}),
   z.object({...base,kind:z.literal("bars"),unit:short,reference:z.object({value:z.number().finite().min(0).max(1e9),label:short}).nullish(),series:z.array(z.object({label:short,value:z.number().finite().min(0).max(1e9),note:z.string().max(100)})).min(2).max(6)}),
-  z.object({...base,kind:z.literal("network"),layers:z.array(z.object({label:short,nodes:z.array(z.string().min(1).max(12)).min(1).max(4)})).min(2).max(4),states:z.array(z.object({label:short,explanation:z.string().min(20).max(450),edges:z.array(z.object({fromLayer:z.number().int().min(0).max(2),from:z.number().int().min(0).max(3),to:z.number().int().min(0).max(3),weight:z.number().finite().min(-1000).max(1000),active:z.boolean()})).min(1).max(12)})).min(1).max(3)}),
+  z.object({...base,kind:z.literal("network"),layers:z.array(z.object({label:short,nodes:z.array(z.string().min(1).max(12)).min(1).max(4)})).max(4),states:z.array(z.object({label:short,explanation:z.string().min(20).max(450),edges:z.array(z.object({fromLayer:z.number().int().min(0).max(2),from:z.number().int().min(0).max(3),to:z.number().int().min(0).max(3),weight:z.number().finite().min(-1000).max(1000),active:z.boolean()})).min(1).max(12)})).min(1).max(3)}),
   z.object({...base,kind:z.literal("matrix"),rows:z.array(short).min(2).max(5),columns:z.array(short).min(2).max(5),unit:short,values:z.array(z.array(z.number().finite().min(-1e6).max(1e6)).min(2).max(5)).min(2).max(5)}),
   z.object({...base,kind:z.literal("heatmap"),rows:z.array(z.string().min(1).max(14)).min(2).max(8),columns:z.array(z.string().min(1).max(14)).min(2).max(8),unit:short,normalization:z.enum(["row-normalized","unnormalized"]),values:z.array(z.array(z.number().finite().min(0).max(1e6)).min(2).max(8)).min(2).max(8)}),
   z.object({...base,kind:z.literal("tree"),nodes:z.array(z.object({id:z.string().regex(/^[a-z0-9-]+$/).max(24),parentId:z.string().nullable(),token:z.string().min(1).max(12),score:z.number().finite().min(-1e6).max(1e6),status:z.enum(["accepted","candidate","rejected"])})).min(3).max(15),scoreUnit:short}),
@@ -19,9 +20,10 @@ export const figureSchema=z.discriminatedUnion("kind",[
   z.object({...base,kind:z.literal("landscape"),xLabel:axis,yLabel:axis,zLabel:axis,values:z.array(z.array(z.number().finite().min(-1e9).max(1e9)).min(3).max(7)).min(3).max(7),path:z.array(z.object({row:z.number().int().min(0).max(6),column:z.number().int().min(0).max(6),label:z.string().min(1).max(12)})).min(2).max(7)}),
 ]);
 export const studySchema=z.object({
-  figures:z.array(figureSchema).min(1).max(3),
-  quiz:z.array(z.object({id:z.string().regex(/^[a-z0-9-]+$/),question:z.string().min(15).max(300),options:z.array(z.object({text:z.string().min(1).max(300),explanation:z.string().min(20).max(700)})).length(3),answer:z.number().int().min(0).max(2),sourceId:z.string()})).min(2).max(4),
+  figures:z.array(figureSchema).max(3),
+  quiz:z.array(z.object({id:z.string().regex(/^[a-z0-9-]+$/),question:z.string().min(15).max(300),options:z.array(z.object({text:z.string().min(1).max(300),explanation:z.string().min(20).max(700)})).length(3),answer:z.number().int().min(0).max(2),sourceId:z.string()})).max(4),
 });
+export const studyDraftSchema=studySchema.extend({figures:studySchema.shape.figures.min(1),quiz:studySchema.shape.quiz.min(2)});
 export type StudyPack=z.infer<typeof studySchema>;
 export type StudyFigure=z.infer<typeof figureSchema>;
 function numericValues(f:StudyFigure):number[]{
@@ -61,7 +63,7 @@ export function validateStudy(pack:StudyPack,sources:Source[]){
     }
     if(f.provenance==="reported"){
       const excerpt=sources.find(s=>s.id===f.sourceId)!.excerpt;
-      const numbers=excerpt.match(/[-+]?\d+(?:\.\d+)?/g)?.map(Number)||[];
+      const numbers=sourceNumbers(excerpt);
       if(numericValues(f).some(value=>!numbers.includes(value)))throw new Error("A reported figure value is absent from its cited source. Use an exact supporting excerpt, or label invented values as illustrative.");
     }
   }

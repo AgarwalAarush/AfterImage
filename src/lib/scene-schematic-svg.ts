@@ -1,6 +1,6 @@
 import type { IllustrationPanel } from "./scene-illustration";
 import { glyphRanks } from "./scene-glyphs";
-import { glyphSvg } from "./scene-glyph-svg";
+import { glyphSvg, tokenGlyphGeometry } from "./scene-glyph-svg";
 import { routePlacedEdges, wrapDiagramText } from "./scene-layout";
 import { diagramText, escapeXml } from "./scene";
 import type { Scene } from "./types";
@@ -22,6 +22,23 @@ export function schematicSvg(panel: Extract<IllustrationPanel, { kind: "schemati
   const edges = routePlacedEdges(routingScene, nodes, Math.ceil(width / 10) * 10, height, "glyph");
   let svg = "";
   for (const edge of edges) {
+    // Retain the exterior obstacle-aware route; extend its endpoints to the actual visible shapes.
+    for (const [id, start] of [[edge.from, true], [edge.to, false]] as const) {
+      const index = start ? 0 : edge.points.length - 1;
+      const node = nodes.find(node => node.id === id)!, point = edge.points[index];
+      const left = point.x === node.x;
+      if (node.glyph === "tokens") {
+        const circles = tokenGlyphGeometry(node.items.length, node.x, node.y, node.w);
+        const row = circles.reduce((a, b) => Math.abs(a.y - point.y) <= Math.abs(b.y - point.y) ? a : b).y;
+        const circle = circles.filter(c => c.y === row).sort((a, b) => left ? a.x - b.x : b.x - a.x)[0];
+        // A short vertical segment stays in the empty margin, away from the token label.
+        const join = { x: point.x, y: circle.y }, tip = { x: circle.x + (left ? -circle.radius : circle.radius), y: circle.y };
+        if (index === 0) edge.points.splice(0, 1, tip, join, point);
+        else edge.points.splice(index, 1, point, join, tip);
+      } else if (node.glyph === "module" || node.glyph === "bank") {
+        point.x += left ? (node.glyph === "bank" ? 8 : 12) : -(node.glyph === "bank" ? 8 : 12);
+      }
+    }
     const d = edge.points.map((point, i) => `${i ? "L" : "M"}${point.x} ${point.y}`).join(" ");
     svg += `<path d="${d}" fill="none" stroke="white" stroke-width="5"/><path data-connector="true" data-from="${prefix}-${edge.from}" data-to="${prefix}-${edge.to}" d="${d}" fill="none" stroke="${accent}" stroke-width="1.6" marker-end="url(#${marker})" ${edge.dashed ? 'stroke-dasharray="4 5"' : ""}/>`;
   }

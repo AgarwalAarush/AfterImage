@@ -31,6 +31,7 @@ export function PaperView({ id }: { id: string }) {
   const r = p.recall;
   const preparation = withPreparationRequest(paperPreparationModel(p, state.jobs, state.workerSeenAt), preparations[id]);
   const ready = Boolean(preparation.readable);
+  const publishedScene = Boolean(p.scene && p.kit?.components.some(c => c.id === "diagram" && c.revision && c.revision !== "legacy"));
   const workedEquationIndex = r?.equations?.findIndex(eq => workedExampleForEquation(p, eq)) ?? -1;
   const related = state.papers
     .filter((x) => x.id !== id && x.topics.some((t) => p.topics.includes(t)))
@@ -112,11 +113,11 @@ export function PaperView({ id }: { id: string }) {
       </header>
       {preparation.status !== "ready" && <PaperPreparation paperId={id} model={preparation} />}
       {ready && <>
-      <section className="mechanism-panel panel">
+      {(p.scene || p.visual) && <section className="mechanism-panel panel">
         <div className="section-heading">
           <span className="eyebrow">THE IDEA, AT A GLANCE</span>
           <span className="eyebrow diagram-caption">
-            {p.id === "2503.01840" ? "EDITORIAL DIAGRAM" : p.scene && p.visual !== "lora"
+            {!publishedScene && p.id === "2503.01840" ? "EDITORIAL DIAGRAM" : p.scene && (publishedScene || p.visual !== "lora")
               ? "GENERATED FROM THE PAPER"
               : p.visual
                 ? "EDITORIAL DIAGRAM"
@@ -138,7 +139,7 @@ export function PaperView({ id }: { id: string }) {
         )}
         <div className="mechanism-foot">
           <span>
-            {(p.id === "2503.01840" ? eagleCaption : p.visual === "lora"
+            {(!publishedScene && p.id === "2503.01840" ? eagleCaption : !publishedScene && p.visual === "lora"
               ? "The input passes through A, then B. Their low-rank update is added to the frozen base output; the diagram omits the scaling factor."
               : p.scene?.description) ||
               r?.idea ||
@@ -158,7 +159,7 @@ export function PaperView({ id }: { id: string }) {
             </button>
           )}
         </div>
-      </section>
+      </section>}
       <div className="paper-body-grid">
         <section className="recap-panel panel">
           <div className="section-heading">
@@ -247,7 +248,7 @@ export function PaperView({ id }: { id: string }) {
           )}
         </section>
       </div>
-      {p.study && <PaperQuiz paper={p}/>}
+      {Boolean(p.study?.quiz.length) && <PaperQuiz paper={p}/>}
       {related.length > 0 && (
         <section className="related">
           <span className="eyebrow">PULL ON A RELATED THREAD</span>

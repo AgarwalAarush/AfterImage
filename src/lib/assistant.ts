@@ -1,3 +1,4 @@
+import { projectPublishedPaper } from "./kit";
 import { z } from "zod";
 import type { AppState, Paper } from "./types";
 
@@ -41,10 +42,13 @@ export function enqueueAssistant(s: AppState, input: z.infer<typeof askSchema>, 
   return visibleRequest(r);
 }
 export function assistantContext(p: Paper, requests: AssistantRequest[], current: AssistantRequest) {
+  p = projectPublishedPaper(p);
+  const terms = new Set(`${current.question} ${current.selection}`.toLowerCase().match(/[a-z0-9]{3,}/g) ?? []);
+  const focused = p.sources.filter(s => s.excerpt.trim()).map(s => ({ source: s, score: [...terms].filter(t => `${s.label} ${s.excerpt}`.toLowerCase().includes(t)).length })).sort((a,b) => b.score-a.score).slice(0,14).map(s=>s.source);
   return {
     paper: {id:p.id,title:p.title,abstract:p.abstract},
     evidenceScope: p.recall?.evidenceScope || "abstract",
-    sources: p.sources.filter(s=>s.excerpt.trim()).map(s=>({...s,excerpt:s.excerpt.slice(0,10000)})),
+    sources: focused.map(s=>({...s,excerpt:s.excerpt.slice(0,10000)})),
     notecard: p.recall, openingDiagram: p.scene, study: p.study,
     history: requests.filter(r=>r.paperId===p.id && r.status==="complete" && r.id!==current.id).slice(-6).map(r=>({question:r.question,selection:r.selection,answer:r.answer.slice(0,8000)})),
     selectedPassage: current.selection, question:current.question,

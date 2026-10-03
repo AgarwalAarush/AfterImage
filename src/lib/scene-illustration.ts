@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { sourceNumbers } from "./source-numbers";
 import type { Source } from "./types";
 import { glyphSchema, glyphRanks, validateGlyph, glyphLabels, glyphNumbers } from "./scene-glyphs";
 
@@ -49,7 +50,8 @@ export const illustrationPanelSchema = z.discriminatedUnion("kind", [
   z.object({
     ...common, kind: z.literal("allocation"),
     arrangement: z.enum(["lanes", "diagonal"]),
-    unit: z.string().min(1).max(24),
+    unit: z.string().min(1).max(24).describe("A complete short unit such as token slots. Put longer explanations in the caption; never truncate a clause."),
+    blockSize: z.number().int().min(2).max(6).nullish().describe("Illustrative slots per outlined block, not physical hardware capacity. Each expert remains one region; capacity must be divisible by blockSize. Null preserves independent slots."),
     groups: z.array(z.object({
       label,
       capacity: z.number().int().min(1).max(6),
@@ -145,6 +147,8 @@ export function validateIllustration(illustration: Illustration) {
       if (!panel.groups.some(group => group.items.length)) throw new Error("Allocation needs at least one assigned object.");
       if (panel.groups.some(group => group.items.length > group.capacity || new Set(group.items).size !== group.items.length))
         throw new Error("Allocation has overflow or duplicate identities within a group.");
+      if (panel.blockSize != null && (!panel.illustrative || panel.groups.some(group => group.capacity % panel.blockSize! !== 0)))
+        throw new Error("Allocation block grouping requires an illustrative panel and capacities divisible by its block size.");
     }
     if(panel.kind==="memory"){
       if(panel.coverage&&[panel.coverage.left,panel.coverage.right].some(labels=>new Set(labels).size!==labels.length))throw new Error("Tile coverage identities must be unique within each axis.");
@@ -186,7 +190,7 @@ export function validateIllustrationSources(illustration: Illustration, sources:
     const values = panel.kind === "bars" ? panel.items.map(item => item.value)
       : panel.kind === "matrix" ? panel.values.flat().filter(value => /^[-+]?\d+(?:\.\d+)?$/.test(value)).map(Number)
       : panel.kind === "schematic" ? panel.nodes.flatMap(glyphNumbers) : panel.kind === "allocation" ? panel.groups.map(group => group.capacity) : [];
-    const numbers = panel.sourceIds.flatMap(id => (available.get(id)!.excerpt.match(/[-+]?\d+(?:\.\d+)?/g) || []).map(Number));
+    const numbers = panel.sourceIds.flatMap(id => sourceNumbers(available.get(id)!.excerpt));
     if (values.some(value => !numbers.includes(value)))
       throw new Error("A reported diagram value is absent from its cited sources. Use supported values or an explicitly illustrative example.");
   }

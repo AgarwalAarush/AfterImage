@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { sourcesFromHtml,hasSubstantiveSourceBody } from "../src/lib/source-extraction";
+import { researchFromHtml } from "../src/lib/source-extraction";
+import { sourceLimits } from "../src/lib/research-bundle";
 import type { Paper } from "../src/lib/types";
 const paper = {arxivId:"2503.01840",sources:[{id:"abstract",label:"Abstract",url:"https://arxiv.org/abs/2503.01840",excerpt:"Abstract"}]} as Paper;
 
@@ -86,4 +88,46 @@ test("embedded PDF pointers are not scientific body evidence or full-text scope"
   assert.equal(hasSubstantiveSourceBody([...paper.sources,{id:"main-text",label:"Main",url:"https://arxiv.org/html/1412.6980",excerpt:"See pages 1-last of 0_adam_main.pdf"}]),false);
   assert.equal(hasSubstantiveSourceBody([{...paper.sources[0],excerpt:"Long abstract. ".repeat(80)}]),false);
   assert.equal(hasSubstantiveSourceBody([...paper.sources,{id:"section-1",label:"Mechanism",url:"https://arxiv.org/html/1412.6980",excerpt:"The algorithm estimates first and second moments of stochastic gradients. ".repeat(8)}]),true);
+});
+
+test("appendices and inert listings retain indentation with stable anchor IDs", () => {
+  const code = "def cost(gates):\n    return gates[..., 1:].sum(-1)  # null is free\n";
+  const html = `<section class="ltx_section"><h2>Method</h2><p class="ltx_p">A null branch.</p></section><section class="ltx_appendix" id="A3"><h2>Appendix C</h2><div class="ltx_listing"><div class="ltx_listing_data"><a href="data:text/plain;base64,${Buffer.from(code).toString("base64")}">Download</a></div><pre>${code}</pre></div></section>`;
+  const bundle = researchFromHtml(paper, html);
+  const appendix = bundle.sources.find(s => s.id === "appendix-a3")!;
+  assert.match(appendix.excerpt, /\n    return gates\[\.\.\., 1:\]/);
+  assert.equal(appendix.excerpt.match(/null is free/g)?.length, 1);
+  assert.equal(appendix.url, "https://arxiv.org/html/2503.01840#A3");
+  assert.equal(bundle.coverage.sections[1].kind, "appendix");
+  assert.ok(!appendix.excerpt.includes("Download"));
+  assert.equal(bundle.sources[1].id, "section-1");
+});
+
+test("nested scientific sections and caption children appear exactly once", () => {
+  const bundle = researchFromHtml(paper, `<section class="ltx_section" id="S1"><h2>Parent</h2><p class="ltx_p">Parent text.</p><section class="ltx_section" id="S1a"><h3>Child</h3><p class="ltx_p">Unique child.</p><figcaption><p class="ltx_p">Unique caption.</p></figcaption></section></section>`);
+  assert.equal(bundle.catalogue.map(s => s.excerpt).join(" ").match(/Unique child/g)?.length, 1);
+  assert.equal(bundle.catalogue.map(s => s.excerpt).join(" ").match(/Unique caption/g)?.length, 1);
+  assert.ok(!bundle.catalogue[1].excerpt.includes("Unique child"));
+});
+
+test("active and catalogue omissions are private explicit coverage, with bounded chunks", () => {
+  const html = Array.from({ length: 140 }, (_, i) => `<section class="ltx_section" id="S${i}"><h2>Section ${i}</h2><p class="ltx_p">${"Supported evidence. ".repeat(i ? 1 : 800)}</p></section>`).join("");
+  const bundle = researchFromHtml(paper, html);
+  assert.equal(bundle.sources.length, sourceLimits.active);
+  assert.equal(bundle.catalogue.length, sourceLimits.catalogue);
+  assert.equal(bundle.coverage.sections.length, 140);
+  assert.equal(bundle.coverage.omittedChunks, 13);
+  assert.equal(bundle.coverage.omittedActiveIds.length, 114);
+  assert.equal(bundle.coverage.sections[0].truncatedBlocks, 1);
+  assert.ok(bundle.catalogue.every(s => s.excerpt.length <= 9500));
+  assert.ok(bundle.coverage.sections.at(-1)!.omittedBlocks > 0);
+  assert.deepEqual(Object.keys(bundle.sources[0]).sort(), ["excerpt", "id", "label", "url"]);
+});
+
+test("long code listings split at line boundaries without discarding later branches", () => {
+  const code = Array.from({ length: 1500 }, (_, i) => `    line_${i} = ${i}`).join("\n");
+  const bundle = researchFromHtml(paper, `<section class="ltx_appendix" id="A3"><h2>Implementation</h2><pre>${code}</pre></section>`);
+  assert.ok(bundle.catalogue.some(s => s.excerpt.includes("line_1499 = 1499")));
+  assert.ok(bundle.catalogue.every(s => s.excerpt.length <= 9500));
+  assert.equal(bundle.coverage.sections[0].truncatedBlocks, 0);
 });

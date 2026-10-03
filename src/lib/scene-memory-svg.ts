@@ -38,7 +38,7 @@ export function memorySvg(panel: Extract<IllustrationPanel,{kind:"memory"}>, wid
   }));
   edges.forEach((edge,index)=>{
     const d=edge.points.map((p,i)=>`${i?"L":"M"}${p.x} ${p.y}`).join(" ");
-    arrows+=`<path d="${d}" stroke="white" stroke-width="5" fill="none"/><path data-connector="true" data-from="${prefix}-${edge.from}" data-to="${prefix}-${edge.to}" d="${d}" stroke="#7761bb" stroke-width="1.6" marker-end="url(#${marker})" fill="none"/>`;
+    arrows+=`<path d="${d}" stroke="white" stroke-width="5" fill="none"/><path data-connector="true" data-transfer="${index+1}" data-from="${prefix}-${edge.from}" data-to="${prefix}-${edge.to}" d="${d}" stroke="#7761bb" stroke-width="1.6" marker-end="url(#${marker})" fill="none"/>`;
     // Transfer numbers sit immediately above the source endpoint, away from the path.
     const point=edge.points[0],node=nodes.find(node=>node.id===edge.from)!;
     const left=point.x<node.x+node.w/2;
@@ -49,7 +49,12 @@ export function memorySvg(panel: Extract<IllustrationPanel,{kind:"memory"}>, wid
       }if(placed)break;
     }
     if(!placed)throw new Error("Memory transfer has no clear annotation position.");
-    badgeBoxes.push(placed);badges+=text(placed.x+placed.w/2,placed.y+12,String(index+1),12,"middle","#7761bb");
+    badgeBoxes.push(placed);
+    // A number can sit outside a crowded route, but its annotation must still identify one source port.
+    const bx=placed.x+placed.w/2,by=placed.y+placed.h/2;
+    const start={x:bx+(point.x<bx?-placed.w/2:placed.w/2),y:by};
+    badges+=`<path data-transfer-leader="${index+1}" d="M${start.x} ${start.y} L${point.x} ${point.y}" stroke="white" stroke-width="3" fill="none"/><path data-transfer-leader="${index+1}" d="M${start.x} ${start.y} L${point.x} ${point.y}" stroke="#7761bb" stroke-width=".8" stroke-dasharray="2 3" fill="none"/><circle cx="${point.x}" cy="${point.y}" r="2" fill="#7761bb"/>`;
+    badges+=text(bx,placed.y+12,String(index+1),12,"middle","#7761bb").replace("<text ",`<text data-transfer-label="${index+1}" `);
   });
   let svg=frames.join("")+arrows+drawings.join("")+badges;y+=10;
   for(const [i,transfer] of panel.transfers.entries()){

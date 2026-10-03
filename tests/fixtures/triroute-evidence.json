@@ -1,0 +1,216 @@
+{
+  "origin": "arXiv:2607.06601v1, Appendix C; rejected nonpublishing candidate evaluation-gDtGY1/candidate-3. Public paper excerpts and generated candidate only; no job metadata.",
+  "html": "<section class=\"ltx_section\" id=\"S3\"><h2>3 Method</h2><p class=\"ltx_p\">The FFN is replaced by LATEX: E experts LATEX: \\{f_{1},\\dots,f_{E}\\} plus a null expert LATEX: f_{0}\\equiv 0 . A softmax gate LATEX: p^{e}_{t}=\\operatorname{softmax}(z^{e}_{t})\\in\\Delta^{E} over LATEX: \\mathcal{E}=\\{0,\\dots,E\\} selects the top- LATEX: k experts LATEX: \\mathcal{S}_{t}=\\mathrm{TopK}(p^{e}_{t},k) , and\n\nLATEX: \\mathrm{FFN}_{t}=\\sum_{j\\in\\mathcal{S}_{t}}\\frac{p^{e}_{t,j}}{\\sum_{j^{\\prime}\\in\\mathcal{S}_{t}}p^{e}_{t,j^{\\prime}}}\\,f_{j}\\!\\big(\\mathrm{Norm}(\\tilde{x}_{t})\\big). (3)\n\nSelecting the null expert ( LATEX: 0\\in\\mathcal{S}_{t} with LATEX: k{=}1 ) reproduces an MoD-style FFN skip; selecting a real expert reproduces MoE. Because attention and FFN are decided independently, TriRoute can skip the FFN while keeping full attention—the regime we argued is right for rare entities and that MoD, which gates the whole block, cannot represent.\n\n We attach an explicit, differentiable cost to every decision so the budget can shape the router. For resources LATEX: r\\in\\{\\textsc{flops},\\textsc{mem}\\} , the per-token, per-layer cost under the (relaxed) policy is the expectation of option costs:\n\nLATEX: \\displaystyle c^{\\textsc{flops}}_{t} LATEX: \\displaystyle=\\underbrace{\\textstyle\\sum_{m}\\tilde{y}^{a}_{t,m}\\,\\kappa^{a}_{m}(t)}_{\\text{attention read}}\\;+\\;\\underbrace{\\textstyle\\sum_{j\\in\\mathcal{S}_{t}}\\bar{p}^{e}_{t,j}\\,\\kappa^{e}}_{\\text{active experts}},\\qquad c^{\\textsc{mem}}_{t}=\\textstyle\\sum_{b}\\tilde{y}^{b}_{t,b}\\,\\big(2\\,d_{\\text{kv}}\\,b\\big), (8) LATEX: \\displaystyle\\kappa^{a}_{\\textsc{skip}} LATEX: \\displaystyle{=}0,\\quad\\kappa^{a}_{\\textsc{local}}{\\approx}2d\\min(t,w),\\quad\\kappa^{a}_{\\textsc{full}}{\\approx}2dt,\\quad\\kappa^{e}\\approx 3\\,d\\,d_{f}\\ \\text{(SwiGLU expert)}. (9)\n\nHere LATEX: \\bar{p}^{e}_{t,j} is the renormalized selected-expert weight and LATEX: \\kappa^{a}_{m} counts key interactions (projections folded in for non-skip modes). We normalize by the dense-model cost LATEX: C^{r}_{\\text{dense}} so that LATEX: \\bar{C}^{r}=\\frac{1}{LT}\\sum_{\\ell,t}c^{r,(\\ell)}_{t}/C^{r}_{\\text{dense}}\\in(0,1] is the fraction of the dense resource used. Both terms are differentiable in the router logits through LATEX: \\tilde{y} and LATEX: \\bar{p}^{e} , so the budget loss below directly shapes the policy.</p></section><section class=\"ltx_appendix\" id=\"A3\"><h2>Appendix C Reference Implementation</h2><div class=\"ltx_listing\"><div class=\"ltx_listing_data\"><a href=\"data:text/plain;base64,ZGVmIHN0X2d1bWJlbF9zb2Z0bWF4KGxvZ2l0cywgdGF1PTEuMCwgaGFyZD1UcnVlLCBkaW09LTEpOgogICAgdSA9IHRvcmNoLnJhbmRfbGlrZShsb2dpdHMpLmNsYW1wXygxZS05LCAxIC0gMWUtOSkKICAgIGcgPSAtdG9yY2gubG9nKC10b3JjaC5sb2codSkpICAgICAgICAgICAgICAgICAgICAgICMgR3VtYmVsKDAsMSkKICAgIHlfc29mdCA9IEYuc29mdG1heCgobG9naXRzICsgZykgLyB0YXUsIGRpbT1kaW0pCiAgICBpZiBub3QgaGFyZDoKICAgICAgICByZXR1cm4geV9zb2Z0CiAgICBpZHggPSB5X3NvZnQuYXJnbWF4KGRpbT1kaW0sIGtlZXBkaW09VHJ1ZSkKICAgIHlfaGFyZCA9IHRvcmNoLnplcm9zX2xpa2UoeV9zb2Z0KS5zY2F0dGVyXyhkaW0sIGlkeCwgMS4wKQogICAgcmV0dXJuICh5X2hhcmQgLSB5X3NvZnQpLmRldGFjaCgpICsgeV9zb2Z0ICAgICAgICAgIyBzdHJhaWdodC10aHJvdWdoCgpjbGFzcyBUcmlSb3V0ZUNvbnRyb2xsZXIobm4uTW9kdWxlKToKICAgICIiIlNoYXJlZCB0cnVuayArIDMgaGVhZHMgLT4gY291cGxlZCAoYXR0ZW50aW9uLCBleHBlcnQsIGJpdCkgcG9saWN5LiIiIgogICAgZGVmIGZvcndhcmQoc2VsZiwgeCwgc2lkZSwgdGF1X2E9MS4wLCB0YXVfYj0xLjApOgogICAgICAgIGggPSBzZWxmLm5vcm0oc2VsZi50cnVuayh0b3JjaC5jYXQoW3gsIHNpZGVdLCBkaW09LTEpKSkKICAgICAgICB6YSA9IHNlbGYuX2dyYWRfYmFsYW5jZShzZWxmLmhlYWRfYXR0bihzZWxmLl93aGl0ZShoLCAiYXR0biIpKSwgImF0dG4iKQogICAgICAgIHplID0gc2VsZi5fZ3JhZF9iYWxhbmNlKHNlbGYuaGVhZF9leHAgKHNlbGYuX3doaXRlKGgsICJleHAiKSksICAiZXhwIikKICAgICAgICB6YiA9IHNlbGYuX2dyYWRfYmFsYW5jZShzZWxmLmhlYWRfYml0IChzZWxmLl93aGl0ZShoLCAiYml0IikpLCAgImJpdCIpCiAgICAgICAgQiwgVCwgXyA9IGguc2hhcGUKICAgICAgICB6YSA9IHphLnZpZXcoQiwgVCwgc2VsZi5jZmcubl9oZWFkcywgbGVuKHNlbGYuY2ZnLmF0dG5fbW9kZXMpKQogICAgICAgIGEgPSBzdF9ndW1iZWxfc29mdG1heCh6YSwgdGF1X2EpICAgICAgICAgICAgICAgIyAoQixULEgsfEF8KSByZWFkIG1vZGUKICAgICAgICBiID0gc3RfZ3VtYmVsX3NvZnRtYXgoemIsIHRhdV9iKSAgICAgICAgICAgICAgICMgKEIsVCx8QnwpICAgd3JpdGUgYml0cwogICAgICAgIHBfZSA9IEYuc29mdG1heCh6ZSwgZGltPS0xKSAgICAgICAgICAgICAgICAgICAgIyBpbmRleCAwID0gbnVsbCBleHBlcnQKICAgICAgICB0b3B2LCB0b3BpID0gcF9lLnRvcGsoc2VsZi5jZmcudG9wX2ssIGRpbT0tMSkKICAgICAgICBnYXRlcyA9IHRvcmNoLnplcm9zX2xpa2UocF9lKS5zY2F0dGVyXygtMSwgdG9waSwgdG9wdikKICAgICAgICBnYXRlcyA9IGdhdGVzIC8gZ2F0ZXMuc3VtKC0xLCBrZWVwZGltPVRydWUpLmNsYW1wX21pbigxZS05KQogICAgICAgIHJldHVybiBkaWN0KGF0dG49YSwgYXR0bl9sb2dpdHM9emEsIGV4cGVydF9nYXRlcz1nYXRlcywKICAgICAgICAgICAgICAgICAgICBleHBlcnRfbG9naXRzPXplLCBiaXRzPWIsIGJpdF9sb2dpdHM9emIpCgpkZWYgZXhwZWN0ZWRfY29zdChkZWMsIHBvc2l0aW9ucywgY2ZnKToKICAgIGEsIGIsIGdhdGVzID0gZGVjWyJhdHRuIl0sIGRlY1siYml0cyJdLCBkZWNbImV4cGVydF9nYXRlcyJdCiAgICBCLCBULCBILCBfID0gYS5zaGFwZQogICAgcG9zID0gcG9zaXRpb25zLnZpZXcoMSwgVCwgMSkuY2xhbXBfbWluKDEpLmZsb2F0KCkKICAgIHdpbiA9IHRvcmNoLmZ1bGxfbGlrZShwb3MsIGZsb2F0KGNmZy53aW5kb3cpKQogICAga2FwcGEgPSB0b3JjaC5zdGFjayhbdG9yY2guemVyb3NfbGlrZShwb3MpLmV4cGFuZChCLCBULCBIKSwgICAgICAjIHNraXAKICAgICAgICAgICAgICAgICAgICAgICAgIHRvcmNoLm1pbmltdW0ocG9zLCB3aW4pLmV4cGFuZChCLCBULCBIKSwgICAgIyBsb2NhbAogICAgICAgICAgICAgICAgICAgICAgICAgcG9zLmV4cGFuZChCLCBULCBIKV0sIGRpbT0tMSkgICAgICAgICAgICAgICAjIGZ1bGwKICAgIGF0dG4gPSAoYSAqICgyLjAgKiBjZmcuZF9oZWFkICoga2FwcGEpKS5zdW0oZGltPSgtMSwgLTIpKQogICAgZmZuICA9IGdhdGVzWy4uLiwgMTpdLnN1bSgtMSkgKiAoMy4wICogY2ZnLmRfbW9kZWwgKiBjZmcuZF9mZikgICAjIG51bGwgaXMgZnJlZQogICAgYml0cyA9IHRvcmNoLnRlbnNvcihjZmcuYml0cywgZHR5cGU9Yi5kdHlwZSwgZGV2aWNlPWIuZGV2aWNlKQogICAgbWVtICA9IChiICogKDIuMCAqIGNmZy5kX2t2ICogYml0cykpLnN1bSgtMSkKICAgIHJldHVybiBhdHRuICsgZmZuLCBtZW0gICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAjIChCLFQpLChCLFQp\">Download</a></div></div></section>",
+  "candidate": {
+    "recall": {
+      "version": 2,
+      "idea": "TriRoute jointly chooses each token’s attention resolution, sparse FFN route, and KV precision through a shared controller with separate heads.",
+      "problem": "Transformers ordinarily spend similar computation and cache memory on every token, while existing adaptive methods usually control only one resource. MoE changes FFN execution, KV quantization changes cache precision, and block-level MoD couples attention and FFN, so it cannot keep full attention while skipping only the FFN. An independently tuned MoD+MoE+KV system has separate settings for these resources, but it does not learn their allocation through one coordinated controller. Joint learning is difficult because the choices are discrete and heterogeneous, their gradients have different scales, and collapse on one routing axis can deprive the shared representation of variation and trigger collapse elsewhere.",
+      "mechanism": "At each token and layer, a lightweight MLP trunk consumes the normalized residual state and causal side features, including position, boundary information, a predictive-entropy estimate, and previous-layer decisions. The normalized shared representation feeds three distinct linear heads. For each query head or head group, the attention head chooses skip, local-window, or full causal attention; the expert head selects top-k members of E real FFN experts plus a null expert; and the bit head chooses 2, 4, 8, or 16 bits for storing that token’s keys and values. These actions remain separate: attention controls the token’s present read, a top-1 null selection removes its FFN contribution, and cache precision controls its fidelity as a source for future queries.\n\nExpert routing uses differentiable top-k softmax weights. For attention and bit routing during training, independent Gumbel noise is added to each option logit and a temperature-softmax produces a soft sample. The forward pass uses the one-hot argmax of that sample, while the straight-through estimator passes the soft sample’s gradient backward; inference executes only hard choices. Detached running gradient normalization prevents the more sensitive attention decision from dominating the shared trunk. Per-axis load balancing and router z-losses are supplemented by detached feature whitening and a hinge entropy floor, which acts only when marginal option usage approaches collapse. Relaxed option probabilities produce separate expected FLOPs and KV-memory costs. Nonnegative resource prices are updated by projected dual ascent, increasing pressure whenever the corresponding normalized target is exceeded. Thus the controller learns coordinated allocations while preserving distinct compute and memory constraints.",
+      "evidence": "The paper reports decoder-only experiments from 160M to 1.3B parameters. At the principal matched budget of 0.55 times dense inference FLOPs and 0.40 times dense KV memory, TriRoute is compared with an independently grid-tuned MoD+MoE+KV-quantization baseline. At 1.3B parameters, TriRoute reports Pile validation perplexity of 9.7 versus 10.1 for that baseline (lower is better) and average downstream accuracy of 54.5 versus 53.5 (higher is better), where the average covers LAMBADA, HellaSwag, PIQA, WinoGrande, and ARC-easy/challenge. The reported tail metrics also favor TriRoute, including rare-entity perplexity of 18.9 versus 20.6. Ablations at 410M report higher Pile perplexity when gradient balancing, per-axis whitening, or the entropy floor is removed. These are paper-reported results under its protocol; the supplied evidence does not independently reproduce or verify the benchmarks, frontier, or throughput measurements.",
+      "limitation": "The evaluation stops at 1.3B parameters and does not establish behavior at 10B-scale models, extreme sparsity, or across low-resource languages. Tail buckets are proxies whose construction is not fully specified in the supplied excerpts. Per-head irregular attention, ragged expert batches, and mixed-precision KV paging require specialized kernels and bookkeeping, so modeled FLOP and memory reductions need not translate proportionally into latency. Joint training also introduces auxiliary-loss and dual-controller hyperparameters and reportedly costs more wall-clock time. The excerpts leave some operational details unresolved, including local-window size, quantization group size, expert-capacity handling, and the user-facing relationship between a claimed single cost knob and the formally separate FLOPs and memory targets.",
+      "significance": "TriRoute replaces three independently tuned allocation mechanisms with one learned representation while retaining separate actions and resource prices. This matters because token importance is multidimensional: a token can be valuable as a reader, as an FFN input, or as a future attention source in different proportions. Coordinating those decisions can concentrate computation and storage on rare or structurally important tokens without forcing an entire transformer block on or off. If the reported results reproduce with production kernels, the approach offers a direct way to trade language-model quality against both inference computation and long-context cache memory while reducing the silent tail degradation associated with average-loss optimization.",
+      "equations": [
+        {
+          "title": "Shared trunk, separate heads",
+          "latex": "h_t=\\phi_{\\mathrm{trunk}}\\!\\left([\\mathrm{Norm}(x_t);\\psi_t]\\right)\\in\\mathbb{R}^{d_r},\\quad \\hat h_t=\\mathrm{RMSNorm}(h_t),\\quad z_t^a=\\operatorname{reshape}_{G\\times3}(W_a\\hat h_t),\\ z_t^e=W_e\\hat h_t,\\ z_t^b=W_b\\hat h_t",
+          "explanation": "Source Equation 5 defines, at token t and layer ℓ, a shared trunk representation $h_t^{(\\ell)}=\\phi_{\\mathrm{trunk}}([\\mathrm{Norm}(x_t^{(\\ell)});\\psi_t^{(\\ell)}])\\in\\mathbb{R}^{d_r}$, its RMS-normalized form $\\hat h_t^{(\\ell)}$, and three linear logit heads; the displayed equation suppresses ℓ for readability. Here $x_t^{(\\ell)}\\in\\mathbb{R}^d$ is the residual, $\\psi_t^{(\\ell)}\\in\\mathbb{R}^{d_\\psi}$ contains causal side features, and the trunk maps their $(d+d_\\psi)$-dimensional concatenation to $\\mathbb{R}^{d_r}$. The displayed reshape and explicit matrix shapes are derived explanatory notation, not written explicitly in Equation 5. With G separately routed query heads or groups, $W_a\\in\\mathbb{R}^{3G\\times d_r}$ yields $z_t^a\\in\\mathbb{R}^{G\\times3}$ after reshaping, with three attention modes per group. Likewise, $W_e\\in\\mathbb{R}^{(E+1)\\times d_r}$ yields logits over E real experts plus one null expert, and $W_b\\in\\mathbb{R}^{4\\times d_r}$ yields logits over four bit widths. These dimensions follow from the source’s stated option cardinalities.",
+          "example": "Illustrative trace: one token representation may make the attention argmax full, the expert top-1 choice null, and the bit-width argmax 8-bit; these values illustrate the mechanism and are not a measured sample.",
+          "sourceId": "section-3"
+        },
+        {
+          "title": "Sparse FFN with null route",
+          "latex": "\\mathrm{FFN}_t=\\sum_{j\\in\\mathcal{S}_t}\\frac{p^e_{t,j}}{\\sum_{j'\\in\\mathcal{S}_t}p^e_{t,j'}}\\,f_j\\!\\left(\\mathrm{Norm}(\\tilde{x}_t)\\right),\\quad p_t^e=\\operatorname{softmax}(z_t^e),\\quad \\mathcal{S}_t=\\mathrm{TopK}(p_t^e,k),\\quad f_0\\equiv0",
+          "explanation": "The expert logits $z_t^e\\in\\mathbb{R}^{E+1}$ become probabilities $p_t^e$ over E real experts and null expert 0. TopK selects index set $\\mathcal{S}_t$ of size k. Each selected transformation $f_j:\\mathbb{R}^d\\to\\mathbb{R}^d$ processes the normalized post-attention state $\\tilde{x}_t\\in\\mathbb{R}^d$; renormalized selected probabilities combine the results into the $d$-dimensional FFN contribution. With $k=1$ and $\\mathcal{S}_t=\\{0\\}$, $f_0$ returns zero, skipping only the FFN while leaving attention and KV precision independently selectable.",
+          "example": "Illustrative top-1 case: if the null expert has the largest gate probability, the FFN output is zero even when the attention head selects full context.",
+          "sourceId": "section-3"
+        },
+        {
+          "title": "Relaxed costs and separate resource constraints",
+          "latex": "c_{t\\ell}^{\\mathrm{flops}}=\\sum_{g=1}^{G}\\sum_{m\\in\\mathcal A}\\tilde y^{a}_{t\\ell gm}\\kappa^a_m(t)+\\sum_{j\\in\\mathcal S_{t\\ell}}\\bar p^e_{t\\ell j}\\kappa^e,\\quad c_{t\\ell}^{\\mathrm{mem}}=\\sum_{b\\in\\{2,4,8,16\\}}\\tilde y^b_{t\\ell b}(2d_{\\mathrm{kv}}b),\\quad \\bar C^r=\\frac{1}{LT}\\sum_{\\ell=1}^{L}\\sum_{t=1}^{T}\\frac{c^r_{t\\ell}}{C^r_{\\mathrm{dense}}},\\quad \\mathcal L=\\mathcal L_{\\mathrm{LM}}+\\sum_q(\\alpha\\mathcal L_{\\mathrm{bal}}^q+\\beta\\mathcal L_z^q+\\gamma\\mathcal L_{\\mathrm{ent}}^q)+\\sum_{r\\in\\{\\mathrm{flops},\\mathrm{mem}\\}}\\lambda_r(\\bar C^r-C^{\\star r}),\\quad \\lambda_r\\leftarrow[\\lambda_r+\\rho_\\lambda(\\bar C^r-C^{\\star r})]_+",
+          "explanation": "This derived compression combines source Equations 8–9 and 13–14; the source writes the attention term without the explicit head-group sum. At token t and layer ℓ, each of G query heads or groups has a three-option relaxed attention vector $\\tilde y^a_{t\\ell g}\\in\\Delta^2$ over $\\mathcal A=\\{\\mathrm{skip},\\mathrm{local},\\mathrm{full}\\}$, weighted by scalar option cost $\\kappa_m^a(t)$. The expert gate chooses a size-k set $\\mathcal S_{t\\ell}\\subseteq\\{0,\\ldots,E\\}$ from E real experts plus the null expert; its scalar renormalized selected weights $\\bar p^e_{t\\ell j}$ multiply expert cost $\\kappa^e$. The four-entry relaxed bit vector $\\tilde y^b_{t\\ell}\\in\\Delta^3$ weights the KV storage cost $2d_{\\mathrm{kv}}b$. Thus $c_{t\\ell}^{\\mathrm{flops}}$ and $c_{t\\ell}^{\\mathrm{mem}}$ are scalar expected costs. Averaging over T tokens and L layers and dividing by the corresponding scalar dense cost gives scalar normalized use $\\bar C^r$. The scalar objective adds the source’s per-axis auxiliary losses, where q denotes attention, expert, or bit routing, and separately constrains FLOPs and memory to scalar targets $C^{\\star r}$. Each scalar $\\lambda_r\\ge0$ is updated by projected dual ascent with scalar step size $\\rho_\\lambda$, increasing only when its resource exceeds target. The supplied paper text states these formulas and reported outcomes, but does not independently verify them.",
+          "example": "Wholly invented arithmetic example: if normalized memory use were 0.44, its target were 0.40, and the dual step size were 0.05, the unprojected memory price would increase by $0.05(0.44-0.40)=0.002$. These numerical values are illustrative and are not attributed to the cited equation passage.",
+          "sourceId": "section-3-part-2"
+        }
+      ],
+      "walkthrough": {
+        "title": "One illustrative rare-token route",
+        "introduction": "This invented trace demonstrates the degree of freedom enabled by separate heads; it is not a logged experimental token.",
+        "steps": [
+          {
+            "label": "Encode evidence",
+            "input": "A normalized rare token state and causal side features enter the controller.",
+            "operation": "The shared MLP trunk produces one normalized routing representation for all three heads.",
+            "output": "The token has common routing evidence without yet committing to any action."
+          },
+          {
+            "label": "Choose present read",
+            "input": "The attention head receives the shared routing representation.",
+            "operation": "It scores skip, local, and full modes and selects full causal attention in this illustrative trace.",
+            "output": "The token reads the complete available causal context."
+          },
+          {
+            "label": "Choose FFN work",
+            "input": "The expert head receives the same shared representation.",
+            "operation": "It ranks real experts and the null expert and selects the null route in this illustrative top-1 case.",
+            "output": "The FFN contribution is zero, while the attention result remains active."
+          },
+          {
+            "label": "Choose future fidelity",
+            "input": "The bit head receives the same shared representation and the token’s key/value vectors are available for storage.",
+            "operation": "It selects 8-bit storage, after which per-token group quantization writes the key/value entry.",
+            "output": "Later queries can retrieve a higher-precision representation of this token than a 2- or 4-bit route would provide."
+          }
+        ],
+        "sourceId": "section-3"
+      },
+      "sourceIds": [
+        "abstract",
+        "section-1",
+        "section-3",
+        "section-3-part-2",
+        "section-4",
+        "section-5",
+        "section-6",
+        "section-7",
+        "section-8"
+      ]
+    },
+    "scene": {
+      "illustration": {
+        "takeaway": "One token representation supports separate choices for present reading, FFN work, and future cache fidelity.",
+        "panels": [
+          {
+            "title": "Read and transform independently",
+            "caption": "Illustrative route: full context and a zero FFN contribution coexist only when top-1 selects the null expert.",
+            "illustrative": true,
+            "sourceIds": [
+              "section-1",
+              "section-3",
+              "section-6"
+            ],
+            "kind": "schematic",
+            "nodes": [
+              {
+                "id": "rare-token-a",
+                "label": "Rare token",
+                "detail": "Residual and causal features",
+                "glyph": "vector",
+                "values": [
+                  "T★",
+                  "pos",
+                  "ent"
+                ]
+              },
+              {
+                "id": "controller-a",
+                "label": "Shared controller",
+                "detail": "Common trunk, separate heads",
+                "glyph": "module"
+              },
+              {
+                "id": "attention",
+                "label": "Attention mode",
+                "detail": "Query Qt reads causal K/V inputs",
+                "glyph": "tokens",
+                "items": [
+                  "Qt",
+                  "K/V1",
+                  "…",
+                  "K/Vt"
+                ]
+              },
+              {
+                "id": "experts",
+                "label": "Expert choice",
+                "detail": "Null selected; no expert bucket occupied",
+                "glyph": "bank",
+                "capacity": 1,
+                "items": []
+              }
+            ],
+            "edges": [
+              {
+                "from": "rare-token-a",
+                "to": "controller-a",
+                "label": "shared evidence",
+                "dashed": false
+              },
+              {
+                "from": "controller-a",
+                "to": "attention",
+                "label": "full",
+                "dashed": true
+              },
+              {
+                "from": "controller-a",
+                "to": "experts",
+                "label": "null",
+                "dashed": true
+              }
+            ]
+          },
+          {
+            "title": "Store for future reads",
+            "caption": "The same illustrative token can retain an 8-bit KV entry for later queries.",
+            "illustrative": true,
+            "sourceIds": [
+              "section-1",
+              "section-3",
+              "section-6"
+            ],
+            "kind": "schematic",
+            "nodes": [
+              {
+                "id": "rare-token-b",
+                "label": "Rare token",
+                "detail": "Same token identity",
+                "glyph": "vector",
+                "values": [
+                  "T★",
+                  "pos",
+                  "ent"
+                ]
+              },
+              {
+                "id": "controller-b",
+                "label": "Shared controller",
+                "detail": "Same routing representation",
+                "glyph": "module"
+              },
+              {
+                "id": "cache",
+                "label": "KV precision",
+                "detail": "Token T★ KV stored at 8-bit",
+                "glyph": "bank",
+                "capacity": 1,
+                "items": [
+                  "T★"
+                ]
+              }
+            ],
+            "edges": [
+              {
+                "from": "rare-token-b",
+                "to": "controller-b",
+                "label": "shared evidence",
+                "dashed": false
+              },
+              {
+                "from": "controller-b",
+                "to": "cache",
+                "label": "8-bit",
+                "dashed": true
+              }
+            ]
+          }
+        ]
+      },
+      "title": "Independent actions from shared token evidence",
+      "description": "Two views of one illustrative token show that a shared controller can select full attention, a null FFN expert, and 8-bit KV storage without merging them into one block gate.",
+      "footnote": "Shared evidence supports three distinct routing actions.",
+      "edges": [],
+      "nodes": []
+    }
+  }
+}

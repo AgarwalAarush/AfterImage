@@ -1,3 +1,4 @@
+import { paperKit, visibleComponent, componentLabel } from "./kit";
 import type { GenerationStep, Job, Paper } from "./types";
 
 export type ProgressState = "complete" | "active" | "failed" | "upcoming";
@@ -23,6 +24,7 @@ export type PaperPreparationModel = {
   detail: string;
   orbState: PreparationOrbState;
   retryAction: "generate" | "study" | null;
+  retryComponents?: { id: string; label: string }[];
   steps: PreparationStep[];
   readable?: boolean;
   startedAt?: string;
@@ -136,6 +138,17 @@ function preparationModel(
   paper: Paper,
   jobs: Job[],
 ): PaperPreparationModel {
+  if (paper.kit) {
+    const kit = paperKit(paper), readable = visibleComponent(kit, "explanation");
+    const active = jobs.find(j => j.paperId === paper.id && ["generate", "study", "component"].includes(j.type) && ["queued", "running"].includes(j.status));
+    const remaining = kit.components.filter(c => c.state !== "ready" || !visibleComponent(kit, c.id));
+    const retryComponents = active ? [] : remaining.filter(c => c.id === "explanation" || readable).map(c => ({ id: c.id, label: componentLabel(c.id) }));
+    return { status: active ? active.status === "queued" ? "queued" : "running" : remaining.length ? "failed" : "ready",
+      title: active ? "Preparing your reading kit." : remaining.length ? "Some parts still need preparation." : "Your paper is ready.",
+      detail: readable ? "Your approved explanation is ready to read. Each remaining part appears after its own review." : "The explanation will appear after review.",
+      orbState: active ? "working" : "breathing", retryAction: null, retryComponents, readable,
+      steps: [] };
+  }
   const paperJobs = jobs.filter((job) => job.paperId === paper.id);
   const activeGenerate = paperJobs.find(
     (job) => job.type === "generate" && ["queued", "running"].includes(job.status),
@@ -240,7 +253,7 @@ const studyStages: Record<string, {title: string; detail: string}> = {
 };
 export function paperPreparationModel(paper: Paper, jobs: Job[], workerSeenAt?: string | null, now = Date.now()): PaperPreparationModel {
   const model = preparationModel(paper, jobs);
-  const job = jobs.find(j => j.paperId === paper.id && ["generate", "study"].includes(j.type) && ["queued", "running"].includes(j.status));
+  const job = jobs.find(j => j.paperId === paper.id && ["generate", "study", "component"].includes(j.type) && ["queued", "running"].includes(j.status));
   const readable = Boolean(paper.recall);
   if (!job) return {...model, readable};
   // Legacy workers expose a lease but no heartbeat timestamp. Derive their last

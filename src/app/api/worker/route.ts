@@ -1,7 +1,10 @@
+import { publishKitComponent, markKitComponent, digest } from "@/lib/kit-publication";
+import { projectPublishedPaper } from "@/lib/kit";
+import { z } from "zod";
 import { studySchema, validateStudy } from "@/lib/study";
 import { NextResponse } from "next/server";
 import { workerAuth } from "@/lib/auth";
-import { mutate, touchWorkerSeenAt, workerClaimStatus } from "@/lib/store";
+import { mutate, snapshot, touchWorkerSeenAt, workerClaimStatus } from "@/lib/store";
 import { resultSchema, recommendationSchema, validateScene } from "@/lib/scene";
 import { validateIllustrationSources } from "@/lib/scene-illustration";
 import { randomUUID } from "node:crypto";
@@ -19,6 +22,13 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   try {
     const body = await req.json();
+    if (body.action === "completion-status") {
+      const job = (await snapshot()).data.jobs.find(j => j.id === body.jobId);
+      if (body.finished === true) return NextResponse.json({ accepted: job?.status === "complete" && job.completionLeaseDigest === digest(body.leaseToken) });
+      const receipt = job?.componentReceipts?.find(r => r.id === body.completionId && r.leaseDigest === digest(body.leaseToken));
+      if (!receipt && (!job || job.status !== "running" || job.leaseToken !== body.leaseToken)) throw new Error("Invalid completion lookup");
+      return NextResponse.json({ accepted: Boolean(receipt), revision: receipt?.revision });
+    }
     if (body.action === "claim") {
       const status = await workerClaimStatus();
       if (!status.claim) {
@@ -48,14 +58,17 @@ export async function POST(req: Request) {
             if (job.status === "failed") {
               job.error = "Worker could not finish after three attempts.";
               const p = s.papers.find((p) => p.id === job.paperId);
+              if (p?.kit) for (const c of p.kit.components) {
+                if (["pending", "running"].includes(c.state) && (!job.componentId || job.componentId === c.id)) markKitComponent(p, c.id, "failed");
+              }
               if (p && job.type === "generate") {
-                p.generationStatus = "failed";
+                p.generationStatus = p.recall ? "ready" : "failed";
                 p.generationError = job.error;
               }
             }
           }
         }
-        const job = s.jobs.find((j) => j.status === "queued");
+        const job = s.jobs.find((j) => j.status === "queued" && (body.componentProtocol === 1 || j.type !== "component" && !s.papers.find(p => p.id === j.paperId)?.kit));
         if (!job) return { job: null };
         job.status = "running";
         job.attempts++;
@@ -73,7 +86,7 @@ export async function POST(req: Request) {
         }
         return {
           job,
-          paper: p,
+          paper: p ? projectPublishedPaper(p) : p,
           direction: s.direction,
           papers: s.papers,
           entries: s.entries,
@@ -81,10 +94,15 @@ export async function POST(req: Request) {
         };
       }
       const job = s.jobs.find((j) => j.id === body.jobId);
+      if (job && body.action === "publish-component") {
+        const paper = s.papers.find(p => p.id === job.paperId);
+        if (!paper) throw new Error("Paper not found");
+        return publishKitComponent(paper, job, body.publication, body.leaseToken, now);
+      }
       if (
         !job ||
         job.status !== "running" ||
-        job.leaseToken !== body.leaseToken
+        job.leaseToken !== body.leaseToken || Date.parse(job.leaseUntil || "") <= Date.now()
       )
         throw new Error("Job lease is no longer valid");
       if (body.action === "heartbeat") {
@@ -96,18 +114,35 @@ export async function POST(req: Request) {
           p.generationStep = job.stage as NonNullable<Paper["generationStep"]>;
         return { ok: true };
       }
+      if (body.action === "component-status") {
+        const p = s.papers.find(p => p.id === job.paperId);
+        if (!p || job.type === "recommend" || job.type === "component" && body.componentId !== job.componentId) throw new Error("Invalid component target");
+        if (job.type === "study" && ["explanation", "diagram"].includes(body.componentId)) throw new Error("Invalid study target");
+        markKitComponent(p, body.componentId, z.enum(["pending", "running", "failed", "blocked"]).parse(body.state));
+        return { ok: true };
+      }
       if (body.action === "fail") {
         job.status = "failed";
         job.error = String(body.error || "Generation failed").slice(0, 300);
         const p = s.papers.find((p) => p.id === job.paperId);
+        if (p && job.componentId) markKitComponent(p, job.componentId, "failed");
         if (p && job.type === "generate") {
-          p.generationStatus = "failed";
+          p.generationStatus = p.recall ? "ready" : "failed";
           p.generationError = job.error;
         }
         job.finishedAt = now;
         return { ok: true };
       }
       if (body.action !== "complete") throw new Error("Unknown worker action");
+      if (body.components === true && ["generate", "study", "component"].includes(job.type)) {
+        const p = s.papers.find(p => p.id === job.paperId);
+        if (!p?.kit) throw new Error("No reviewed components completed");
+        job.status = "complete"; job.finishedAt = now; job.completionLeaseDigest = digest(body.leaseToken); delete job.leaseToken;
+        p.generationStatus = p.recall ? "ready" : "failed";
+        delete p.generationStep;
+        return { ok: true };
+      }
+      if (job.type === "component") throw new Error("Component completion required");
       if (job.type === "study") {
         const pack=studySchema.parse(body.study);
         const p=s.papers.find(p=>p.id===job.paperId);

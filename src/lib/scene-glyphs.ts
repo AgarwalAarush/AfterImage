@@ -2,11 +2,12 @@ import { z } from "zod";
 
 const base = { id: z.string().regex(/^[a-z0-9-]+$/).max(24), label: z.string().min(1).max(22), detail: z.string().max(52) };
 const items = z.array(z.string().min(1).max(8));
+const identities = z.array(z.string().min(1).max(4));
 export const glyphSchema = z.discriminatedUnion("glyph", [
   z.object({ ...base, glyph: z.literal("module") }),
   z.object({ ...base, glyph: z.literal("vector"), values: items.min(1).max(4) }),
-  z.object({ ...base, glyph: z.literal("tokens"), items: items.min(2).max(6) }),
-  z.object({ ...base, glyph: z.literal("bank"), capacity: z.number().int().min(1).max(6), items: items.max(6) }),
+  z.object({ ...base, glyph: z.literal("tokens"), items: identities.min(2).max(6) }),
+  z.object({ ...base, glyph: z.literal("bank"), capacity: z.number().int().min(1).max(6), items: identities.max(6) }),
   z.object({ ...base, glyph: z.literal("gaussian"), mean: z.number().finite().min(-1e6).max(1e6), deviation: z.number().finite().positive().max(1e6), sample: z.number().finite().min(-1e6).max(1e6).nullable() }),
   z.object({ ...base, glyph: z.literal("gauge"), value: z.number().finite().min(0).max(1), inverse: z.boolean() }),
 ]);
