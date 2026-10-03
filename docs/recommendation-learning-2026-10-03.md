@@ -18,7 +18,7 @@ Only the Library paper reader installs the engagement hook. Subjects, documents,
 
 The engaged-reading switch stops new records and removes past passive evidence from ranking while preserving recorded choices for rollback. Learning is initially disabled by the private rollout policy. Interest More/Normal/Less/Off settings are explicit choices and operate independently of passive tracking.
 
-Suggestions and the paper reader reuse one feedback menu. Dismiss is one click. Its eight-second Undo retracts only the latest matching event, restores its prior visible suggestion when eligible, and leaves newer choices intact. Duplicate UUID feedback does not create another rating. Eligible unconsumed cards are retained during refills.
+Suggestions and the paper reader reuse one feedback menu. Dismiss is one click. Its browser-only Undo remains available until used, explicitly closed or replaced by a newer dismissal. Unrelated status/error notifications do not clear it. Undo retracts only the latest matching event, restores its prior visible suggestion when eligible, and leaves newer choices intact. Duplicate UUID feedback does not create another rating. Eligible unconsumed cards are retained during refills.
 
 ## Retrieval and ranking
 

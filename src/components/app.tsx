@@ -114,7 +114,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [preparations, setPreparations] = useState<Record<string, PreparationRequest>>({}),
     [paletteOpen, setPaletteOpen] = useState(false),
     [message, setMessage] = useState("");
-  const [toastAction, setToastAction] = useState<{label: string; run: () => void} | undefined>();
+  const [toastRevision, setToastRevision] = useState(0);
+  const [toastHovered, setToastHovered] = useState(false);
+  const [toastFocused, setToastFocused] = useState(false);
+  const [toastAction, setToastAction] = useState<{label: string; run: () => void; text: string} | undefined>();
   const [navigationExpanded, setNavigationExpanded] = useState(false);
   useEffect(() => { try { setNavigationExpanded(localStorage.getItem("afterimage-navigation-expanded") === "true"); } catch {} }, []);
   function toggleNavigation() { setNavigationExpanded(value => { const next = !value; try { localStorage.setItem("afterimage-navigation-expanded", String(next)); } catch {} return next; }); }
@@ -170,6 +173,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setState(null);
       setError("");
       setPreparations({});
+      setMessage("");
+      setToastAction(undefined);
     } else if (!pathname.startsWith("/documents") && !pathname.startsWith("/subjects") && (!stateRef.current || Date.now() - lastLoaded.current > 30000)) void refresh();
   }, [refresh, pathname]);
   useEffect(() => () => { requestRef.current?.abort(); }, []);
@@ -201,10 +206,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     };
   }, [refresh, activeJobs, pathname, error]);
   useEffect(() => {
-    if (!message) return;
+    if (!message) {setToastHovered(false);setToastFocused(false);return;}
+    if (toastHovered || toastFocused) return;
     const t = setTimeout(() => setMessage(""), 8000);
     return () => clearTimeout(t);
-  }, [message]);
+  }, [message, toastRevision, toastHovered, toastFocused]);
   const act = useCallback(async (body: Record<string, unknown>) => {
     busyRef.current = true;
     requestRef.current?.abort();
@@ -231,8 +237,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setError("");
       return data;
     } catch (e) {
-      setToastAction(undefined);
       setMessage((e as Error).message);
+      setToastRevision(value => value + 1);
       throw e;
     } finally {
       busyRef.current = false;
@@ -270,7 +276,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
         refresh,
         refreshing,
         openAdd: () => setPaletteOpen(true),
-        toast: (text, action) => {setMessage(text);setToastAction(action);},
+        toast: (text, action) => {
+          if (action) {setToastAction({...action, text});setMessage("");}
+          else {setMessage(text);setToastRevision(value => value + 1);}
+        },
       }}
     >
       <div className="app-shell" data-navigation-expanded={navigationExpanded}>
@@ -312,12 +321,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
         <span className="eyebrow">YOUR PERSONAL RESEARCH COMPANION</span>
       </footer>
       </div>
-      {message && (
-        <div className="toast" role="status">
-          {message}
-          {toastAction && <button className="text-button" onClick={() => {toastAction.run();setToastAction(undefined);}}>{toastAction.label}</button>}
-        </div>
-      )}
+      {(message || toastAction) && <div className="toast-stack">
+        {message && <div className="toast" role="status" aria-atomic="true"
+          onMouseEnter={() => setToastHovered(true)} onMouseLeave={() => setToastHovered(false)}
+          onFocus={() => setToastFocused(true)} onBlur={event => {if (!event.currentTarget.contains(event.relatedTarget)) setToastFocused(false);}}>{message}</div>}
+        {toastAction && <div className="toast" role="status" aria-atomic="true">
+          <span>{toastAction.text}</span>
+          <button className="text-button" disabled={busy} onClick={() => {toastAction.run();setToastAction(undefined);}}>{toastAction.label}</button>
+          <button className="toast-dismiss" aria-label="Dismiss notification" onClick={() => {
+            setToastAction(undefined);
+            document.querySelector<HTMLElement>(".next-read-card .card-title, .reader-feedback summary, .shortlist-title h2")?.focus();
+          }}><X size={16} aria-hidden="true"/></button>
+        </div>}
+      </div>}
       {paletteOpen && <PaperPalette close={() => setPaletteOpen(false)} />}
     </Context.Provider>
   );
@@ -663,7 +679,7 @@ export function Home() {
       </div>
       <div className="section-heading shortlist-heading">
         <div className="shortlist-title">
-          <h2>Next reads</h2>
+          <h2 tabIndex={-1}>Next reads</h2>
         </div>
         <div className="shortlist-actions">
           <Link className="text-button" href="/direction"><SlidersHorizontal size={14} />Reading direction</Link>
@@ -689,7 +705,7 @@ export function Home() {
         </p>
       )}
       {active && recs.length > 0 && recs.length < 3 && (
-        <p className="notice" role="status">Finding your next paper…</p>
+        <p className="shortlist-refill-status" role="status">Finding your next paper…</p>
       )}
       <div className="recommendation-grid">
         {recs.map(({ r, p }, index) => (
@@ -800,10 +816,10 @@ function RecommendationCard({
           {r.role}
         </span>
         <div className="card-tools">
-          <PaperFeedback paperId={p.id} saveForLater />
+          <PaperFeedback paperId={p.id} paperTitle={p.title} saveForLater />
           <button
             aria-label={`Dismiss recommendation: ${p.title}`}
-            title="Not interested — show another paper"
+            title="Not for me"
             className="icon-button"
             disabled={busy}
             onClick={() => refine("irrelevant")}
@@ -820,8 +836,9 @@ function RecommendationCard({
           <h2 title={p.title}>{paperDisplayTitle(p.title)}</h2>
         </Link>
         <p className="card-idea">
-          {p.recall?.idea || paperSummary(p.abstract)}
+          {r.reason || p.recall?.idea || paperSummary(p.abstract)}
         </p>
+        {r.focus && <p className="card-reading-focus"><span>Read for</span>{r.focus}</p>}
 
         <div className="card-actions">
           {p.recall || preparing ? <Link href={paperHref} className="kit-action">
@@ -1027,10 +1044,13 @@ function DirectionForm({
     [topics, setTopics] = useState(s.direction.topics.join(", ")),
     [dirty, setDirty] = useState(false);
   const router = useRouter();
+  const draftRevision = useRef(0);
+  const markDirty = () => {draftRevision.current += 1;setDirty(true);};
   const job = s.jobs.find(
     (j) => j.type === "recommend" && ["queued", "running"].includes(j.status),
   );
   async function save(generate = false) {
+    const submittedRevision = draftRevision.current;
     try {
       await act({
         action: "direction",
@@ -1045,9 +1065,17 @@ function DirectionForm({
             .filter(Boolean),
         },
       });
-      setDirty(false);
+      if (draftRevision.current === submittedRevision) setDirty(false);
+      if (draftRevision.current !== submittedRevision) {
+        toast("Direction saved. Your newer edits still need saving.");
+        return;
+      }
       if (generate) {
         await act({ action: "recommend" });
+        if (draftRevision.current !== submittedRevision) {
+          toast("Suggestions queued. Your newer edits still need saving.");
+          return;
+        }
         router.push("/");
       } else toast("Your direction is saved.");
     } catch {}
@@ -1058,7 +1086,6 @@ function DirectionForm({
         <h1>What’s on your mind?</h1>
         <p>A reading list is better when it knows where you’re going.</p>
       </div>
-      <InterestControls />
       <div className="direction-grid">
         <form
           className="panel direction-form"
@@ -1067,13 +1094,14 @@ function DirectionForm({
             save();
           }}
         >
+          <header className="direction-form-heading"><h2>Research direction</h2><span>{dirty ? "Unsaved changes" : s.direction.goal ? "Saved direction" : "Not saved yet"}</span></header>
           <label>
             Your research background
             <textarea
               maxLength={3000}
               rows={3}
               value={background}
-              onChange={(e) => { setBackground(e.target.value); setDirty(true); }}
+              onChange={(e) => { setBackground(e.target.value); markDirty(); }}
               placeholder="I do MoE research. Focus on routing, conditional compute, and the systems tradeoffs behind efficient models."
             />
             <small>Tell us what you work on and already understand. This sets the level of your recommendations.</small>
@@ -1087,7 +1115,7 @@ function DirectionForm({
               value={goal}
               onChange={(e) => {
                 setGoal(e.target.value);
-                setDirty(true);
+                markDirty();
               }}
               placeholder="I want to understand how to make language models cheaper to train and run, without losing capability."
             />
@@ -1100,7 +1128,7 @@ function DirectionForm({
               value={questions}
               onChange={(e) => {
                 setQuestions(e.target.value);
-                setDirty(true);
+                markDirty();
               }}
               placeholder="How does sparse routing actually work? When should I reach for LoRA rather than full fine-tuning?"
             />
@@ -1112,7 +1140,7 @@ function DirectionForm({
               value={topics}
               onChange={(e) => {
                 setTopics(e.target.value);
-                setDirty(true);
+                markDirty();
               }}
               placeholder="Efficient models, representation learning, systems"
             />
@@ -1124,7 +1152,7 @@ function DirectionForm({
               maxLength={20000}
               rows={7}
               value={readingContext}
-              onChange={(e) => { setReadingContext(e.target.value); setDirty(true); }}
+              onChange={(e) => { setReadingContext(e.target.value); markDirty(); }}
               placeholder="Paste a conversation, reading-group list, or proposed paper sequence. Include arXiv links where you have them."
             />
             <small>Suggestions guide discovery. Linked papers are verified before selection; this does not mark them as read.</small>
@@ -1144,28 +1172,21 @@ function DirectionForm({
             </button>
           </div>
         </form>
-        <aside>
-          <h2>
-            Enough direction.
-            <br />
-            Room for a detour.
-          </h2>
-          <p>
-            Your goals, reading history, and feedback help shape each shortlist.
-            You’ll see why a paper belongs and what to look for.
-          </p>
-          <p>
-            Choosing or dismissing a paper makes room for another. Refresh
-            suggestions when you want a whole new shortlist.
-          </p>
+        <aside className="direction-aside">
+          <InterestControls />
+          <section className="direction-help" aria-labelledby="direction-help-heading">
+          <h2 id="direction-help-heading">How your next reads work</h2>
+          <p>Your direction and paper feedback shape each shortlist. Every suggestion includes a reason and a reading focus.</p>
+          <p>Save, prepare or dismiss a paper to make room for another. Refresh suggestions replaces the whole shortlist.</p>
           <div className="worker-status">
             <span
               className={`status-dot ${s.workerSeenAt && Date.now() - Date.parse(s.workerSeenAt) < 180000 ? "online" : ""}`}
             />
             {s.workerSeenAt && Date.now() - Date.parse(s.workerSeenAt) < 180000
               ? "Your research worker is connected."
-              : "Generation will start when your Mac server connects."}
+              : "Suggestions and reading kits are queued until your research worker connects."}
           </div>
+          </section>
         </aside>
       </div>
       <section className="settings-row">

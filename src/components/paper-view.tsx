@@ -62,7 +62,7 @@ export function PaperView({ id }: { id: string }) {
         <h1>{p.title}</h1>
         <p><InlineText text={ready ? r?.idea || p.abstract : p.abstract} /></p>
         <div className="paper-header-actions">
-          <PaperFeedback paperId={id} />
+          <PaperFeedback paperId={id} paperTitle={p.title} compact={false} />
           <a
             className="button primary"
             href={readerUrl(p)}
