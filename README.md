@@ -1,5 +1,7 @@
 # AfterImage
 
+PR #10 is merged and deployed. Live desktop checks confirm the Analysis/Paper positioning, Library preparation controls, Subjects and Documents, and real original-paper rendering, search, and download. See [October 3 reader release verification](docs/reader-ui-release-2026-10-03.md).
+
 Library cards offer a hover/focus “Prepare again” action that queues the reading kit without opening the paper, with submission, queue and status-check feedback. See [Library preparation action](docs/library-preparation-action-2026-10-03.md).
 
 The Analysis/Paper switch stays at the left edge when changing reader views; Subjects retains Lesson/Paper. PDF page navigation, zoom and source actions are centered separately over the paper pane. Document search opens in a floating panel with ⌘F/Ctrl+F; selected controls use explicit high-contrast dark surfaces. See [reader toggle positioning](docs/reader-toggle-positioning-2026-10-03.md) and [reader toolbar alignment](docs/reader-toolbar-alignment-2026-10-02.md).
