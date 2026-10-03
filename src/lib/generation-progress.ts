@@ -252,6 +252,8 @@ export function paperPreparationModel(paper: Paper, jobs: Job[], workerSeenAt?: 
   const stage = job.status === "running" && job.stage ? studyStages[job.stage] : undefined;
   return {...model, ...stage, readable, startedAt: job.startedAt || job.createdAt, activityAt,
     workerState, attempt: job.progressAttempt,
-    queuePosition: job.status === "queued" ? jobs.filter(j => j.status === "queued").findIndex(j => j.id === job.id) + 1 : undefined,
+    queuePosition: job.status === "queued" ? jobs.filter(j => j.status === "queued")
+      .sort((a, b) => Number(b.type === "recommend") - Number(a.type === "recommend"))
+      .findIndex(j => j.id === job.id) + 1 : undefined,
   };
 }

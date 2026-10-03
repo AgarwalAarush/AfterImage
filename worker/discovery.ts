@@ -1,4 +1,5 @@
 import { parsePaperId } from "../src/lib/identity";
+import type { PaperPopularity } from "./recommendation-ranking";
 
 let apiRetryAfter = 0;
 let arxivNextRequestAt = 0;
@@ -139,13 +140,13 @@ async function searchArxiv(query: string, recent: boolean, request: typeof fetch
   };
 }
 
-async function searchOpenAlex(query: string, recent: boolean, request: typeof fetch) {
+async function searchOpenAlex(query: string, recent: boolean, request: typeof fetch, popular = false) {
   try {
     const url = new URL("https://api.openalex.org/works");
     url.searchParams.set("search", query);
     url.searchParams.set("corpus", "all");
     url.searchParams.set("per_page", "50");
-    url.searchParams.set("sort", recent ? "publication_date:desc,relevance_score:desc" : "relevance_score:desc");
+    url.searchParams.set("sort", popular ? "cited_by_count:desc" : recent ? "publication_date:desc,relevance_score:desc" : "relevance_score:desc");
     const filters = ["locations.source.id:S4306400194"];
     if (recent) {
       const cutoff = new Date();
@@ -153,7 +154,7 @@ async function searchOpenAlex(query: string, recent: boolean, request: typeof fe
       filters.push(`from_publication_date:${cutoff.toISOString().slice(0, 10)}`);
     }
     url.searchParams.set("filter", filters.join(","));
-    url.searchParams.set("select", "id,title,doi,publication_date,primary_location,best_oa_location,locations");
+    url.searchParams.set("select", "id,title,doi,publication_date,primary_location,best_oa_location,locations,cited_by_count,citation_normalized_percentile");
     if (process.env.OPENALEX_API_KEY) url.searchParams.set("api_key", process.env.OPENALEX_API_KEY);
     const response = await request(url, {
       headers: { "User-Agent": "AfterImage/0.2 (personal research discovery)" },
@@ -167,8 +168,10 @@ async function searchOpenAlex(query: string, recent: boolean, request: typeof fe
     const ids = [
       ...new Set(works.flatMap((work) => arxivIds(JSON.stringify(work), 4))),
     ].slice(0, 30);
+    const popularity = openAlexPopularity(works);
     return {
       ids,
+      popularity,
       provider: {
         provider: "openalex",
         status: "ok",
@@ -179,6 +182,7 @@ async function searchOpenAlex(query: string, recent: boolean, request: typeof fe
   } catch {
     return {
       ids: [],
+      popularity: {} as Record<string, PaperPopularity>,
       provider: {
         provider: "openalex",
         status: "unavailable",
@@ -189,18 +193,45 @@ async function searchOpenAlex(query: string, recent: boolean, request: typeof fe
   }
 }
 
+export function openAlexPopularity(works: unknown[]) {
+  const popularity: Record<string, PaperPopularity> = {};
+  for (const work of works) {
+    if (!work || typeof work !== "object") continue;
+    const record = work as Record<string, unknown>;
+    // Only attach a count to an unambiguous, canonical arXiv identity.
+    const ids = arxivIds(JSON.stringify({doi: record.doi, locations: record.locations,
+      primary_location: record.primary_location, best_oa_location: record.best_oa_location}), 4);
+    const citations = record.cited_by_count;
+    if (ids.length !== 1 || typeof citations !== "number" || !Number.isSafeInteger(citations) || citations < 0) continue;
+    const raw = (record.citation_normalized_percentile as {value?: unknown} | null)?.value;
+    const normalizedPercentile = typeof raw === "number" && Number.isFinite(raw) && raw >= 0 && raw <= 1 ? raw : null;
+    if (!popularity[ids[0]] || citations > popularity[ids[0]].citedByCount)
+      popularity[ids[0]] = {citedByCount: citations, normalizedPercentile};
+  }
+  return popularity;
+}
+
 /** Search independent scholarly indexes; metadata still resolves separately before ranking. */
 export async function discoverPapers(query: string, recent: boolean, request: typeof fetch = fetch) {
   const cleaned = cleanQuery(query);
-  if (!cleaned) return { ids: [], status: "unavailable" as const, providers: [] as DiscoveryProviderResult[] };
-  const [arxiv, openalex] = await Promise.all([
+  if (!cleaned) return { ids: [] as string[], status: "unavailable" as const, providers: [] as DiscoveryProviderResult[], popularity: {} as Record<string, PaperPopularity> };
+  const [arxiv, openalex, popular] = await Promise.all([
     searchArxiv(cleaned, recent, request),
     searchOpenAlex(cleaned, recent, request),
+    // Retrieve influential matches as well as relevance-ranked and fresh work.
+    recent ? Promise.resolve(null) : searchOpenAlex(cleaned, false, request, true),
   ]);
-  const providers = [arxiv.provider, openalex.provider];
-  const ids = [...new Set([...arxiv.ids, ...openalex.ids])].slice(0, 40);
+  const openalexIds = [...new Set([...openalex.ids, ...(popular?.ids || [])])];
+  const providers = [arxiv.provider, {...openalex.provider,
+    status: openalex.provider.status === "ok" || popular?.provider.status === "ok" ? "ok" as const : "unavailable" as const,
+    resultCount: openalex.provider.resultCount + (popular?.provider.resultCount || 0), candidateCount: openalexIds.length}];
+  const ids = roundRobinCandidates([arxiv.ids, openalex.ids, popular?.ids || []], 40);
+  const popularity = {...openalex.popularity};
+  for (const [id, signal] of Object.entries(popular?.popularity || {}))
+    if (!popularity[id] || signal.citedByCount > popularity[id].citedByCount) popularity[id] = signal;
   return {
     ids,
+    popularity,
     status: providers.some((provider) => provider.status === "ok") ? "ok" as const : "unavailable" as const,
     providers,
   };

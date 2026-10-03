@@ -680,8 +680,11 @@ export function Home() {
       </div>
       {latestRecommendationJob?.status === "failed" && (
         <p className="notice">
-          Suggestions could not refresh. Your previous picks are still here.
+          Suggestions could not refresh. Try Refresh suggestions to find another paper.
         </p>
+      )}
+      {active && recs.length > 0 && recs.length < 3 && (
+        <p className="notice" role="status">Finding your next paper…</p>
       )}
       <div className="recommendation-grid">
         {recs.map(({ r, p }, index) => (
@@ -696,8 +699,10 @@ export function Home() {
       {!recs.length && (
         <div className="empty panel">
           <Compass size={24} />
-          <h2>Your next papers are being chosen.</h2>
-          <p>Your library stays available while suggestions refresh.</p>
+          <h2>{active ? "Finding your next papers…" : "Ready for a new thread?"}</h2>
+          <p>{active ? "Your saved papers are in your Library. New suggestions will appear here." : state.direction.goal
+            ? "Refresh suggestions to find papers beyond your Library."
+            : "Add your reading direction to get personal suggestions."}</p>
         </div>
       )}
       <div className="below-grid">
@@ -775,12 +780,19 @@ function RecommendationCard({
 }) {
   const { state, act, busy, toast, prepareKit, preparations } = useApp();
   const router = useRouter();
-  const saved = !!state?.entries[p.id];
   const preparing = preparations[p.id]?.status === "submitting" || state?.jobs.some(j => j.paperId === p.id && j.type === "generate" && ["queued", "running"].includes(j.status));
   const paperHref = `/papers/${encodeURIComponent(p.id)}`;
   const prepare = () => {
     void prepareKit(p.id);
     router.push(paperHref);
+  };
+  const refine = (value: "useful" | "known" | "advanced" | "irrelevant" | "later") => {
+    void act({action: "feedback", paperId: p.id, value}).then(({state: updated}: {state: AppState}) => {
+      const replacing = updated.jobs.some(job => job.type === "recommend" && ["queued", "running"].includes(job.status));
+      toast(value === "later" ? "Saved to your Library." : value === "irrelevant"
+        ? replacing ? "Dismissed. Finding another paper." : "Dismissed."
+        : value === "known" ? "Removed from suggestions." : "Noted for your next shortlist.");
+    }).catch(() => {});
   };
   return (
     <article className={`paper-card next-read-card ${p.accent}`}>
@@ -820,9 +832,7 @@ function RecommendationCard({
                   onClick={(event) => {
                     const menu = event.currentTarget.closest("details");
                     if (menu) menu.open = false;
-                    void act({ action: "feedback", paperId: p.id, value })
-                      .then(() => toast("Noted for your next shortlist."))
-                      .catch(() => {});
+                    refine(value as "useful" | "known" | "advanced" | "irrelevant" | "later");
                   }}
                 >
                   {label}
@@ -831,16 +841,13 @@ function RecommendationCard({
             </div>
           </details>
           <button
-            aria-label={saved ? `${p.title} saved` : `Save ${p.title}`}
-            className={`icon-button bookmark ${saved ? "saved" : ""}`}
-            disabled={busy || saved}
-            onClick={() =>
-              act({ action: "save", paperId: p.id })
-                .then(() => toast("Saved to your library."))
-                .catch(() => {})
-            }
+            aria-label={`Dismiss recommendation: ${p.title}`}
+            title="Not interested — show another paper"
+            className="icon-button"
+            disabled={busy}
+            onClick={() => refine("irrelevant")}
           >
-            {saved ? <Check size={16} /> : <Bookmark size={16} />}
+            <X size={16} />
           </button>
         </div>
       </div>

@@ -144,6 +144,10 @@ export type Job = {
   leaseUntil?: string;
   leaseToken?: string;
   attempts: number;
+  /** Automatic discovery fills vacant slots; an explicit refresh replaces the shortlist. */
+  recommendationMode?: "refill";
+  /** A reading/dismissal action arrived after this recommendation job was claimed. */
+  recommendationRefillRequested?: boolean;
   stage?: WorkerStage;
   stageUpdatedAt?: string;
   heartbeatAt?: string;

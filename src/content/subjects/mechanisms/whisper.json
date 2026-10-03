@@ -658,13 +658,13 @@
     "reviewedAt": "2026-10-01T23:43:08.417Z",
     "contentDigest": "d9e8d7f3f7ee43bd173e5e5ec1474a8d5328aa0439456542f66d634040e40184",
     "rendererDigest": "83a7df171d30c59ad1eef731009edc62331803b8dcba7d6983b92d72bf27ea4a",
-    "visualReviewedAt": "2026-10-03T08:38:53.116695Z",
+    "visualReviewedAt": "2026-10-03T19:12:15.873Z",
     "visualAcceptance": {
       "version": 2,
-      "reportDigest": "5be6cd466b2bf790d759f0eefe8f2e4aa4133e1ffb10033d7711d975cc794ecd",
-      "presentationDigest": "c3b253b9bc2f88cf3950776db353d870c9af859b6f99faf214b97bda48a93b6a",
+      "reportDigest": "6d0dc1684c8de3df4c82a7c2f9df3559d0a87bac1feb8bf15c4f8154666b5ef1",
+      "presentationDigest": "76a8196b47300566afdb94d5001d9a6a0d802cffe6c797fd3e7c66fba3ffeac2",
       "semanticPolicyVersion": "mechanism-semantic-ownership-v1",
-      "reviewerId": "/root/visual_review_f",
+      "reviewerId": "/root/next-reads-release-01a100be",
       "viewCount": 4,
       "beatCount": 5,
       "transitionCount": 16

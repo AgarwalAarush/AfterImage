@@ -6,7 +6,7 @@ import { importPaper } from "@/lib/papers";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import type { Paper } from "@/lib/types";
-import { excludedRecommendations, shouldRefreshRecommendations } from "@/lib/recommendations";
+import { advanceRecommendations, queueRecommendationRefill } from "@/lib/recommendations";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export async function GET(req: Request) {
@@ -64,15 +64,7 @@ export async function POST(req: Request) {
         });
       };
       const refreshFromReading = () => {
-        if (!shouldRefreshRecommendations(s)) return;
-        s.jobs.push({
-          id: randomUUID(),
-          type: "recommend",
-          status: "queued",
-          createdAt: now,
-          attempts: 0,
-        });
-        s.jobs = s.jobs.slice(-100);
+        queueRecommendationRefill(s, now, randomUUID);
       };
       switch (body.action) {
         case "import":
@@ -110,7 +102,6 @@ export async function POST(req: Request) {
         case "save":
           ensureEntry().status =
             body.status === "reading" ? "reading" : "saved";
-          s.recommendations = s.recommendations.filter(r => !excludedRecommendations(s).has(r.paperId));
           break;
         case "status":
           const status = z.enum(["saved", "reading", "read", "archived"]).parse(body.status);
@@ -118,7 +109,6 @@ export async function POST(req: Request) {
             status,
             updatedAt: now,
           });
-          s.recommendations = s.recommendations.filter(r => !excludedRecommendations(s).has(r.paperId));
           if (["reading", "read"].includes(status)) refreshFromReading();
           break;
         case "review":
@@ -143,10 +133,6 @@ export async function POST(req: Request) {
             .enum(["useful", "known", "advanced", "irrelevant", "later"])
             .parse(body.value);
           s.feedback.push({ paperId: id, value, at: now });
-          if (["known", "irrelevant", "later"].includes(value))
-            s.recommendations = s.recommendations.filter(
-              (r) => r.paperId !== id,
-            );
           if (value === "later") ensureEntry();
           break;
         }
@@ -193,6 +179,7 @@ export async function POST(req: Request) {
         default:
           throw new Error("Unknown action");
       }
+      advanceRecommendations(s, now, randomUUID);
       return { state: publicState(s), paperId: id };
     });
     return NextResponse.json(result);

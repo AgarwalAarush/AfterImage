@@ -8,7 +8,7 @@ import { randomUUID } from "node:crypto";
 import { importPaper } from "@/lib/papers";
 import { validateRecall } from "@/lib/recall-validation";
 import { parsePaperId } from "@/lib/identity";
-import { excludedRecommendations, recommendationRunSchema } from "@/lib/recommendations";
+import { nextQueuedJob, publishRecommendations, recommendationRunSchema } from "@/lib/recommendations";
 import type { Paper } from "@/lib/types";
 import { recordWorkerProgress } from "@/lib/worker-progress";
 export const maxDuration = 60;
@@ -55,7 +55,7 @@ export async function POST(req: Request) {
             }
           }
         }
-        const job = s.jobs.find((j) => j.status === "queued");
+        const job = nextQueuedJob(s.jobs);
         if (!job) return { job: null };
         job.status = "running";
         job.attempts++;
@@ -78,6 +78,7 @@ export async function POST(req: Request) {
           papers: s.papers,
           entries: s.entries,
           feedback: s.feedback,
+          recommendations: s.recommendations,
         };
       }
       const job = s.jobs.find((j) => j.id === body.jobId);
@@ -165,13 +166,12 @@ export async function POST(req: Request) {
           if (!s.papers.some((x) => x.id === p.id)) s.papers.push(p);
         const result = recommendationSchema.parse(body.result);
         const seen = new Set<string>();
-        const excluded = excludedRecommendations(s);
         for (const r of result.recommendations) {
-          if (!s.papers.some((p) => p.id === r.paperId) || seen.has(r.paperId) || excluded.has(r.paperId))
+          if (!s.papers.some((p) => p.id === r.paperId) || seen.has(r.paperId))
             throw new Error("Invalid recommended paper");
           seen.add(r.paperId);
         }
-        s.recommendations = result.recommendations;
+        publishRecommendations(s, result.recommendations, job, now, randomUUID);
         s.recommendationSource = "codex";
         s.recommendedAt = now;
         s.recommendationRun = report;
