@@ -1,0 +1,11 @@
+# Library preparation action
+
+Failed or incomplete Library cards now expose a preparation button over their preview on hover or keyboard focus. Touch input keeps the action visible. “Prepare again” retries failed generation or a failed study guide; “Prepare reading kit” handles an incomplete kit. The shared preparation model selects the existing `generate` or `study` action, so a study retry preserves the reviewed notecard.
+
+The card uses a title link with a full-card hit area and a separate sibling button. Button clicks queue the existing preparation flow without navigating, while clicking elsewhere on the card still opens its reader. Submission shows “Starting…” before authoritative queue acknowledgement; queued and running states disable the action. Ready cards omit it. Existing client/server job deduplication is retained.
+
+An interrupted request exposes “Check status” instead of replaying the mutation. A successful library read reconciles the result before restoring a retry or displaying the confirmed job. No preparation starts on hover, focus, or route prefetch. The mounted provider owns requests and feedback across navigation.
+
+This is a web presentation change with no worker, bridge, storage, or schema changes. Shared presentation edits remain subject to the existing Subjects visual publication gate before a production release.
+
+Validation: TypeScript and all fifteen preparation/loading/reading-kit tests pass. Native Chromium checks at 1440px/900px in Light/Dark confirm hover and keyboard-focus visibility with no hover/prefetch writes, an Enter-key retry that submits exactly once, immediate submission feedback before queue acknowledgement, and no navigation from preparation or status-check clicks. Real API writes against an isolated temporary SQLite database create one generation job, select `study` for a failed supplement while preserving its reviewed notecard, and recover an interrupted request through a read before a deliberate retry. Active jobs disable the action; complete cards omit it. Clicking the card preview outside the button opens the reader. No nested button/link markup, page overflow, or browser errors were found. Test content uses public starter papers and does not access production storage.

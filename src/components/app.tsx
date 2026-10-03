@@ -41,6 +41,7 @@ import { clientRequest } from "@/lib/client-request";
 import { readLibrary, readLibraryUpdate, SessionExpired } from "@/lib/library-client";
 import { LoadingStatus } from "./loading-status";
 import { LibraryContent } from "./library-content";
+import { LibraryPreparationAction } from "./library-preparation-action";
 import { ThemeControl } from "./theme-control";
 import type { PreparationRequest } from "@/lib/generation-progress";
 const Diagram = dynamic(() => import("./diagram").then(module => module.Diagram), {
@@ -983,10 +984,10 @@ export function Library() {
       {results.length ? (
         <div className="library-grid">
           {results.map(({ p, e }) => (
-            <Link
-              href={`/papers/${encodeURIComponent(p.id)}`}
+            <article
               className={`library-card ${p.accent}`}
               key={p.id}
+              aria-label={p.title}
             >
               <div className="card-top">
                 <span className={`notecard-status ${p.recall ? "ready" : p.generationStatus}`}>
@@ -994,10 +995,13 @@ export function Library() {
                 </span>
                 <span className="status-label">{e.status === "saved" ? "To read" : e.status === "reading" ? "Reading" : e.status === "archived" ? "Archived" : "Read"}</span>
               </div>
-              <Diagram paper={p} thumbnail />
-              <h2 title={p.title}>{paperDisplayTitle(p.title)}</h2>
+              <div className="library-card-preview">
+                <Diagram paper={p} thumbnail />
+                <LibraryPreparationAction paper={p} />
+              </div>
+              <h2 title={p.title}><Link className="library-card-link" href={`/papers/${encodeURIComponent(p.id)}`}>{paperDisplayTitle(p.title)}</Link></h2>
               <p>{p.recall?.idea || paperSummary(p.abstract)}</p>
-            </Link>
+            </article>
           ))}
         </div>
       ) : (

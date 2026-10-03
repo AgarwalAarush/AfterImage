@@ -1,10 +1,14 @@
 # AfterImage
 
+Library cards offer a hover/focus “Prepare again” action that queues the reading kit without opening the paper, with submission, queue and status-check feedback. See [Library preparation action](docs/library-preparation-action-2026-10-03.md).
+
+The Analysis/Paper switch stays at the left edge when changing reader views; Subjects retains Lesson/Paper. PDF page navigation, zoom and source actions are centered separately over the paper pane. Document search opens in a floating panel with ⌘F/Ctrl+F; selected controls use explicit high-contrast dark surfaces. See [reader toggle positioning](docs/reader-toggle-positioning-2026-10-03.md) and [reader toolbar alignment](docs/reader-toolbar-alignment-2026-10-02.md).
+
 Library recall headings and prose now share one reading column, widening to 960px on desktop when the assistant is closed and retaining a 760px cap beside the assistant. See [Library recall width](docs/library-recall-width-2026-10-03.md).
 
-The Lesson/Notecard and Paper switch now shares a centered, compact PDF toolbar with page navigation, grouped zoom and source actions. Document search opens in a floating panel with ⌘F/Ctrl+F; selected controls use explicit high-contrast dark surfaces. See [reader toolbar alignment](docs/reader-toolbar-alignment-2026-10-02.md) for UI verification and renewed independent Subjects publication acceptance.
-
 Library notecards now reuse the Subjects prose preset and shared sans-serif font for consistent reading typography. See [Library reading typography](docs/library-reading-typography-2026-10-02.md).
+
+Paper abstracts and notecard introductions are left-aligned within their existing centered reading column. See [paper abstract alignment](docs/paper-abstract-alignment-2026-10-03.md).
 
 The [Subjects reading typography refinement](docs/subjects-reading-typography-2026-10-02.md) uses the existing interface sans-serif for article prose, smaller introductions and objectives headings, and clearer paragraph spacing. Useful background is removed from all Subjects articles. Fresh independent visual acceptance covers every mechanism state and adjacent transition at both desktop widths in Light and Dark. This web release is live and verified on the production reader, Library, and Documents routes.
 
@@ -177,4 +181,4 @@ The shared Library/Subjects assistant now supports saved per-target chats, selec
 
 The assistant idle optimization adds a dedicated authenticated loopback wake stream from the bridge to the worker, preserving prompt queue pickup without repeated idle Vercel calls. Changed answers retain fast updates; quiet turns use five-second lease heartbeats. Protocol-2 compatibility was verified and the administrator-run bridge-first installation activated notifications on October 2. The local notification port is 3104; Cloudflare metrics retain 3103. See [assistant idle wake notifications](docs/assistant-idle-wake-2026-10-02.md) for configuration, synthetic-data verification, recovery and rollback.
 
-Reader layout: navigation is a browser-local collapsible left rail. Paper view fills the viewport with independent PDF/chat scrolling and no footer; returning to Lesson/Notecard restores prose position. See `docs/assistant-conversations-2026-10-02.md`.
+Reader layout: navigation is a browser-local collapsible left rail. Paper view fills the viewport with independent PDF/chat scrolling and no footer; returning to Lesson/Analysis restores prose position. See `docs/assistant-conversations-2026-10-02.md`.

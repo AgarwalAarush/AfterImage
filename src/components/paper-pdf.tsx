@@ -147,7 +147,7 @@ export function PaperPdf({target,title,arxivId,destination,viewControls,toolbarA
     setSearchIndex(next);goTo(searchMatches[next].page);
   }
   return <section ref={viewer} className="paper-pdf" aria-label={`Original paper: ${title}`}>
-    <div className="pdf-toolbar"><div className="pdf-reading-controls">{viewControls}<div className="pdf-controls">
+    <div className="pdf-toolbar">{viewControls}<div className="pdf-reading-controls"><div className="pdf-controls">
       <div className="pdf-control-group pdf-page-navigation">
         <button className="icon-button" aria-label="Previous page" title="Previous page" disabled={!document||page<=1} onClick={()=>goTo(page-1)}><ChevronLeft size={17}/></button>
         <div className="pdf-page-counter"><input aria-label="Page number" type="number" style={{width:`calc(${String(page).length}ch + 2px)`}} min={1} max={document?.numPages||1} value={page} onChange={event=>{const next=Number(event.target.value);if(next>0)goTo(next);}}/><span>/ {document?.numPages||"—"}</span></div>
