@@ -4,4 +4,4 @@ Library paper abstracts and reviewed notecard introductions now use left-aligned
 
 This is a Library-only presentation change in `src/components/paper-reading.module.css` and requires a web release.
 
-Validation: eight isolated Chromium layout checks using the repository styles cover 1440px and 900px, Light/Dark, and prepared/unprepared headers. Paragraph text is left-aligned, its bounds match the previous centered layout, titles and actions remain centered, and no horizontal overflow appears. `git diff --check` passes. Production deployment was not part of this change.
+Validation: eight isolated Chromium layout checks using the repository styles cover 1440px and 900px, Light/Dark, and prepared/unprepared headers. Paragraph text is left-aligned, its bounds match the previous centered layout, titles and actions remain centered, and no horizontal overflow appears. `git diff --check` passes. Integrated build and publication checks are recorded in [reader toggle positioning](reader-toggle-positioning-2026-10-03.md).
