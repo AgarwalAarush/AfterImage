@@ -47,6 +47,18 @@ input::placeholder, textarea::placeholder { font-size: inherit; color: var(--mut
 .shortlist-actions .text-button:hover { color: var(--ink); }
 .library-card, .mechanism-panel { background: var(--paper); }
 .library-card:hover { box-shadow: none; border-color: var(--theme-line-strong, #bfc0c2); }
+.library-card { position:relative; }
+.library-card-link::after { content:""; position:absolute; inset:0; z-index:1; border-radius:12px; }
+.library-card-link:focus-visible { outline:0; }
+.library-card-link:focus-visible::after { outline:2px solid var(--control-focus); outline-offset:-3px; }
+.library-card-preview { position:relative; display:flow-root; }
+.library-preparation-action { position:absolute; inset:16px 16px 0; z-index:2; display:flex; align-items:center; justify-content:center; opacity:0; pointer-events:none; transition:opacity .15s; }
+.library-preparation-action > .button { max-width:100%; padding:10px 14px; background:var(--paper); color:var(--accent); border-color:var(--theme-violet-line, #d7cce8); font:500 13px var(--font-sans); pointer-events:none; }
+.library-preparation-action > .button:disabled { opacity:1; color:var(--muted); }
+.library-card:is(:hover,:focus-within) .library-preparation-action,.library-preparation-action[data-visible="true"] { opacity:1; }
+.library-card:is(:hover,:focus-within) .library-preparation-action > .button,.library-preparation-action[data-visible="true"] > .button { pointer-events:auto; }
+@media (hover:none) { .library-preparation-action { opacity:1; } .library-preparation-action > .button { pointer-events:auto; } }
+@media (prefers-reduced-motion:reduce) { .library-preparation-action { transition:none; } }
 .notecard-status, .status-label { font-size: 11px; }
 
 /* Search wells own their focus ring; their inputs remain transparent. */
@@ -502,8 +514,10 @@ html:has(.reader-workspace[data-reader-view="paper"]),body:has(.reader-workspace
 .pdf-page-counter { display:flex; align-items:center; gap:4px; margin:0 2px; }
 .pdf-toolbar .pdf-page-navigation .icon-button { width:28px; }
 
-/* Center the reading controls on the PDF pane, independent of the assistant rail. */
-.reader-pdf-view .pdf-toolbar { display:grid; grid-template-columns:minmax(64px,1fr) minmax(0,max-content) minmax(64px,1fr); gap:12px; }
-.pdf-reading-controls { grid-column:2; display:flex; align-items:center; min-width:0; gap:20px; }
+/* Anchor the view switch at the left; center PDF controls on the paper pane. */
+.reader-pdf-view .pdf-toolbar { display:grid; grid-template-columns:minmax(180px,1fr) minmax(0,max-content) minmax(180px,1fr); gap:12px; }
+.reader-pdf-view .pdf-toolbar > .reader-view-tabs { grid-column:1; justify-self:start; }
+.pdf-reading-controls { grid-column:2; display:flex; align-items:center; min-width:0; }
 .pdf-toolbar-actions { grid-column:3; justify-self:end; margin:0; }
 .pdf-reading-controls .pdf-controls { flex:0 1 auto; }
+@media (max-width:600px) { .reader-pdf-view .pdf-toolbar { grid-template-columns:max-content minmax(0,1fr) auto; } }

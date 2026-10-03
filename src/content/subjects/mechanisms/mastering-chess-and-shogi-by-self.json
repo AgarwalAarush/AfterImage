@@ -664,13 +664,13 @@
     "reviewedAt": "2026-10-02T02:15:46.771Z",
     "contentDigest": "ef217481fbdc9779d2aa1c6dad064f252ec4b195b128d01be3225a40c88f2d26",
     "rendererDigest": "83a7df171d30c59ad1eef731009edc62331803b8dcba7d6983b92d72bf27ea4a",
-    "visualReviewedAt": "2026-10-03T01:52:58.823442Z",
+    "visualReviewedAt": "2026-10-03T18:26:00.060Z",
     "visualAcceptance": {
       "version": 2,
-      "reportDigest": "544d43ad57bfe694b7aa281300cd60865a5f78c88ba9f1ea086de1ca98ee51e7",
-      "presentationDigest": "2828755f26186c362b472c57f40f21347b625cb770afe4357a7b98e6ab69bfdf",
+      "reportDigest": "a3e2b0b76f0bdf6e6bd0c352c574ef931271814d107e8aafd7caaa0ea633c6cd",
+      "presentationDigest": "c3b253b9bc2f88cf3950776db353d870c9af859b6f99faf214b97bda48a93b6a",
       "semanticPolicyVersion": "mechanism-semantic-ownership-v1",
-      "reviewerId": "/root/visual_review_a",
+      "reviewerId": "/root/visual_review_b",
       "viewCount": 4,
       "beatCount": 5,
       "transitionCount": 16

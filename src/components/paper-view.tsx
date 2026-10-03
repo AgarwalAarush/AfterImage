@@ -41,7 +41,7 @@ export function PaperView({ id }: { id: string }) {
       <div className="paper-breadcrumb">
         <Link href="/library">Library</Link>
         <span>/</span>
-        <span>{ready ? "Notecard" : ["submitting", "queued", "running"].includes(preparation.status) ? "Preparing" : "Paper"}</span>
+        <span>{ready ? "Analysis" : ["submitting", "queued", "running"].includes(preparation.status) ? "Preparing" : "Paper"}</span>
         {ready && (
           <button
             className="text-button"
