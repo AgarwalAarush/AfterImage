@@ -9,11 +9,15 @@ import { importPaper } from "@/lib/papers";
 import { validateRecall } from "@/lib/recall-validation";
 import { parsePaperId } from "@/lib/identity";
 import { nextQueuedJob, publishRecommendations, recommendationRunSchema } from "@/lib/recommendations";
-import type { Paper } from "@/lib/types";
+import type { Job, Paper } from "@/lib/types";
 import { recordWorkerProgress } from "@/lib/worker-progress";
 export const maxDuration = 60;
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+// Discovery renews every minute; recover interrupted short jobs sooner than reading kits.
+function leaseUntil(type: Job["type"]) {
+  return new Date(Date.now() + (type === "recommend" ? 3 : 15) * 60000).toISOString();
+}
 export async function POST(req: Request) {
   if (!workerAuth(req))
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -64,7 +68,7 @@ export async function POST(req: Request) {
         delete job.stage;
         delete job.stageUpdatedAt;
         delete job.progressAttempt;
-        job.leaseUntil = new Date(Date.now() + 15 * 60000).toISOString();
+        job.leaseUntil = leaseUntil(job.type);
         job.leaseToken = randomUUID();
         const p = s.papers.find((p) => p.id === job.paperId);
         if (p && job.type === "generate") {
@@ -89,7 +93,7 @@ export async function POST(req: Request) {
       )
         throw new Error("Job lease is no longer valid");
       if (body.action === "heartbeat") {
-        job.leaseUntil = new Date(Date.now() + 15 * 60000).toISOString();
+        job.leaseUntil = leaseUntil(job.type);
         recordWorkerProgress(job, body, now);
         const p = s.papers.find((p) => p.id === job.paperId);
         if (p && job.type === "generate" && job.stage &&
