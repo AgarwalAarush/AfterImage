@@ -1,0 +1,17 @@
+{
+  "verdict": {
+    "explanationSupportsCalculation": true,
+    "candidatePassage": "\u201cRenormalized weights for selected real experts multiply cost $\\kappa^e$; selected null expert 0 contributes zero cost, including in mixed top-k sets.\u201d",
+    "sourceIds": [
+      "section-3-part-2:10b8026b37c7ca64",
+      "section-3:3cc623f6bbc0d0b8",
+      "appendix-a3:72fd83fbb1d547ed"
+    ],
+    "nullOnly": 0,
+    "realOnly": 120,
+    "mixed": 72,
+    "denominatorIncludesSelectedNull": true,
+    "attributionCorrect": false,
+    "reason": "The explanation implies cost = \u03ba times the normalized weight on selected real experts, while null contributes zero. Thus [1,0,0] costs 0\u00d7120=0; [0,1,0] costs 1\u00d7120=120; and [0.4,0.6,0] costs 0.6\u00d7120=72. The mixed vector\u2019s null weight remains in the supplied normalization denominator. Attribution is not fully correct: the author\u2019s displayed Equation 8 sums \u03ba^e-weighted gates over every selected j and does not explicitly exclude index 0 or define a separate zero null cost, whereas the reference implementation explicitly uses gates[...,1:].sum(-1), making null free. The explanation\u2019s real-only summation is therefore an implementation-specific interpretation presented as part of a compression of the author equations."
+  }
+}

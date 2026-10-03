@@ -1,0 +1,58 @@
+{
+  "paper": {
+    "id": "2211.15841",
+    "arxivId": "2211.15841",
+    "title": "MegaBlocks: Efficient Sparse Training with Mixture-of-Experts",
+    "authors": "Gale, Trevor et al.",
+    "year": 2022,
+    "topics": [],
+    "accent": "violet",
+    "abstract": "We present MegaBlocks, a system for efficient Mixture-of-Experts (MoE) training on GPUs. Our system is motivated by the limitations of current frameworks, which restrict the dynamic routing in MoE layers to satisfy the constraints of existing software and hardware. These formulations force a tradeoff between model quality and hardware efficiency, as users must choose between dropping tokens from the computation or wasting computation and memory on padding. To address these limitations, we reformulate MoE computation in terms of block-sparse operations and develop new block-sparse GPU kernels that efficiently handle the dynamism present in MoEs. Our approach never drops tokens and maps efficiently to modern hardware, enabling end-to-end training speedups of up to 40% over MoEs trained with the state-of-the-art Tutel library and 2.4x over DNNs trained with the highly-optimized Megatron-LM framework.",
+    "recall": null,
+    "scene": null,
+    "sources": [
+      {
+        "id": "abstract",
+        "label": "Original paper \u00b7 abstract",
+        "url": "https://arxiv.org/abs/2211.15841",
+        "excerpt": "We present MegaBlocks, a system for efficient Mixture-of-Experts (MoE) training on GPUs. Our system is motivated by the limitations of current frameworks, which restrict the dynamic routing in MoE layers to satisfy the constraints of existing software and hardware. These formulations force a tradeoff between model quality and hardware efficiency, as users must choose between dropping tokens from the computation or wasting computation and memory on padding. To address these limitations, we reformulate MoE computation in terms of block-sparse operations and develop new block-sparse GPU kernels that efficiently handle the dynamism present in MoEs. Our approach never drops tokens and maps efficiently to modern hardware, enabling end-to-end training speedups of up to 40% over MoEs trained with the state-of-the-art Tutel library and 2.4x over DNNs trained with the highly-optimized Megatron-LM framework."
+      }
+    ],
+    "generationStatus": "idle",
+    "createdAt": "2026-10-02T21:13:12.980Z",
+    "kit": {
+      "version": 1,
+      "revision": 12,
+      "components": [
+        {
+          "id": "explanation",
+          "state": "failed",
+          "revision": null,
+          "dependencies": {},
+          "sourceIds": []
+        },
+        {
+          "id": "diagram",
+          "state": "blocked",
+          "revision": null,
+          "dependencies": {},
+          "sourceIds": []
+        },
+        {
+          "id": "figure:forward-sparse-operators",
+          "state": "blocked",
+          "revision": null,
+          "dependencies": {},
+          "sourceIds": []
+        },
+        {
+          "id": "quiz",
+          "state": "blocked",
+          "revision": null,
+          "dependencies": {},
+          "sourceIds": []
+        }
+      ]
+    }
+  }
+}

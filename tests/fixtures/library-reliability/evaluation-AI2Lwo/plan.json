@@ -1,0 +1,38 @@
+{
+  "requirements": [
+    "Explain router scores, top-k expert assignment, permutation, expert computation, un-permutation, and weighted output as the essential MoE computation.",
+    "Contrast fixed expert capacity with imbalanced routing: excess assignments are dropped, underfilled experts are padded, creating a quality\u2013efficiency tradeoff.",
+    "Explain MegaBlocks\u2019 essential contribution: variable token loads become fixed-size blocks in block-sparse SDD and DSD operations without dropping tokens.",
+    "Separate supported results from limitations: experiments use specified A100 training conditions, while extracted captions lack figure pixels and do not establish broader generality."
+  ],
+  "equations": [
+    "Source convention \u2014 capacity = tokens / experts \u00d7 capacity factor; domain: fixed-capacity MoE routing.",
+    "Source relation \u2014 router softmax scores select top-k experts; domain: token-to-expert assignment.",
+    "Source convention \u2014 SDD means sparse output, dense left input, dense right input; domain: block-sparse products.",
+    "Source relation \u2014 two-layer expert forward pass alternates SDD then DSD; domain: dropless MoE FFN.",
+    "Per-expert derived relation: padding = ceil(n/B)B \u2212 n, where n is the assigned-token count and B is a positive integer block size. MegaBlocks uses B = 128."
+  ],
+  "example": "Illustrative only: route t1\u2013t3 to E1, t4\u2013t5 to E2, and t6 to E3. With teaching block size 2, retain all six tokens and add one empty slot to E1 and E3. The paper\u2019s implementation uses 128-token blocks, not this toy size.",
+  "diagram": {
+    "proof": "Three expert regions receive six named tokens under an imbalanced assignment. Block outlines show per-expert fringe padding, while every token identity remains assigned. This demonstrates dropless block padding; it does not depict token dropping.",
+    "objects": 6,
+    "representation": "illustration"
+  },
+  "figures": [
+    {
+      "id": "forward-sparse-operators",
+      "question": "How do routing-derived topology, grouped tokens, SDD, DSD, and weighted un-permutation compose the essential dropless MoE forward pass?",
+      "kind": "illustration"
+    }
+  ],
+  "sourceIds": [
+    "section-1:7b2e40c096e8a14f",
+    "section-2:726a37196c7bf279",
+    "section-3:cd915ae3674257f7",
+    "section-4:cc4e7b31f7f9dd0f",
+    "section-5:0d43f14998337fbe",
+    "section-5-part-2:833e07de8b03cd99",
+    "section-6:478d4421ecbd7b14",
+    "section-6-part-2:e9bee15b420b0786"
+  ]
+}

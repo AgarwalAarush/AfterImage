@@ -1,0 +1,16 @@
+{
+  "candidate": "ed8107859e35e301cee815cde35a781ef314b6161ea6a1a6417a970ddc39dff5",
+  "binding": "536188f2c8d7c9f0580073d65e32f5f7ef848253e434bd134cf8baed9f0d7043",
+  "decisions": [
+    {
+      "id": "a939ade7168494c35453a4378d170477",
+      "disposition": "supported-defect",
+      "rationale": "The walkthrough contrasts a shared-capacity baseline with per-expert block rounding but cites only the passage supporting local padding to multiples of 128. The fixed-capacity behavior\u2014dropping excess assignments and padding underfilled experts\u2014is supported by a different passage. Therefore, the current citation does not support the full scientific comparison.",
+      "requirement": "A walkthrough citation must support every scientific contrast it teaches.",
+      "passageIds": [
+        "section-2:726a37196c7bf279:746e4669d513a1aa",
+        "section-5-part-2:833e07de8b03cd99:450c3c3b365ca39c"
+      ]
+    }
+  ]
+}

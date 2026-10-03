@@ -1,0 +1,74 @@
+✖ duplicate proof and canonical scope do not depend on review order (17.06225ms)
+✖ saved QLoRA duplicate findings retain all three proofs before editing (13.224375ms)
+✖ authority rejects a different candidate, input binding or canonical obligation scope (0.745833ms)
+✖ conflicting duplicate proof requirements are rejected instead of last-wins (0.562459ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 0
+ℹ fail 4
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 349.132542
+
+✖ failing tests:
+
+test at tests/canonical-evidence.test.ts:2:3483
+✖ duplicate proof and canonical scope do not depend on review order (17.06225ms)
+  AssertionError [ERR_ASSERTION]: A valid proof attached to the first duplicate must survive
+      at TestContext.<anonymous> (/Users/aarushagarwal/.codex/worktrees/61af/AfterImage/tests/canonical-evidence.test.ts:29:9)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at tests/canonical-evidence.test.ts:2:4398
+✖ saved QLoRA duplicate findings retain all three proofs before editing (13.224375ms)
+  AssertionError [ERR_ASSERTION]: All three adjudicated obligations must retain sourceProof
+      at TestContext.<anonymous> (/Users/aarushagarwal/.codex/worktrees/61af/AfterImage/tests/canonical-evidence.test.ts:40:39)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at tests/canonical-evidence.test.ts:2:5308
+✖ authority rejects a different candidate, input binding or canonical obligation scope (0.745833ms)
+  AssertionError [ERR_ASSERTION]: Missing expected exception.
+      at TestContext.<anonymous> (/Users/aarushagarwal/.codex/worktrees/61af/AfterImage/tests/canonical-evidence.test.ts:48:146)
+      at Test.runInAsyncScope (node:async_hooks:226:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: /current source authority|bound|stale/i,
+    operator: 'throws',
+    diff: 'simple'
+  }
+
+test at tests/canonical-evidence.test.ts:2:6219
+✖ conflicting duplicate proof requirements are rejected instead of last-wins (0.562459ms)
+  AssertionError [ERR_ASSERTION]: Missing expected rejection.
+      at async TestContext.<anonymous> (/Users/aarushagarwal/.codex/worktrees/61af/AfterImage/tests/canonical-evidence.test.ts:54:2)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: /Conflicting.*proof|Conflicting.*authority/i,
+    operator: 'rejects',
+    diff: 'simple'
+  }

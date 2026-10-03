@@ -1,0 +1,92 @@
+{
+  "candidate": {
+    "content": {
+      "illustration": null,
+      "title": "One QLoRA Linear Layer",
+      "description": "The same BF16 activation follows a frozen base path and a trainable LoRA path. NF4 storage is double-dequantized before BF16 multiplication; the two projections are then added. Backward edges, paging, checkpointing, and the surrounding transformer are omitted.",
+      "footnote": "4-bit storage feeds BF16 compute; only LoRA weights are updated.",
+      "edges": [
+        {
+          "from": "nf4-store",
+          "to": "double-dequant",
+          "label": "weights and scales",
+          "dashed": false
+        },
+        {
+          "from": "double-dequant",
+          "to": "base-project",
+          "label": "BF16 weights",
+          "dashed": false
+        },
+        {
+          "from": "bf16-input",
+          "to": "base-project",
+          "label": "",
+          "dashed": false
+        },
+        {
+          "from": "bf16-input",
+          "to": "lora-path",
+          "label": "",
+          "dashed": false
+        },
+        {
+          "from": "base-project",
+          "to": "combined-output",
+          "label": "base term",
+          "dashed": false
+        },
+        {
+          "from": "lora-path",
+          "to": "combined-output",
+          "label": "adapter term",
+          "dashed": false
+        }
+      ],
+      "nodes": [
+        {
+          "id": "bf16-input",
+          "kind": "matrix",
+          "label": "BF16 Activations",
+          "detail": "Shared input X",
+          "emphasis": false
+        },
+        {
+          "id": "nf4-store",
+          "kind": "stack",
+          "label": "Frozen NF4 Weights",
+          "detail": "Weights plus quantized scales",
+          "emphasis": false
+        },
+        {
+          "id": "double-dequant",
+          "kind": "box",
+          "label": "Double Dequantize",
+          "detail": "Transient BF16 weights",
+          "emphasis": false
+        },
+        {
+          "id": "base-project",
+          "kind": "matrix",
+          "label": "Base Projection",
+          "detail": "BF16 matrix multiply",
+          "emphasis": false
+        },
+        {
+          "id": "lora-path",
+          "kind": "box",
+          "label": "Trainable LoRA Path",
+          "detail": "BF16 low-rank matrices",
+          "emphasis": true
+        },
+        {
+          "id": "combined-output",
+          "kind": "matrix",
+          "label": "Combined Output",
+          "detail": "Add both projection terms",
+          "emphasis": false
+        }
+      ]
+    }
+  }
+}

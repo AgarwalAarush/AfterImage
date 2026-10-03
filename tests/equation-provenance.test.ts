@@ -10,8 +10,8 @@ import {abstractResearch} from "../src/lib/research-bundle";
 import {costProbeSchemaFor,costProbeSources,assessCostProbe,costProbeBinding} from "../scripts/evaluate-triroute-cost";
 import type {Model} from "../worker/repair-model";
 
-const saved=JSON.parse(readFileSync(".artifacts/evaluation-iFSUIM/result.json","utf8")).paper;
-const historical=JSON.parse(readFileSync(".artifacts/library-evaluations/2026-10-02T21-13-12.111Z/null-cost-acceptance.json","utf8"));
+const saved=JSON.parse(readFileSync("tests/fixtures/library-reliability/evaluation-iFSUIM/result.json","utf8")).paper;
+const historical=JSON.parse(readFileSync("tests/fixtures/library-reliability/library-evaluations/2026-10-02T21-13-12.111Z/null-cost-acceptance.json","utf8"));
 test("saved probe wrapper formatting is removed from exact candidate evidence selection without granting scientific acceptance",()=>{
  const sources=costProbeSources(saved),verdict=historical.verdict;
  const result=assessCostProbe(saved,sources,verdict);

@@ -1,0 +1,188 @@
+{
+  "ledger": [
+    {
+      "id": "6c711f0f823cf46baf31def5615851bf",
+      "category": "scientific-State that figure pixels were unavailable in the supplied evidence.",
+      "owner": "content",
+      "targets": [
+        "/content/limitation"
+      ],
+      "evidence": "The plan requires this evidence limitation. Multiple supplied passages explicitly mark captions as extracted without figure pixels, but the limitation field omits that boundary.",
+      "invariant": "State that figure pixels were unavailable in the supplied evidence.",
+      "objectId": "explanation.limitation.figure-pixels",
+      "acceptance": "Add a short sentence that figure claims were reviewed from extracted text and captions, not figure pixels.",
+      "sourceIds": [
+        "section-2:726a37196c7bf279",
+        "section-6:478d4421ecbd7b14"
+      ],
+      "sourceProof": {
+        "sources": "6f6f311e76e87f379273a99854bfd5a973b27d421e2d827a16850d0935250dc0",
+        "support": [
+          {
+            "sourceId": "section-2:726a37196c7bf279",
+            "passage": "The most common style of MoE routing is the learned router proposed by Shazeer et al. (2017). In this router, the tokens are projected from hidden_size elements to num_experts scores by multiplying with a weight matrix that is learned jointly with the other model parameters. The scores are normalized with a softmax and the routing decisions are made by greedily selecting the top_k scoring experts for each token.\n\nCAPTION (figure pixels not extracted): Figure 2: MoEs Trained on The Pile with Different Capacity Factors. The loss reached by the MoE models decreases significantly as expert capacity is increased, but at the cost of additional computation. The lowest loss is achieved by the \u201cmax\u201d capacity factor model, which avoids dropping tokens through the dynamic capacity factor mechanism proposed by Hwang et al. (2022).\n\nState-of-the-art MoE implementations aim to compute all expert layers in parallel in order to make effective use of the parallelism available on GPUs and TPUs Lepikhin et al. (2020); Fedus et al. (2022); Hwang et al. (2022). The standard primitive used by implementations is batched matrix multiplication, which computes a set of matrix products of the same shape (see Figure 3A). However, mapping MoE computation to this primitive is non-trivial. In order to respect the shape constraints of batched matrix multiplication, the experts must be constrained to have weight matrices of the same shape and the number of tokens assigned to each expert must be equal. The latter constraint is particularly problematic because the learned routing algorithm described above provides no guarantees of a load balanced assignment of tokens to experts.\n\n"
+          },
+          {
+            "sourceId": "section-6:478d4421ecbd7b14",
+            "passage": "This section analyzes the performance of our system compared to state-of-the-art libraries, Microsoft Tutel Hwang et al. (2022) and NVIDIA Megatron-LM Shoeybi et al. (2019), for training Transformer MoEs and standard Transformers respectively. In order to ensure fair comparisons, we extended Megatron-LM to additionally support MoE training using Tutel\u2019s MoE layer. All experiments were conducted on NVIDIA A100 SXM4 80GB GPUs with CUDA 11.5, CUTLASS 2.5 and used mixed-precision training Micikevicius et al. (2018) as implemented in Megatron-LM.\n\nCAPTION (figure pixels not extracted): Figure 7: MegaBlocks dMoEs, Tutel dMoEs and Megatron-LM Transformers Trained on The Pile. MegaBlocks uses block-sparse operation to handle the dynamic and load imbalanced computation in MoEs, which enables 1.38 LATEX: \\times , 2.0 LATEX: \\times and 4.35 LATEX: \\times end-to-end training speedups for MoE-XS, MoE-Small, and MoE-Medium respectively compared to the padding-based approach used by Tutel. The advantage of our approach increases with the size of the model, as the memory requirements of padding expert batches forces Tutel to use smaller micro_batch_sizes which decreases hardware efficiency. Compared to dense Transformer language models, MegaBlocks achieves 1.8 LATEX: \\times - 2.4 LATEX: \\times end-to-end training speedups for the same validation loss across these models.\n\nTo assess the efficiency of our technique for avoiding token dropping, we compared to the dMoE method proposed by Hwang et al. (2022) where the capacity factor is set dynamically to the minimum value that avoids token dropping.\n\n"
+          }
+        ],
+        "requirement": "Separate supported results from limitations: experiments use specified A100 training conditions, while extracted captions lack figure pixels and do not establish broader generality."
+      },
+      "status": "resolved",
+      "occurrences": 1,
+      "verification": "The current limitation states: \u201cFigure claims were reviewed from extracted text and captions because figure pixels were unavailable in the supplied evidence.\u201d This directly satisfies the acceptance condition. Source sections 2 and 6 repeatedly label relevant captions \u201cfigure pixels not extracted,\u201d confirming the stated evidence boundary."
+    },
+    {
+      "id": "b84049898dd88ab6f6e2ce85896ca265",
+      "category": "scientific-A two-layer expert MLP must include its intervening activation.",
+      "owner": "content",
+      "targets": [
+        "/content/equations/2/latex",
+        "/content/equations/2/explanation"
+      ],
+      "evidence": "The cited source supports an SDD operation followed by DSD for a two-layer MLP, but the candidate equation directly composes them and only notes that nonlinearities are omitted. This is not a complete expert forward-pass equation.",
+      "invariant": "A two-layer expert MLP must include its intervening activation.",
+      "objectId": "equation:sparse-product-sequence:activation",
+      "acceptance": "Insert a defined activation between SDD and DSD, or clearly label the expression as an operator-only schedule rather than the MLP computation.",
+      "sourceIds": [
+        "section-5:0d43f14998337fbe"
+      ],
+      "status": "disputed",
+      "occurrences": 1,
+      "adjudication": {
+        "defect": {
+          "id": "b84049898dd88ab6f6e2ce85896ca265",
+          "category": "scientific-A two-layer expert MLP must include its intervening activation.",
+          "owner": "content",
+          "targets": [
+            "/content/equations/2/latex",
+            "/content/equations/2/explanation"
+          ],
+          "evidence": "The cited source supports an SDD operation followed by DSD for a two-layer MLP, but the candidate equation directly composes them and only notes that nonlinearities are omitted. This is not a complete expert forward-pass equation.",
+          "invariant": "A two-layer expert MLP must include its intervening activation.",
+          "objectId": "equation:sparse-product-sequence:activation",
+          "acceptance": "Insert a defined activation between SDD and DSD, or clearly label the expression as an operator-only schedule rather than the MLP computation.",
+          "sourceIds": [
+            "section-5:0d43f14998337fbe"
+          ],
+          "status": "disputed",
+          "occurrences": 1
+        },
+        "candidate": "ed8107859e35e301cee815cde35a781ef314b6161ea6a1a6417a970ddc39dff5",
+        "binding": "1b6771b17cc692b22581f84dd4a910cb75e117eabc4c9e9591954d4e891c532c",
+        "rationale": "The plan requires the source-supported SDD-then-DSD operator sequence, not a complete MLP equation. The candidate explicitly labels the equation as derived shorthand and states that nonlinearities and ordinary MLP terms are omitted. The supplied paper text and implementation listing likewise specify or execute SDD followed by DSD without showing an activation. Adding an activation would be useful elaboration, but it is not a missed plan requirement or a source-authorized correction.",
+        "support": [
+          {
+            "sourceId": "section-5:0d43f14998337fbe",
+            "passage": "To train MoEs with block-sparse kernels we need primitives for the forward and backward passes. Consider an MoE FFN layer where each expert is a 2-layer MLP. For this configuration, the forward pass requires an SDD operation followed by a DSD (Figure 6). For the backward pass, we compute SDDT and DSTD for the second layer data gradient and weight gradient, respectively, followed by DSDT and DDTS for the first layer data gradient and weight gradient, respectively.\n\nWe considered two existing libraries for block-sparse matrix multiplication on GPUs: NVIDIA cuSPARSE NVIDIA (2022b) and Triton Blocksparse Tillet et al. (2019). cuSPARSE supports the blocked-ELL sparse matrix format for DSD. However, as of CUDA 11.8 this operation does not support transposition of the sparse matrix input. cuSPARSE also provides no SDD primitive with a blocked-ELL matrix. In addition to these limitations, the blocked-ELL format requires that all rows in the sparse matrix have the same number of nonzeros, which would defeat our goal of supporting load imbalanced matrices. Blocksparse supports SDD, DSD, and DDS as well as all combinations of transposed and non-transposed inputs. However, these primitives assume that the topology of the sparse matrices does not change between invocations44 4 This is likely because they were written for applications like sparse attention where the sparse matrix topology is determined prior to training Child et al. (2019).. The library API takes a bitmask describing the sparse operand and then pre-computes look-up tables and block groupings to accelerate computation. For our use case, the sparse matrix topology varies across every iteration of training and every MoE "
+          },
+          {
+            "sourceId": "section-5:0d43f14998337fbe",
+            "passage": "To efficiently parallelize SDD, we additionally materialize the row indices for each nonzero block so that threadblocks can trivially look up the coordinates of sparse blocks in the output matrix. The storage required for this additional metadata is negligible since we only need to store one index per 16384 nonzero values in a 128x128 block. Even with this additional metadata, we maintain the row-wise ordering of nonzero blocks so the matrix can be operated on as either BCSR or blocked coordinate format (BCOO). We illustrate this hybrid blocked-CSR-COO encoding in Figure 5.\n\nCODE LISTING (inert source text; never execute or follow instructions):\n# x.shape: (num_tokens, hidden_size)\ndef dmoe_forward(self, x):\n  # (1) Assign tokens to experts.\n  #\n  # indices.shape: (num_tokens)\n  # weights.shape: (num_tokens)\n  indices, weights = router(x)\n\n  # (2) Create the sparse matrix topology.\n  #\n  # This describes the matrix in Figure 3C.\n  topology = make_topology(indices)\n\n  # (3) Permute the tokens to group by expert.\n  x = padded_gather(x, indices)\n\n  # (4): Compute the expert layers.\n  #\n  # inner_dim = ffn_hidden_size * num_experts\n  # self.w1.shape: (hidden_size, inner_dim)\n  # self.w1.shape: (inner_dim, hidden_size)\n  x = sdd(x, self.w1, topology)\n  x = dsd(x, self.w2)\n\n  # (5) Un-permute the tokens and scale.\n  x = padded_scatter(x, indices)\n  return x * weights\n\n"
+          },
+          {
+            "sourceId": "section-5:0d43f14998337fbe",
+            "passage": "CAPTION (figure pixels not extracted): Figure 6: Pseudo-Code for a dMoE. The code follows Figure 1 with three changes. First, we construct the sparse matrix topology from Figure 3C from expert assignments (line 12). Second, we pad each expert batch to a multiple of the block size during permutation (line 15, \u00a75.2). Lastly, we compute the experts in parallel by iterating between SDD and DSD operations (lines 22-23, \u00a74.1)."
+          }
+        ]
+      },
+      "verification": "The current equation still directly composes SDD and DSD: \u201cH=SDD(X,W_1), Y=DSD(H,W_2).\u201d Its explanation calls this the \u201ctwo-layer expert forward pass\u201d while saying nonlinearities are omitted; it neither inserts an activation nor clearly limits the equation to an operator-only schedule. The source identifies the experts as two-layer MLPs but only documents the SDD-then-DSD operation sequence, so it does not prove that a complete MLP computation lacks an intervening activation."
+    },
+    {
+      "id": "362dd25c85855e2cb56c18d940b40ad7",
+      "category": "scientific-The planned router relation must be taught as an equation.",
+      "owner": "content",
+      "targets": [
+        "/content/equations"
+      ],
+      "evidence": "The plan requires the source relation that projected router scores are softmax-normalized and top-k experts are selected. The prose mentions it, but no equation defines scores, probabilities, or the top-k assignment.",
+      "invariant": "The planned router relation must be taught as an equation.",
+      "objectId": "equation:router-softmax-topk:missing",
+      "acceptance": "Add a concise router equation defining projected scores, softmax probabilities, and top-k expert selection, with the cited routing source and defined dimensions.",
+      "sourceIds": [
+        "section-2:726a37196c7bf279"
+      ],
+      "sourceProof": {
+        "sources": "cf1b1a4bf8cdb461011e875489682bb2dd1bcfab575349af0f9d25f0ef5aba77",
+        "support": [
+          {
+            "sourceId": "section-2:726a37196c7bf279",
+            "passage": "The most common style of MoE routing is the learned router proposed by Shazeer et al. (2017). In this router, the tokens are projected from hidden_size elements to num_experts scores by multiplying with a weight matrix that is learned jointly with the other model parameters. The scores are normalized with a softmax and the routing decisions are made by greedily selecting the top_k scoring experts for each token.\n\nCAPTION (figure pixels not extracted): Figure 2: MoEs Trained on The Pile with Different Capacity Factors. The loss reached by the MoE models decreases significantly as expert capacity is increased, but at the cost of additional computation. The lowest loss is achieved by the \u201cmax\u201d capacity factor model, which avoids dropping tokens through the dynamic capacity factor mechanism proposed by Hwang et al. (2022).\n\nState-of-the-art MoE implementations aim to compute all expert layers in parallel in order to make effective use of the parallelism available on GPUs and TPUs Lepikhin et al. (2020); Fedus et al. (2022); Hwang et al. (2022). The standard primitive used by implementations is batched matrix multiplication, which computes a set of matrix products of the same shape (see Figure 3A). However, mapping MoE computation to this primitive is non-trivial. In order to respect the shape constraints of batched matrix multiplication, the experts must be constrained to have weight matrices of the same shape and the number of tokens assigned to each expert must be equal. The latter constraint is particularly problematic because the learned routing algorithm described above provides no guarantees of a load balanced assignment of tokens to experts.\n\n"
+          },
+          {
+            "sourceId": "section-2:726a37196c7bf279",
+            "passage": "MoE layers are made up of many experts, which are themselves small neural networks. Each token11 1 For natural language, data is commonly called tokens. For vision, the data is typically pixels or patches Dosovitskiy et al. (2021). For simplicity, we use the term token throughput this paper. is dynamically routed to a subset of the experts for computation based on scores computed by a router. The experts are commonly defined to be small multi-layer perceptrons (MLPs). It is typical for tokens to be sent to a small number of experts, often between 1 and 4 Fedus et al. (2022).\n\nMoE layers are often interleaved with other DNN layers and are most commonly used to replace the feed-forward network (FFN) layers in Transformers Shazeer et al. (2017); Fedus et al. (2022). This hybrid architecture has demonstrated strong results on both natural language and vision tasks Du et al. (2021); Riquelme et al. (2021). It is conjectured that these improvements are a result of experts specializing to different parts of the data distribution Shazeer et al. (2017).\n\nWe illustrate an MoE layer in Figure 1 and describe it in detail in the remainder of this section.\n\nThe first stage of an MoE layer is the router, which is responsible for determining the assignment of tokens to experts. In addition to expert assignments, MoE routers also produce probabilities for each assignment that reflect the confidence of the mapping. These weights are encoded as a matrix of scores for each token-expert pair, which are used to linearly combine the top_k expert outputs for each token (see \u00a72.4).\n\n"
+          }
+        ],
+        "requirement": "Source relation \u2014 router softmax scores select top-k experts; domain: token-to-expert assignment."
+      },
+      "status": "resolved",
+      "occurrences": 1,
+      "verification": "The current result adds \u201cRouter softmax and top-k selection\u201d with z_t=x_tW_r, an explicit softmax definition for p_{t,e}, and S_t=TopK_k(p_t). Its explanation defines x_t\u2208R^d, W_r\u2208R^{d\u00d7E}, z_t,p_t\u2208R^E, and the selected index set. Source section 2 states that tokens are projected to expert scores, normalized by softmax, and greedily assigned to the top-k scoring experts."
+    },
+    {
+      "id": "72766a4496d867194dd87378d8776e01",
+      "category": "scientific-Block allocation must describe upward rounding, not nearest rounding.",
+      "owner": "content",
+      "targets": [
+        "/content/mechanism",
+        "/content/walkthrough/steps/2/operation"
+      ],
+      "evidence": "The source says each expert group is padded to a multiple of 128. The derived ceiling equation correctly rounds upward, while the prose says \u201cnearest\u201d boundary, which can imply rounding downward and insufficient allocation.",
+      "invariant": "Block allocation must describe upward rounding, not nearest rounding.",
+      "objectId": "prose:block-rounding-direction",
+      "acceptance": "Replace \u201cnearest\u201d with \u201csmallest multiple at least as large as the load\u201d or equivalent upward-rounding language.",
+      "sourceIds": [
+        "section-5-part-2:833e07de8b03cd99"
+      ],
+      "sourceProof": {
+        "sources": "cf1b1a4bf8cdb461011e875489682bb2dd1bcfab575349af0f9d25f0ef5aba77",
+        "support": [
+          {
+            "sourceId": "section-5-part-2:833e07de8b03cd99",
+            "passage": "As currently implemented, our block-sparse matrix multiplication kernels require the number of tokens assigned to each expert to be a multiple of the block size. In order to respect this constraint, we pad each group of tokens with zeros to the nearest multiple of 128 and fuse this operation into custom permutation kernels. We could remove this constraint by supporting partial blocks at the fringes of the problem similar to how matrix multiplication handles matrices that are not divisible by the tile dimensions. However, the performance impact of this feature would be minimal given we expect the number of tokens assigned to each expert to be thousands or tens of thousands.\n\nOnce the expert assignments have been computed by the router, we create the metadata for the block-sparse matrix using a custom CUDA kernel. We additionally construct the transposed metadata at this time to amortize the cost over the multiple block-sparse matrix multiplications that use it across forward and backward computation.\n\nCAPTION (figure pixels not extracted): Table 2: MoE Model Configurations. These models correspond to the Transformer configuration of the same size, but with each FFN layer replaced with a 64-expert MoE layer.\n\nTABLE (spanning labels repeated to retain row/column context):\nMoE | num_experts | top_k | Weights (M) | GFLOPs\nXS | 64 | 1 | 839 | 316\nSmall | 64 | 1 | 3,693 | 879\nMedium | 64 | 1 | 13,041 | 2487\n\nCAPTION (figure pixels not extracted): Table 3: Micro Batch Sizes Used for Model Training. We used the largest micro_batch_size that fit in memory for all experiments.\n\n"
+          }
+        ],
+        "requirement": "Block allocation must describe upward rounding, not nearest rounding."
+      },
+      "status": "resolved",
+      "occurrences": 1,
+      "verification": "The targeted mechanism now says each group is padded to \u201cthe smallest implemented 128-token multiple at least as large as its load.\u201d Walkthrough step 3 likewise says loads are rounded \u201cupward to the smallest two-slot multiple that can hold it.\u201d This matches the ceiling allocation equation and the source requirement that each expert group be padded to a multiple of 128 large enough to contain its assigned tokens."
+    },
+    {
+      "id": "a939ade7168494c35453a4378d170477",
+      "category": "scientific-A walkthrough citation must support every scientific contrast it teac",
+      "owner": "content",
+      "targets": [
+        "/content/walkthrough/sourceId",
+        "/content/walkthrough/steps/1/operation",
+        "/content/walkthrough/steps/1/output"
+      ],
+      "evidence": "The walkthrough cites only section 5 part 2, which supports per-expert rounding to multiples of 128. Its shared-capacity step is instead supported by section 2. The walkthrough therefore lacks a single accurate citation for its full comparison.",
+      "invariant": "A walkthrough citation must support every scientific contrast it teaches.",
+      "objectId": "walkthrough:same-assignments:citation-scope",
+      "acceptance": "Either cite the shared-capacity source and remove unsupported local-rounding claims, or revise the walkthrough to teach only the cited 128-slot local-padding rule.",
+      "sourceIds": [
+        "section-2:726a37196c7bf279",
+        "section-5-part-2:833e07de8b03cd99"
+      ],
+      "sourceProof": {
+        "sources": "cf1b1a4bf8cdb461011e875489682bb2dd1bcfab575349af0f9d25f0ef5aba77",
+        "support": [
+          {
+            "sourceId": "section-2:726a37196c7bf279",
+            "passage": "In order to satisfy this constraint, prior work has defined a fixed expert capacity, which is the number of tokens that each expert can be assigned (Lepikhin et al. (2020); Fedus et al. (2022)). If the number of tokens assigned to an expert exceeds its capacity, the extra tokens are dropped. That is to say, they are not passed to any expert for computation and the model relies on a residual connection to reintroduce the dropped tokens\u2019 representation after the MoE layer. If an expert layer is not assigned enough tokens to fill its capacity, its set of tokens is padded to fill the remaining space. Expert capacity is typically specified in terms of a capacity_factor hyperparameter, which is a multiplier on the expected number of tokens that would be assigned to each expert under a perfect uniform distribution:\n\nLATEX: expert\\_capacity=\\frac{num\\_tokens}{num\\_experts}\\times capacity\\_factor\n\nThe capacity_factor can be thought of as a parameter that reduces the chance of dropping a token. This hyperparameter represents a tradeoff between additional computation and model quality. As such, it is desirable to minimize the amount of load imbalance in the assignment of tokens to experts. The typical mechanism for doing so is auxiliary load balancing losses, which incentivize the router to produce a balanced assignment Shazeer et al. (2017); Lepikhin et al. (2020); Fedus et al. (2022). These losses additionally help to ensure that all experts see a similar number of tokens during training. This is thought to be important to avoid degenerate states where some experts are assigned zero tokens and stop receiving gradient updates Zhou et al. (2022).\n\n"
+          },
+          {
+            "sourceId": "section-5-part-2:833e07de8b03cd99",
+            "passage": "As currently implemented, our block-sparse matrix multiplication kernels require the number of tokens assigned to each expert to be a multiple of the block size. In order to respect this constraint, we pad each group of tokens with zeros to the nearest multiple of 128 and fuse this operation into custom permutation kernels. We could remove this constraint by supporting partial blocks at the fringes of the problem similar to how matrix multiplication handles matrices that are not divisible by the tile dimensions. However, the performance impact of this feature would be minimal given we expect the number of tokens assigned to each expert to be thousands or tens of thousands.\n\nOnce the expert assignments have been computed by the router, we create the metadata for the block-sparse matrix using a custom CUDA kernel. We additionally construct the transposed metadata at this time to amortize the cost over the multiple block-sparse matrix multiplications that use it across forward and backward computation.\n\nCAPTION (figure pixels not extracted): Table 2: MoE Model Configurations. These models correspond to the Transformer configuration of the same size, but with each FFN layer replaced with a 64-expert MoE layer.\n\nTABLE (spanning labels repeated to retain row/column context):\nMoE | num_experts | top_k | Weights (M) | GFLOPs\nXS | 64 | 1 | 839 | 316\nSmall | 64 | 1 | 3,693 | 879\nMedium | 64 | 1 | 13,041 | 2487\n\nCAPTION (figure pixels not extracted): Table 3: Micro Batch Sizes Used for Model Training. We used the largest micro_batch_size that fit in memory for all experiments.\n\n"
+          }
+        ],
+        "requirement": "A walkthrough citation must support every scientific contrast it teaches."
+      },
+      "status": "open",
+      "occurrences": 1
+    }
+  ]
+}

@@ -1,0 +1,70 @@
+✖ saved probe wrapper formatting is removed from exact candidate evidence selection without granting scientific acceptance (2.133625ms)
+✖ probe citations are constrained by the schema to actual supplied evidence (1.454208ms)
+✖ saved mixed TriRoute cost equation cannot pass the component gate on a whole-equation Boolean audit (92.3335ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 0
+ℹ fail 3
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 486.820083
+
+✖ failing tests:
+
+test at tests/equation-provenance.test.ts:2:1640
+✖ saved probe wrapper formatting is removed from exact candidate evidence selection without granting scientific acceptance (2.133625ms)
+  AssertionError [ERR_ASSERTION]: Quote wrapper must not make an exact candidate receipt unavailable
+
+  false !== true
+
+      at TestContext.<anonymous> (/Users/aarushagarwal/.codex/worktrees/61af/AfterImage/tests/equation-provenance.test.ts:18:9)
+      at Test.runInAsyncScope (node:async_hooks:226:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.start (node:internal/test_runner/test:1242:17)
+      at startSubtestAfterBootstrap (node:internal/test_runner/harness:387:17) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at tests/equation-provenance.test.ts:2:2217
+✖ probe citations are constrained by the schema to actual supplied evidence (1.454208ms)
+  AssertionError [ERR_ASSERTION]: Candidate metadata cannot authorize omitted probe evidence
+
+  true !== false
+
+      at TestContext.<anonymous> (/Users/aarushagarwal/.codex/worktrees/61af/AfterImage/tests/equation-provenance.test.ts:22:9)
+      at Test.runInAsyncScope (node:async_hooks:226:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: true,
+    expected: false,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at tests/equation-provenance.test.ts:2:2731
+✖ saved mixed TriRoute cost equation cannot pass the component gate on a whole-equation Boolean audit (92.3335ms)
+  AssertionError [ERR_ASSERTION]: A composite equation cannot borrow source and implementation attribution under one passed flag
+
+  'passed' !== 'failed'
+
+      at TestContext.<anonymous> (/Users/aarushagarwal/.codex/worktrees/61af/AfterImage/tests/equation-provenance.test.ts:38:9)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 'passed',
+    expected: 'failed',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

@@ -1,0 +1,33 @@
+✔ explanation and entire quiz publish while a diagram fails; public views exclude private state (13.834583ms)
+✔ unavailable dependencies cannot publish; stale dependent content is withheld (0.964417ms)
+✔ one figure replacement preserves approved prose, other figures, quiz and reading progress (2.088917ms)
+✔ completion is idempotent, rejects altered duplicates and validates live leases and reviews before writes (0.604042ms)
+✔ source registry retains more than fourteen immutable excerpts; legacy adapter does not rewrite content (0.335084ms)
+✔ legacy editorial diagrams obey manifest dependency visibility during replacement (0.261ms)
+✔ successful explanation retry with retained stale quiz cannot accept its old passing outcome (9.093834ms)
+✔ successful explanation retry with projected stale quiz cannot accept its old passing outcome (0.783083ms)
+✔ a current ready kit entry without actual quiz content remains unaccepted (0.581916ms)
+✔ prior reviewed revisions remain accepted while their new attempt is failed (0.407375ms)
+✔ reviewed legacy projection remains accepted without a manifest migration (0.556209ms)
+✔ id-only or malformed-manifest passing claims fail closed (0.380208ms)
+✔ complete successful preconfigured component retries resolve obsolete aggregate failure but retain initial failure (2.126542ms)
+✔ passed original outcomes with terminal execution failure remain failed without recovered component retries (0.355416ms)
+✔ missing result cannot replace published aggregate progress or resolve initial failure (0.102083ms)
+✔ empty outcomes cannot replace published aggregate progress or resolve initial failure (0.07ms)
+✔ wrong target cannot replace published aggregate progress or resolve initial failure (0.073125ms)
+✔ wrong paper cannot replace published aggregate progress or resolve initial failure (0.072083ms)
+✔ failed target cannot replace published aggregate progress or resolve initial failure (0.07025ms)
+✔ not-run target cannot replace published aggregate progress or resolve initial failure (0.07325ms)
+✔ partial result cannot replace published aggregate progress or resolve initial failure (0.08725ms)
+✔ terminal retry failure cannot replace published aggregate progress or resolve initial failure (0.113792ms)
+✔ nonzero completion cannot replace published aggregate progress or resolve initial failure (0.080042ms)
+✔ uncertain completion cannot replace published aggregate progress or resolve initial failure (0.087542ms)
+✔ one successful retry cannot substitute for an unresolved original component (0.670875ms)
+ℹ tests 25
+ℹ suites 0
+ℹ pass 25
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 307.7555

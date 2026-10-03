@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { z } from "zod";
 import { repairCandidate, fingerprint, defectScope, canonicalizeDefects, RepairFailure, type RepairDefect, type RepairContext } from "../worker/repair-controller";
 import { validateScientificAuthority, reconcileEvidence, bindScientificAuthority, sourcePassages, evidenceDecisionDigest } from "../worker/evidence";
@@ -31,14 +31,14 @@ test("duplicate proof and canonical scope do not depend on review order",async()
  assert.deepEqual(forward,reverse);
 });
 
-const savedReview = new URL("../.artifacts/evaluation-uDdVMo/diagram/review-0.json",import.meta.url);
-const savedCandidate = new URL("../.artifacts/evaluation-uDdVMo/diagram/candidate-0.json",import.meta.url);
-test("saved QLoRA duplicate findings retain all three proofs before editing",{skip:!existsSync(savedReview)},async()=>{
+const savedReview = new URL("./fixtures/library-reliability/evaluation-uDdVMo/diagram/review-0.json",import.meta.url);
+const savedCandidate = new URL("./fixtures/library-reliability/evaluation-uDdVMo/diagram/candidate-0.json",import.meta.url);
+test("saved QLoRA duplicate findings retain all three proofs before editing",async()=>{
  const review=JSON.parse(readFileSync(savedReview,"utf8")).review;
  const initial=JSON.parse(readFileSync(savedCandidate,"utf8")).candidate;
  const ids=[...new Set(review.defects.flatMap((d:RepairDefect)=>d.sourceIds))] as string[];
- const research=JSON.parse(readFileSync(new URL("../.artifacts/evaluation-uDdVMo/research.json",import.meta.url),"utf8"));
- const selected=JSON.parse(readFileSync(new URL("../.artifacts/evaluation-uDdVMo/diagram-select-sources.json",import.meta.url),"utf8")).sourceIds;
+ const research=JSON.parse(readFileSync(new URL("./fixtures/library-reliability/evaluation-uDdVMo/research.json",import.meta.url),"utf8"));
+ const selected=JSON.parse(readFileSync(new URL("./fixtures/library-reliability/evaluation-uDdVMo/diagram-select-sources.json",import.meta.url),"utf8")).sourceIds;
  const sources=research.catalogue.filter((s:{id:string})=>selected.includes(s.id));
  // Controlled replay reconstructs a current receipt from saved exact support; runtime never accepts the historical unbound proof.
  const rebind=(raw:RepairDefect[],ctx:RepairContext)=>{

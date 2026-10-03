@@ -1,0 +1,176 @@
+✖ handled execution failure saves terminal approved partial paper and not-run components (45.24ms)
+✖ thrown review checkpoints the merged ledger without changing its private candidate (3.31175ms)
+✖ same-job missing run checkpoint fails closed before a model call (15.613875ms)
+✖ same-job syntax run checkpoint fails closed before a model call (15.331583ms)
+✖ same-job shape run checkpoint fails closed before a model call (11.846625ms)
+✖ same-job binding run checkpoint fails closed before a model call (14.238958ms)
+✔ an explicit new retry may create its own bounded run despite an unavailable prior checkpoint (14.920167ms)
+✖ recreated component preserves ordered focus instead of rebuilding it from the source union (17.47225ms)
+ℹ tests 8
+ℹ suites 0
+ℹ pass 1
+ℹ fail 7
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 659.577125
+
+✖ failing tests:
+
+test at tests/kit-recovery.test.ts:2:4105
+✖ handled execution failure saves terminal approved partial paper and not-run components (45.24ms)
+  Error: ENOENT: no such file or directory, open '/var/folders/h6/d_62s7c916lb9lnvy0h63dbc0000gn/T/kit-recovery-cb2D1D/result.json'
+      at async open (node:internal/fs/promises:1360:25)
+      at async readFile (node:internal/fs/promises:2149:14)
+      at async TestContext.<anonymous> (/Users/aarushagarwal/.codex/worktrees/61af/AfterImage/tests/kit-recovery.test.ts:40:31)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    errno: -2,
+    code: 'ENOENT',
+    syscall: 'open',
+    path: '/var/folders/h6/d_62s7c916lb9lnvy0h63dbc0000gn/T/kit-recovery-cb2D1D/result.json'
+  }
+
+test at tests/kit-recovery.test.ts:2:5177
+✖ thrown review checkpoints the merged ledger without changing its private candidate (3.31175ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+
+  + []
+  - [
+  -   {
+  -     acceptance: 'Use a positive value.',
+  -     category: 'math',
+  -     evidence: 'The value must be positive.',
+  -     id: 'new',
+  -     occurrences: 1,
+  -     owner: 'content',
+  -     sourceIds: [],
+  -     status: 'open',
+  -     targets: [
+  -       '/value'
+  -     ]
+  -   }
+  - ]
+
+      at TestContext.<anonymous> (/Users/aarushagarwal/.codex/worktrees/61af/AfterImage/tests/kit-recovery.test.ts:53:59)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: [],
+    expected: [ { id: 'new', owner: 'content', category: 'math', targets: [Array], evidence: 'The value must be positive.', acceptance: 'Use a positive value.', sourceIds: [], status: 'open', occurrences: 1 } ],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
+
+test at tests/kit-recovery.test.ts:2:6356
+✖ same-job missing run checkpoint fails closed before a model call (15.613875ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /[Cc]heckpoint|[Rr]ecovery/. Input:
+
+  'RepairFailure: Deterministic model interruption.'
+
+      at async TestContext.<anonymous> (/Users/aarushagarwal/.codex/worktrees/61af/AfterImage/tests/kit-recovery.test.ts:66:5)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: RepairFailure: Deterministic model interruption.
+        at Object.model (/Users/aarushagarwal/.codex/worktrees/61af/AfterImage/tests/kit-recovery.test.ts:31:13)
+        at model (/Users/aarushagarwal/.codex/worktrees/61af/AfterImage/worker/component-pipeline.ts:115:40)
+        at call (/Users/aarushagarwal/.codex/worktrees/61af/AfterImage/worker/component-pipeline.ts:174:59)
+        at generateKit (/Users/aarushagarwal/.codex/worktrees/61af/AfterImage/worker/component-pipeline.ts:195:129)
+        at async waitForActual (node:assert:615:5)
+        at async strict.rejects (node:assert:738:25)
+        at async TestContext.<anonymous> (/Users/aarushagarwal/.codex/worktrees/61af/AfterImage/tests/kit-recovery.test.ts:66:5)
+        at async Test.run (node:internal/test_runner/test:1389:7)
+        at async Test.processPendingSubtests (node:internal/test_runner/test:960:7),
+    expected: /[Cc]heckpoint|[Rr]ecovery/,
+    operator: 'rejects',
+    diff: 'simple'
+  }
+
+test at tests/kit-recovery.test.ts:2:6356
+✖ same-job syntax run checkpoint fails closed before a model call (15.331583ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /[Cc]heckpoint|[Rr]ecovery/. Input:
+
+  'RepairFailure: Deterministic model interruption.'
+
+      at async TestContext.<anonymous> (/Users/aarushagarwal/.codex/worktrees/61af/AfterImage/tests/kit-recovery.test.ts:66:5)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: RepairFailure: Deterministic model interruption.
+        at Object.model (/Users/aarushagarwal/.codex/worktrees/61af/AfterImage/tests/kit-recovery.test.ts:31:13)
+        at model (/Users/aarushagarwal/.codex/worktrees/61af/AfterImage/worker/component-pipeline.ts:115:40)
+        at call (/Users/aarushagarwal/.codex/worktrees/61af/AfterImage/worker/component-pipeline.ts:174:59)
+        at generateKit (/Users/aarushagarwal/.codex/worktrees/61af/AfterImage/worker/component-pipeline.ts:195:129)
+        at async waitForActual (node:assert:615:5)
+        at async strict.rejects (node:assert:738:25)
+        at async TestContext.<anonymous> (/Users/aarushagarwal/.codex/worktrees/61af/AfterImage/tests/kit-recovery.test.ts:66:5)
+        at async Test.run (node:internal/test_runner/test:1389:7)
+        at async Test.processPendingSubtests (node:internal/test_runner/test:960:7),
+    expected: /[Cc]heckpoint|[Rr]ecovery/,
+    operator: 'rejects',
+    diff: 'simple'
+  }
+
+test at tests/kit-recovery.test.ts:2:6356
+✖ same-job shape run checkpoint fails closed before a model call (11.846625ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /[Cc]heckpoint|[Rr]ecovery/. Input:
+
+  'RepairFailure: Deterministic model interruption.'
+
+      at async TestContext.<anonymous> (/Users/aarushagarwal/.codex/worktrees/61af/AfterImage/tests/kit-recovery.test.ts:66:5)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: RepairFailure: Deterministic model interruption.
+        at Object.model (/Users/aarushagarwal/.codex/worktrees/61af/AfterImage/tests/kit-recovery.test.ts:31:13)
+        at model (/Users/aarushagarwal/.codex/worktrees/61af/AfterImage/worker/component-pipeline.ts:115:40)
+        at call (/Users/aarushagarwal/.codex/worktrees/61af/AfterImage/worker/component-pipeline.ts:174:59)
+        at generateKit (/Users/aarushagarwal/.codex/worktrees/61af/AfterImage/worker/component-pipeline.ts:195:129)
+        at async waitForActual (node:assert:615:5)
+        at async strict.rejects (node:assert:738:25)
+        at async TestContext.<anonymous> (/Users/aarushagarwal/.codex/worktrees/61af/AfterImage/tests/kit-recovery.test.ts:66:5)
+        at async Test.run (node:internal/test_runner/test:1389:7)
+        at async Test.processPendingSubtests (node:internal/test_runner/test:960:7),
+    expected: /[Cc]heckpoint|[Rr]ecovery/,
+    operator: 'rejects',
+    diff: 'simple'
+  }
+
+test at tests/kit-recovery.test.ts:2:6356
+✖ same-job binding run checkpoint fails closed before a model call (14.238958ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /[Cc]heckpoint|[Rr]ecovery/. Input:
+
+  'RepairFailure: Deterministic model interruption.'
+
+      at async TestContext.<anonymous> (/Users/aarushagarwal/.codex/worktrees/61af/AfterImage/tests/kit-recovery.test.ts:66:5)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: RepairFailure: Deterministic model interruption.
+        at Object.model (/Users/aarushagarwal/.codex/worktrees/61af/AfterImage/tests/kit-recovery.test.ts:31:13)
+        at model (/Users/aarushagarwal/.codex/worktrees/61af/AfterImage/worker/component-pipeline.ts:115:40)
+        at call (/Users/aarushagarwal/.codex/worktrees/61af/AfterImage/worker/component-pipeline.ts:174:59)
+        at generateKit (/Users/aarushagarwal/.codex/worktrees/61af/AfterImage/worker/component-pipeline.ts:195:129)
+        at async waitForActual (node:assert:615:5)
+        at async strict.rejects (node:assert:738:25)
+        at async TestContext.<anonymous> (/Users/aarushagarwal/.codex/worktrees/61af/AfterImage/tests/kit-recovery.test.ts:66:5)
+        at async Test.run (node:internal/test_runner/test:1389:7)
+        at async Test.processPendingSubtests (node:internal/test_runner/test:960:7),
+    expected: /[Cc]heckpoint|[Rr]ecovery/,
+    operator: 'rejects',
+    diff: 'simple'
+  }
+
+test at tests/kit-recovery.test.ts:2:7933
+✖ recreated component preserves ordered focus instead of rebuilding it from the source union (17.47225ms)
+  TypeError: Cannot read properties of undefined (reading 'map')
+      at TestContext.<anonymous> (/Users/aarushagarwal/.codex/worktrees/61af/AfterImage/tests/kit-recovery.test.ts:96:103)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7)

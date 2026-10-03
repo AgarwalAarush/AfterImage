@@ -1,0 +1,125 @@
+{
+  "version": 1,
+  "purpose": "Public, nonexecuting saved-case regression evidence; no credentials or production state",
+  "files": [
+    {
+      "path": "evaluation-uDdVMo/diagram/review-0.json",
+      "sha256": "e5595c64652bdde0c7c31fd455e03e1acead8d927f0ce1bcdda544e8d97097a9",
+      "originalArtifact": ".artifacts/evaluation-uDdVMo/diagram/review-0.json",
+      "originalSha256": "71c11a57ee711383b3ee3793ee1a5acc2cfa4888a7e3f430f43530e3445ac0cf",
+      "selectedKeys": [
+        "review"
+      ]
+    },
+    {
+      "path": "evaluation-uDdVMo/diagram/candidate-0.json",
+      "sha256": "8bee6a373378f555e6f8eb2594485f741389ddfc22ec3c2f89e8745905d476ae",
+      "originalArtifact": ".artifacts/evaluation-uDdVMo/diagram/candidate-0.json",
+      "originalSha256": "208ae562cf17bfb382d7e7e31720bc1c069e0ecd0cfa16e14e1440c757c060d0",
+      "selectedKeys": [
+        "candidate"
+      ]
+    },
+    {
+      "path": "evaluation-uDdVMo/research.json",
+      "sha256": "c6d2f7a92afe6391f4df20ba553666771979c9c581a6c54f3ac8a18a33d0c0da",
+      "originalArtifact": ".artifacts/evaluation-uDdVMo/research.json",
+      "originalSha256": "194e1d0ca734e74b1cbf3c26fd5fd77e20bd7b17e789a6709f450269bd3fe719",
+      "selectedKeys": null
+    },
+    {
+      "path": "evaluation-uDdVMo/diagram-select-sources.json",
+      "sha256": "2b0857745125f4745719c4182282ad52af221db509b0792592356f157ce76b38",
+      "originalArtifact": ".artifacts/evaluation-uDdVMo/diagram-select-sources.json",
+      "originalSha256": "678fd3045b75b135fec205d54a1deeb9d362dc90aa94294e54eb328601024c8b",
+      "selectedKeys": null
+    },
+    {
+      "path": "evaluation-AI2Lwo/result.json",
+      "sha256": "b984dffb72cbd41ff7c62c08dc1b2bce6d00aaba944a7b009bb77eb90c466f54",
+      "originalArtifact": ".artifacts/evaluation-AI2Lwo/result.json",
+      "originalSha256": "270cf14f99d1594f464389d0de1386cf1014715aba813df1e04b96d2fe435e59",
+      "selectedKeys": [
+        "paper"
+      ]
+    },
+    {
+      "path": "evaluation-AI2Lwo/plan.json",
+      "sha256": "271f6fad62fe39fcda43e131d6778e9d171e0538ffe617817f04f2af75f9fe04",
+      "originalArtifact": ".artifacts/evaluation-AI2Lwo/plan.json",
+      "originalSha256": "ff457d6752897e68940dec83abb44850e2a7d32122ae87d002d405c31cdb97d7",
+      "selectedKeys": null
+    },
+    {
+      "path": "evaluation-AI2Lwo/research.json",
+      "sha256": "d5feab5c14c35a9133f8e4c5aa6e6156b77cc67db1e7dd2963d2ec7190fa1ee3",
+      "originalArtifact": ".artifacts/evaluation-AI2Lwo/research.json",
+      "originalSha256": "9c697a65dbf3655a2132eddfe955277fcb56c17b0656e48306845fa0c8590460",
+      "selectedKeys": null
+    },
+    {
+      "path": "evaluation-AI2Lwo/explanation/candidate-0.json",
+      "sha256": "c3735293e0433b8735a9bd8f1d906264261b1293fc07f48a1669882321bbcaed",
+      "originalArtifact": ".artifacts/evaluation-AI2Lwo/explanation/candidate-0.json",
+      "originalSha256": "2f14bfdf6c29889ff7cdc9d165d28a0498c70951c3576eaae30a6afac93d940d",
+      "selectedKeys": [
+        "candidate"
+      ]
+    },
+    {
+      "path": "evaluation-uWp1wQ/explanation/review-2.json",
+      "sha256": "2c256a241a1e036419fcbedf3360f2099987c50c4eec1f3cb43c2dce4c96712c",
+      "originalArtifact": ".artifacts/evaluation-uWp1wQ/explanation/review-2.json",
+      "originalSha256": "6234b5827332cac27628262fdb200cc1a83ea8b58e91071a6fe2985156652c79",
+      "selectedKeys": [
+        "ledger"
+      ]
+    },
+    {
+      "path": "evaluation-AI2Lwo/explanation-select-sources.json",
+      "sha256": "e783f1d179fd42e7049e5bb76a3687b8267f60b0ae5dba64fe4156550f55f9e8",
+      "originalArtifact": ".artifacts/evaluation-AI2Lwo/explanation-select-sources.json",
+      "originalSha256": "dd196d47088f389f9237ea2e74fc857192a44f9b11f567a9c6caaf482cfee997",
+      "selectedKeys": null
+    },
+    {
+      "path": "evaluation-AI2Lwo/explanation-evidence-0-1274c102.json",
+      "sha256": "262648c411b2834d61ef2d48c35bb66ed848cc4f8d4d021550e115e97da4ef08",
+      "originalArtifact": ".artifacts/evaluation-AI2Lwo/explanation-evidence-0-1274c102.json",
+      "originalSha256": "7fbb9a4d0af394c6ea02476bed16af50ef2d651753e76b1076c6b5fa7e64c43e",
+      "selectedKeys": null
+    },
+    {
+      "path": "evaluation-AI2Lwo/explanation-evidence-0-aac97af6.json",
+      "sha256": "604c5614b6a6aaee68a6f5122bbbceb14e15803b2a3f2be431241dff26a67428",
+      "originalArtifact": ".artifacts/evaluation-AI2Lwo/explanation-evidence-0-aac97af6.json",
+      "originalSha256": "898b71219c9d9d7b19fdd2170cf01d51de8211cf8e22644b6963f49d27b97b75",
+      "selectedKeys": null
+    },
+    {
+      "path": "evaluation-AI2Lwo/explanation-source-review-0-1dff5289.json",
+      "sha256": "fe9bc0217ee091b736c159c570544f933e383ce78a129ef4c0d08980d038c716",
+      "originalArtifact": ".artifacts/evaluation-AI2Lwo/explanation-source-review-0-1dff5289.json",
+      "originalSha256": "9ac775850fcb9e89261e3b9c1d3214b31bf18805acaff0c1228f3a4fb369a5d4",
+      "selectedKeys": null
+    },
+    {
+      "path": "evaluation-iFSUIM/result.json",
+      "sha256": "71c8b89ad549f131cf658a205037813aaa901e11059df352cf8ff11a7ff2b49b",
+      "originalArtifact": ".artifacts/evaluation-iFSUIM/result.json",
+      "originalSha256": "1a79dd954a31468c89c18b9edee46fbbef20962cf59c2cfa189bf8ac267d4c60",
+      "selectedKeys": [
+        "paper"
+      ]
+    },
+    {
+      "path": "library-evaluations/2026-10-02T21-13-12.111Z/null-cost-acceptance.json",
+      "sha256": "b0af4bca35a0454d4ec0564200a2ed7f4b156638be4caedfdc9280dfd1aa855f",
+      "originalArtifact": ".artifacts/library-evaluations/2026-10-02T21-13-12.111Z/null-cost-acceptance.json",
+      "originalSha256": "d0e200e2295deaa60d343c25d4fd8b27a5db9c4011d716a20e158e1af3a34ad4",
+      "selectedKeys": [
+        "verdict"
+      ]
+    }
+  ]
+}

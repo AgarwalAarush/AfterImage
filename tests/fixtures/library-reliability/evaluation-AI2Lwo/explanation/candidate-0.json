@@ -1,0 +1,81 @@
+{
+  "candidate": {
+    "content": {
+      "version": 2,
+      "idea": "MegaBlocks executes dynamically imbalanced Mixture-of-Experts layers as block-sparse GPU operations without dropping routed tokens or globally padding experts.",
+      "problem": "Learned MoE routers can send very different numbers of tokens to different experts. Conventional implementations use equal-shaped batched matrix multiplications, so every expert receives a shared capacity: excess assignments are dropped, while unused capacity is padded. Raising capacity enough to retain every token can therefore waste computation and activation memory, whereas lowering it can degrade model quality. The paper reports that load-balancing losses do not eliminate this imbalance and that selecting a suitable capacity factor adds costly tuning.",
+      "mechanism": "The learned router remains conventional: it projects each token representation into expert scores, applies softmax, selects the top-k experts, and retains their probabilities for later output weighting. MegaBlocks changes the representation and execution of the resulting assignments rather than proposing a new router. It permutes tokens into expert groups and represents their unequal row counts as variable-size diagonal regions composed of fixed-size sparse blocks. Every expert group is padded only to the smallest implemented 128-token multiple at least as large as its load, so dropless execution still has local block padding but avoids one shared worst-case capacity.\n\nA two-layer expert MLP alternates an SDD product, whose output is sparse, with a DSD product, whose left input is sparse. Corresponding transposed variants compute training gradients. Because routing changes by layer and iteration, MegaBlocks constructs sparse metadata dynamically. Its hybrid blocked-CSR-COO encoding keeps row offsets and column indices while adding each nonzero block's row index, enabling parallel sparse-output work without row searches. A secondary transpose index lists references to existing blocks in transposed order rather than copying their values. After expert computation, outputs are restored to token order, weighted by router probabilities, and summed for top-k routing.",
+      "evidence": "The authors report experiments on decoder-only Transformer language models trained on The Pile using eight A100 SXM4 80GB GPUs. Against Tutel's padding-based dropless method, MegaBlocks produced 1.38\u00d7, 2.0\u00d7, and 4.35\u00d7 end-to-end speedups for the evaluated XS, Small, and Medium MoEs; Tutel's larger activation footprint also reduced its maximum microbatch sizes by 2\u00d7, 4\u00d7, and 8\u00d7. Against tuned token-dropping Tutel configurations at estimated loss-equivalent points, reported gains were 1.38\u00d7, 1.37\u00d7, and 1.18\u00d7. In separate kernel microbenchmarks covering 18 forward, weight-gradient, and data-gradient problems\u2014six FFN products for each of the three model sizes\u2014the block-sparse kernels averaged 98.6% of cuBLAS throughput. Each problem used a uniform token-to-expert distribution and throughput was averaged over 100 executions, so this result does not measure imbalanced routing or end-to-end training. Metadata-construction time was excluded because the authors treat it as amortized across the six FFN products.",
+      "limitation": "The evaluated MoEs use 64 experts and top-1 routing, so the evidence does not establish identical gains for every router, expert count, workload, accelerator, or top-k setting. The implementation still pads each expert group to a multiple of 128; partial fringe blocks were not implemented. Metadata cost was excluded from kernel microbenchmarks and not separately quantified there. Transposed sparse access has poor spatial locality for DSTD weight-gradient operations, while small microbatches can waste work at 128-sized boundaries. Variable-width experts are presented only as future work. Figure claims were reviewed from extracted text and captions because figure pixels were unavailable in the supplied evidence.",
+      "significance": "MegaBlocks separates routing flexibility from the equal-shape constraint imposed by batched matrix multiplication. This makes dropless MoE training practical without reserving every expert enough space for the most-loaded expert, reducing wasted arithmetic and activation storage while preserving the router's assignments. More broadly, it recasts MoEs as dynamic structured activation sparsity, allowing coarse blocks to retain GPU efficiency and making general block-sparse kernels and metadata structures applicable to changing expert loads.",
+      "equations": [
+        {
+          "title": "Shared expert capacity",
+          "latex": "C=\\frac{T}{E}\\,f",
+          "explanation": "This renames the paper\u2019s capacity equation. $T$ is the scalar number of input tokens in the batch, not the number of routed assignments; $E$ is the scalar number of experts, $f$ is a dimensionless capacity factor, and $C$ is the resulting scalar capacity in token slots per expert. The baseline scales the uniform-load reference $T/E$ by $f$, then uses the same capacity for every expert: loads above $C$ are dropped and loads below $C$ are padded. For top-$k$ routing, there can be up to $kT$ assignments, but the cited equation is written using $T$ tokens.",
+          "example": "Illustrative: with $T=6$ tokens, $E=3$, and $f=2$, every expert reserves $C=(6/3)\\times2=4$ slots; actual top-1 loads of 4, 1, and 1 sum to the six tokens.",
+          "sourceId": "section-2:726a37196c7bf279"
+        },
+        {
+          "title": "Locally rounded allocation",
+          "latex": "A_e=B\\left\\lceil\\frac{n_e}{B}\\right\\rceil,\\qquad P_e=A_e-n_e",
+          "explanation": "This derived explanatory shorthand summarizes the paper\u2019s padding rule rather than quoting a displayed source equation. For expert index $e\\in\\{1,\\ldots,E\\}$, $n_e$ is its scalar routed-assignment count; under top-$k$ routing, $\\sum_e n_e=kT$ when every one of the $T$ tokens has $k$ assignments. $B$ is the scalar block size in token slots, $A_e$ is the scalar number of allocated slots for expert $e$, and $P_e$ is its scalar padding count, all measured in slots except the dimensionless ratio $n_e/B$. Rounding upward makes $A_e$ a multiple of $B$, while $P_e=A_e-n_e$ records local padding. The supplied source supports padding each expert group to the nearest multiple of 128; it does not present this symbolic formula.",
+          "example": "Illustrative two-slot diagram: loads $(4,1,1)$ with $B=2$ allocate $(4,2,2)$ slots and create $(0,1,1)$ padded slots. The implementation uses 128-token boundaries, not two.",
+          "sourceId": "section-5-part-2:833e07de8b03cd99"
+        },
+        {
+          "title": "Sparse product sequence",
+          "latex": "H=\\operatorname{SDD}(X,W_1),\\qquad Y=\\operatorname{DSD}(H,W_2)",
+          "explanation": "This is derived explanatory shorthand for the paper\u2019s two-layer expert forward pass; nonlinearities and other ordinary MLP terms are omitted. Let $R$ be the number of routed assignment rows, $d$ the token-feature width, $h$ each expert\u2019s hidden width, and $E$ the expert count. A compatible flattened layout is $X\\in\\mathbb{R}^{R\\times d}$, $W_1\\in\\mathbb{R}^{d\\times(Eh)}$, $H\\in\\mathbb{R}^{R\\times(Eh)}$, $W_2\\in\\mathbb{R}^{(Eh)\\times d}$, and $Y\\in\\mathbb{R}^{R\\times d}$. Columns of $H$ are indexed by expert $e$ and hidden feature; only the expert block selected for each routed row is present, with that region tiled into fixed-size sparse blocks. $W_1$ concatenates first-layer expert weights along its output axis, while $W_2$ stacks second-layer expert weights along its input axis. In the paper\u2019s output-left-right notation, SDD means sparse output from dense left and right inputs, and DSD means dense output from a sparse left input and dense right input. Thus $H=\\operatorname{SDD}(X,W_1)$ preserves expert-separated hidden blocks and $Y=\\operatorname{DSD}(H,W_2)$ returns dense routed-row features. The source specifies the SDD-then-DSD sequence and notation but does not display these equations or shapes.",
+          "example": null,
+          "sourceId": "section-5:0d43f14998337fbe"
+        },
+        {
+          "title": "Router softmax and top-k selection",
+          "latex": "z_t=x_tW_r,\\qquad p_{t,e}=\\frac{e^{z_{t,e}}}{\\sum_{j=1}^{E}e^{z_{t,j}}},\\qquad S_t=\\operatorname{TopK}_k(p_t)",
+          "explanation": "This derived notation summarizes the router described in the source. For token $t$, $x_t\\in\\mathbb{R}^{d}$ is its representation, $W_r\\in\\mathbb{R}^{d\\times E}$ is the learned projection, and $z_t,p_t\\in\\mathbb{R}^{E}$ are expert scores and softmax probabilities. $S_t\\subseteq\\{1,\\ldots,E\\}$ contains the indices of the $k$ largest probabilities. The source describes this relation but does not display it as an equation.",
+          "example": null,
+          "sourceId": "section-2:726a37196c7bf279"
+        }
+      ],
+      "walkthrough": {
+        "title": "Same assignments, less padding",
+        "introduction": "An illustrative load pattern shows how per-expert block rounding retains identical routed work with fewer unused slots than shared capacity.",
+        "steps": [
+          {
+            "label": "Route tokens",
+            "input": "Tokens A\u2013F and learned router scores.",
+            "operation": "The router assigns A\u2013D to E1, E to E2, and F to E3; the example holds these assignments fixed across both layouts.",
+            "output": "Expert loads are 4, 1, and 1 tokens."
+          },
+          {
+            "label": "Reserve shared capacity",
+            "input": "Loads 4, 1, and 1 with a dropless shared-capacity baseline.",
+            "operation": "Every expert reserves four slots because the common capacity must accommodate the most-loaded expert.",
+            "output": "Twelve slots hold six tokens and six padding slots."
+          },
+          {
+            "label": "Round each expert",
+            "input": "The same loads with an illustrative block size of two.",
+            "operation": "MegaBlocks rounds each expert's own load upward to the smallest two-slot multiple that can hold it rather than applying one global capacity.",
+            "output": "Eight slots hold all six tokens and two padding slots."
+          }
+        ],
+        "sourceId": "section-5-part-2:833e07de8b03cd99"
+      },
+      "sourceIds": [
+        "abstract:113285f38ef1ad51",
+        "section-1:7b2e40c096e8a14f",
+        "section-2:726a37196c7bf279",
+        "section-3:cd915ae3674257f7",
+        "section-4:cc4e7b31f7f9dd0f",
+        "section-5:0d43f14998337fbe",
+        "section-5-part-2:833e07de8b03cd99",
+        "section-6:478d4421ecbd7b14",
+        "section-6-part-2:e9bee15b420b0786",
+        "section-7:4cb711169ed0d957",
+        "section-8:387e0d83b79fba58"
+      ]
+    }
+  }
+}

@@ -1,0 +1,145 @@
+{
+  "version": 1,
+  "files": [
+    {
+      "path": "evidence/step1-red.txt",
+      "sha256": "9c7c5e0bd83ef4776d93a9a25d13b5d60739e6faccb69096db1ab9e1e81e251e",
+      "originalArtifact": ".artifacts/library-repair/implementation-checks/step-1/red.txt",
+      "originalSha256": "9c7c5e0bd83ef4776d93a9a25d13b5d60739e6faccb69096db1ab9e1e81e251e",
+      "exportTransform": "trailing whitespace and terminal blank-line normalization only"
+    },
+    {
+      "path": "evidence/step1-green.txt",
+      "sha256": "fb3c3712ef8a63e21faa92e01c054d9db407d9f43fef8557065af749f9113bce",
+      "originalArtifact": ".artifacts/library-repair/implementation-checks/step-1/green-receipt-integrity.txt",
+      "originalSha256": "fb3c3712ef8a63e21faa92e01c054d9db407d9f43fef8557065af749f9113bce",
+      "exportTransform": "trailing whitespace and terminal blank-line normalization only"
+    },
+    {
+      "path": "evidence/step2-red.txt",
+      "sha256": "dc8f619ec26b9dddebc5b85c5d47e56d25c1f6e95bdca3ca185542fa54a50cca",
+      "originalArtifact": ".artifacts/library-repair/implementation-checks/step-2/red.txt",
+      "originalSha256": "347e7334240ea1da081013d5850df34077ce607c01f096da4065a57d71b58585",
+      "exportTransform": "trailing whitespace and terminal blank-line normalization only"
+    },
+    {
+      "path": "evidence/step2-green.txt",
+      "sha256": "ef622d12097f0dbe6a75f8d9ad5c871c101102eb7c5e4df783768f15a3d002e2",
+      "originalArtifact": ".artifacts/library-repair/implementation-checks/step-2/green-stale-adjudication.txt",
+      "originalSha256": "ef622d12097f0dbe6a75f8d9ad5c871c101102eb7c5e4df783768f15a3d002e2",
+      "exportTransform": "trailing whitespace and terminal blank-line normalization only"
+    },
+    {
+      "path": "evidence/step3-red.log",
+      "sha256": "bef0c8605959e34ad58823d1352bf3322a19eed35e5193cde142704138f851e9",
+      "originalArtifact": ".artifacts/library-repair/implementation-checks/step-3/red.log",
+      "originalSha256": "02666b8d8f1a65dd679f1435b0a3b66550d51ffb94ee8e307b2ee9abef2f5adc",
+      "exportTransform": "trailing whitespace and terminal blank-line normalization only"
+    },
+    {
+      "path": "evidence/step3-green.log",
+      "sha256": "9b9ffcfc1f618b3c24058d91d93285c880c6f0a711debfd66afb63f09a2232d8",
+      "originalArtifact": ".artifacts/library-repair/implementation-checks/step-3/green.log",
+      "originalSha256": "9b9ffcfc1f618b3c24058d91d93285c880c6f0a711debfd66afb63f09a2232d8",
+      "exportTransform": "trailing whitespace and terminal blank-line normalization only"
+    },
+    {
+      "path": "evidence/step4-red.log",
+      "sha256": "c18fa86217fb4f8f3c18e4e3bc8328168420b1171fea042553eac153e98cc112",
+      "originalArtifact": ".artifacts/library-repair/step4-pre-fix.log",
+      "originalSha256": "d8b28cab2d9de1be987017d07c5f72afbbe9fa8226a7b31a9cc8096d25727558",
+      "exportTransform": "trailing whitespace and terminal blank-line normalization only"
+    },
+    {
+      "path": "evidence/step4-inner-corrected-red.log",
+      "sha256": "110291a90174f213074325e8c93ae92d770525090c8915f0a27a048ea9ab2a98",
+      "originalArtifact": ".artifacts/library-repair/step4-inner-diagnostics-corrected-red.log",
+      "originalSha256": "110291a90174f213074325e8c93ae92d770525090c8915f0a27a048ea9ab2a98",
+      "exportTransform": "trailing whitespace and terminal blank-line normalization only"
+    },
+    {
+      "path": "evidence/step4-green.log",
+      "sha256": "6b276b4de695fa2bda3ecae2bf4d42afffab3182fe69b820484b672f8f5c6df1",
+      "originalArtifact": ".artifacts/library-repair/step4-inner-diagnostics-verification.log",
+      "originalSha256": "6b276b4de695fa2bda3ecae2bf4d42afffab3182fe69b820484b672f8f5c6df1",
+      "exportTransform": "trailing whitespace and terminal blank-line normalization only"
+    },
+    {
+      "path": "evidence/step4-harness-red.txt",
+      "sha256": "1f2cf87bd1ebd3d543c10129070d3fc7829a6573898044bb0c248c6b2aa38acd",
+      "originalArtifact": ".artifacts/library-repair/implementation-checks/step-4/step4-harness-dependencies-red.txt",
+      "originalSha256": "e659405c7b5d2923de07ef80b5e15b53bc7822fcf1b520446e4391790f036b2b",
+      "exportTransform": "trailing whitespace and terminal blank-line normalization only"
+    },
+    {
+      "path": "evidence/step4-harness-green.txt",
+      "sha256": "45f644241704bdaba5076e3f99205c0fe3c525ca14479ba71462422c698aae44",
+      "originalArtifact": ".artifacts/library-repair/implementation-checks/step-4/step4-harness-dependencies-green.txt",
+      "originalSha256": "45f644241704bdaba5076e3f99205c0fe3c525ca14479ba71462422c698aae44",
+      "exportTransform": "trailing whitespace and terminal blank-line normalization only"
+    },
+    {
+      "path": "evidence/step5-corrected-red.log",
+      "sha256": "7a330156239b43d4a57e456bf5db701fb7d9ebb526e55d4d5fc607ffa9c78642",
+      "originalArtifact": ".artifacts/library-repair/step5-pre-fix-corrected.log",
+      "originalSha256": "f3d6c2c9ef995d56c350a0f56be6200da13ea73bb095ecd997abb313c120b8c5",
+      "exportTransform": "trailing whitespace and terminal blank-line normalization only"
+    },
+    {
+      "path": "evidence/step5-green.log",
+      "sha256": "17e0d9649d5c8f2c9c26058477cf13f5db6a54a0b983c3a745594023fd4fb4c9",
+      "originalArtifact": ".artifacts/library-repair/step5-verification.log",
+      "originalSha256": "17e0d9649d5c8f2c9c26058477cf13f5db6a54a0b983c3a745594023fd4fb4c9",
+      "exportTransform": "trailing whitespace and terminal blank-line normalization only"
+    },
+    {
+      "path": "evidence/step6-red.log",
+      "sha256": "592c0df1629601a3aa738f2fee2dcee41787432069ea4d5404423a974497f5ce",
+      "originalArtifact": ".artifacts/library-repair/implementation-checks/step-6/red.log",
+      "originalSha256": "6af0897ff153c6dd51fd067f82438fc9a400750d8f83c4f01e1c8de94487169a",
+      "exportTransform": "trailing whitespace and terminal blank-line normalization only"
+    },
+    {
+      "path": "evidence/step6-green.log",
+      "sha256": "68ab05ba77ecc2df3e82e829c80edbf61566069f7b6dcdb7902b3f5fa1b96fda",
+      "originalArtifact": ".artifacts/library-repair/implementation-checks/step-6/green.log",
+      "originalSha256": "68ab05ba77ecc2df3e82e829c80edbf61566069f7b6dcdb7902b3f5fa1b96fda",
+      "exportTransform": "trailing whitespace and terminal blank-line normalization only"
+    },
+    {
+      "path": "evidence/implementation-full-test.log",
+      "sha256": "a677875c62d078e34997e60b8b857c4eeedb4082f60849bb40175f1839e43aa5",
+      "originalArtifact": ".artifacts/library-repair/implementation-checks/final/npm-test.log",
+      "originalSha256": "a677875c62d078e34997e60b8b857c4eeedb4082f60849bb40175f1839e43aa5",
+      "exportTransform": "trailing whitespace and terminal blank-line normalization only"
+    },
+    {
+      "path": "evidence/implementation-typecheck.log",
+      "sha256": "3dc07b71542a98ce02c62d6ce6320df7cbc385729c27b495390da553c96a4041",
+      "originalArtifact": ".artifacts/library-repair/implementation-checks/final/typecheck.log",
+      "originalSha256": "b811293c5d0fc347417d6e2f01d3334767ba246fc8f1c4f9f08a85ce54bb6bdb",
+      "exportTransform": "trailing whitespace and terminal blank-line normalization only"
+    },
+    {
+      "path": "evidence/cloud-full-test.log",
+      "sha256": "6def5d5150c87a68afd22350337320e06d6d37bbfa2740a51df421d5bb4e3a78",
+      "originalArtifact": ".artifacts/library-repair/cloud-handoff/cloud-full-test.log",
+      "originalSha256": "6def5d5150c87a68afd22350337320e06d6d37bbfa2740a51df421d5bb4e3a78",
+      "exportTransform": "trailing whitespace and terminal blank-line normalization only"
+    },
+    {
+      "path": "evidence/cloud-typecheck.log",
+      "sha256": "3dc07b71542a98ce02c62d6ce6320df7cbc385729c27b495390da553c96a4041",
+      "originalArtifact": ".artifacts/library-repair/cloud-handoff/cloud-typecheck.log",
+      "originalSha256": "b811293c5d0fc347417d6e2f01d3334767ba246fc8f1c4f9f08a85ce54bb6bdb",
+      "exportTransform": "trailing whitespace and terminal blank-line normalization only"
+    },
+    {
+      "path": "evidence/cloud-focused-test.log",
+      "sha256": "5945e05023fbd8de9bc40406c795b5cf3d08f00eee527a332ee8adc877818644",
+      "originalArtifact": ".artifacts/library-repair/cloud-handoff/cloud-focused-test.log",
+      "originalSha256": "5945e05023fbd8de9bc40406c795b5cf3d08f00eee527a332ee8adc877818644",
+      "exportTransform": "trailing whitespace and terminal blank-line normalization only"
+    }
+  ]
+}

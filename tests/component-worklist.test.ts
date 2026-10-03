@@ -1,6 +1,5 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { existsSync } from "node:fs";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -10,16 +9,15 @@ import { fingerprint, type LedgerEntry } from "../worker/repair-controller";
 import { KitCheckpoints } from "../worker/kit-checkpoint";
 import type { Model } from "../worker/repair-model";
 
-const artifact = new URL("../.artifacts/evaluation-AI2Lwo/",import.meta.url);
-const saved = existsSync(new URL("result.json",artifact));
+const artifact = new URL("./fixtures/library-reliability/evaluation-AI2Lwo/",import.meta.url);
 const read = async (name: string, root = artifact) => JSON.parse(await readFile(new URL(name,root),"utf8"));
 
-for(const variant of ["unsupported-review-demand","insufficient-evidence","unresolved-source-conflict","new-defect","unrelated-change","broken-dependency"] as const) test(`saved MegaBlocks worklist preserves supported progress (${variant})`,{skip:!saved},async()=>{
+for(const variant of ["unsupported-review-demand","insufficient-evidence","unresolved-source-conflict","new-defect","unrelated-change","broken-dependency"] as const) test(`saved MegaBlocks worklist preserves supported progress (${variant})`,async()=>{
  const dir=await mkdtemp(path.join(os.tmpdir(),"component-worklist-"));
  try {
   const paper=(await read("result.json")).paper,plan=await read("plan.json"),research=await read("research.json");
   const initial=(await read("explanation/candidate-0.json")).candidate;
-  const old=(await read("explanation/review-2.json",new URL("../.artifacts/evaluation-uWp1wQ/",import.meta.url))).ledger as LedgerEntry[];
+  const old=(await read("explanation/review-2.json",new URL("./fixtures/library-reliability/evaluation-uWp1wQ/",import.meta.url))).ledger as LedgerEntry[];
   const ledger=old.filter(d=>d.status!=="resolved");
   const selected=(await read("explanation-select-sources.json")).sourceIds;
   const sources=research.catalogue; // The saved resumed candidate retains all previously cited immutable excerpts.

@@ -1,0 +1,156 @@
+{
+  "review": {
+    "defects": [
+      {
+        "invariant": "Distinguish both scale-storage levels",
+        "objectId": "diagram-double-quantization",
+        "owner": "content",
+        "targets": [
+          "/content/description",
+          "/content/nodes/1/detail",
+          "/content/nodes/2/detail"
+        ],
+        "evidence": "The diagram says only \u201cquantized scales.\u201d It does not distinguish FP8 first-level scale codes, FP32 second-level constants, or their 64-weight and 256-scale blocks.",
+        "acceptance": "State that NF4 weights use 64-weight blocks and that FP8 scale codes use FP32 constants over 256-scale blocks.",
+        "sourceIds": [
+          "section-3:8381a2dcdb890dd9"
+        ],
+        "id": "3029cb243250846d21e58e6b175bccb8",
+        "category": "scientific-Distinguish both scale-storage levels",
+        "sourceProof": {
+          "sources": "8aef4d4ed06674c2743038741db92d7ca9ade4431d854778bf5a7d7eea6c7063",
+          "support": [
+            {
+              "sourceId": "section-3:8381a2dcdb890dd9",
+              "passage": "LATEX: q_{i}=\\frac{1}{2}\\left(Q_{X}\\left(\\frac{i}{2^{k}+1}\\right)+Q_{X}\\left(\\frac{i+1}{2^{k}+1}\\right)\\right), (4)\n\nwhere LATEX: Q_{X}(\\cdot) is the quantile function of the standard normal distribution LATEX: N(0,1) . A problem for a symmetric k-bit quantization is that this approach does not have an exact representation of zero, which is an important property to quantize padding and other zero-valued elements with no error. To ensure a discrete zeropoint of LATEX: 0 and to use all LATEX: 2^{k} bits for a k-bit datatype, we create an asymmetric data type by estimating the quantiles LATEX: q_{i} of two ranges LATEX: q_{i} : LATEX: 2^{k-1} for the negative part and LATEX: 2^{k-1}+1 for the positive part and then we unify these sets of LATEX: q_{i} and remove one of the two zeros that occurs in both sets. We term the resulting data type that has equal expected number of values in each quantization bin k-bit NormalFloat (NFk), since the data type is information-theoretically optimal for zero-centered normally distributed data. The exact values of this data type can be found in Appendix E.\n\nWe introduce Double Quantization (DQ), the process of quantizing the quantization constants for additional memory savings. While a small blocksize is required for precise 4-bit quantization [13], it also has a considerable memory overhead. For example, using 32-bit constants and a blocksize of 64 for LATEX: \\mathbf{W} , quantization constants add LATEX: 32/64=0.5 bits per parameter on average. Double Quantization helps reduce the memory footprint of quantization constants.\n\n"
+            },
+            {
+              "sourceId": "section-3:8381a2dcdb890dd9",
+              "passage": "More specifically, Double Quantization treats quantization constants LATEX: c_{2}^{\\text{FP32}} of the first quantization as inputs to a second quantization. This second step yields the quantized quantization constants LATEX: c_{2}^{\\text{FP8}} and the second level of quantization constants LATEX: c_{1}^{\\text{FP32}} . We use 8-bit Floats with a blocksize of 256 for the second quantization as no performance degradation is observed for 8-bit quantization, in line with results from Dettmers and Zettlemoyer [13]. Since the LATEX: c_{2}^{\\text{FP32}} are positive, we subtract the mean from LATEX: c_{2} before quantization to center the values around zero and make use of symmetric quantization. On average, for a blocksize of 64, this quantization reduces the memory footprint per parameter from LATEX: 32/64=0.5 bits, to LATEX: 8/64+32/(64\\cdot 256)=0.127 bits, a reduction of 0.373 bits per parameter.\n\nuse the NVIDIA unified memory 22 2 https://docs.nvidia.com/cuda/cuda-c-programming-guide feature wich does automatic page-to-page transfers between the CPU and GPU for error-free GPU processing in the scenario where the GPU occasionally runs out-of-memory. The feature works like regular memory paging between CPU RAM and the disk. We use this feature to allocate paged memory for the optimizer states which are then automatically evicted to CPU RAM when the GPU runs out-of-memory and paged back into GPU memory when the memory is needed in the optimizer update step.\n\nUsing the components described above, we define QLoRA for a single linear layer in the quantized base model with a single LoRA adapter as follows:\n\n"
+            },
+            {
+              "sourceId": "section-3:8381a2dcdb890dd9",
+              "passage": "LATEX: \\mathbf{Y}^{\\text{BF16}}=\\mathbf{X}^{\\text{BF16}}\\text{doubleDequant}(c_{1}^{\\text{FP32}},c_{2}^{\\text{k-bit}},\\mathbf{W}^{\\text{NF4}})+\\mathbf{X}^{\\text{BF16}}\\mathbf{L}^{\\text{BF16}}_{1}\\mathbf{L}^{\\text{BF16}}_{2}, (5)\n\nwhere doubleDequant LATEX: (\\cdot) is defined as:\n\nLATEX: \\text{doubleDequant}(c_{1}^{\\text{FP32}},c_{2}^{\\text{k-bit}},\\mathbf{W}^{\\text{k-bit}})=\\text{dequant}(\\text{dequant}(c_{1}^{\\text{FP32}},c_{2}^{\\text{k-bit}}),\\mathbf{W}^{\\text{4bit}})=\\mathbf{W}^{\\text{BF16}}, (6)\n\nWe use NF4 for LATEX: \\mathbf{W} and FP8 for LATEX: c_{2} . We use a blocksize of 64 for LATEX: \\mathbf{W} for higher quantization precision and a blocksize of 256 for LATEX: c_{2} to conserve memory.\n\nFor parameter updates only the gradient with respect to the error for the adapters weights LATEX: \\frac{\\partial E}{\\partial\\mathbf{L}_{i}} are needed, and not for 4-bit weights LATEX: \\frac{\\partial E}{\\partial\\mathbf{W}} . However, the calculation of LATEX: \\frac{\\partial E}{\\partial\\mathbf{L}_{i}} entails the calculation of LATEX: \\frac{\\partial\\mathbf{X}}{\\partial\\mathbf{W}} which proceeds via equation (5) with dequantization from storage LATEX: \\mathbf{W}^{\\text{NF4}} to computation data type LATEX: \\mathbf{W}^{\\text{BF16}} to calculate the derivative LATEX: \\frac{\\partial\\mathbf{X}}{\\partial\\mathbf{W}} in BFloat16 precision.\n\nTo summarize, QLoRA has one storage data type (usually 4-bit NormalFloat) and a computation data type (16-bit BrainFloat). We dequantize the storage data type to the computation data type to perform the forward and backward pass, but we only compute weight gradients for the LoRA parameters which use 16-bit BrainFloat."
+            }
+          ],
+          "requirement": "Explain blockwise NF4 quantization and double quantization, distinguishing low-precision weight storage, quantized scale storage, and higher-precision computation."
+        }
+      },
+      {
+        "invariant": "Show the rank-r factorized adapter shapes",
+        "objectId": "diagram-lora-shapes",
+        "owner": "content",
+        "targets": [
+          "/content/description",
+          "/content/nodes/4/detail",
+          "/content/nodes/5/detail"
+        ],
+        "evidence": "The LoRA node names low-rank matrices but gives neither L1/L2 factorization nor shapes. Equal output shapes are therefore asserted only implicitly.",
+        "acceptance": "Identify L1 as h\u00d7r and L2 as r\u00d7o, and state that both paths produce b\u00d7o outputs before addition.",
+        "sourceIds": [
+          "section-2:fd611cd8954b4ffe"
+        ],
+        "id": "7aec6ebb7959095f78351fa365ce81d6",
+        "category": "scientific-Show the rank-r factorized adapter shapes",
+        "sourceProof": {
+          "sources": "8aef4d4ed06674c2743038741db92d7ca9ade4431d854778bf5a7d7eea6c7063",
+          "support": [
+            {
+              "sourceId": "section-2:fd611cd8954b4ffe",
+              "passage": "The problem with this approach is that if a large magnitude value (i.e., an outlier) occurs in the input tensor, then the quantization bins\u2014certain bit combinations\u2014are not utilized well with few or no numbers quantized in some bins. To prevent the outlier issue, a common approach is to chunk the input tensor into blocks that are independently quantized, each with their own quantization constant LATEX: c . This can be formalized as follows: We chunk the input tensor LATEX: \\mathbf{X}\\in\\mathbb{R}^{b\\times h} into LATEX: n contiguous blocks of size LATEX: B by flattening the input tensor and slicing the linear segment into LATEX: {n=({b\\times h})/{B}} blocks. We quantize these blocks independently with Equation 1 to create a quantized tensor and LATEX: n quantization constants LATEX: c_{i} .\n\nLow-rank Adapter (LoRA) finetuning [28] is a method that reduces memory requirements by using a small set of trainable parameters, often termed adapters, while not updating the full model parameters which remain fixed. Gradients during stochastic gradient descent are passed through the fixed pretrained model weights to the adapter, which is updated to optimize the loss function. LoRA augments a linear projection through an additional factorized projection. Given a projection LATEX: {\\mathbf{X}\\mathbf{W}=\\mathbf{Y}} with LATEX: \\mathbf{X}\\in\\mathbb{R}^{b\\times h} , LATEX: \\mathbf{W}\\in\\mathbb{R}^{h\\times o} LoRA computes:\n\nLATEX: \\mathbf{Y}=\\mathbf{X}\\mathbf{W}+s\\mathbf{X}\\mathbf{L}_{1}\\mathbf{L}_{2}, (3)\n\nwhere LATEX: \\mathbf{L}_{1}\\in\\mathbb{R}^{h\\times r} and LATEX: \\mathbf{L}_{2}\\in\\mathbb{R}^{r\\times o} , and LATEX: s is a scalar.\n\n"
+            }
+          ],
+          "requirement": "Show X(b\u00d7h)W(h\u00d7o)\u2192b\u00d7o and L1(h\u00d7r)L2(r\u00d7o), with both branches producing b\u00d7o outputs before addition."
+        }
+      },
+      {
+        "invariant": "State the large-scale evidence boundary",
+        "objectId": "diagram-evidence-limit",
+        "owner": "content",
+        "targets": [
+          "/content/footnote"
+        ],
+        "evidence": "The component does not disclose that 33B and 65B tests compared QLoRA with 16-bit LoRA, not full-model 16-bit fine-tuning.",
+        "acceptance": "Add a brief note that full-model parity was not established at 33B or 65B.",
+        "sourceIds": [
+          "section-8:68b18af610c7ef77",
+          "section-4:93c73eeb6164d92f"
+        ],
+        "id": "00e40efaebd565aa3d97a648f2e6d50f",
+        "category": "scientific-State the large-scale evidence boundary",
+        "sourceProof": {
+          "sources": "8aef4d4ed06674c2743038741db92d7ca9ade4431d854778bf5a7d7eea6c7063",
+          "support": [
+            {
+              "sourceId": "section-8:68b18af610c7ef77",
+              "passage": "We have shown evidence that our method, QLoRA, can replicate 16-bit full finetuning performance with a 4-bit base model and Low-rank Adapters (LoRA). Despite this evidence, we did not establish that QLoRA can match full 16-bit finetuning performance at 33B and 65B scales. Due to the immense resource costs, we leave this study to future work.\n\nAnother limitation is the evaluation of instruction finetuning models. While we provide evaluations on MMLU, the Vicuna benchmark, and the OA benchmark, we did not evaluate on other benchmarks such as BigBench, RAFT, and HELM, and it is not ensured that our evaluations generalize to these benchmarks. On the other hand, we perform a very broad study on MMLU and develop new methods for evaluating chatbots.\n\nFrom the evidence presented, it appears that the performance of these benchmarks likely depends how similar the finetuning data is to the benchmark dataset. For example, FLAN v2 is similar to MMLU, but dissimilar to chatbot benchmarks and vice versa for the Chip2 dataset and both models score accordingly on the MMLU and Vicuna benchmarks. This highlights that not only better benchmarks and evaluation is needed, but that one needs to be careful about what one is evaluating in the first place. Do we want to create models that do well on classroom highschool and colleague knowledge or do we want to do well on chatbot conversation ability? Maybe something else? Because it is always easier to evaluate on an existing benchmark compared to creating a new one, certain benchmarks can steer the community towards a certain direction. We should ensure as a community that the benchmarks measure what we care about.\n\n"
+            },
+            {
+              "sourceId": "section-4:93c73eeb6164d92f",
+              "passage": "The first focuses on a comparison with full 16-bit finetuning of RoBERTA and T5 models sized 125M to 3B parameters on GLUE and the Super-NaturalInstructions dataset. Results are shown in Table 3. In both datasets, we observe that 16-bit, 8-bit, and 4-bit adapter methods replicate the performance of the fully finetuned 16-bit baseline. This suggests that the performance lost due to the imprecise quantization can be fully recovered through adapter finetuning after quantization.\n\nFor our second setup, since full finetuning models at and beyond 11B parameters requires more than one server of high memory GPUs, we continue to test whether 4-bit QLoRA can match 16-bit LoRA at the 7B to 65B parameter scales. To this end, we finetune LLaMA 7B through 65B on two instruction following datasets, Alpaca and FLAN v2, and evaluate on the MMLU benchmark via 5-shot accuracy. Results are shown in Table 4 where we see that NF4 with double quantization fully recovers the 16-bit LoRA MMLU performance. In addition, we also note that QLoRA with FP4 lags behind the 16-bit brain float LoRA baseline by about 1 percentage point. This corroborates both our findings that (1) QLoRA with NF4 replicates both 16-bit full finetuning and 16-bit LoRA finetuning performance, and (2) NF4 is superior to FP4 in terms of quantization precision.\n\nCAPTION (figure pixels not extracted): Table 3: Experiments comparing 16-bit BrainFloat (BF16), 8-bit Integer (Int8), 4-bit Float (FP4), and 4-bit NormalFloat (NF4) on GLUE and Super-NaturalInstructions. QLoRA replicates 16-bit LoRA and full-finetuning.\n\n"
+            },
+            {
+              "sourceId": "section-4:93c73eeb6164d92f",
+              "passage": "We proceed to investigate instruction tuning at scales that would be impossible to explore with full 16-bit finetuning on academic research hardware.\n\nCAPTION (figure pixels not extracted): Table 4: Mean 5-shot MMLU test accuracy for LLaMA 7-65B models finetuned with adapters on Alpaca and FLAN v2 for different data types. Overall, NF4 with double quantization (DQ) matches BFloat16 performance, while FP4 is consistently one percentage point behind both.\n\nTABLE (spanning labels repeated to retain row/column context):\n\u2014 | Mean 5-shot MMLU Accuracy | Mean 5-shot MMLU Accuracy | Mean 5-shot MMLU Accuracy | Mean 5-shot MMLU Accuracy | Mean 5-shot MMLU Accuracy | Mean 5-shot MMLU Accuracy | Mean 5-shot MMLU Accuracy | Mean 5-shot MMLU Accuracy | \u2014\nLLaMA Size | 7B | 7B | 13B | 13B | 33B | 33B | 65B | 65B | Mean\nDataset | Alpaca | FLAN v2 | Alpaca | FLAN v2 | Alpaca | FLAN v2 | Alpaca | FLAN v2 | \u2014\nBFloat16 | 38.4 | 45.6 | 47.2 | 50.6 | 57.7 | 60.5 | 61.8 | 62.5 | 53.0\nFloat4 | 37.2 | 44.0 | 47.3 | 50.0 | 55.9 | 58.5 | 61.3 | 63.3 | 52.2\nNFloat4 + DQ | 39.0 | 44.5 | 47.5 | 50.7 | 57.3 | 59.2 | 61.8 | 63.9 | 53.1"
+            }
+          ],
+          "requirement": "State evidence limits: results support tested tasks and scales, but full 16-bit finetuning equivalence was not established at 33B or 65B."
+        }
+      },
+      {
+        "invariant": "Show the rank-r factorized adapter shapes",
+        "objectId": "diagram-lora-shapes",
+        "owner": "content",
+        "targets": [
+          "/content/nodes/3/detail",
+          "/content/nodes/4/detail",
+          "/content/nodes/5/detail"
+        ],
+        "evidence": "The views show only \u201cBF16 low-rank matrices.\u201d They omit L1(h\u00d7r), L2(r\u00d7o), and that both branches produce b\u00d7o outputs.",
+        "acceptance": "Identify L1 as h\u00d7r and L2 as r\u00d7o, and state that both paths produce b\u00d7o outputs before addition.\nShow the base as X(b\u00d7h)W(h\u00d7o)\u2192b\u00d7o, the adapter as L1(h\u00d7r)L2(r\u00d7o), and addition of equal b\u00d7o terms.",
+        "sourceIds": [
+          "section-2:fd611cd8954b4ffe",
+          "section-3:8381a2dcdb890dd9"
+        ],
+        "id": "7aec6ebb7959095f78351fa365ce81d6",
+        "category": "scientific-Show the rank-r factorized adapter shapes"
+      },
+      {
+        "invariant": "Distinguish both scale-storage levels",
+        "objectId": "diagram-double-quantization",
+        "owner": "content",
+        "targets": [
+          "/content/nodes/1/detail",
+          "/content/nodes/2/detail"
+        ],
+        "evidence": "\u201cWeights plus quantized scales\u201d does not distinguish blockwise NF4 weights, FP8 scale codes, and FP32 second-level constants.",
+        "acceptance": "State that NF4 weights use 64-weight blocks and that FP8 scale codes use FP32 constants over 256-scale blocks.\nIdentify blockwise NF4 storage and both FP8 scale codes and FP32 second-level constants before BF16 reconstruction.",
+        "sourceIds": [
+          "section-2:fd611cd8954b4ffe",
+          "section-3:8381a2dcdb890dd9"
+        ],
+        "id": "3029cb243250846d21e58e6b175bccb8",
+        "category": "scientific-Distinguish both scale-storage levels"
+      },
+      {
+        "invariant": "State the large-scale evidence boundary",
+        "objectId": "diagram-evidence-limit",
+        "owner": "content",
+        "targets": [
+          "/content/description"
+        ],
+        "evidence": "The description explains omissions but does not state that full 16-bit finetuning equivalence was not established at 33B or 65B.",
+        "acceptance": "Add a brief note that full-model parity was not established at 33B or 65B.\nAdd a concise statement that 33B and 65B results compare with 16-bit LoRA, not full-model finetuning.",
+        "sourceIds": [
+          "section-4:93c73eeb6164d92f",
+          "section-8:68b18af610c7ef77"
+        ],
+        "id": "00e40efaebd565aa3d97a648f2e6d50f",
+        "category": "scientific-State the large-scale evidence boundary"
+      }
+    ],
+    "verified": [],
+    "disputedIds": [],
+    "complete": false
+  }
+}

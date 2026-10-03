@@ -1,0 +1,41 @@
+{
+  "approved": true,
+  "findings": [],
+  "equationAudits": [
+    {
+      "index": 0,
+      "fingerprint": "18bfd3ed4c3b0a510db3c133eae9600ab2a9c9cc70a7d685a02feff3a852621d",
+      "passed": true,
+      "passageIds": [
+        "section-2:726a37196c7bf279:746e4669d513a1aa"
+      ]
+    },
+    {
+      "index": 1,
+      "fingerprint": "5e11cac83c8c4d081ec67bc19cc03a68212d1a61bdf212138d02ea765b0c6126",
+      "passed": true,
+      "passageIds": [
+        "section-5-part-2:833e07de8b03cd99:450c3c3b365ca39c"
+      ]
+    },
+    {
+      "index": 2,
+      "fingerprint": "ff71a1b134e200dcf6d7992d912805822d9793766cfc599f92842901333d8b11",
+      "passed": true,
+      "passageIds": [
+        "section-4:cc4e7b31f7f9dd0f:3c7df16369fbb72f",
+        "section-5:0d43f14998337fbe:0590a1bbdcde4dc2",
+        "section-5:0d43f14998337fbe:d9e18a428f176b69"
+      ]
+    },
+    {
+      "index": 3,
+      "fingerprint": "166de75967aec09beffdd4c5c1db86fec0cff1129b32bc5956d5447f0f120502",
+      "passed": true,
+      "passageIds": [
+        "section-2:726a37196c7bf279:5103914b57a8b22d",
+        "section-2:726a37196c7bf279:00925fd28ebb72cd"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,89 @@
+✖ TriRoute opening review owns its narrow proof without inheriting the separate collapse lesson (170.077333ms)
+✖ FlashAttention retained plan table and known baseline citations reach scientific and visual review (134.000958ms)
+✖ Mamba glyph correction uses the smallest native union owner instead of an immutable discriminator leaf (3.674125ms)
+✖ Mamba exact operand keeps native limits and can move to an owning scalar node without losing dependencies (0.861834ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 0
+ℹ fail 4
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 634.159833
+
+✖ failing tests:
+
+test at tests/component-contracts.test.ts:2:5039
+✖ TriRoute opening review owns its narrow proof without inheriting the separate collapse lesson (170.077333ms)
+  AssertionError [ERR_ASSERTION]: diagram-source-review-0-1abfc9fb inherited a global explanation requirement
+      at <anonymous> (/Users/aarushagarwal/.codex/worktrees/61af/AfterImage/tests/component-contracts.test.ts:44:43)
+      at <anonymous> (/Users/aarushagarwal/.codex/worktrees/61af/AfterImage/tests/component-contracts.test.ts:37:22)
+      at Array.forEach (<anonymous>)
+      at diagramCase (/Users/aarushagarwal/.codex/worktrees/61af/AfterImage/tests/component-contracts.test.ts:37:11)
+      at async TestContext.<anonymous> (/Users/aarushagarwal/.codex/worktrees/61af/AfterImage/tests/component-contracts.test.ts:44:2)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at tests/component-contracts.test.ts:2:5548
+✖ FlashAttention retained plan table and known baseline citations reach scientific and visual review (134.000958ms)
+  AssertionError [ERR_ASSERTION]: diagram-source-review-0-1abfc9fb omitted the retained plan profiling table
+      at <anonymous> (/Users/aarushagarwal/.codex/worktrees/61af/AfterImage/tests/component-contracts.test.ts:49:43)
+      at <anonymous> (/Users/aarushagarwal/.codex/worktrees/61af/AfterImage/tests/component-contracts.test.ts:37:22)
+      at Array.forEach (<anonymous>)
+      at diagramCase (/Users/aarushagarwal/.codex/worktrees/61af/AfterImage/tests/component-contracts.test.ts:37:11)
+      at async TestContext.<anonymous> (/Users/aarushagarwal/.codex/worktrees/61af/AfterImage/tests/component-contracts.test.ts:49:2)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at tests/component-contracts.test.ts:2:6459
+✖ Mamba glyph correction uses the smallest native union owner instead of an immutable discriminator leaf (3.674125ms)
+  AssertionError [ERR_ASSERTION]: The expression evaluated to a falsy value:
+
+    assert.ok(!catalog.some(t=>t.path==="/content/node/glyph"))
+
+      at TestContext.<anonymous> (/Users/aarushagarwal/.codex/worktrees/61af/AfterImage/tests/component-contracts.test.ts:56:55)
+      at Test.runInAsyncScope (node:async_hooks:226:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at tests/component-contracts.test.ts:2:7326
+✖ Mamba exact operand keeps native limits and can move to an owning scalar node without losing dependencies (0.861834ms)
+  AssertionError [ERR_ASSERTION]: An infeasible leaf correction needs its legal native owner
+      at TestContext.<anonymous> (/Users/aarushagarwal/.codex/worktrees/61af/AfterImage/tests/component-contracts.test.ts:64:63)
+      at Test.runInAsyncScope (node:async_hooks:226:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }

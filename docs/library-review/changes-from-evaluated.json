@@ -1,0 +1,49 @@
+{
+  "comparison": "preserved frozen archive manifest",
+  "changed": [
+    "AGENTS.md",
+    "README.md",
+    "docs/library-components-2026-10-02.md",
+    "scripts/evaluate-library-components.ts",
+    "scripts/evaluate-triroute-cost.ts",
+    "tests/component-worker-api.test.ts",
+    "tests/evidence-repair.test.ts",
+    "worker/component-pipeline.ts",
+    "worker/evidence.ts",
+    "worker/index.ts",
+    "worker/kit-checkpoint.ts",
+    "worker/quality.ts",
+    "worker/repair-controller.ts",
+    "worker/repair-model.ts"
+  ],
+  "addedToSnapshot": [
+    "docs/library-reliability-implementation-2026-10-02.md",
+    "scripts/library-evaluation-results.ts",
+    "tests/canonical-evidence.test.ts",
+    "tests/component-contracts.test.ts",
+    "tests/component-target-boundaries.test.ts",
+    "tests/component-worklist.test.ts",
+    "tests/equation-provenance.test.ts",
+    "tests/fixtures/published-evaluation-kit.ts",
+    "tests/kit-recovery.test.ts",
+    "tests/library-evaluation-dependencies.test.ts",
+    "tests/library-evaluation-results.test.ts",
+    "tests/model-execution.test.ts",
+    "tests/stale-adjudication.test.ts",
+    "worker/component-contracts.ts",
+    "worker/equation-provenance.ts",
+    "worker/exact-spans.ts",
+    "worker/model-execution.ts"
+  ],
+  "missing": [],
+  "excludedUnchangedBaselineReferences": [
+    "docs/reference/fanout-2026-09-12/asset-manifest.json",
+    "docs/reference/fanout-2026-09-12/brand.css",
+    "docs/reference/fanout-2026-09-12/lottery-bars.svg",
+    "docs/reference/fanout-2026-09-12/lottery-desktop.svg",
+    "docs/reference/fanout-2026-09-12/lottery-interactive-original.svg",
+    "docs/reference/fanout-2026-09-12/lottery-mobile.svg",
+    "docs/reference/fanout-2026-09-12/paper-and-diagrams.css",
+    "docs/reference/fanout-2026-09-12/site.css"
+  ]
+}

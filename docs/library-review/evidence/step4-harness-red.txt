@@ -1,0 +1,111 @@
+✖ successful explanation retry with retained stale quiz cannot accept its old passing outcome (8.574916ms)
+✖ successful explanation retry with projected stale quiz cannot accept its old passing outcome (1.095ms)
+✖ a current ready kit entry without actual quiz content remains unaccepted (0.895833ms)
+✔ prior reviewed revisions remain accepted while their new attempt is failed (0.499166ms)
+✔ reviewed legacy projection remains accepted without a manifest migration (0.578167ms)
+✖ id-only or malformed-manifest passing claims fail closed (0.129791ms)
+✔ complete successful preconfigured component retries resolve obsolete aggregate failure but retain initial failure (1.724916ms)
+✔ passed original outcomes with terminal execution failure remain failed without recovered component retries (0.350542ms)
+✔ missing result cannot replace published aggregate progress or resolve initial failure (0.090625ms)
+✔ empty outcomes cannot replace published aggregate progress or resolve initial failure (0.0675ms)
+✔ wrong target cannot replace published aggregate progress or resolve initial failure (0.07175ms)
+✔ wrong paper cannot replace published aggregate progress or resolve initial failure (0.068792ms)
+✔ failed target cannot replace published aggregate progress or resolve initial failure (0.066792ms)
+✔ not-run target cannot replace published aggregate progress or resolve initial failure (0.07375ms)
+✔ partial result cannot replace published aggregate progress or resolve initial failure (0.08575ms)
+✔ terminal retry failure cannot replace published aggregate progress or resolve initial failure (0.11325ms)
+✔ nonzero completion cannot replace published aggregate progress or resolve initial failure (0.068708ms)
+✔ uncertain completion cannot replace published aggregate progress or resolve initial failure (0.058166ms)
+✔ one successful retry cannot substitute for an unresolved original component (0.57975ms)
+ℹ tests 19
+ℹ suites 0
+ℹ pass 15
+ℹ fail 4
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 295.435834
+
+✖ failing tests:
+
+test at tests/library-evaluation-dependencies.test.ts:2:1449
+✖ successful explanation retry with retained stale quiz cannot accept its old passing outcome (8.574916ms)
+  AssertionError [ERR_ASSERTION]: A stale dependent quiz must prevent aggregate acceptance
+
+  true !== false
+
+      at TestContext.<anonymous> (/Users/aarushagarwal/.codex/worktrees/61af/AfterImage/tests/library-evaluation-dependencies.test.ts:20:9)
+      at Test.runInAsyncScope (node:async_hooks:226:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.start (node:internal/test_runner/test:1242:17)
+      at startSubtestAfterBootstrap (node:internal/test_runner/harness:387:17) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: true,
+    expected: false,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at tests/library-evaluation-dependencies.test.ts:2:1449
+✖ successful explanation retry with projected stale quiz cannot accept its old passing outcome (1.095ms)
+  AssertionError [ERR_ASSERTION]: A stale dependent quiz must prevent aggregate acceptance
+
+  true !== false
+
+      at TestContext.<anonymous> (/Users/aarushagarwal/.codex/worktrees/61af/AfterImage/tests/library-evaluation-dependencies.test.ts:20:9)
+      at Test.runInAsyncScope (node:async_hooks:226:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: true,
+    expected: false,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at tests/library-evaluation-dependencies.test.ts:2:3091
+✖ a current ready kit entry without actual quiz content remains unaccepted (0.895833ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+
+  true !== false
+
+      at TestContext.<anonymous> (/Users/aarushagarwal/.codex/worktrees/61af/AfterImage/tests/library-evaluation-dependencies.test.ts:30:9)
+      at Test.runInAsyncScope (node:async_hooks:226:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: true,
+    expected: false,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at tests/library-evaluation-dependencies.test.ts:2:4309
+✖ id-only or malformed-manifest passing claims fail closed (0.129791ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+
+  true !== false
+
+      at TestContext.<anonymous> (/Users/aarushagarwal/.codex/worktrees/61af/AfterImage/tests/library-evaluation-dependencies.test.ts:41:9)
+      at Test.runInAsyncScope (node:async_hooks:226:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: true,
+    expected: false,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

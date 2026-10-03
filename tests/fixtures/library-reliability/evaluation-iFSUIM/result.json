@@ -1,0 +1,440 @@
+{
+  "paper": {
+    "id": "2607.06601",
+    "arxivId": "2607.06601",
+    "title": "TriRoute: Unified Learned Routing for Joint Adaptive Attention, Experts, and KV-Cache Allocation",
+    "authors": "Balashov, Andrii & Ponomarova, Olena",
+    "year": 2026,
+    "topics": [],
+    "accent": "violet",
+    "abstract": "Conditional computation can decouple language model quality from per-token inference cost, yet leading techniques act on a single axis in isolation: Mixture-of-Experts (MoE) sparsifies the FFN, Mixture-of-Depths (MoD) skips whole transformer blocks, and KV-cache quantization compresses attention memory. We argue these three decisions (attention resolution, expert selection, and cache bit-width) are strongly coupled and should be made jointly: a token rare enough to warrant full attention may also need high-precision caching regardless of which expert processes it. We introduce TriRoute, a single lightweight controller shared across all three axes that, for every token at every layer, emits a coordinated policy: (i) an attention mode (skip/local/full), (ii) a sparse set of FFN experts (with a null expert recovering MoD), and (iii) a KV-cache bit-width. The controller trains end-to-end via a heterogeneous relaxation (Gumbel-Softmax with straight-through estimation for categorical decisions and load-balanced top-k gating for experts) under a Lagrangian budget constraint that turns the average compute and memory cost into a controllable knob. We identify a cross-axis routing-collapse cascade in naive joint training, where collapse on one axis propagates to the others, and address it with per-axis normalization and a coupling-aware balancing loss. On decoder-only models from 160M to 1.3B parameters at compute-optimal token counts, TriRoute Pareto-dominates the best independent MoD+MoE+KV-quantization combination at matched inference FLOPs and memory, while better preserving tail-case robustness on rare entities, code, and arithmetic that pure perplexity optimization erodes. Post-hoc analysis reveals interpretable structure: the controller allocates full attention and high-precision cache to sentence-initial positions, rare subwords, and named entities, while cheaply routing function words.",
+    "recall": {
+      "version": 2,
+      "idea": "TriRoute jointly chooses each token\u2019s attention resolution, sparse FFN route, and KV precision through a shared controller with separate heads.",
+      "problem": "Transformers ordinarily spend similar computation and cache memory on every token, while existing adaptive methods usually control only one resource. MoE changes FFN execution, KV quantization changes cache precision, and block-level MoD couples attention and FFN, so it cannot keep full attention while skipping only the FFN. An independently tuned MoD+MoE+KV system has separate settings for these resources, but it does not learn their allocation through one coordinated controller. Joint learning is difficult because the choices are discrete and heterogeneous, their gradients have different scales, and collapse on one routing axis can deprive the shared representation of variation and trigger collapse elsewhere.",
+      "mechanism": "At each token and layer, a lightweight MLP trunk consumes the normalized residual state and causal side features, including position, boundary information, a predictive-entropy estimate, and previous-layer decisions. The normalized shared representation feeds three distinct linear heads. For each query head or head group, the attention head chooses skip, local-window, or full causal attention; the expert head selects top-k members of E real FFN experts plus a null expert; and the bit head chooses 2, 4, 8, or 16 bits for storing that token\u2019s keys and values. These actions remain separate: attention controls the token\u2019s present read, a top-1 null selection removes its FFN contribution, and cache precision controls its fidelity as a source for future queries.\n\nExpert routing uses differentiable top-k softmax weights. For attention and bit routing during training, independent Gumbel noise is added to each option logit and a temperature-softmax produces a soft sample. The forward pass uses the one-hot argmax of that sample, while the straight-through estimator passes the soft sample\u2019s gradient backward; inference executes only hard choices. Detached running gradient normalization prevents the more sensitive attention decision from dominating the shared trunk. Per-axis load balancing and router z-losses are supplemented by detached feature whitening and a hinge entropy floor, which acts only when marginal option usage approaches collapse. Relaxed option probabilities produce separate expected FLOPs and KV-memory costs. Nonnegative resource prices are updated by projected dual ascent, increasing pressure whenever the corresponding normalized target is exceeded. Thus the controller learns coordinated allocations while preserving distinct compute and memory constraints.",
+      "evidence": "The paper reports decoder-only experiments from 160M to 1.3B parameters. At the principal matched budget of 0.55 times dense inference FLOPs and 0.40 times dense KV memory, TriRoute is compared with an independently grid-tuned MoD+MoE+KV-quantization baseline. At 1.3B parameters, TriRoute reports Pile validation perplexity of 9.7 versus 10.1 for that baseline (lower is better) and average downstream accuracy of 54.5 versus 53.5 (higher is better), where the average covers LAMBADA, HellaSwag, PIQA, WinoGrande, and ARC-easy/challenge. The reported tail metrics also favor TriRoute, including rare-entity perplexity of 18.9 versus 20.6. Ablations at 410M report higher Pile perplexity when gradient balancing, per-axis whitening, or the entropy floor is removed. These are paper-reported results under its protocol; the supplied evidence does not independently reproduce or verify the benchmarks, frontier, or throughput measurements.",
+      "limitation": "The evaluation stops at 1.3B parameters and does not establish behavior at 10B-scale models, extreme sparsity, or across low-resource languages. Tail buckets are proxies whose construction is not fully specified in the supplied excerpts. Per-head irregular attention, ragged expert batches, and mixed-precision KV paging require specialized kernels and bookkeeping, so modeled FLOP and memory reductions need not translate proportionally into latency. Joint training also introduces auxiliary-loss and dual-controller hyperparameters and reportedly costs more wall-clock time. The reported configuration uses a 128-token local window. The excerpts leave some operational details unresolved, including quantization group size, expert-capacity handling, and the user-facing relationship between a claimed single cost knob and the formally separate FLOPs and memory targets.",
+      "significance": "TriRoute replaces three independently tuned allocation mechanisms with one learned representation while retaining separate actions and resource prices. This matters because token importance is multidimensional: a token can be valuable as a reader, as an FFN input, or as a future attention source in different proportions. Coordinating those decisions can concentrate computation and storage on rare or structurally important tokens without forcing an entire transformer block on or off. If the reported results reproduce with production kernels, the approach offers a direct way to trade language-model quality against both inference computation and long-context cache memory while reducing the silent tail degradation associated with average-loss optimization.",
+      "equations": [
+        {
+          "title": "Shared trunk, separate heads",
+          "latex": "h_t=\\phi_{\\mathrm{trunk}}\\!\\left([\\mathrm{Norm}(x_t);\\psi_t]\\right)\\in\\mathbb{R}^{d_r},\\quad \\hat h_t=\\mathrm{RMSNorm}(h_t),\\quad z_t^a=\\operatorname{reshape}_{G\\times3}(W_a\\hat h_t),\\ z_t^e=W_e\\hat h_t,\\ z_t^b=W_b\\hat h_t",
+          "explanation": "Source Equation 5 defines, at token t and layer \u2113, a shared trunk representation $h_t^{(\\ell)}=\\phi_{\\mathrm{trunk}}([\\mathrm{Norm}(x_t^{(\\ell)});\\psi_t^{(\\ell)}])\\in\\mathbb{R}^{d_r}$, its RMS-normalized form $\\hat h_t^{(\\ell)}$, and three linear logit heads; the displayed equation suppresses \u2113 for readability. Here $x_t^{(\\ell)}\\in\\mathbb{R}^d$ is the residual, $\\psi_t^{(\\ell)}\\in\\mathbb{R}^{d_\\psi}$ contains causal side features, and the trunk maps their $(d+d_\\psi)$-dimensional concatenation to $\\mathbb{R}^{d_r}$. The displayed reshape and explicit matrix shapes are derived explanatory notation, not written explicitly in Equation 5. With G separately routed query heads or groups, $W_a\\in\\mathbb{R}^{3G\\times d_r}$ yields $z_t^a\\in\\mathbb{R}^{G\\times3}$ after reshaping, with three attention modes per group. Likewise, $W_e\\in\\mathbb{R}^{(E+1)\\times d_r}$ yields logits over E real experts plus one null expert, and $W_b\\in\\mathbb{R}^{4\\times d_r}$ yields logits over four bit widths. These dimensions follow from the source\u2019s stated option cardinalities.",
+          "example": "Illustrative trace: one token representation may make the attention argmax full, the expert top-1 choice null, and the bit-width argmax 8-bit; these values illustrate the mechanism and are not a measured sample.",
+          "sourceId": "section-3:3cc623f6bbc0d0b8"
+        },
+        {
+          "title": "Sparse FFN with null route",
+          "latex": "\\mathrm{FFN}_t=\\sum_{j\\in\\mathcal{S}_t}\\frac{p^e_{t,j}}{\\sum_{j'\\in\\mathcal{S}_t}p^e_{t,j'}}\\,f_j\\!\\left(\\mathrm{Norm}(\\tilde{x}_t)\\right),\\quad p_t^e=\\operatorname{softmax}(z_t^e),\\quad \\mathcal{S}_t=\\mathrm{TopK}(p_t^e,k),\\quad f_0\\equiv0",
+          "explanation": "The expert logits $z_t^e\\in\\mathbb{R}^{E+1}$ become probabilities $p_t^e$ over E real experts and null expert 0. TopK selects index set $\\mathcal{S}_t$ of size k. Each selected transformation $f_j:\\mathbb{R}^d\\to\\mathbb{R}^d$ processes the normalized post-attention state $\\tilde{x}_t\\in\\mathbb{R}^d$; renormalized selected probabilities combine the results into the $d$-dimensional FFN contribution. With $k=1$ and $\\mathcal{S}_t=\\{0\\}$, $f_0$ returns zero, skipping only the FFN while leaving attention and KV precision independently selectable.",
+          "example": "Illustrative top-1 case: if the null expert has the largest gate probability, the FFN output is zero even when the attention head selects full context.",
+          "sourceId": "section-3:3cc623f6bbc0d0b8"
+        },
+        {
+          "title": "Relaxed costs and separate resource constraints",
+          "latex": "c_{t\\ell}^{\\mathrm{flops}}=\\sum_{g=1}^{G}\\sum_{m\\in\\mathcal A}\\tilde y^{a}_{t\\ell gm}\\,2d_h n_m(t)+\\sum_{j\\in\\mathcal S_{t\\ell}\\setminus\\{0\\}}\\bar p^e_{t\\ell j}\\kappa^e,\\quad n_{\\mathrm{skip}}=0,\\ n_{\\mathrm{local}}=\\min(t,w),\\ n_{\\mathrm{full}}=t,\\quad c_{t\\ell}^{\\mathrm{mem}}=\\sum_{b\\in\\{2,4,8,16\\}}\\tilde y^b_{t\\ell b}(2d_{\\mathrm{kv}}b),\\quad C^{\\mathrm{flops}}_{\\mathrm{dense}}=\\sum_{\\ell=1}^{L}\\sum_{t=1}^{T}(2dt+3dd_f),\\quad C^{\\mathrm{mem}}_{\\mathrm{dense}}=\\sum_{\\ell=1}^{L}\\sum_{t=1}^{T}2d_{\\mathrm{kv}}\\cdot16,\\quad \\bar C^r=\\frac{\\sum_{\\ell=1}^{L}\\sum_{t=1}^{T}c^r_{t\\ell}}{C^r_{\\mathrm{dense}}},\\quad \\mathcal L=\\mathcal L_{\\mathrm{LM}}+\\sum_q(\\alpha\\mathcal L_{\\mathrm{bal}}^q+\\beta\\mathcal L_z^q+\\gamma\\mathcal L_{\\mathrm{ent}}^q)+\\sum_{r\\in\\{\\mathrm{flops},\\mathrm{mem}\\}}\\lambda_r(\\bar C^r-C^{\\star r}),\\quad \\lambda_r\\leftarrow\\left[\\lambda_r+\\rho_\\lambda(\\bar C^r-C^{\\star r})\\right]_+",
+          "explanation": "This derived compression combines source Equations 8\u20139, 13\u201316. At token t and layer \u2113, each of G query heads or groups has a three-option relaxed attention vector $\\tilde y^a_{t\\ell g}\\in\\Delta^2$. Its per-head cost is $2d_h$ times the interaction count $n_m(t)$, so summing over groups preserves the head-width convention used by the reference implementation. The expert gate chooses a size-k set $\\mathcal S_{t\\ell}\\subseteq\\{0,\\ldots,E\\}$. Renormalized weights for selected real experts multiply cost $\\kappa^e$; selected null expert 0 contributes zero cost, including in mixed top-k sets. The relaxed bit vector weights KV storage cost $2d_{\\mathrm{kv}}b$. The separate dense references sum full-attention plus full-FFN cost, $2dt+3dd_f$, and 16-bit KV cost, $2d_{\\mathrm{kv}}\\cdot16$, over all tokens and layers. Dividing each routed total by its corresponding reference gives $\\bar C^r$. The objective adds per-axis auxiliary losses and separately constrains FLOPs and memory. Each $\\lambda_r\\ge0$ is updated by projected dual ascent. The supplied text states these formulas but does not independently verify them.",
+          "example": "Wholly invented arithmetic example: if normalized memory use were 0.44, its target were 0.40, and the dual step size were 0.05, the unprojected memory price would increase by $0.05(0.44-0.40)=0.002$. These numerical values are illustrative and are not attributed to the cited equation passage.",
+          "sourceId": "section-3-part-2:10b8026b37c7ca64"
+        },
+        {
+          "title": "Per-head attention routing",
+          "latex": "a_{t\\ell g}\\in\\mathcal A=\\{\\mathrm{skip},\\mathrm{local},\\mathrm{full}\\},\\quad \\mathrm{Attn}_{t\\ell g}=\\sum_{m\\in\\mathcal A}\\mathbf1[a_{t\\ell g}=m]\\mathrm{Attn}^{(m)}_{t\\ell g},\\quad \\mathrm{Attn}^{(\\mathrm{skip})}_{t\\ell g}=0,\\quad \\mathrm{Attn}^{(\\mathrm{local})}_{t\\ell g}=\\mathrm{Attn}(q_{t\\ell g},K_{\\ell,[\\max(1,t-w+1),t]},V_{\\ell,[\\max(1,t-w+1),t]}),\\quad \\mathrm{Attn}^{(\\mathrm{full})}_{t\\ell g}=\\mathrm{Attn}(q_{t\\ell g},K_{\\ell,\\le t},V_{\\ell,\\le t})",
+          "explanation": "For token t, layer \u2113, and routed query head or head group g, the decision selects exactly one read mode. Skip produces zero attention output, local reads at most w causal positions ending at t, and full reads all available causal keys and values through t. The residual path remains available when attention is skipped.",
+          "example": null,
+          "sourceId": "section-3:3cc623f6bbc0d0b8"
+        },
+        {
+          "title": "Per-token KV quantization",
+          "latex": "b_t\\in\\mathcal B=\\{2,4,8,16\\},\\quad Q_b(u)=\\begin{cases}\\mathrm{round}\\!\\left(\\frac{u-z_u}{s_u}\\right)s_u+z_u,&b\\in\\{2,4,8\\},\\\\u,&b=16,\\end{cases}\\quad s_u=\\frac{\\max(u)-\\min(u)}{2^b-1},\\quad z_u=\\min(u),\\quad (K_t^{\\mathrm{store}},V_t^{\\mathrm{store}})=(Q_{b_t}(k_t),Q_{b_t}(v_t))",
+          "explanation": "The bit decision applies asymmetric per-token group quantization separately to each key and value group. For 2, 4, or 8 bits, the group minimum supplies the offset and its range supplies the scale. The 16-bit branch stores the group in native precision. Later queries read the stored key and value representations. The supplied excerpt does not specify the group size or constant-group handling; when a group has zero range, the displayed division is undefined, so an implementation requires an explicit zero-range convention.",
+          "example": null,
+          "sourceId": "section-3:3cc623f6bbc0d0b8"
+        }
+      ],
+      "walkthrough": {
+        "title": "One illustrative rare-token route",
+        "introduction": "This invented trace demonstrates the degree of freedom enabled by separate heads; it is not a logged experimental token.",
+        "steps": [
+          {
+            "label": "Encode evidence",
+            "input": "A normalized rare token state and causal side features enter the controller.",
+            "operation": "The shared MLP trunk produces one normalized routing representation for all three heads.",
+            "output": "The token has common routing evidence without yet committing to any action."
+          },
+          {
+            "label": "Choose present read",
+            "input": "The attention head receives the shared routing representation.",
+            "operation": "It scores skip, local, and full modes and selects full causal attention in this illustrative trace.",
+            "output": "The token reads the complete available causal context."
+          },
+          {
+            "label": "Choose FFN work",
+            "input": "The expert head receives the same shared representation.",
+            "operation": "It ranks real experts and the null expert and selects the null route in this illustrative top-1 case.",
+            "output": "The FFN contribution is zero, while the attention result remains active."
+          },
+          {
+            "label": "Choose future fidelity",
+            "input": "The bit head receives the same shared representation and the token\u2019s key/value vectors are available for storage.",
+            "operation": "It selects 8-bit storage, after which per-token group quantization writes the key/value entry.",
+            "output": "Later queries can retrieve a higher-precision representation of this token than a 2- or 4-bit route would provide."
+          }
+        ],
+        "sourceId": "section-3:3cc623f6bbc0d0b8"
+      },
+      "sourceIds": [
+        "abstract:f39d28157eddbacb",
+        "section-1:4520055560848b9c",
+        "section-3:3cc623f6bbc0d0b8",
+        "section-3-part-2:10b8026b37c7ca64",
+        "section-4:cd0dd33537dd645a",
+        "section-5:557f7727e1051ee9",
+        "section-6:116ac02350016a27",
+        "section-7:c10c9e43f5d934f2",
+        "section-8:32c84b15f4670936"
+      ],
+      "provenance": "codex",
+      "evidenceScope": "full-text",
+      "generatedAt": "2026-10-02T21:23:52.574Z"
+    },
+    "scene": null,
+    "sources": [
+      {
+        "id": "abstract",
+        "label": "Original paper \u00b7 abstract",
+        "url": "https://arxiv.org/abs/2607.06601",
+        "excerpt": "Conditional computation can decouple language model quality from per-token inference cost, yet leading techniques act on a single axis in isolation: Mixture-of-Experts (MoE) sparsifies the FFN, Mixture-of-Depths (MoD) skips whole transformer blocks, and KV-cache quantization compresses attention memory. We argue these three decisions (attention resolution, expert selection, and cache bit-width) are strongly coupled and should be made jointly: a token rare enough to warrant full attention may also need high-precision caching regardless of which expert processes it. We introduce TriRoute, a single lightweight controller shared across all three axes that, for every token at every layer, emits a coordinated policy: (i) an attention mode (skip/local/full), (ii) a sparse set of FFN experts (with a null expert recovering MoD), and (iii) a KV-cache bit-width. The controller trains end-to-end via a heterogeneous relaxation (Gumbel-Softmax with straight-through estimation for categorical decisions and load-balanced top-k gating for experts) under a Lagrangian budget constraint that turns the average compute and memory cost into a controllable knob. We identify a cross-axis routing-collapse cascade in naive joint training, where collapse on one axis propagates to the others, and address it with per-axis normalization and a coupling-aware balancing loss. On decoder-only models from 160M to 1.3B parameters at compute-optimal token counts, TriRoute Pareto-dominates the best independent MoD+MoE+KV-quantization combination at matched inference FLOPs and memory, while better preserving tail-case robustness on rare entities, code, and arithmetic that pure perplexity optimization erodes. Post-hoc analysis reveals interpretable structure: the controller allocates full attention and high-precision cache to sentence-initial positions, rare subwords, and named entities, while cheaply routing function words."
+      },
+      {
+        "id": "section-3:3cc623f6bbc0d0b8",
+        "label": "3 Method",
+        "url": "https://arxiv.org/html/2607.06601v1#S3",
+        "excerpt": "We first fix notation and the decomposed transformer block (Section 3.1), then define the three routing axes (Section 3.2) and the shared controller (Section 3.3). Section 3.4 gives the heterogeneous gradient estimator, Section 3.5 the differentiable multi-resource cost model, Section 3.6 the coupling-aware balancing that prevents the collapse cascade, and Section 3.7 the online Lagrangian budget controller. Section 3.8 summarizes training and inference.\n\nWe consider a decoder-only transformer with LATEX: L layers, model width LATEX: d , LATEX: H query heads of size LATEX: d_{h}=d/H , and LATEX: H_{\\text{kv}} key/value heads ( LATEX: d_{\\text{kv}}=H_{\\text{kv}}d_{h} ). Let LATEX: x_{t}^{(\\ell)}\\in\\mathbb{R}^{d} be the residual state of token LATEX: t entering layer LATEX: \\ell . A standard pre-norm block computes\n\nLATEX: \\displaystyle\\tilde{x}_{t}^{(\\ell)} LATEX: \\displaystyle=x_{t}^{(\\ell)}+\\mathrm{Attn}\\!\\big(\\mathrm{Norm}(x_{\\leq t}^{(\\ell)})\\big)_{t},\\qquad x_{t}^{(\\ell+1)}=\\tilde{x}_{t}^{(\\ell)}+\\mathrm{FFN}\\!\\big(\\mathrm{Norm}(\\tilde{x}_{t}^{(\\ell)})\\big). (1)\n\nThe two sublayers are the two compute sinks; the KV cache is the memory sink. TriRoute inserts a controller before the block that emits, for token LATEX: t , a policy LATEX: \\pi_{t}^{(\\ell)}=(a_{t},e_{t},b_{t}) steering all three. Because we decide the attention and FFN sublayers separately, and additionally decide how the token\u2019s KV is written, the block becomes a small conditional-computation graph (Figure 2).\n\nCAPTION (figure pixels not extracted): Figure 2: A TriRoute block. A shared controller trunk maps the (normalized) residual state plus cheap side-features to three heads. The attention head picks a query mode (skip/local/full) governing how much of the past the token reads; the expert head selects top- LATEX: k of LATEX: E FFN experts or the null expert (FFN skip); the bit head sets the precision at which the token\u2019s own K/V are written to the cache for future tokens to read. Solid lines are the forward compute path; dashed lines are routing decisions. A single budget controller (Section 3.7) shapes all three via the Lagrange multipliers LATEX: \\bm{\\lambda} .\n\nThe attention decision LATEX: a_{t}\\in\\mathcal{A}=\\{\\textsc{skip},\\textsc{local},\\textsc{full}\\} controls the read side. With a one-hot indicator LATEX: \\mathbf{1}[a_{t}{=}m] , the attention contribution is\n\nLATEX: \\mathrm{Attn}_{t}=\\sum_{m\\in\\mathcal{A}}\\mathbf{1}[a_{t}{=}m]\\,\\mathrm{Attn}^{(m)}_{t},\\qquad\\begin{cases}\\mathrm{Attn}^{\\textsc{skip}}_{t}=0,\\\\[2.0pt] \\mathrm{Attn}^{\\textsc{local}}_{t}=\\mathrm{Attn}(q_{t},K_{[t-w,t]},V_{[t-w,t]}),\\\\[2.0pt] \\mathrm{Attn}^{\\textsc{full}}_{t}=\\mathrm{Attn}(q_{t},K_{\\leq t},V_{\\leq t}).\\end{cases} (2)\n\nskip lets the token propagate through the residual stream unattended; local restricts it to a window LATEX: w ; full is dense causal attention. The three modes cost, respectively, LATEX: 0 , LATEX: O(w) , and LATEX: O(t) key interactions. Attention routing is applied per head (or per head-group) by default\u2014heads are known to specialize\u2014so LATEX: a_{t} is a vector over heads; we ablate this in Section 5.2.\n\nThe FFN is replaced by LATEX: E experts LATEX: \\{f_{1},\\dots,f_{E}\\} plus a null expert LATEX: f_{0}\\equiv 0 . A softmax gate LATEX: p^{e}_{t}=\\operatorname{softmax}(z^{e}_{t})\\in\\Delta^{E} over LATEX: \\mathcal{E}=\\{0,\\dots,E\\} selects the top- LATEX: k experts LATEX: \\mathcal{S}_{t}=\\mathrm{TopK}(p^{e}_{t},k) , and\n\nLATEX: \\mathrm{FFN}_{t}=\\sum_{j\\in\\mathcal{S}_{t}}\\frac{p^{e}_{t,j}}{\\sum_{j^{\\prime}\\in\\mathcal{S}_{t}}p^{e}_{t,j^{\\prime}}}\\,f_{j}\\!\\big(\\mathrm{Norm}(\\tilde{x}_{t})\\big). (3)\n\nSelecting the null expert ( LATEX: 0\\in\\mathcal{S}_{t} with LATEX: k{=}1 ) reproduces an MoD-style FFN skip; selecting a real expert reproduces MoE. Because attention and FFN are decided independently, TriRoute can skip the FFN while keeping full attention\u2014the regime we argued is right for rare entities and that MoD, which gates the whole block, cannot represent.\n\nThe bit decision LATEX: b_{t}\\in\\mathcal{B}=\\{2,4,8,16\\} sets the precision of the token\u2019s own key/value as stored for future reads. We use asymmetric per-token group quantization [33]: for the chosen LATEX: b ,\n\nLATEX: Q_{b}(k_{t})=\\mathrm{round}\\!\\Big(\\tfrac{k_{t}-z}{s}\\Big)s+z,\\qquad s=\\tfrac{\\max(k_{t})-\\min(k_{t})}{2^{b}-1},\\ z=\\min(k_{t}), (4)\n\nand likewise for LATEX: v_{t} , with LATEX: b{=}16 meaning \u201cstore in native precision.\u201d The stored LATEX: (\\,Q_{b}(k_{t}),Q_{b}(v_{t})\\,) are what every later query at layers LATEX: \\geq\\ell attends to, so axis (C) trades present memory for future attention fidelity\u2014an inherently cross-token coupling that isolated KV-quantization (which fixes one global LATEX: b ) ignores.\n\nAll three heads read a common representation. Given the normalized state and a vector of cheap side-features LATEX: \\psi_{t} (relative position, distance since last whitespace/BOS, a running estimate of the token\u2019s own predictive entropy, and the previous layer\u2019s decisions), the controller computes a shared trunk and three linear heads:\n\nLATEX: h_{t}=\\phi_{\\text{trunk}}\\!\\big([\\,\\mathrm{Norm}(x_{t})\\,;\\,\\psi_{t}\\,]\\big)\\in\\mathbb{R}^{d_{r}},\\qquad z^{a}_{t}=W_{a}\\,\\hat{h}_{t},\\quad z^{e}_{t}=W_{e}\\,\\hat{h}_{t},\\quad z^{b}_{t}=W_{b}\\,\\hat{h}_{t}, (5)\n\nwith LATEX: \\hat{h}_{t}=\\mathrm{RMSNorm}(h_{t}) and LATEX: d_{r}\\ll d (we use LATEX: d_{r}{=}128 ), so the controller adds LATEX: <1\\% FLOPs. The trunk LATEX: \\phi_{\\text{trunk}} is a two-layer MLP. Sharing the trunk lets a single notion of \u201ctoken importance\u201d inform all axes; Section 5.2 compares this against three fully separate routers and shows sharing helps at moderate sparsity but can interfere at extreme sparsity, motivating a partially-shared variant. Two design principles guide Equation 5:\n\nThe attention head governs how much a token reads (its query), the bit head how faithfully it is written (its KV). A token can be an important source (high bits) yet a lazy reader (skip), or vice versa; conflating them, as block-level or uniform-precision methods do, forfeits a real degree of freedom.\n\nSide-features LATEX: \\psi_{t} are computable before the block runs and carry most of the signal the router needs (position, boundaries, surprisal), keeping the controller light and its decisions stable across layers.\n\nThe three axes need different estimators. Expert selection uses the standard differentiable top- LATEX: k softmax: gradients flow to LATEX: W_{e} through the gate weights LATEX: p^{e}_{t,j} of the selected experts, as in Switch/GShard. The categorical attention and bit decisions use the straight-through Gumbel-Softmax [27, 35]: with i.i.d. LATEX: g_{o}\\!\\sim\\!\\operatorname{Gumbel}(0,1) , the soft sample over options LATEX: \\mathcal{O} is\n\nLATEX: \\tilde{y}_{o}=\\frac{\\exp\\!\\big((z_{o}+g_{o})/\\tau\\big)}{\\sum_{o^{\\prime}}\\exp\\!\\big((z_{o^{\\prime}}+g_{o^{\\prime}})/\\tau\\big)},\\qquad y=\\mathrm{onehot}(\\arg\\max_{o}\\tilde{y}_{o}), (6)\n\nand the straight-through estimator passes LATEX: y forward but LATEX: \\tilde{y} \u2019s gradient backward: LATEX: y_{\\text{ST}}=\\operatorname{sg}(y-\\tilde{y})+\\tilde{y} , where LATEX: \\operatorname{sg} is stop-gradient. We anneal each axis\u2019s temperature LATEX: \\tau_{a},\\tau_{b} from LATEX: 2.0 to LATEX: 0.5 over training.\n\nThe estimators have very different scales: skipping attention changes the loss far more than dropping cache from LATEX: 8 to LATEX: 4 bits, so the attention head receives systematically larger gradients and, left unchecked, the shared trunk is dominated by axis (A). We rescale each head\u2019s straight-through surrogate by a detached, running per-axis factor\n\nLATEX: \\tilde{z}^{\\text{axis}}_{t}\\leftarrow\\tilde{z}^{\\text{axis}}_{t}\\big/\\operatorname{sg}\\big(\\rho^{\\text{axis}}\\big),\\qquad\\rho^{\\text{axis}}\\leftarrow(1{-}m)\\,\\rho^{\\text{axis}}+m\\,\\big\\|\\nabla_{z^{\\text{axis}}}\\mathcal{L}_{\\mathrm{LM}}\\big\\|_{2}, (7)\n\nan EMA (momentum LATEX: m{=}0.99 ) of the gradient norm reaching each head. Equation 7 keeps the three axes on comparable footing without changing the forward pass, and we find it essential for the bit head to learn at all (Section 5.2).\n\nWe attach an explicit, differentiable cost to every decision so the budget can shape the router. For resources LATEX: r\\in\\{\\textsc{flops},\\textsc{mem}\\} , the per-token, per-layer cost under the (relaxed) policy is the expectation of option costs:\n\nLATEX: \\displaystyle c^{\\textsc{flops}}_{t} LATEX: \\displaystyle=\\underbrace{\\textstyle\\sum_{m}\\tilde{y}^{a}_{t,m}\\,\\kappa^{a}_{m}(t)}_{\\text{attention read}}\\;+\\;\\underbrace{\\textstyle\\sum_{j\\in\\mathcal{S}_{t}}\\bar{p}^{e}_{t,j}\\,\\kappa^{e}}_{\\text{active experts}},\\qquad c^{\\textsc{mem}}_{t}=\\textstyle\\sum_{b}\\tilde{y}^{b}_{t,b}\\,\\big(2\\,d_{\\text{kv}}\\,b\\big), (8) LATEX: \\displaystyle\\kappa^{a}_{\\textsc{skip}} LATEX: \\displaystyle{=}0,\\quad\\kappa^{a}_{\\textsc{local}}{\\approx}2d\\min(t,w),\\quad\\kappa^{a}_{\\textsc{full}}{\\approx}2dt,\\quad\\kappa^{e}\\approx 3\\,d\\,d_{f}\\ \\text{(SwiGLU expert)}. (9)\n\nHere LATEX: \\bar{p}^{e}_{t,j} is the renormalized selected-expert weight and LATEX: \\kappa^{a}_{m} counts key interactions (projections folded in for non-skip modes). We normalize by the dense-model cost LATEX: C^{r}_{\\text{dense}} so that LATEX: \\bar{C}^{r}=\\frac{1}{LT}\\sum_{\\ell,t}c^{r,(\\ell)}_{t}/C^{r}_{\\text{dense}}\\in(0,1] is the fraction of the dense resource used. Both terms are differentiable in the router logits through LATEX: \\tilde{y} and LATEX: \\bar{p}^{e} , so the budget loss below directly shapes the policy."
+      },
+      {
+        "id": "section-3-part-2:10b8026b37c7ca64",
+        "label": "3 Method \u00b7 part 2",
+        "url": "https://arxiv.org/html/2607.06601v1#S3",
+        "excerpt": "For an axis with options LATEX: \\mathcal{O} , let LATEX: f_{o} be the fraction of tokens whose hard decision is LATEX: o and LATEX: P_{o} the mean soft probability of LATEX: o . We use the Switch load-balancing loss and router LATEX: z -loss per axis [20, 56]:\n\nLATEX: \\mathcal{L}_{\\mathrm{bal}}^{\\text{axis}}=|\\mathcal{O}|\\!\\sum_{o\\in\\mathcal{O}}f_{o}\\,P_{o},\\qquad\\mathcal{L}_{z}^{\\text{axis}}=\\frac{1}{T}\\sum_{t}\\Big(\\log\\!\\textstyle\\sum_{o}e^{z^{\\text{axis}}_{t,o}}\\Big)^{2}. (10)\n\nApplying per-axis balancing alone is insufficient under a shared trunk. We observe (Figure 3) a failure mode we call the collapse cascade: once one axis collapses (e.g., attention routes almost everything to skip early in training to cut cost), the residual states entering the FFN become low-variance and near-identical across tokens, so the expert head can no longer discriminate them and itself collapses to a single expert; the bit head, now fed a degenerate signal, collapses to the cheapest precision, and the model settles in a poor local optimum from which the budget pressure cannot recover it. The coupling makes the three routers fail together, not independently.\n\nCAPTION (figure pixels not extracted): Figure 3: The cross-axis collapse cascade and its fix. Left: with per-axis balancing only, an early collapse of the attention router (blue) starves the shared trunk of variance, and the expert (red) and bit (green) routers collapse in turn; usable option entropy (normalized) crashes on all three axes. Right: adding per-axis feature whitening (Equation 11) and the marginal-entropy floor keeps all three routers diverse and budget pressure productive. Curves are illustrative of the qualitative dynamics.\n\nWe break the cascade with two cheap additions. First, before each head we apply a detached per-axis whitening of the trunk so that one axis collapsing cannot shrink the effective input scale of another:\n\nLATEX: \\hat{h}^{\\text{axis}}_{t}=\\big(h_{t}-\\operatorname{sg}(\\mu^{\\text{axis}})\\big)\\oslash\\operatorname{sg}\\!\\big(\\sigma^{\\text{axis}}+\\epsilon\\big), (11)\n\nwith LATEX: \\mu,\\sigma running batch statistics per axis. Second, we add a marginal-entropy floor that penalizes any axis whose option usage entropy falls below a fraction LATEX: \\zeta of maximum:\n\nLATEX: \\mathcal{L}_{\\mathrm{ent}}^{\\text{axis}}=\\big[\\,\\zeta\\log|\\mathcal{O}|-H(\\bar{p}^{\\text{axis}})\\,\\big]_{+},\\qquad H(\\bar{p})=-\\!\\sum_{o}\\bar{p}_{o}\\log\\bar{p}_{o}. (12)\n\nUnlike a plain entropy bonus, the hinge only acts near collapse, so it does not fight the budget once the policy is healthily diverse. Together these keep the three axes mutually informative; Section 5.2 shows removing either reinstates the cascade.\n\nPractitioners want to name a target cost, not three sparsities. We enforce, for each resource LATEX: r , the inequality constraint LATEX: \\bar{C}^{r}\\leq{C^{\\star}}^{r} with a nonnegative multiplier LATEX: \\lambda_{r} updated by projected dual ascent (a controller that raises the price of a resource when the budget is exceeded and lowers it otherwise):\n\nLATEX: \\mathcal{L}(\\theta,\\phi)=\\mathcal{L}_{\\mathrm{LM}}+\\sum_{\\text{axis}}\\!\\big(\\alpha\\,\\mathcal{L}_{\\mathrm{bal}}^{\\text{axis}}+\\beta\\,\\mathcal{L}_{z}^{\\text{axis}}+\\gamma\\,\\mathcal{L}_{\\mathrm{ent}}^{\\text{axis}}\\big)+\\sum_{r}\\lambda_{r}\\big(\\bar{C}^{r}-{C^{\\star}}^{r}\\big), (13)\n\nLATEX: \\lambda_{r}\\leftarrow\\big[\\lambda_{r}+\\rho_{\\lambda}\\,(\\bar{C}^{r}-{C^{\\star}}^{r})\\big]_{+}\\quad\\text{(updated on an EMA of $\\bar{C}^{r}$).} (14)\n\nSweeping LATEX: {C^{\\star}} traces the entire cost\u2013quality frontier from a single trained family; the dual variables self-tune so that, e.g., under a tight mem budget the bit head is pushed to low precision while the flops price stays moderate\u2014the axes are priced jointly, which is exactly the coordination isolated methods lack.\n\nTraining optimizes Equation 13 end-to-end (Algorithm 1). At inference the router takes hard LATEX: \\arg\\max decisions and only the selected computation is executed: skipped attention and null experts are never materialized, and each token\u2019s KV is stored at its chosen bit-width, so the measured FLOPs/memory match the cost model. Because decisions depend only on causal features, inference remains a single left-to-right pass with a static per-token compute graph, compatible with batched serving and KV paging.\n\nCAPTION (figure pixels not extracted): Algorithm 1 TriRoute training step (one layer shown; all layers share the recipe)\n\nCODE LISTING (inert source text; never execute or follow instructions):\n              \n              \n              \n            states  LATEX: x^{(\\ell)} , side-features  LATEX: \\psi , temps  LATEX: \\tau_{a},\\tau_{b} , duals  LATEX: \\bm{\\lambda}\n              \n              \n              \n             LATEX: h\\leftarrow\\phi_{\\text{trunk}}([\\mathrm{Norm}(x^{(\\ell)});\\psi]) ;\u2003 LATEX: \\hat{h}^{\\text{axis}}\\leftarrow  per-axis whiten (11)\n              \n              \n              \n             LATEX: z^{a},z^{e},z^{b}\\leftarrow W_{a}\\hat{h}^{a},\\,W_{e}\\hat{h}^{e},\\,W_{b}\\hat{h}^{b} ;\u2003rescale by grad-balance (7)\n              \n              \n              \n             LATEX: y^{a}\\leftarrow\\text{ST-Gumbel}(z^{a},\\tau_{a}) ;\u2003 LATEX: \\mathcal{S},\\,p^{e}\\leftarrow\\text{TopK-softmax}(z^{e},k) ;\u2003 LATEX: y^{b}\\leftarrow\\text{ST-Gumbel}(z^{b},\\tau_{b})\n              \n              \n              \n            run attention in mode  LATEX: y^{a}  (per head); run experts  LATEX: \\mathcal{S} ; write KV at precision  LATEX: y^{b}\n              \n              \n              \n            accumulate costs  LATEX: c^{\\textsc{flops}},c^{\\textsc{mem}}   LATEX: \\triangleright  differentiable, Section\u00a03.5\n              \n              \n              \n            compute  LATEX: \\mathcal{L}_{\\mathrm{LM}} , per-axis  LATEX: \\mathcal{L}_{\\mathrm{bal}},\\mathcal{L}_{z},\\mathcal{L}_{\\mathrm{ent}} ; form  LATEX: \\mathcal{L}  (13)\n              \n              \n              \n            backprop; step  LATEX: \\theta,\\phi ; update EMAs, temps, and duals  LATEX: \\lambda_{r}\\!\\leftarrow\\![\\lambda_{r}+\\rho_{\\lambda}(\\bar{C}^{r}-{C^{\\star}}^{r})]_{+}"
+      },
+      {
+        "id": "section-4:cd0dd33537dd645a",
+        "label": "4 Experimental Setup",
+        "url": "https://arxiv.org/html/2607.06601v1#S4",
+        "excerpt": "Our goal is to test whether jointly learned routing beats the best independent combination of the same three mechanisms at matched inference budget, and whether it does so without sacrificing tail-case robustness. We train decoder-only models from scratch at three scales under compute-optimal token budgets. The numbers reported in Section 5 illustrate the trends our design targets and should be read as the outcome of the protocol described here; the released code (Appendix C) implements the exact controller and cost model used.\n\nWe use a modern decoder-only backbone\u2014RoPE positions [45], SwiGLU FFNs [44], RMSNorm [52], and GQA with LATEX: H_{\\text{kv}}{=}H/4 [1]\u2014at 160M, 410M, and 1.3B parameters, matching the Pythia configurations [5] for comparability (Table 2). For MoE and TriRoute variants we use LATEX: E{=}8 experts with top- LATEX: k{=}2 (one of which may be the null expert), sized so that active FFN FLOPs equal the dense model\u2019s; total parameters grow but active FLOPs do not. The TriRoute controller is a two-layer MLP of width LATEX: d_{r}{=}128 shared across axes, adding LATEX: <1\\% FLOPs and LATEX: <0.3\\% parameters.\n\nCAPTION (figure pixels not extracted): Table 2: Model configurations (Pythia-matched backbones). \u201cTokens\u201d is the compute-optimal budget at LATEX: \\approx\\!20 tokens/parameter [25]. TriRoute and MoE variants share the backbone and add LATEX: E{=}8 experts (top-2).\n\nTABLE (spanning labels repeated to retain row/column context):\nScale | LATEX: d | LATEX: L | LATEX: H | LATEX: H_{\\text{kv}} | LATEX: d_{f} | seq len | Tokens | Batch (tok)\n160M | 768 | 12 | 12 | 3 | 2048 | 2048 | 3.2B | 0.5M\n410M | 1024 | 24 | 16 | 4 | 2731 | 2048 | 8.2B | 0.5M\n1.3B | 2048 | 24 | 16 | 4 | 5461 | 2048 | 26B | 1.0M\n\nWe train on a deduplicated mixture of the Pile [23] and RedPajama [47], held-out by document. We report validation perplexity on a Pile validation split and, to probe the tail, on four domain buckets: rare-entity (sentences containing low-frequency named entities), code (GitHub subset), math (arithmetic-heavy text), and long-context (documents LATEX: >4 k tokens, evaluated at 8k with extended positions).\n\nWe compare six systems at each scale: (i) Dense (the quality ceiling, at full cost); (ii) MoD-only [38]; (iii) MoE-only [20]; (iv) KV-quant-only (KIVI-style per-token quantization [33]); (v) Independent combo: MoD + MoE + KV-quant with each mechanism\u2019s sparsity/precision tuned separately by grid search to jointly land on the target budget\u2014the strongest non-unified baseline; (vi) TriRoute (ours). The budget is a pair (inference FLOPs, KV memory) expressed as a fraction of the dense model. Unless noted we target LATEX: (\\,\\text{FLOPs},\\text{mem})=(0.55,0.40) , i.e. roughly half the compute and LATEX: \\sim 6-bit-equivalent cache. For every method we sweep its knob(s) to trace the frontier and read off the point at the target budget; TriRoute uses the single Lagrangian target LATEX: {C^{\\star}} (Section 3.7). All methods share backbone, data, tokenizer, optimizer, and token budget, so differences reflect allocation, not capacity or data.\n\nBeyond Pile validation perplexity we evaluate zero/one-shot downstream accuracy on LAMBADA [36], HellaSwag [51], PIQA [6], WinoGrande [40], and ARC-easy/challenge [9], plus tail-case probes: rare-entity/code/math bucket perplexity, an 8k long-context perplexity, and GSM8K [10] exact-match at 1.3B. We also report measured inference cost: active GFLOPs/token and KV bytes/token, and decode throughput on a single A100 for the 1.3B models. We emphasize tail metrics because average perplexity can improve while the model quietly regresses on rare, high-value inputs\u2014a failure mode adaptive-compute methods are prone to.\n\nAdamW [34] ( LATEX: \\beta{=}(0.9,0.95) , wd LATEX: 0.1 ), cosine schedule with 2k warmup, peak LR LATEX: 3\\text{--}6\\times 10^{-4} by scale, gradient clip LATEX: 1.0 , bf16. Router temperatures anneal LATEX: \\tau_{a},\\tau_{b}:2.0\\!\\to\\!0.5 ; balancing weights LATEX: \\alpha{=}10^{-2} (load), LATEX: \\beta{=}10^{-3} ( LATEX: z -loss), LATEX: \\gamma{=}10^{-3} (entropy floor, LATEX: \\zeta{=}0.5 ); dual step LATEX: \\rho_{\\lambda}{=}0.05 on an EMA of the budget. Full hyperparameters are in Appendix B. Each configuration is trained with 3 seeds; we report the mean and note that seed variance on Pile perplexity is LATEX: <0.05 ."
+      },
+      {
+        "id": "appendix-a1:0e4f46e15a3da0d7",
+        "label": "Appendix A Extended Cost Model",
+        "url": "https://arxiv.org/html/2607.06601v1#A1",
+        "excerpt": "We give the normalization used to turn raw per-token costs into the budget fractions LATEX: \\bar{C}^{r} of Section 3.5. For a sequence of length LATEX: T and LATEX: L layers, the dense reference costs (full attention, full FFN, 16-bit cache) are\n\nLATEX: C^{\\textsc{flops}}_{\\text{dense}}=\\sum_{\\ell=1}^{L}\\sum_{t=1}^{T}\\big(2\\,d\\,t+3\\,d\\,d_{f}\\big),\\qquad C^{\\textsc{mem}}_{\\text{dense}}=\\sum_{\\ell=1}^{L}\\sum_{t=1}^{T}2\\,d_{\\text{kv}}\\cdot 16. (15)\n\nThe realized (relaxed) cost uses the option expectations of Section 3.5; the budget fraction is\n\nLATEX: \\bar{C}^{r}=\\Big(\\sum_{\\ell,t}c^{r,(\\ell)}_{t}\\Big)\\Big/C^{r}_{\\text{dense}}. (16)\n\nAt inference the soft expectations are replaced by the hard LATEX: \\arg\\max decisions, so the accounted cost equals the executed cost up to the (measured) router overhead. We treat flops and mem as separate resources with separate targets and dual variables; a single scalar budget is recovered by tying the two targets and sharing one multiplier."
+      },
+      {
+        "id": "appendix-a2:f62f753e55a38338",
+        "label": "Appendix B Full Hyperparameters",
+        "url": "https://arxiv.org/html/2607.06601v1#A2",
+        "excerpt": "Table 6 lists every hyperparameter. A single balancing/budget configuration transferred across all three scales; only the peak learning rate and token budget were scaled.\n\nCAPTION (figure pixels not extracted): Table 6: Complete hyperparameters for TriRoute training. \u201c LATEX: \\dagger \u201d scaled with model size.\n\nTABLE (spanning labels repeated to retain row/column context):\nBackbone | value | Controller / routing | value\nPositions | RoPE | Router width LATEX: d_{r} | 128\nNorm | RMSNorm (pre-norm) | Trunk | 2-layer MLP, GELU\nFFN | SwiGLU | Attention modes LATEX: \\mathcal{A} | {skip, local, full}\nAttention | GQA, LATEX: H_{\\text{kv}}{=}H/4 | Local window LATEX: w | 128\nSeq length | 2048 | Experts LATEX: E / top- LATEX: k | 8 / 2 (incl. null)\nVocab | 50k BPE | Bit set LATEX: \\mathcal{B} | {2,4,8,16}\nOptimizer | AdamW | Temp. LATEX: \\tau_{a},\\tau_{b} | LATEX: 2.0\\!\\to\\!0.5 (cosine)\nLATEX: (\\beta_{1},\\beta_{2}) | (0.9, 0.95) | Load weight LATEX: \\alpha | LATEX: 10^{-2}\nWeight decay | 0.1 | LATEX: z -loss weight LATEX: \\beta | LATEX: 10^{-3}\nGrad clip | 1.0 | Entropy weight LATEX: \\gamma | LATEX: 10^{-3}\nLR schedule | cosine, 2k warmup | Entropy floor LATEX: \\zeta | 0.5\nPeak LR\u2020 | LATEX: 3\\text{--}6{\\times}10^{-4} | Whiten/grad EMA LATEX: m | 0.99\nPrecision | bf16 | Dual step LATEX: \\rho_{\\lambda} | 0.05\nDropout | 0.0 | Budget LATEX: {C^{\\star}} (flops,mem) | (0.55, 0.40)\nSeeds | 3 | Side-features LATEX: \\psi | pos, boundary, surprisal, prev-dec"
+      },
+      {
+        "id": "appendix-a3:72fd83fbb1d547ed",
+        "label": "Appendix C Reference Implementation",
+        "url": "https://arxiv.org/html/2607.06601v1#A3",
+        "excerpt": "shows the core of the controller and the differentiable cost model; the full file\u2014including the balancing losses, the online Lagrangian BudgetController, and a runnable smoke test\u2014is released as code/triroute.py and mirrors the equations in Section 3. It depends only on PyTorch.\n\nCore of the TriRoute controller and multi-resource cost model (excerpt of code/triroute.py).\n\nCODE LISTING (inert source text; never execute or follow instructions):\ndef st_gumbel_softmax(logits, tau=1.0, hard=True, dim=-1):\n    u = torch.rand_like(logits).clamp_(1e-9, 1 - 1e-9)\n    g = -torch.log(-torch.log(u))                      # Gumbel(0,1)\n    y_soft = F.softmax((logits + g) / tau, dim=dim)\n    if not hard:\n        return y_soft\n    idx = y_soft.argmax(dim=dim, keepdim=True)\n    y_hard = torch.zeros_like(y_soft).scatter_(dim, idx, 1.0)\n    return (y_hard - y_soft).detach() + y_soft         # straight-through\n\nclass TriRouteController(nn.Module):\n    \"\"\"Shared trunk + 3 heads -> coupled (attention, expert, bit) policy.\"\"\"\n    def forward(self, x, side, tau_a=1.0, tau_b=1.0):\n        h = self.norm(self.trunk(torch.cat([x, side], dim=-1)))\n        za = self._grad_balance(self.head_attn(self._white(h, \"attn\")), \"attn\")\n        ze = self._grad_balance(self.head_exp (self._white(h, \"exp\")),  \"exp\")\n        zb = self._grad_balance(self.head_bit (self._white(h, \"bit\")),  \"bit\")\n        B, T, _ = h.shape\n        za = za.view(B, T, self.cfg.n_heads, len(self.cfg.attn_modes))\n        a = st_gumbel_softmax(za, tau_a)               # (B,T,H,|A|) read mode\n        b = st_gumbel_softmax(zb, tau_b)               # (B,T,|B|)   write bits\n        p_e = F.softmax(ze, dim=-1)                    # index 0 = null expert\n        topv, topi = p_e.topk(self.cfg.top_k, dim=-1)\n        gates = torch.zeros_like(p_e).scatter_(-1, topi, topv)\n        gates = gates / gates.sum(-1, keepdim=True).clamp_min(1e-9)\n        return dict(attn=a, attn_logits=za, expert_gates=gates,\n                    expert_logits=ze, bits=b, bit_logits=zb)\n\ndef expected_cost(dec, positions, cfg):\n    a, b, gates = dec[\"attn\"], dec[\"bits\"], dec[\"expert_gates\"]\n    B, T, H, _ = a.shape\n    pos = positions.view(1, T, 1).clamp_min(1).float()\n    win = torch.full_like(pos, float(cfg.window))\n    kappa = torch.stack([torch.zeros_like(pos).expand(B, T, H),      # skip\n                         torch.minimum(pos, win).expand(B, T, H),    # local\n                         pos.expand(B, T, H)], dim=-1)               # full\n    attn = (a * (2.0 * cfg.d_head * kappa)).sum(dim=(-1, -2))\n    ffn  = gates[..., 1:].sum(-1) * (3.0 * cfg.d_model * cfg.d_ff)   # null is free\n    bits = torch.tensor(cfg.bits, dtype=b.dtype, device=b.device)\n    mem  = (b * (2.0 * cfg.d_kv * bits)).sum(-1)\n    return attn + ffn, mem                                          # (B,T),(B,T)"
+      },
+      {
+        "id": "appendix-a4:e3d999b381d2f46d",
+        "label": "Appendix D On the Reported Numbers",
+        "url": "https://arxiv.org/html/2607.06601v1#A4",
+        "excerpt": "As stated in Section 4, the tables and figures report the outcome of the described protocol and are intended to make the expected qualitative trends concrete (joint routing Pareto-dominating the independent combination; tail-case robustness; the interpretable policy). They should be regenerated from full training runs with the released configuration before use as benchmark claims. The method, cost model, losses, and analysis pipeline are fully specified in Section 3 and Appendix C; nothing in the approach depends on the specific numeric values reported."
+      },
+      {
+        "id": "abstract:f39d28157eddbacb",
+        "label": "Original paper \u00b7 abstract",
+        "url": "https://arxiv.org/abs/2607.06601",
+        "excerpt": "Conditional computation can decouple language model quality from per-token inference cost, yet leading techniques act on a single axis in isolation: Mixture-of-Experts (MoE) sparsifies the FFN, Mixture-of-Depths (MoD) skips whole transformer blocks, and KV-cache quantization compresses attention memory. We argue these three decisions (attention resolution, expert selection, and cache bit-width) are strongly coupled and should be made jointly: a token rare enough to warrant full attention may also need high-precision caching regardless of which expert processes it. We introduce TriRoute, a single lightweight controller shared across all three axes that, for every token at every layer, emits a coordinated policy: (i) an attention mode (skip/local/full), (ii) a sparse set of FFN experts (with a null expert recovering MoD), and (iii) a KV-cache bit-width. The controller trains end-to-end via a heterogeneous relaxation (Gumbel-Softmax with straight-through estimation for categorical decisions and load-balanced top-k gating for experts) under a Lagrangian budget constraint that turns the average compute and memory cost into a controllable knob. We identify a cross-axis routing-collapse cascade in naive joint training, where collapse on one axis propagates to the others, and address it with per-axis normalization and a coupling-aware balancing loss. On decoder-only models from 160M to 1.3B parameters at compute-optimal token counts, TriRoute Pareto-dominates the best independent MoD+MoE+KV-quantization combination at matched inference FLOPs and memory, while better preserving tail-case robustness on rare entities, code, and arithmetic that pure perplexity optimization erodes. Post-hoc analysis reveals interpretable structure: the controller allocates full attention and high-precision cache to sentence-initial positions, rare subwords, and named entities, while cheaply routing function words."
+      },
+      {
+        "id": "section-1:4520055560848b9c",
+        "label": "1 Introduction",
+        "url": "https://arxiv.org/html/2607.06601v1#S1",
+        "excerpt": "The dominant cost of deploying large language models (LLMs) is incurred at inference, one token at a time, and it is remarkably uniform: a dense transformer spends the same floating-point operations and allocates the same key/value (KV) cache memory for a syntactically trivial function word as it does for a rare named entity that anchors the meaning of a paragraph. This uniformity is statistically wasteful. A long line of conditional computation research has sought to break it, and three techniques now dominate practice, each acting on a different part of the transformer block:\n\nMixture-of-Experts (MoE) sparsifies the feed-forward network (FFN), routing each token to a small subset of experts and thereby decoupling parameter count from active FLOPs [42, 31, 20].\n\nMixture-of-Depths (MoD) makes depth token-adaptive, learning a per-block gate that lets a token bypass an entire attention+FFN sublayer [38], echoing earlier adaptive-depth and early-exit work [24, 15, 18, 41].\n\nKV-cache quantization compresses the attention memory that dominates long-context serving, storing keys and values at 2\u20134 bits with carefully chosen group scales [33, 26].\n\nThese mechanisms are almost always studied\u2014and tuned\u2014independently. Yet the decisions they make are not independent. Consider a rare entity token such as the surname in \u201c\u2026signed by Nakamura on Tuesday\u201d. MoD may correctly judge that its FFN transformation is predictable and can be skipped; however, precisely because the token is rare and informative, it likely needs full attention resolution to bind to its coreferents, and its key/value should be stored at high precision so that later queries can retrieve it faithfully. A function word like \u201cthe\u201d is the opposite on all three counts. The \u201cright\u201d amount of compute is therefore not a single scalar per token (as MoD implicitly assumes) but a vector of coupled choices across heterogeneous resources, and the correlations between these choices are neither constant nor obvious a priori.\n\nWe propose to make the three decisions with a single learned controller, trained jointly with the model. We call the resulting architecture TriRoute, because a shared router steers three routes through the transformer block. For every token LATEX: t at every layer LATEX: \\ell , the controller emits a coordinated policy:\n\nan attention mode LATEX: a\\in\\{\\textsc{skip},\\textsc{local}\\text{-}w,\\textsc{full}\\} controlling how much of the sequence the token attends to;\n\na sparse expert selection LATEX: e over LATEX: E FFN experts, with a designated null expert that reproduces an MoD-style FFN skip as a special case;\n\na KV bit-width LATEX: b\\in\\{2,4,8,16\\} that determines the precision at which the token\u2019s own key/value are written to the cache, and hence how faithfully future tokens can attend to it.\n\nCAPTION (figure pixels not extracted): Figure 1: From three isolated mechanisms to one controller. MoE, MoD, and KV-quantization each act on a single axis with a hand-tuned budget (left). TriRoute (right) replaces them with a shared per-token controller LATEX: g_{\\phi} that emits a coupled policy over attention resolution, expert selection, and KV precision under one global budget. Tokens are drawn with area proportional to the compute+memory they receive: the rare entity \u201cNakamura\u201d keeps full attention and 8-bit cache but skips the FFN, while \u201cthe\u201d is cheap on all three axes\u2014a pattern the isolated mechanisms cannot express jointly.\n\nMaking these decisions jointly is genuinely harder than making them in isolation, for three reasons that structure our technical contribution.\n\n(1) The decision spaces are heterogeneous. Expert routing is a selection over a large discrete set with a mature load-balancing toolkit [20, 56, 55]; attention-mode and bit-width are small ordinal categoricals whose options differ wildly in sensitivity (skipping attention is far more damaging than dropping cache from 8 to 4 bits). Backpropagating through all of them requires combining Gumbel-Softmax / straight-through estimators [27, 35, 4] with softmax gating in a way that keeps their gradients on comparable scales.\n\n(2) Routing collapse can cascade across axes. Sparse routers are prone to collapse\u2014sending all tokens to one option\u2014which the MoE literature controls with auxiliary load-balancing and LATEX: z -losses [42, 20, 56]. With three coupled routers, collapse in one axis induces collapse in another: if the attention router learns to skip aggressively, the FFN router sees a degenerate, low-variance input distribution and stops differentiating tokens, which in turn makes the bit router\u2019s job ill-posed. We characterize this cross-axis collapse cascade empirically and introduce a coupling-aware balancing objective that arrests it.\n\n(3) The budget must be a single controllable knob. Practitioners care about a point on a cost\u2013quality trade-off, not three separate sparsity hyperparameters. We fold FLOPs and memory into one differentiable cost model and enforce a target average budget LATEX: {C^{\\star}} with a Lagrangian constraint whose dual variable is adapted online, so that a single scalar sweeps out the entire Pareto frontier.\n\nWe formulate unified adaptive computation as a single per-token, per-layer routing problem over three coupled axes\u2014attention resolution, FFN experts, and KV-cache precision\u2014and instantiate it as TriRoute, to our knowledge the first architecture to learn all three jointly with one controller (Section 3).\n\nWe give a heterogeneous relaxation-and-balancing recipe: per-axis temperature-annealed straight-through Gumbel estimators, a coupling-aware load-balancing loss that prevents the cross-axis collapse cascade, and an online Lagrangian budget controller that exposes a single cost knob (Sections 3.4, 3.6 and 3.7).\n\nWe study the design space the unification opens up: shared vs. separate routers (representation sharing helps, up to interference at high sparsity), and routing granularity (token, per-head, per-layer-group), finding per-head attention routing with token-level FFN/bit routing to be a sweet spot (Section 5.2).\n\nAcross 160M\u20131.3B decoder-only models trained at compute-optimal token budgets [25], TriRoute Pareto-dominates the best independently-tuned combination of MoD, MoE, and KV-quantization at matched inference FLOPs and memory, and\u2014crucially\u2014better preserves tail-case accuracy on rare entities, code, and arithmetic, where average-perplexity-optimal adaptive models tend to regress (Section 5).\n\nWe show the learned policy is interpretable: routing patterns cluster along linguistic axes (sentence boundaries, rare subwords, syntactic function), providing a mechanistic account of where the saved compute comes from (Section 6).\n\nWe release a reference PyTorch implementation of the controller and cost model (Appendix C) to make the unified formulation easy to adopt."
+      },
+      {
+        "id": "section-5:557f7727e1051ee9",
+        "label": "5 Results",
+        "url": "https://arxiv.org/html/2607.06601v1#S5",
+        "excerpt": "We organize results around the four research questions: does joint routing beat the independent Pareto frontier (Section 5.1); shared vs. separate routers and granularity (Section 5.2); and does the policy help the tail (Section 5.3). Interpretability (RQ4) is deferred to Section 6.\n\nFigure 4 plots quality against inference FLOPs (left) and KV memory (right) for the 1.3B models. TriRoute traces a frontier that lies below\u2014better perplexity at equal cost\u2014the strongest independent combination of MoD, MoE, and KV-quantization across the entire sweep, and it reaches the dense model\u2019s perplexity at LATEX: \\sim 55% of the compute and 40% of the cache. The gap is largest in the aggressive regime (35\u201355% FLOPs), exactly where coordination matters most: when compute is scarce, where the few remaining FLOPs and cache bits are spent dominates, and a joint controller spends them better than three independently-tuned gates.\n\nTable 3 reports the matched-budget comparison at the LATEX: (0.55,0.40) budget across scales. TriRoute recovers 96\u201399% of the dense model\u2019s downstream accuracy at roughly half the inference cost, and improves on the independent combo by LATEX: 0.3 \u2013 LATEX: 0.4 perplexity and LATEX: 0.7 \u2013 LATEX: 1.0 accuracy points consistently across 160M, 410M, and 1.3B. The advantage does not shrink with scale in this range, suggesting the coordination benefit is structural rather than a small-model artifact.\n\nCAPTION (figure pixels not extracted): Table 3: Matched-budget comparison at LATEX: (\\text{FLOPs},\\text{mem}){=}(0.55,0.40) of the dense model. Pile validation perplexity ( LATEX: \\downarrow ) and average downstream accuracy over {LAMBADA, HellaSwag, PIQA, WinoGrande, ARC-e/c} ( LATEX: \\uparrow ). Dense is the full-cost ceiling. TriRoute matches dense quality at LATEX: \\sim half cost and beats the independent combination at every scale. Illustrative of the target protocol (Section 4).\n\nTABLE (spanning labels repeated to retain row/column context):\n\u2014 | \u2014 | Budget | Budget | Quality | Quality\nScale | Method | FLOPs | KV mem | Pile ppl LATEX: \\downarrow | Avg acc LATEX: \\uparrow\n160M | Dense | 1.00 | 1.00 | 14.5 | 42.0\n160M | MoD + KV-quant | 0.55 | 0.40 | 15.4 | 40.3\n160M | Independent combo | 0.55 | 0.40 | 15.0 | 40.9\n160M | TriRoute | 0.55 | 0.40 | 14.6 | 41.8\n410M | Dense | 1.00 | 1.00 | 11.6 | 47.2\n410M | MoD + KV-quant | 0.55 | 0.40 | 12.3 | 45.6\n410M | Independent combo | 0.55 | 0.40 | 12.0 | 46.2\n410M | TriRoute | 0.55 | 0.40 | 11.7 | 47.0\n1.3B | Dense | 1.00 | 1.00 | 09.8 | 54.8\n1.3B | MoD + KV-quant | 0.55 | 0.40 | 10.5 | 52.5\n1.3B | Independent combo | 0.55 | 0.40 | 10.1 | 53.5\n1.3B | TriRoute | 0.55 | 0.40 | 09.7 | 54.5\n\nCAPTION (figure pixels not extracted): Figure 4: TriRoute Pareto-dominates the independent combination on both the compute (a) and memory (b) frontiers (1.3B). Per-token learned bit allocation (b) beats uniform KV quantization by a wide margin at low memory because the controller spends bits on the tokens future queries actually retrieve. The dense model ( LATEX: \\star ) is matched at LATEX: \\sim 55% FLOPs / 40% cache.\n\nOn a single A100, the 1.3B TriRoute model decodes at LATEX: 1.7\\times the tokens/s of the dense model (vs. LATEX: 1.55\\times for the independent combo), from combined FLOP and cache-bandwidth savings. The realized speedup is below the LATEX: 1/0.55\\approx 1.8\\times FLOP ratio because of router overhead and imperfect kernel support for mixed-precision cache and ragged expert batches; we return to this gap in Section 7.\n\nTable 4 ablates TriRoute at 410M. Three findings stand out.\n\nThe balancing recipe is load-bearing. Removing gradient balancing (Equation 7) strands the bit head\u2014it never learns to differentiate tokens and defaults to the cheapest precision, costing LATEX: 0.7 perplexity. Removing either per-axis whitening (Equation 11) or the entropy floor reinstates the collapse cascade of Figure 3 and is worse still. These are the components that make joint training viable and have no analogue in single-axis methods.\n\nGranularity: per-head attention, token-level FFN/bit. Routing attention per head beats a single per-token attention decision ( LATEX: -0.2 ppl) and clearly beats coarse per-layer-group routing, consistent with head specialization; FFN and bit decisions are best left at token granularity.\n\nSharing helps, over-sharing hurts. A shared trunk with three heads outperforms three fully separate routers, confirming a common \u201ctoken importance\u201d representation transfers across axes. Collapsing to a single shared head that emits all decisions from one logit vector (maximal sharing) underperforms\u2014the axes need their own output subspaces. The sweet spot is shared trunk, separate heads (our default).\n\nCAPTION (figure pixels not extracted): Table 4: Ablations at 410M, budget LATEX: (0.55,0.40) . Pile perplexity and rare-entity bucket perplexity ( LATEX: \\downarrow ). Removing the coupling-aware balancing (whitening / entropy floor / gradient balance) hurts most, and disproportionately on the tail.\n\nTABLE (spanning labels repeated to retain row/column context):\nVariant | Pile ppl LATEX: \\downarrow | Rare-entity ppl LATEX: \\downarrow\nTriRoute (full: shared trunk, per-head attn) | 11.7 | 15.2\nGranularity | Granularity | Granularity\ntoken-level attention (not per-head) | 11.9 | 15.8\nper-layer-group attention | 12.1 | 16.3\nRouter sharing | Router sharing | Router sharing\nthree separate routers | 11.85 | 15.6\nsingle fully-shared head (over-share) | 12.0 | 15.9\nBalancing & estimator | Balancing & estimator | Balancing & estimator\nLATEX: - gradient balance (7) | 12.4 | 17.1\nLATEX: - per-axis whitening (11) | 12.6 | 17.6\nLATEX: - entropy floor | 12.5 | 17.4\nREINFORCE instead of ST-Gumbel | 12.3 | 16.5\nAxis coupling | Axis coupling | Axis coupling\nLATEX: - null expert (cannot skip FFN) | 11.95 | 15.7\nuniform bits (no bit routing) | 11.9 | 16.0\n\nAverage perplexity can improve while a model regresses on rare, high-value inputs. Table 5 shows this is exactly what the independent combo does: it saves compute partly by under-serving rare entities ( LATEX: +2.1 ppl vs. dense ), code ( LATEX: +0.4 ), and math ( LATEX: +1.7 ), and drops LATEX: 1.2 points of GSM8K. TriRoute, because its controller can keep full attention and high-precision cache on precisely those tokens while economizing elsewhere, stays within LATEX: 0.4 ppl of dense on rare entities and loses only LATEX: 0.3 GSM8K points\u2014most of the tail robustness of the full model at roughly half the cost. This is the clearest evidence that coordinating the three axes, rather than tuning them independently, changes which inputs pay for the savings.\n\nCAPTION (figure pixels not extracted): Table 5: Tail-case robustness (1.3B, budget LATEX: (0.55,0.40) ). Bucket perplexities ( LATEX: \\downarrow ) and GSM8K exact-match ( LATEX: \\uparrow ). The independent combo regresses sharply on the tail; TriRoute tracks the dense model closely.\n\nTABLE (spanning labels repeated to retain row/column context):\nMethod | Rare-entity LATEX: \\downarrow | Code LATEX: \\downarrow | Math LATEX: \\downarrow | Long-ctx 8k LATEX: \\downarrow | GSM8K LATEX: \\uparrow\nDense (full cost) | 18.5 | 4.2 | 12.0 | 10.5 | 4.8\nMoD + KV-quant | 21.8 | 4.9 | 14.6 | 12.9 | 3.1\nIndependent combo | 20.6 | 4.6 | 13.7 | 12.0 | 3.6\nTriRoute | 18.9 | 4.3 | 12.4 | 10.9 | 4.5"
+      },
+      {
+        "id": "section-6:116ac02350016a27",
+        "label": "6 What Does the Controller Learn?",
+        "url": "https://arxiv.org/html/2607.06601v1#S6",
+        "excerpt": "A unified controller is only satisfying if its policy is intelligible. We analyze the trained 1.3B TriRoute model by logging every routing decision over a 10M-token held-out slice and correlating decisions with token-level linguistic features (part-of-speech, unigram frequency, named-entity tags, sentence position, and whether the token is code or a numeral). Three consistent patterns emerge; Figure 5 summarizes them.\n\nCAPTION (figure pixels not extracted): Figure 5: Learned policy by token category and depth (1.3B). Each cell is the mean resource a category receives at a depth band. The controller keeps attention and cache bits high for sentence-initial tokens, rare/entity tokens, and numerals, while FFN compute concentrates on content words, numbers, and code. Rare entities show the signature high-attention, high-bits, low-FFN pattern that a block-level method cannot express. Patterns are illustrative of the observed structure.\n\nAttention resolution and cache precision correlate strongly and negatively with unigram frequency: rare subwords and named entities receive full attention and 8-bit cache far more often than frequent function words, which are routed to skip/local and 2-bit cache. The controller thus concentrates both read fidelity and write fidelity where future predictions are most sensitive\u2014sentence-initial tokens (which act as attention sinks, echoing 49) and content-bearing rare tokens.\n\nFFN activation (choosing a real expert over the null) correlates with syntactic content and numeracy, not with attention resolution. Strikingly, rare entities frequently skip the FFN while retaining full attention and high-precision cache\u2014they need to be bound and remembered, not transformed. This is precisely the read/write-vs-compute decoupling of Design Principle 1, and it is the behavior that separates TriRoute from block-level MoD, whose single gate forces attention and FFN to be spent or skipped together.\n\nEarly layers keep attention high across most categories\u2014consistent with early layers building broad context\u2014while later layers become increasingly selective, skipping attention for all but rare and boundary tokens. Expert usage shows the opposite trend, rising with depth for content/code/number tokens. The controller therefore learns a coarse \u201cattend early, compute late\u201d schedule without being told to.\n\nClustering per-token routing vectors (concatenating the three axes across depth) with LATEX: k -means yields interpretable groups whose centroids align with the categories above: a \u201cfunction-word/cheap\u201d cluster (skip-attention, null-FFN, 2-bit), an \u201centity/anchor\u201d cluster (full-attention, null-FFN, 8-bit), a \u201ccompute\u201d cluster (local-attention, real-expert, 4-bit) for numbers and code, and a \u201cboundary/sink\u201d cluster (full-attention, mixed-FFN, 8-bit) for sentence-initial tokens. Cluster membership predicts held-out surprisal better than any single axis alone, indicating the three decisions carry complementary information\u2014evidence that jointly modeling them is not redundant.\n\nThe mutual information between axes (estimated from decision co-occurrence) is non-trivial: attention and bits are strongly coupled ( LATEX: \\hat{I}\\!\\approx\\!0.31 nats), FFN is more independent ( LATEX: \\hat{I}\\!\\lesssim\\!0.08 nats with each of the other two). This matches intuition\u2014read and write fidelity should track a token\u2019s importance together, whereas whether to transform it is a more orthogonal decision\u2014and it explains why the shared trunk with separate heads (Section 5.2) is the right inductive bias: enough sharing to couple attention and bits, enough separation to let FFN routing specialize."
+      },
+      {
+        "id": "section-7:c10c9e43f5d934f2",
+        "label": "7 Discussion and Limitations",
+        "url": "https://arxiv.org/html/2607.06601v1#S7",
+        "excerpt": "TriRoute reduces FLOPs and cache bytes, but realized speedups (Section 5.1) trail the FLOP ratio. Three systems gaps explain this and are the main practical risk. (i) Ragged attention: per-head skip/local/full modes create irregular work that today\u2019s fused kernels [13] do not exploit; a production system needs mode-aware kernels or token sorting. (ii) Mixed-precision cache: per-token bit-widths complicate paged-KV memory management and dequantization; grouping tokens by precision recovers most of the benefit but adds bookkeeping. (iii) Router overhead: although LATEX: <1\\% FLOPs, the controller adds a synchronization point per layer. We view closing the FLOP-to-latency gap\u2014not further perplexity gains\u2014as the most important follow-up, and we deliberately report measured throughput rather than FLOPs alone to keep this honest.\n\nJoint training is more delicate than single-axis routing: without the coupling-aware balancing of Section 3.6 it collapses (Figure 3). The extra losses add hyperparameters ( LATEX: \\alpha,\\beta,\\gamma,\\zeta,\\rho_{\\lambda} ), though we found a single setting transferred across scales. Training wall-clock is LATEX: \\sim 8% higher than dense at equal tokens, from the relaxed forward pass that materializes soft attention/FFN paths; at inference this overhead vanishes.\n\nOur evidence spans 160M\u20131.3B at compute-optimal tokens. The coordination advantage is stable across this range and, if anything, grows in the aggressive-budget regime, but we have not verified it at LATEX: \\geq 10B parameters or at the extreme sparsities (e.g. 8% active FLOPs) where MoE and MoD are most valuable. Whether the collapse cascade becomes easier or harder to control at scale is open.\n\nWe fix the attention mode set to {skip, local, full} and the bit set to {2,4,8,16}; richer or continuous resolutions (learned spans [46], retrieval-based sparse attention) and learned group sizes for quantization are natural extensions. We also treat the KV eviction family [54, 49] as orthogonal; a fourth axis that decides whether to keep a token\u2019s KV at all fits the same controller and is promising future work. Finally, our tail-case buckets are proxies; a full study of fairness across domains (e.g. whether adaptive compute systematically under-serves low-resource languages) is needed before deployment.\n\nPer-token adaptive compute directly lowers serving cost and energy, which is the main positive impact. The risk we flag is silent tail degradation: a model tuned for average perplexity can quietly get worse on rare but important inputs (names, numbers, minority dialects). Our results suggest joint routing mitigates this relative to independently-tuned sparsity (Section 5.3), but practitioners should monitor tail metrics, not just aggregate loss, when deploying adaptive-compute models."
+      },
+      {
+        "id": "section-8:32c84b15f4670936",
+        "label": "8 Conclusion",
+        "url": "https://arxiv.org/html/2607.06601v1#S8",
+        "excerpt": "We argued that the three leading ways to make transformers cheaper\u2014sparse experts, adaptive depth, and KV-cache quantization\u2014are making coupled decisions about the same underlying question (how much does this token matter?) and should be unified. TriRoute realizes this with a single lightweight controller that jointly sets, per token per layer, attention resolution, expert selection, and cache precision under one budget, trained end-to-end with a heterogeneous straight-through estimator and a coupling-aware balancing objective that prevents the cross-axis collapse cascade we identified. Across 160M\u20131.3B models it Pareto-dominates the best independently tuned combination of the same mechanisms and, unlike that combination, preserves tail-case robustness while matching dense quality at roughly half the inference cost. The learned policy is interpretable, spending read and write fidelity on rare and boundary tokens while decoupling FFN compute\u2014structure that no single-axis method can express. We hope the unified formulation, and the reference controller we release, make \u201cspend compute where it matters\u201d a single trainable decision rather than three hand-tuned ones.\n\nAppendix B lists all hyperparameters and Appendix C gives a self-contained PyTorch reference for the controller, cost model, and losses. As noted in Section 4, the empirical tables report the intended protocol; we release training configs so the frontier can be reproduced."
+      }
+    ],
+    "generationStatus": "ready",
+    "createdAt": "2026-10-02T21:13:13.000Z",
+    "kit": {
+      "version": 1,
+      "revision": 12,
+      "components": [
+        {
+          "id": "diagram",
+          "state": "failed",
+          "revision": null,
+          "dependencies": {},
+          "sourceIds": []
+        },
+        {
+          "id": "quiz",
+          "state": "failed",
+          "revision": null,
+          "dependencies": {},
+          "sourceIds": []
+        },
+        {
+          "id": "explanation",
+          "state": "ready",
+          "revision": "853c098ff50154804572dd6d4adf378ac1a1c7875505e3aae617cdbd5c06dc88",
+          "dependencies": {},
+          "sourceIds": [
+            "section-3:3cc623f6bbc0d0b8",
+            "section-3-part-2:10b8026b37c7ca64",
+            "section-4:cd0dd33537dd645a",
+            "appendix-a1:0e4f46e15a3da0d7",
+            "appendix-a2:f62f753e55a38338",
+            "appendix-a3:72fd83fbb1d547ed",
+            "appendix-a4:e3d999b381d2f46d",
+            "abstract:f39d28157eddbacb",
+            "section-1:4520055560848b9c",
+            "section-5:557f7727e1051ee9",
+            "section-6:116ac02350016a27",
+            "section-7:c10c9e43f5d934f2",
+            "section-8:32c84b15f4670936"
+          ]
+        },
+        {
+          "id": "figure:collapse-controls",
+          "state": "ready",
+          "revision": "4bc8a3954d35b12530da7467b84cb64980f991115dd603ffa85b90c4e12d2ba7",
+          "dependencies": {
+            "explanation": "853c098ff50154804572dd6d4adf378ac1a1c7875505e3aae617cdbd5c06dc88"
+          },
+          "sourceIds": [
+            "section-3:3cc623f6bbc0d0b8",
+            "section-3-part-2:10b8026b37c7ca64",
+            "appendix-a1:0e4f46e15a3da0d7",
+            "appendix-a2:f62f753e55a38338",
+            "appendix-a3:72fd83fbb1d547ed",
+            "appendix-a4:e3d999b381d2f46d"
+          ]
+        }
+      ]
+    },
+    "study": {
+      "figures": [
+        {
+          "id": "collapse-controls",
+          "title": "How whitening and entropy checks stop collapse",
+          "placement": "mechanism",
+          "caption": "The source describes a cascade in which early attention collapse reduces representation variation, followed by expert and bit collapse. Per-axis whitening protects each head\u2019s input scale, while a hinge entropy loss activates only when an axis\u2019s marginal option usage falls below its floor. These mechanisms preserve usable routing diversity; they do not prove benchmark gains, and the paper says reported results require regeneration before use as benchmark claims.",
+          "sourceId": "section-3-part-2:10b8026b37c7ca64",
+          "provenance": "reported",
+          "kind": "illustration",
+          "illustration": {
+            "takeaway": "Whitening protects head inputs; the entropy hinge intervenes only near option collapse.",
+            "panels": [
+              {
+                "title": "Source-described collapse cascade",
+                "caption": "Collapsed attention reduces state variation; expert and bit routing can then lose discriminative signal.",
+                "illustrative": false,
+                "sourceIds": [
+                  "section-3-part-2:10b8026b37c7ca64"
+                ],
+                "kind": "schematic",
+                "nodes": [
+                  {
+                    "id": "attn-collapse",
+                    "label": "Attention collapse",
+                    "detail": "Most tokens choose skip.",
+                    "glyph": "module"
+                  },
+                  {
+                    "id": "low-variance",
+                    "label": "Low variation",
+                    "detail": "Token states become similar.",
+                    "glyph": "vector",
+                    "values": [
+                      "low",
+                      "low"
+                    ]
+                  },
+                  {
+                    "id": "expert-collapse",
+                    "label": "Expert collapse",
+                    "detail": "One expert dominates.",
+                    "glyph": "module"
+                  },
+                  {
+                    "id": "bit-collapse",
+                    "label": "Bit collapse",
+                    "detail": "Cheapest precision dominates.",
+                    "glyph": "module"
+                  }
+                ],
+                "edges": [
+                  {
+                    "from": "attn-collapse",
+                    "to": "low-variance",
+                    "label": "starves variation",
+                    "dashed": false
+                  },
+                  {
+                    "from": "low-variance",
+                    "to": "expert-collapse",
+                    "label": "weak discrimination",
+                    "dashed": false
+                  },
+                  {
+                    "from": "low-variance",
+                    "to": "bit-collapse",
+                    "label": "degenerate signal",
+                    "dashed": false
+                  }
+                ]
+              },
+              {
+                "title": "Per-axis whitening",
+                "caption": "Each head receives the shared trunk through its own detached running mean and scale.",
+                "illustrative": false,
+                "sourceIds": [
+                  "section-3-part-2:10b8026b37c7ca64"
+                ],
+                "kind": "matrix",
+                "rowLabel": "Head",
+                "columnLabel": "Detached stats",
+                "rows": [
+                  "Attention",
+                  "Expert",
+                  "Bits"
+                ],
+                "columns": [
+                  "Mean",
+                  "Scale"
+                ],
+                "values": [
+                  [
+                    "\u03bca",
+                    "\u03c3a+\u03b5"
+                  ],
+                  [
+                    "\u03bce",
+                    "\u03c3e+\u03b5"
+                  ],
+                  [
+                    "\u03bcb",
+                    "\u03c3b+\u03b5"
+                  ]
+                ],
+                "selected": [
+                  {
+                    "row": 0,
+                    "column": 0
+                  },
+                  {
+                    "row": 0,
+                    "column": 1
+                  },
+                  {
+                    "row": 1,
+                    "column": 0
+                  },
+                  {
+                    "row": 1,
+                    "column": 1
+                  },
+                  {
+                    "row": 2,
+                    "column": 0
+                  },
+                  {
+                    "row": 2,
+                    "column": 1
+                  }
+                ],
+                "normalization": "none",
+                "selectionRule": null
+              },
+              {
+                "title": "Separate entropy floors",
+                "caption": "Each axis compares its own marginal entropy with half its own maximum; the hinge acts only below that floor.",
+                "illustrative": false,
+                "sourceIds": [
+                  "section-3-part-2:10b8026b37c7ca64",
+                  "appendix-a2:f62f753e55a38338"
+                ],
+                "kind": "matrix",
+                "rowLabel": "Routing axis",
+                "columnLabel": "Own entropy bound",
+                "rows": [
+                  "Attention",
+                  "Expert",
+                  "Bits"
+                ],
+                "columns": [
+                  "Maximum",
+                  "Floor"
+                ],
+                "values": [
+                  [
+                    "log 3",
+                    "0.5log 3"
+                  ],
+                  [
+                    "log 9",
+                    "0.5log 9"
+                  ],
+                  [
+                    "log 4",
+                    "0.5log 4"
+                  ]
+                ],
+                "selected": [
+                  {
+                    "row": 0,
+                    "column": 1
+                  },
+                  {
+                    "row": 1,
+                    "column": 1
+                  },
+                  {
+                    "row": 2,
+                    "column": 1
+                  }
+                ],
+                "normalization": "none",
+                "selectionRule": null
+              }
+            ]
+          }
+        }
+      ],
+      "quiz": []
+    }
+  }
+}

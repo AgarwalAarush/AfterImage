@@ -1,0 +1,5 @@
+# Library saved-case regression fixtures
+
+The owner authorized public publication of these saved evaluation cases for an independent cloud review. These fifteen JSON inputs preserve scientific text, source IDs, candidate content and the exact review/decision fields consumed by the regressions. They contain public-paper excerpts and nonpublishing generated candidates, not production Library data. `manifest.json` binds exported bytes to the original artifact hashes and identifies selected top-level fields. No screenshots, database, environment file, job lease, credentials, runtime state or executable generated asset is included.
+
+QLoRA exercises duplicate proof handling; MegaBlocks exercises supported unresolved scheduling; TriRoute preserves the genuine scientific attribution rejection and the quotation/context defects. They are regression evidence, not an acceptance corpus. Existing FlashAttention/Mamba contract tests use deterministic native examples and received evidence contracts. None of these fixtures authorizes generation or production publication.
