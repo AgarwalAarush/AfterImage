@@ -1,5 +1,7 @@
 # AfterImage
 
+Library recall headings and prose now share one reading column, widening to 960px on desktop when the assistant is closed and retaining a 760px cap beside the assistant. See [Library recall width](docs/library-recall-width-2026-10-03.md).
+
 The Lesson/Notecard and Paper switch now shares a centered, compact PDF toolbar with page navigation, grouped zoom and source actions. Document search opens in a floating panel with ⌘F/Ctrl+F; selected controls use explicit high-contrast dark surfaces. See [reader toolbar alignment](docs/reader-toolbar-alignment-2026-10-02.md) for UI verification and renewed independent Subjects publication acceptance.
 
 Library notecards now reuse the Subjects prose preset and shared sans-serif font for consistent reading typography. See [Library reading typography](docs/library-reading-typography-2026-10-02.md).
