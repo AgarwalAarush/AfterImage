@@ -8,6 +8,8 @@ import { useApp } from "./app";
 import { themedSvg } from "@/lib/diagram-theme";
 import { exportSvg } from "@/lib/export-diagram";
 import { ReaderQuiz } from "./reader-quiz";
+import { studyFigureCaption } from "@/lib/study-figure-caption";
+import styles from "./paper-study.module.css";
 export function StudyFigures({paper,placement}:{paper:Paper;placement:"mechanism"|"evidence"}){
   return <>{paper.study?.figures.filter(f=>f.placement===placement).map(f=><Figure key={f.id} figure={f} paper={paper}/>)}</>;
 }
@@ -15,15 +17,15 @@ function Figure({figure:f,paper}:{figure:StudyFigure;paper:Paper}){
   const drawing=useRef<HTMLDivElement>(null);
   const {toast}=useApp();
   const [state,setState]=useState(0);const source=paper.sources.find(s=>s.id===f.sourceId);
-  return <figure className="study-figure" id={`figure-${f.id}`} data-concept={f.id}>
+  return <figure className={`study-figure ${styles.figure}`} id={`figure-${f.id}`} data-concept={f.id}>
     <div className="study-figure-heading"><span className="eyebrow">{f.provenance==="illustrative"?"WORKED VISUAL EXAMPLE":"THE EVIDENCE, VISUALLY"}</span><h3>{f.title}</h3></div>
     {f.kind==="network"&&f.states.length>1&&<div className="figure-switch" role="group" aria-label="Diagram condition">{f.states.map((s,i)=><button key={i} aria-pressed={state===i} onClick={()=>setState(i)}>{s.label}</button>)}</div>}
     <div className="study-drawing" ref={drawing}><div className="study-desktop" dangerouslySetInnerHTML={{__html:themedSvg(studySvg(f,false,state),f.kind==="landscape")}}/><div className="study-mobile" dangerouslySetInnerHTML={{__html:themedSvg(studySvg(f,true,state),f.kind==="landscape")}}/></div>
     {f.kind==="network"&&<><p className="figure-state"><InlineText text={f.states[state].explanation}/></p><details className="weight-ledger"><summary>Inspect the connection weights</summary><ul>{f.states[state].edges.map((e,i)=><li key={i}><span>{f.layers[e.fromLayer].nodes[e.from]} → {f.layers[e.fromLayer+1].nodes[e.to]}</span><code>{e.weight}</code><span>{e.active?"Active":"Inactive"}</span></li>)}</ul></details></>}
-    <figcaption><span className="eyebrow">{f.provenance==="illustrative"?"ILLUSTRATIVE · NOT A BENCHMARK":"REPORTED IN THE PAPER"}</span><p><InlineText text={f.caption}/></p><div>{source&&<a href={source.url} target="_blank" rel="noreferrer">{source.label} ↗</a>}<button className="text-button" onClick={()=>{
+    <figcaption className={styles.caption}><p className={styles.explanation}><InlineText text={studyFigureCaption(f)}/></p><div className={styles.footer}><div className={styles.source}><span>{f.provenance==="illustrative"?"Teaching example":"Reported in the paper"}</span>{source&&<a href={source.url} target="_blank" rel="noreferrer">{source.label} ↗</a>}</div><button type="button" className={`text-button ${styles.download}`} aria-label={`Save ${f.title} as SVG`} onClick={()=>{
       const svg=drawing.current?.querySelector<SVGSVGElement>(".study-desktop svg");
       if(svg)exportSvg(svg, `${paper.id}-${f.id}`).catch(()=>toast("The SVG could not be exported. Please try again."));
-    }}><Download size={12}/>SVG</button></div></figcaption>
+    }}><Download size={12} aria-hidden/>Save SVG</button></div></figcaption>
   </figure>;
 }
 export function PaperQuiz({paper}:{paper:Paper}){
