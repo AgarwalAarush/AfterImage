@@ -138,7 +138,7 @@ export type Feedback = {
 export type WorkerStage = GenerationStep | "study-sources" | "study-drafting" | "study-rendering" | "study-reviewing" | "study-repairing" | "publishing";
 export type Job = {
   id: string;
-  type: "generate" | "recommend" | "study";
+  type: "generate" | "recommend" | "study" | "interests";
   paperId?: string;
   status: "queued" | "running" | "complete" | "failed";
   createdAt: string;
@@ -150,6 +150,10 @@ export type Job = {
   /** Automatic discovery fills vacant slots; an explicit refresh replaces the shortlist. */
   recommendationMode?: "refill";
   preferenceRevision?: number;
+  /** Private inputs bound at claim; excluded from browser state. */
+  interestEvidenceFingerprint?: string;
+  interestFollowup?: boolean;
+  searchCycle?: number;
   /** A reading/dismissal action arrived after this recommendation job was claimed. */
   recommendationRefillRequested?: boolean;
   stage?: WorkerStage;
@@ -163,6 +167,9 @@ export type AppState = {
   preferences?: import("./preferences").PreferenceLedger;
   preferenceSummary?: import("./preferences").PreferenceSummary;
   recommendationReceipts?: unknown[];
+  recommendationSearchCycle?: number;
+  /** Private interest assignment keeps semantic recommendations responsive to Off. */
+  recommendationInterestAssignments?: Record<string, string>;
   assistantRequests?: AssistantRequest[];
   papers: Paper[];
   entries: Record<string, Entry>;

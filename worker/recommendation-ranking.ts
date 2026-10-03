@@ -7,6 +7,7 @@ export const recommendationAssessmentSchema = z.object({
   recommendations: z.array(recommendationSchema.shape.recommendations.element.extend({
     relevance: z.number().min(0).max(1), nextStep: z.number().min(0).max(1),
     thread: z.enum(["main","adjacent"]), interestId: z.string().max(60).optional(),
+    interestEvidence: z.array(z.string().min(12).max(800)).max(3).optional(),
   })).max(12),
 });
 export type Assessment = z.infer<typeof recommendationAssessmentSchema>["recommendations"][number];
@@ -17,16 +18,21 @@ export function popularityScore(signal?: PaperPopularity) {
   return signal.normalizedPercentile === null ? citations : 0.6*citations+0.4*signal.normalizedPercentile;
 }
 export function rankWithReceipt(assessments: Assessment[], popularity: Record<string,PaperPopularity>, options: RankingOptions = {}) {
-  const features = new Map((options.papers || []).map(p => [p.id,canonicalFeatures(p)]));
+  const features = new Map((options.papers || []).map(p => [p.id,canonicalFeatures(p,options.profile?.interests)]));
   const inputs = assessments.map(rec => {
     const f = features.get(rec.paperId) || {version: "canonical-features-v1" as const,primaryInterests: [],digest: "0".repeat(64),interests: [],mechanisms: []};
     const interest = options.profile?.interests.find(i => i.id === rec.interestId);
+    const paper = options.papers?.find(p => p.id === rec.paperId);
+    const normalize = (text: string) => text.normalize("NFKC").replace(/\s+/g," ").trim();
+    const metadata = paper ? normalize(`${paper.title}\n${paper.abstract}`) : "";
+    // Semantic fits outside literal labels are provisional until independent grounding confirms the interest.
+    const evidencedFit = Boolean(metadata && rec.interestEvidence?.length && rec.interestEvidence.every(quote => normalize(quote).length >= 12 && metadata.includes(normalize(quote))));
     const eligible = rec.relevance >= 0.6 && interestEligible(options.profile,f) && (!options.profile || ((rec.interestId === "research-direction" && !f.interests.length) ||
-      Boolean(interest && interest.strength !== "off" && f.interests.includes(interest.id))));
+      Boolean(interest && interest.strength !== "off" && (f.interests.includes(interest.id) || evidencedFit))));
     const adjustment = Math.max(-0.05,Math.min(0.05,learnedAdjustment(options.profile,f,options.now)+
       (interest?.strength === "stronger" ? 0.02 : interest?.strength === "less" ? -0.02 : 0)));
     const score = .7*rec.relevance+.1*rec.nextStep+.2*popularityScore(popularity[rec.paperId])+adjustment;
-    return {rec,f,eligible,score,receipt: {paperId: rec.paperId,metadataDigest: f.digest,relevance: rec.relevance,
+    return {rec,f,eligible,score,receipt: {paperId: rec.paperId,interestId:rec.interestId,interestEvidence:rec.interestEvidence || [],metadataDigest: f.digest,relevance: rec.relevance,
       nextStep: rec.nextStep,citationCount: popularity[rec.paperId]?.citedByCount ?? null,
       normalizedPercentile: popularity[rec.paperId]?.normalizedPercentile ?? null,openAlexId: popularity[rec.paperId]?.openAlexId ?? null,
       verifiedAt: popularity[rec.paperId]?.verifiedAt ?? null,popularity: popularity[rec.paperId] ? popularityScore(popularity[rec.paperId]) : null,adjustment,score}};

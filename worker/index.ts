@@ -1,4 +1,5 @@
 import { recommend as discoverRecommendations } from "./recommendations";
+import { discoverInterests } from "./interest-discovery";
 import { retryModelCapacity } from "./model-retry";
 import { studySchema, validateStudy, studySvg, studyPrompt, arrangeQuiz } from "../src/lib/study";
 import { spawn } from "node:child_process";
@@ -322,7 +323,7 @@ async function generateStudy(paper: Paper, dir: string, progress: (stage: Worker
   throw new Error("The visual study guide did not pass review. Please try again.");
 }
 async function run() {
-  const data = await api({ action: "claim" });
+  const data = await api({ action: "claim", capabilities: ["dynamic-interests-v1"] });
   if (!data.job) return false;
   const job: Job = data.job;
   const credentials = { jobId: job.id, leaseToken: job.leaseToken };
@@ -342,6 +343,7 @@ async function run() {
         ? await generate(data.paper, dir, async (stage) => {
             await api({ action: "heartbeat", ...credentials, stage });
           })
+        : job.type === "interests" ? await discoverInterests(data.interestInput, dir, codex)
         : await discoverRecommendations(data, dir, codex);
     await api({ action: "heartbeat", ...credentials, stage: "publishing" });
     await api({ action: "complete", ...credentials, ...output });

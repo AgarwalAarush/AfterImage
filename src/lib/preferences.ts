@@ -2,11 +2,14 @@ import { createHash } from "node:crypto";
 import type { AppState, Feedback, Paper, Recommendation } from "./types";
 
 export const preferencePolicy = "preferences-v1";
-export type Interest = { id: string; label: string; strength: "stronger" | "normal" | "less" | "off" };
-export type PreferenceSummary = { revision: number; learningFromReading: boolean; interests: Interest[] };
+export type Interest = { id: string; label: string; strength: "stronger" | "normal" | "less" | "off"; /** Private, source-supported retrieval phrases. */ aliases?: string[] };
+export type SuggestedInterest = { id: string; label: string; reason: string; evidence: {paperId: string; title: string}[] };
+export type PreferenceSummary = { revision: number; learningFromReading: boolean; interests: Interest[];
+  suggestedInterests?: SuggestedInterest[]; interestDiscoveryStatus?: "idle" | "queued" | "running" | "failed" };
 export type PreferenceEvent = { id: string; paperId: string; kind: "save" | "prepare" | "reading" | "engaged" | "feedback"; at: string; value?: Feedback["value"]; day?: string; undoneAt?: string; recommendation?: Recommendation };
-export type PaperFeatures = { version: "canonical-features-v1"; primaryInterests: string[]; digest: string; interests: string[]; mechanisms: string[] };
-export type PreferenceLedger = PreferenceSummary & { version: 1; enabled: boolean; events: PreferenceEvent[]; features: Record<string, PaperFeatures> };
+export type PaperFeatures = { version: "canonical-features-v1"; primaryInterests: string[]; digest: string; vocabularyDigest?: string; interests: string[]; mechanisms: string[] };
+export type PreferenceLedger = PreferenceSummary & { version: 1; enabled: boolean; events: PreferenceEvent[]; features: Record<string, PaperFeatures>;
+  interestDiscovery?: import("./interest-suggestions").InterestDiscoveryLedger };
 const patterns = [
   ["world-models", "World models", /world models?|learned dynamics|latent dynamics|model-based (?:agents?|reinforcement)|generative (?:interactive )?environments?|dreamer|v-jepa|genie/i],
   ["sparse-compute", "Sparse compute and MoE", /mixture.of.experts?|\bmoe\b|expert (?:choice|routing)|sparse routing|conditional comput/i],
@@ -25,11 +28,31 @@ const mechanismPatterns = [
   ["sparse-kernels", /block.sparse|megablocks/i],
   ["quantization", /quantization|quantized|qlora/i],
 ] as const;
-export function canonicalFeatures(paper: Pick<Paper, "title" | "abstract">): PaperFeatures {
+/** Phrase matching adds owner-selected topics without making generated tags evidence. */
+export function normalizeInterestText(value: string) {
+  return value.normalize("NFKC").toLocaleLowerCase("en-US").replace(/[^\p{L}\p{N}]+/gu, " ").trim().replace(/\s+/g, " ");
+}
+function matchesInterest(text: string, interest: Interest) {
+  const normalized = ` ${normalizeInterestText(text)} `;
+  return [interest.label, ...(interest.aliases || [])].some(value => {
+    const phrase = normalizeInterestText(value);
+    return phrase.length >= 2 && normalized.includes(` ${phrase} `);
+  });
+}
+export function canonicalFeatures(paper: Pick<Paper, "title" | "abstract">, interests: Interest[] = []): PaperFeatures {
   const text = `${paper.title}\n${paper.abstract}`;
-  return { version: "canonical-features-v1",primaryInterests: patterns.filter(([, , re]) => re.test(paper.title)).map(([id]) => id),digest: createHash("sha256").update(preferencePolicy+"\n"+text).digest("hex"),
-    interests: patterns.filter(([, , re]) => re.test(text)).map(([id]) => id),
-    mechanisms: mechanismPatterns.filter(([, re]) => re.test(text)).map(([id]) => id) };
+  const dynamic = interests.filter(i => !patterns.some(([id]) => id === i.id));
+  const primary = patterns.filter(([, , re]) => re.test(paper.title)).map(([id]) => id as string);
+  const related = patterns.filter(([, , re]) => re.test(text)).map(([id]) => id as string);
+  for (const interest of dynamic) {
+    if (matchesInterest(paper.title, interest)) primary.push(interest.id);
+    if (matchesInterest(text, interest)) related.push(interest.id);
+  }
+  // Metadata identity remains stable; the separate vocabulary digest invalidates cached matching.
+  const vocabulary = dynamic.length ? "\n" + JSON.stringify(dynamic.map(({id,label,aliases}) => ({id,label,aliases})).sort((a,b) => a.id.localeCompare(b.id))) : "";
+  return { version: "canonical-features-v1",primaryInterests: [...new Set(primary)],digest: createHash("sha256").update(preferencePolicy+"\n"+text).digest("hex"),
+    ...(vocabulary ? {vocabularyDigest:createHash("sha256").update(vocabulary).digest("hex")} : {}),
+    interests: [...new Set(related)], mechanisms: mechanismPatterns.filter(([, re]) => re.test(text)).map(([id]) => id) };
 }
 function addEvent(p: PreferenceLedger, e: PreferenceEvent) {
   if (p.events.some(x => x.id === e.id)) return false;
@@ -37,11 +60,11 @@ function addEvent(p: PreferenceLedger, e: PreferenceEvent) {
 }
 /** Idempotent confirmed-action backfill. No historical open is inferred. */
 export function ensurePreferences(s: AppState): PreferenceLedger {
-  const p = s.preferences ||= {version: 1, revision: 1, enabled: false, learningFromReading: true,
+  const p: PreferenceLedger = s.preferences ||= {version: 1, revision: 1, enabled: false, learningFromReading: true,
     interests: patterns.map(([id,label]) => ({id,label,strength: "normal" as const})), events: [], features: {}};
   for (const paper of s.papers) {
-    const f = canonicalFeatures(paper);
-    if (p.features[paper.id]?.digest !== f.digest || p.features[paper.id]?.version !== f.version) {
+    const f = canonicalFeatures(paper, p.interests);
+    if (p.features[paper.id]?.digest !== f.digest || p.features[paper.id]?.version !== f.version || p.features[paper.id]?.vocabularyDigest !== f.vocabularyDigest) {
       if (p.features[paper.id]) p.revision++;
       p.features[paper.id] = f;
     }
@@ -65,7 +88,15 @@ export function ensurePreferences(s: AppState): PreferenceLedger {
 }
 export function preferenceSummary(s: AppState): PreferenceSummary {
   const p = ensurePreferences(s);
-  return {revision: p.revision, learningFromReading: p.learningFromReading, interests: p.interests.map(i => ({...i}))};
+  const active = s.jobs.find(j => j.type === "interests" && ["queued", "running"].includes(j.status));
+  const latest = [...s.jobs].reverse().find(j => j.type === "interests");
+  const suggestedInterests = (p.interestDiscovery?.pending || []).filter(suggestion => suggestion.evidence.every(e =>
+    p.features[e.paperId]?.digest === e.metadataDigest && paperSignal(p,e.paperId) >= .1 &&
+    (p.learningFromReading || e.explicit))).map(suggestion => ({id: suggestion.id, label: suggestion.label,
+      reason: suggestion.reason, evidence: suggestion.evidence.map(({paperId}) => ({paperId, title: s.papers.find(paper => paper.id === paperId)!.title}))}));
+  return {revision: p.revision, learningFromReading: p.learningFromReading,
+    interests: p.interests.map(({id,label,strength}) => ({id,label,strength})), suggestedInterests,
+    interestDiscoveryStatus: active?.status === "running" ? "running" : active ? "queued" : latest?.status === "failed" ? "failed" : "idle"};
 }
 export function recordChoice(s: AppState, e: PreferenceEvent) {
   const p = ensurePreferences(s);

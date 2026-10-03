@@ -253,7 +253,7 @@ export function paperPreparationModel(paper: Paper, jobs: Job[], workerSeenAt?: 
   return {...model, ...stage, readable, startedAt: job.startedAt || job.createdAt, activityAt,
     workerState, attempt: job.progressAttempt,
     queuePosition: job.status === "queued" ? jobs.filter(j => j.status === "queued")
-      .sort((a, b) => Number(b.type === "recommend") - Number(a.type === "recommend"))
+      .sort((a, b) => (b.type === "recommend" ? 2 : b.type === "interests" ? 1 : 0) - (a.type === "recommend" ? 2 : a.type === "interests" ? 1 : 0))
       .findIndex(j => j.id === job.id) + 1 : undefined,
   };
 }

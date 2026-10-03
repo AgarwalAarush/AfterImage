@@ -5,17 +5,17 @@ import type { AppState, Job, Recommendation } from "./types";
 
 export const recommendationReceiptSchema = z.object({
   policy: z.literal("preferences-v1"), profileRevision: z.number().int().nonnegative(),
-  preferenceInputs: z.array(z.object({id: z.string().max(60),strength: z.enum(["stronger","normal","less","off"])})).max(12),
+  preferenceInputs: z.array(z.object({id: z.string().max(60),strength: z.enum(["stronger","normal","less","off"])})).max(32),
   learningEnabled: z.boolean(),
   signals: z.array(z.object({paperId:z.string().max(40),signal:z.number().min(-0.5).max(4),metadataDigest:z.string().regex(/^[a-f0-9]{64}$/).nullable()})).max(2000),
-  ranking: z.array(z.object({paperId: z.string().max(40),metadataDigest: z.string().regex(/^[a-f0-9]{64}$/),
+  ranking: z.array(z.object({paperId: z.string().max(40),interestId: z.string().max(60).optional(),interestEvidence: z.array(z.string().min(12).max(800)).max(3).optional(),metadataDigest: z.string().regex(/^[a-f0-9]{64}$/),
     relevance: z.number().min(0).max(1),nextStep: z.number().min(0).max(1),
     citationCount: z.number().int().nonnegative().nullable(),normalizedPercentile: z.number().min(0).max(1).nullable(),
     openAlexId: z.string().max(160).nullable(),verifiedAt: z.string().datetime().nullable(),
     popularity: z.number().min(0).max(1).nullable(),adjustment: z.number().min(-0.05).max(0.05),score: z.number(),
   })).max(12),
   grounding: z.array(z.object({paperId: z.string().max(40),metadataDigest: z.string().regex(/^[a-f0-9]{64}$/),
-    identity: z.boolean(),reason: z.boolean(),focus: z.boolean(),attempt: z.number().int().min(1).max(2),
+    identity: z.boolean(),reason: z.boolean(),focus: z.boolean(),interest: z.boolean().optional(),respectsDisabledInterests: z.boolean().optional(),attempt: z.number().int().min(1).max(2),
   })).max(24),
 });
 export const recommendationRunSchema = z.object({
@@ -104,6 +104,8 @@ export function queueRecommendationRefill(state: AppState, now: string, id: () =
 
 export function eligibleRecommendation(state: AppState, rec: Recommendation) {
   const profile = ensurePreferences(state);
+  const assignment = state.recommendationInterestAssignments?.[rec.paperId];
+  if (assignment && assignment !== "research-direction" && !profile.interests.some(i => i.id === assignment && i.strength !== "off")) return false;
   return interestEligible(profile,profile.features[rec.paperId]);
 }
 /** Remove consumed picks in the same write that saves or dismisses the paper. */
@@ -141,6 +143,7 @@ export function publishRecommendations(state: AppState, picks: Recommendation[],
 }
 
 /** Replacements run before queued long-form preparation; running work is untouched. */
-export function nextQueuedJob(jobs: Job[]) {
-  return jobs.find(job => job.type === "recommend" && job.status === "queued") || jobs.find(job => job.status === "queued");
+export function nextQueuedJob(jobs: Job[], supportsInterests = true) {
+  const queued = jobs.filter(job => job.status === "queued" && (supportsInterests || job.type !== "interests"));
+  return queued.find(job => job.type === "recommend") || queued.find(job => job.type === "interests") || queued[0];
 }
