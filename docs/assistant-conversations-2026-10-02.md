@@ -71,3 +71,11 @@ The first live Subjects answer exposed shorthand `[lesson-s4]` instead of the re
 Live Light/Dark checks at 1440px and 900px passed; the wide panel has 16px above/below, and the narrow layout retains its existing overlay. Library loads all seven entries and Documents loads all five records. The follow-up ten-minute deployment error scan is empty.
 
 The final post-cutover production backup restore is pending the administrator's `--verify` output. The earlier rehearsal verifies migration preservation but does not replace this final backup check. Backups remain exclusively on macserver.
+
+## Focused reader follow-up
+
+The global navigation now lives in a collapsible left rail. The logo reveals the expand/collapse control on hover and keyboard focus; named links and appearance controls remain available in both states. Expansion is browser-local and does not enter library state.
+
+Paper view fills the viewport and hides the site footer. The PDF and assistant scroll independently, with contained overscroll. PDF page, search and citation navigation scroll only the PDF pane; switching back restores the saved prose scroll position. Automatic PDF width fitting follows sidebar and assistant resizing until the reader chooses a zoom level; clicking the zoom percentage restores width fitting. The shell and appearance controls are now part of the Subjects presentation fingerprint.
+
+The focused reader layout passed independent review at 1440×900 and 900×900 in Light/Dark, with navigation expanded/collapsed and assistant open/closed: 1,072 beat frames, 848 adjacent comparisons, and 224 whole-viewport captures. Reviews bind presentation `70cba0072d2215a8ec56cb3b215c0d278255274f074d06be56d9583c8c5158df`; all 14 scientific scenes and parent bindings remain unchanged. Captures and browser audit facts remain private. Browser checks confirmed no outer scrolling or footer in Paper view, 16px panel gaps, contained PDF page navigation, width fitting after sidebar resizing, and restored prose scroll when returning to Lesson.

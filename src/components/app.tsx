@@ -30,6 +30,9 @@ import {
   Globe2,
   Sparkles,
   MoreHorizontal,
+  PanelLeftOpen,
+  PanelLeftClose,
+  Files,
 } from "lucide-react";
 import type { AppState, Paper, Entry, Recommendation } from "@/lib/types";
 import type { PaperSearchProvider, PaperSearchResult } from "@/lib/paper-search";
@@ -108,6 +111,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [preparations, setPreparations] = useState<Record<string, PreparationRequest>>({}),
     [paletteOpen, setPaletteOpen] = useState(false),
     [message, setMessage] = useState("");
+  const [navigationExpanded, setNavigationExpanded] = useState(false);
+  useEffect(() => { try { setNavigationExpanded(localStorage.getItem("afterimage-navigation-expanded") === "true"); } catch {} }, []);
+  function toggleNavigation() { setNavigationExpanded(value => { const next = !value; try { localStorage.setItem("afterimage-navigation-expanded", String(next)); } catch {} return next; }); }
   const router = useRouter(),
     pathname = usePathname();
   const stateRef = useRef<AppState | null>(null),
@@ -262,43 +268,29 @@ export function AppProvider({ children }: { children: ReactNode }) {
         toast: setMessage,
       }}
     >
-      <header className="site-header">
-        <div className="nav-inner">
-          <Link href="/" className="brand">
-            <Mark />
-            <span>
-              afterimage<span className="brand-dot">.</span>
-            </span>
-          </Link>
-          <nav aria-label="Main navigation">
-            {[
-              ["/", "For you"],
-              ["/library", "Library"],
-              ["/subjects", "Subjects"],
-              ["/documents", "Documents"],
-            ].map(([href, label]) => (
-              <Link
-                href={href}
-                className={pathname === href || (["/documents", "/subjects"].includes(href) && pathname.startsWith(href + "/")) ? "active" : ""}
-                key={href}
-              >
-                {label}
-              </Link>
-            ))}
-          </nav>
-          <div className="nav-actions">
-            <button
-              className="button small add-nav"
-              aria-label="Add a paper"
-              onClick={() => setPaletteOpen(true)}
-            >
-              <Plus size={16} />
-              <span>Add a paper</span>
-            </button>
-            <ThemeControl />
-          </div>
+      <div className="app-shell" data-navigation-expanded={navigationExpanded}>
+      <aside className="site-sidebar" aria-label="Workspace navigation">
+        <div className="sidebar-brand">
+          <button className="sidebar-toggle" onClick={toggleNavigation} aria-label={navigationExpanded ? "Collapse navigation" : "Expand navigation"} aria-expanded={navigationExpanded} aria-controls="workspace-navigation" title={navigationExpanded ? "Collapse navigation" : "Expand navigation"}>
+            <span className="sidebar-mark"><Mark /></span>
+            <span className="sidebar-toggle-icon">{navigationExpanded ? <PanelLeftClose size={21}/> : <PanelLeftOpen size={21}/>}</span>
+          </button>
+          {navigationExpanded && <Link href="/" className="brand">afterimage<span className="brand-dot">.</span></Link>}
         </div>
-      </header>
+        <nav id="workspace-navigation" aria-label="Main navigation">
+          {[
+            {href:"/", label:"For you", Icon:Compass},
+            {href:"/library", label:"Library", Icon:Bookmark},
+            {href:"/subjects", label:"Subjects", Icon:BookOpen},
+            {href:"/documents", label:"Documents", Icon:Files},
+          ].map(({href,label,Icon}) => {
+            const active=pathname===href || (href==="/library" && pathname.startsWith("/papers/")) || (["/documents","/subjects"].includes(href) && pathname.startsWith(href+"/"));
+            return <Link key={href} href={href} className={active?"active":""} aria-current={active?"page":undefined} aria-label={label} title={navigationExpanded?undefined:label}><Icon size={20}/><span>{label}</span></Link>;
+          })}
+          <button onClick={()=>setPaletteOpen(true)} aria-label="Add a paper" title={navigationExpanded?undefined:"Add a paper"}><Plus size={20}/><span>Add a paper</span></button>
+        </nav>
+        <div className="sidebar-appearance"><ThemeControl /></div>
+      </aside>
       <main>
         <LibraryContent loaded={pathname.startsWith("/documents") || pathname.startsWith("/subjects") || !!state} error={pathname.startsWith("/documents") || pathname.startsWith("/subjects") ? "" : error} retry={refresh} loading={
           <div className="loading-state">
@@ -314,6 +306,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         </span>
         <span className="eyebrow">YOUR PERSONAL RESEARCH COMPANION</span>
       </footer>
+      </div>
       {message && (
         <div className="toast" role="status">
           {message}

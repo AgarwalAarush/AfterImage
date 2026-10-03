@@ -401,3 +401,46 @@ input::placeholder, textarea::placeholder { font-size: inherit; color: var(--mut
 .assistant-heading > span { max-width:115px; }
 
 .reader-view-tabs .reader-assistant-launch { margin-left:auto; color:var(--ink); border-color:var(--line); }
+
+/* Browser-local navigation keeps the reading surface clear of a top header. */
+.app-shell { --navigation-width:64px; padding-left:var(--navigation-width); min-height:100dvh; }
+.app-shell[data-navigation-expanded="true"] { --navigation-width:224px; }
+.site-sidebar { position:fixed; inset:0 auto 0 0; z-index:45; width:var(--navigation-width); display:flex; flex-direction:column; background:var(--canvas); border-right:1px solid var(--line); padding:16px 10px; }
+.sidebar-brand { display:flex; align-items:center; min-height:40px; margin-bottom:32px; gap:8px; }
+.sidebar-brand .brand { gap:0; font-size:23px; letter-spacing:-1px; white-space:nowrap; }
+.sidebar-toggle { position:relative; flex:none; width:43px; height:40px; border:0; background:none; color:var(--ink); border-radius:var(--control-radius); cursor:pointer; }
+.sidebar-mark,.sidebar-toggle-icon { position:absolute; inset:0; display:grid; place-items:center; }
+.sidebar-toggle-icon { opacity:0; }
+.sidebar-toggle:is(:hover,:focus-visible) .sidebar-mark { opacity:0; }
+.sidebar-toggle:is(:hover,:focus-visible) .sidebar-toggle-icon { opacity:1; }
+.site-sidebar nav { display:flex; flex-direction:column; gap:8px; }
+.site-sidebar nav :is(a,button) { display:flex; align-items:center; flex:none; gap:14px; height:44px; padding:0 12px; color:var(--muted); background:none; border:0; border-radius:var(--control-radius); text-decoration:none; font:500 14px var(--font-sans); white-space:nowrap; cursor:pointer; }
+.site-sidebar nav svg { flex:none; }
+.site-sidebar nav :is(a,button):hover,.site-sidebar nav .active { background:var(--paper); color:var(--ink); }
+.app-shell[data-navigation-expanded="false"] .site-sidebar nav span { display:none; }
+.sidebar-appearance { margin-top:auto; padding-top:24px; }
+.sidebar-appearance .theme-control { justify-content:center; }
+.app-shell[data-navigation-expanded="false"] .theme-control { flex-direction:column; }
+.app-shell > main { min-width:0; }
+/* Paper mode is a viewport workspace: its two panes own all scrolling. */
+html:has(.reader-workspace[data-reader-view="paper"]),body:has(.reader-workspace[data-reader-view="paper"]) { overflow:hidden; overscroll-behavior:none; }
+.app-shell:has(.reader-workspace[data-reader-view="paper"]) > .site-footer { display:none; }
+.reader-workspace[data-reader-view="paper"] { height:100dvh; overflow:hidden; }
+.reader-workspace[data-reader-view="paper"] .reader-main { display:flex; flex-direction:column; height:100%; min-height:0; }
+.reader-workspace[data-reader-view="paper"] .reader-view-tabs { flex:none; margin:16px 24px 0; }
+.reader-pdf-view { flex:1; min-height:0; display:flex; }
+.reader-pdf-view .paper-pdf { display:flex; flex-direction:column; flex:1; min-width:0; min-height:0; padding:8px 24px 16px; }
+.reader-pdf-view .pdf-toolbar { position:static; flex:none; }
+.reader-pdf-view .pdf-status { flex:none; margin:0; }
+.reader-pdf-view .pdf-pages { flex:1; min-height:0; max-height:none; overscroll-behavior:contain; }
+.assistant-conversation,.assistant-history { overscroll-behavior:contain; }
+@media (max-width:999px) {
+  .reader-pdf-view .paper-pdf { padding:8px 16px 16px; }
+  .reader-workspace[data-reader-view="paper"] .reader-view-tabs { margin-left:16px; }
+}
+@media print { .site-sidebar { display:none; } .app-shell { padding-left:0; } }
+@media (min-width:700px) and (max-width:999px) { .app-shell .paper-assistant { top:16px; bottom:16px; height:auto; } }
+.reader-view-tabs { position:sticky; top:0; z-index:10; margin:0; padding:16px 24px 8px; background:var(--canvas); }
+.reader-workspace[data-reader-view="paper"] .reader-view-tabs { margin:0; padding:16px 24px 0; }
+@media (max-width:999px) { .reader-view-tabs { padding-left:16px; padding-right:16px; } .reader-workspace[data-reader-view="paper"] .reader-view-tabs { margin:0; padding-left:16px; padding-right:16px; } }
+.reader-workspace [data-assistant-content] [id] { scroll-margin-top:80px; }

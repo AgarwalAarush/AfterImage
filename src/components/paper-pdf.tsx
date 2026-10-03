@@ -8,6 +8,11 @@ export type PdfDestination={key:string;source:AssistantSource};
 type PdfModule=typeof import("pdfjs-dist");
 let runtime:Promise<PdfModule>|undefined;
 function pdfRuntime(){return runtime??=import("pdfjs-dist").then(pdf=>{pdf.GlobalWorkerOptions.workerSrc=new URL("pdfjs-dist/build/pdf.worker.min.mjs",import.meta.url).toString();return pdf;});}
+// Scroll only the PDF pane; Element.scrollIntoView also moves the outer reader.
+function scrollPdfTo(element:Element|undefined|null,center=false){
+  const pane=element?.closest(".pdf-pages");if(!element||!pane)return;
+  pane.scrollTo({top:pane.scrollTop+element.getBoundingClientRect().top-pane.getBoundingClientRect().top-(center?pane.clientHeight/2:0),behavior:"instant"});
+}
 function PdfPage({document,page,scale,match,onVisible}:{document:PDFDocumentProxy;page:number;scale:number;match:PdfMatch|null;onVisible:(page:number)=>void}){
   const container=useRef<HTMLDivElement>(null),canvas=useRef<HTMLCanvasElement>(null),text=useRef<HTMLDivElement>(null);
   const [dimensions,setDimensions]=useState({width:612,height:792}),[visible,setVisible]=useState(false),[ready,setReady]=useState(false);
@@ -30,14 +35,14 @@ function PdfPage({document,page,scale,match,onVisible}:{document:PDFDocumentProx
     if(match?.page!==page)return;
     const normalized=spans.map(span=>normalizePdfText(span.textContent||""));const joined=normalized.join(" "),start=joined.indexOf(match.needle);if(start<0)return;
     let offset=0;spans.forEach((span,index)=>{if(offset<start+match.needle.length&&offset+normalized[index].length>start)span.classList.add("pdf-match");offset+=normalized[index].length+1;});
-    text.current.querySelector(".pdf-match")?.scrollIntoView({block:"center",behavior:"instant"});
+    scrollPdfTo(text.current.querySelector(".pdf-match"),true);
   },[ready,match,page]);
   return <div ref={container} id={`pdf-page-${page}`} className={`pdf-page ${ready?"":"pdf-page-placeholder"}`} style={{width:dimensions.width*scale,height:dimensions.height*scale,"--scale-factor":scale,"--total-scale-factor":scale,"--user-unit":1} as CSSProperties} aria-label={`Page ${page}`}>
     {!ready&&<span>Page {page}</span>}<canvas ref={canvas} aria-hidden="true"/><div ref={text} className="textLayer"/>
   </div>;
 }
 export function PaperPdf({target,title,arxivId,destination}:{target:AssistantTarget;title:string;arxivId:string;destination:PdfDestination|null}){
-  const [attempt,setAttempt]=useState(0);
+  const [attempt,setAttempt]=useState(0),[fitWidth,setFitWidth]=useState(true);
   const [document,setDocument]=useState<PDFDocumentProxy|null>(null),[error,setError]=useState(""),[status,setStatus]=useState("Loading original paper…"),[scale,setScale]=useState(1),[page,setPage]=useState(1),[search,setSearch]=useState("");
   const [match,setMatch]=useState<PdfMatch|null>(null),[download,setDownload]=useState(""),[digest,setDigest]=useState("");
   const pages=useRef<Promise<PdfTextPage[]>|null>(null),locations=useRef(new Map<string,PdfMatch|null>()),pane=useRef<HTMLDivElement>(null);
@@ -56,11 +61,18 @@ export function PaperPdf({target,title,arxivId,destination}:{target:AssistantTar
     // Canonical identity is stable for the life of this viewer.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   },[targetKey,attempt]);
+  useEffect(()=>{
+    if(!document||!fitWidth||!pane.current)return;
+    let alive=true;
+    const fit=async()=>{const first=await document.getPage(1);if(alive&&pane.current?.clientWidth)setScale(Math.max(.35,Math.min(2.5,(pane.current.clientWidth-32)/first.getViewport({scale:1}).width)));};
+    const observer=new ResizeObserver(()=>void fit());observer.observe(pane.current);void fit();
+    return()=>{alive=false;observer.disconnect();};
+  },[document,fitWidth]);
   function textPages(){
     if(!document)return Promise.resolve([]);
     return pages.current??=(async()=>{const result:PdfTextPage[]=[];for(let index=1;index<=document.numPages;index++){const page=await document.getPage(index),content=await page.getTextContent();result.push({page:index,text:content.items.map(item=>"str" in item?item.str+(item.hasEOL?"\n":" "):"").join("")});}return result;})();
   }
-  function goTo(next:number){if(!document)return;const value=Math.max(1,Math.min(document.numPages,next));setPage(value);pane.current?.querySelector(`#pdf-page-${value}`)?.scrollIntoView({block:"start",behavior:"instant"});}
+  function goTo(next:number){if(!document)return;const value=Math.max(1,Math.min(document.numPages,next));setPage(value);scrollPdfTo(pane.current?.querySelector(`#pdf-page-${value}`));}
   useEffect(()=>{
     if(!destination||!document)return;let alive=true;setStatus("Finding the cited passage…");setMatch(null);
     void (async()=>{const key=`${digest}:${destination.key}`,cached=locations.current.get(key);const found=cached===undefined?locatePdfSource(await textPages(),destination.source):cached;locations.current.set(key,found);if(!alive)return;
@@ -70,5 +82,5 @@ export function PaperPdf({target,title,arxivId,destination}:{target:AssistantTar
     // eslint-disable-next-line react-hooks/exhaustive-deps
   },[destination,document,digest]);
   async function find(){if(!search.trim())return;setStatus("Searching paper…");try{const needle=normalizePdfText(search),all=await textPages(),matches=all.filter(p=>normalizePdfText(p.text).includes(needle));const found=matches.find(p=>p.page>page)||matches[0];if(found){setMatch({page:found.page,needle,method:"passage"});goTo(found.page);setStatus(`${matches.length} matching page${matches.length===1?"":"s"}. Search again for the next match.`);}else setStatus("No matching text found.");}catch{setStatus("Search is unavailable for this PDF.");}}
-  return <section className="paper-pdf" aria-label={`Original paper: ${title}`}><div className="pdf-toolbar"><button className="icon-button" aria-label="Previous page" disabled={!document||page<=1} onClick={()=>goTo(page-1)}><ChevronLeft size={16}/></button><input aria-label="Page number" type="number" min={1} max={document?.numPages||1} value={page} onChange={event=>{const next=Number(event.target.value);if(next>0)goTo(next);}}/><span>/ {document?.numPages||"—"}</span><button className="icon-button" aria-label="Next page" disabled={!document||page===document.numPages} onClick={()=>goTo(page+1)}><ChevronRight size={16}/></button><button className="icon-button" aria-label="Zoom out" disabled={scale<=.35} onClick={()=>setScale(value=>Math.max(.35,value-.15))}><Minus size={16}/></button><span>{Math.round(scale*100)}%</span><button className="icon-button" aria-label="Zoom in" disabled={scale>=2.5} onClick={()=>setScale(value=>Math.min(2.5,value+.15))}><Plus size={16}/></button><form onSubmit={event=>{event.preventDefault();void find();}}><input type="search" aria-label="Search paper" placeholder="Find in paper" value={search} onChange={event=>setSearch(event.target.value)}/><button className="icon-button" aria-label="Find next" disabled={!document}><Search size={15}/></button></form>{download&&<a href={download} download={`${arxivId.replaceAll("/","-")}.pdf`} aria-label="Download paper"><Download size={16}/></a>}<a href={`https://arxiv.org/abs/${arxivId}`} target="_blank" rel="noreferrer" aria-label="Open original paper"><ExternalLink size={16}/></a></div>{(status||error)&&<p className="pdf-status" role="status">{error||status}</p>}{error&&<button className="button small" onClick={()=>setAttempt(value=>value+1)}>Retry PDF</button>}{destination&&!match&&/^https:\/\/arxiv\.org\//.test(destination.source.url)&&<a className="text-button" href={destination.source.url} target="_blank" rel="noreferrer">Open original section<ExternalLink size={13}/></a>}<div className="pdf-pages" ref={pane}>{document&&Array.from({length:document.numPages},(_,index)=><PdfPage key={index} document={document} page={index+1} scale={scale} match={match} onVisible={setPage}/>)}</div></section>;
+  return <section className="paper-pdf" aria-label={`Original paper: ${title}`}><div className="pdf-toolbar"><button className="icon-button" aria-label="Previous page" disabled={!document||page<=1} onClick={()=>goTo(page-1)}><ChevronLeft size={16}/></button><input aria-label="Page number" type="number" min={1} max={document?.numPages||1} value={page} onChange={event=>{const next=Number(event.target.value);if(next>0)goTo(next);}}/><span>/ {document?.numPages||"—"}</span><button className="icon-button" aria-label="Next page" disabled={!document||page===document.numPages} onClick={()=>goTo(page+1)}><ChevronRight size={16}/></button><button className="icon-button" aria-label="Zoom out" disabled={scale<=.35} onClick={()=>{setFitWidth(false);setScale(value=>Math.max(.35,value-.15));}}><Minus size={16}/></button><button className="text-button" aria-label="Fit paper width" title="Fit paper width" onClick={()=>setFitWidth(true)}>{Math.round(scale*100)}%</button><button className="icon-button" aria-label="Zoom in" disabled={scale>=2.5} onClick={()=>{setFitWidth(false);setScale(value=>Math.min(2.5,value+.15));}}><Plus size={16}/></button><form onSubmit={event=>{event.preventDefault();void find();}}><input type="search" aria-label="Search paper" placeholder="Find in paper" value={search} onChange={event=>setSearch(event.target.value)}/><button className="icon-button" aria-label="Find next" disabled={!document}><Search size={15}/></button></form>{download&&<a href={download} download={`${arxivId.replaceAll("/","-")}.pdf`} aria-label="Download paper"><Download size={16}/></a>}<a href={`https://arxiv.org/abs/${arxivId}`} target="_blank" rel="noreferrer" aria-label="Open original paper"><ExternalLink size={16}/></a></div>{(status||error)&&<p className="pdf-status" role="status">{error||status}</p>}{error&&<button className="button small" onClick={()=>setAttempt(value=>value+1)}>Retry PDF</button>}{destination&&!match&&/^https:\/\/arxiv\.org\//.test(destination.source.url)&&<a className="text-button" href={destination.source.url} target="_blank" rel="noreferrer">Open original section<ExternalLink size={13}/></a>}<div className="pdf-pages" ref={pane}>{document&&Array.from({length:document.numPages},(_,index)=><PdfPage key={index} document={document} page={index+1} scale={scale} match={match} onVisible={setPage}/>)}</div></section>;
 }

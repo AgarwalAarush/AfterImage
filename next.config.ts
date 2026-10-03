@@ -18,6 +18,7 @@ const config: NextConfig = {
       "./src/components/subject-mechanism.module.css", "./src/lib/scene-layout.ts",
       "./src/lib/diagram-text-metrics.ts", "./src/lib/diagram-text-metrics.json",
       "./src/app/globals.css", "./src/app/theme.css", "./src/app/ui.css", "./src/app/layout.tsx",
+      "./src/components/app.tsx", "./src/components/theme-control.tsx",
       "./src/components/paper-assistant.tsx", "./src/components/paper-pdf.tsx", "./src/components/assistant-answer.tsx",
       "./src/lib/assistant-model.ts", "./src/lib/pdf-location.ts",
       "./src/lib/theme.ts", "./src/components/subject-reader.tsx", "./src/components/subject-prose.tsx", "./src/components/reader-quiz.tsx",
