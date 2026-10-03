@@ -236,3 +236,37 @@ export async function discoverPapers(query: string, recent: boolean, request: ty
     providers,
   };
 }
+
+/** Prefer the canonical DOI entity route; title search covers unindexed DOI aliases. */
+export async function verifiedPopularity(paper: {id: string;title: string}, request: typeof fetch = fetch): Promise<PaperPopularity | undefined> {
+  try {
+    const id = parsePaperId(paper.id);
+    const normalize = (title: string) => title.toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
+    const verified = (works: unknown[]) => {
+      const matches = works.filter((w): w is Record<string, unknown> => !!w && typeof w === "object" &&
+        typeof (w as Record<string, unknown>).title === "string" &&
+        normalize((w as Record<string, unknown>).title as string) === normalize(paper.title));
+      const signal = openAlexPopularity(matches)[id];
+      if (!signal) return;
+      const work = matches.find(w => openAlexPopularity([w])[id]?.citedByCount === signal.citedByCount);
+      return {...signal,openAlexId: typeof work?.id === "string" ? work.id : undefined,verifiedAt: new Date().toISOString()};
+    };
+    const read = async (url: URL) => {
+      if (process.env.OPENALEX_API_KEY) url.searchParams.set("api_key",process.env.OPENALEX_API_KEY);
+      const response = await request(url,{signal: AbortSignal.timeout(20000)});
+      if (!response.ok) return {status:response.status,body:undefined};
+      const text = await response.text();
+      return {status:response.status,body:text.length <= 3_000_000 ? JSON.parse(text) : undefined};
+    };
+    const direct = await read(new URL(`https://api.openalex.org/works/https://doi.org/10.48550/arxiv.${id}`));
+    const signal = verified([direct.body]);
+    if (signal) return signal;
+    // Never amplify quota/server failures. Missing or mismatched DOI aliases get one search.
+    if (direct.status !== 200 && direct.status !== 404) return;
+    const url = new URL("https://api.openalex.org/works");
+    url.searchParams.set("search",paper.title);url.searchParams.set("corpus","all");url.searchParams.set("per_page","25");
+    url.searchParams.set("select","id,title,doi,locations,primary_location,best_oa_location,cited_by_count,citation_normalized_percentile");
+    const search = await read(url);
+    return verified(Array.isArray(search.body?.results) ? search.body.results : []);
+  } catch {return undefined;}
+}

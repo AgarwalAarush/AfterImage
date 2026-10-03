@@ -1,3 +1,4 @@
+import { ensurePreferences } from "./preferences";
 import type { AppState, Entry } from "./types";
 
 /** Remove the retired post-reading capture fields from legacy JSON state. */
@@ -18,5 +19,7 @@ export function currentState(value: unknown): AppState {
       return [id, readingEntry as Entry];
     }),
   );
-  return { ...state, schemaVersion: 2, entries } as AppState;
+  const normalized = { ...state, schemaVersion: 2, entries } as AppState;
+  ensurePreferences(normalized);
+  return normalized;
 }

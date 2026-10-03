@@ -18,7 +18,7 @@ test('discovery excludes every Library status, latest feedback, and the later co
     {paperId:'irrelevant',value:'irrelevant',at:'2026-07-01T00:00:00Z'},
     {paperId:'prerequisite',value:'advanced',at:'2026-09-11T00:00:00Z'},
   ];
-  assert.deepEqual([...excludedRecommendations({entries,feedback},now)].sort(), ['archived','irrelevant','read','reading','recent','saved']);
+  assert.deepEqual([...excludedRecommendations({entries,feedback},now)].sort(), ['archived','irrelevant','prerequisite','read','reading','recent','saved']);
 });
 
 test('reading activity refreshes suggestions only when direction and worker capacity allow it', () => {

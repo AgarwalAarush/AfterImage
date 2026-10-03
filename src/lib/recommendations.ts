@@ -1,7 +1,23 @@
+import { ensurePreferences, latestRatings, interestEligible } from "./preferences";
 import { z } from "zod";
 import { parsePaperId } from "./identity";
 import type { AppState, Job, Recommendation } from "./types";
 
+export const recommendationReceiptSchema = z.object({
+  policy: z.literal("preferences-v1"), profileRevision: z.number().int().nonnegative(),
+  preferenceInputs: z.array(z.object({id: z.string().max(60),strength: z.enum(["stronger","normal","less","off"])})).max(12),
+  learningEnabled: z.boolean(),
+  signals: z.array(z.object({paperId:z.string().max(40),signal:z.number().min(-0.5).max(4),metadataDigest:z.string().regex(/^[a-f0-9]{64}$/).nullable()})).max(2000),
+  ranking: z.array(z.object({paperId: z.string().max(40),metadataDigest: z.string().regex(/^[a-f0-9]{64}$/),
+    relevance: z.number().min(0).max(1),nextStep: z.number().min(0).max(1),
+    citationCount: z.number().int().nonnegative().nullable(),normalizedPercentile: z.number().min(0).max(1).nullable(),
+    openAlexId: z.string().max(160).nullable(),verifiedAt: z.string().datetime().nullable(),
+    popularity: z.number().min(0).max(1).nullable(),adjustment: z.number().min(-0.05).max(0.05),score: z.number(),
+  })).max(12),
+  grounding: z.array(z.object({paperId: z.string().max(40),metadataDigest: z.string().regex(/^[a-f0-9]{64}$/),
+    identity: z.boolean(),reason: z.boolean(),focus: z.boolean(),attempt: z.number().int().min(1).max(2),
+  })).max(24),
+});
 export const recommendationRunSchema = z.object({
   candidateCount: z.number().int().min(0).max(2000),
   discoveredCount: z.number().int().min(0).max(2000).optional(),
@@ -36,18 +52,21 @@ export function readingContextIds(text: string) {
 
 /** Enforce exclusions both before ranking and again against current server state. */
 export function excludedRecommendations(
-  state: Pick<AppState, "entries" | "feedback">,
+  state: Pick<AppState, "entries" | "feedback"> & Pick<Partial<AppState>, "preferences">,
   now = Date.now(),
 ) {
   // Next reads is discovery, so every Library entry has already been chosen.
   const ids = new Set(Object.values(state.entries).map(e => e.paperId));
   const latest = new Map<string, AppState["feedback"][number]>();
   for (const feedback of state.feedback) {
+    if (feedback.undoneAt) continue;
     const previous = latest.get(feedback.paperId);
     if (!previous || Date.parse(feedback.at) >= Date.parse(previous.at)) latest.set(feedback.paperId, feedback);
   }
+  if (state.preferences) for (const e of latestRatings(state.preferences).values())
+    latest.set(e.paperId, {paperId: e.paperId, value: e.value!, at: e.at});
   for (const feedback of latest.values()) {
-    if (["known", "irrelevant"].includes(feedback.value) ||
+    if (["known", "irrelevant", "advanced"].includes(feedback.value) ||
       (feedback.value === "later" && now - Date.parse(feedback.at) < 30 * 86400000)) ids.add(feedback.paperId);
   }
   return ids;
@@ -83,10 +102,14 @@ export function queueRecommendationRefill(state: AppState, now: string, id: () =
   state.jobs = state.jobs.slice(-100);
 }
 
+export function eligibleRecommendation(state: AppState, rec: Recommendation) {
+  const profile = ensurePreferences(state);
+  return interestEligible(profile,profile.features[rec.paperId]);
+}
 /** Remove consumed picks in the same write that saves or dismisses the paper. */
 export function advanceRecommendations(state: AppState, now: string, id: () => string) {
   const excluded = excludedRecommendations(state, Date.parse(now));
-  const remaining = state.recommendations.filter(rec => !excluded.has(rec.paperId));
+  const remaining = state.recommendations.filter(rec => !excluded.has(rec.paperId) && eligibleRecommendation(state,rec));
   if (remaining.length === state.recommendations.length) return;
   state.recommendations = remaining;
   queueRecommendationRefill(state, now, id);
@@ -95,10 +118,17 @@ export function advanceRecommendations(state: AppState, now: string, id: () => s
 /** Recheck live state on publication: a late save/dismissal must never reappear. */
 export function publishRecommendations(state: AppState, picks: Recommendation[], job: Job, now: string, id: () => string) {
   const excluded = excludedRecommendations(state, Date.parse(now));
+  if (job.preferenceRevision !== undefined && job.preferenceRevision !== ensurePreferences(state).revision) {
+    state.recommendations = state.recommendations.filter(r => !excluded.has(r.paperId) && eligibleRecommendation(state,r));
+    job.status = "complete";
+    delete job.recommendationRefillRequested;
+    queueRecommendationRefill(state, now, id);
+    return false;
+  }
   const retained = job.recommendationMode === "refill" ? state.recommendations : [];
   const seen = new Set<string>();
   state.recommendations = [...retained, ...picks].filter(rec => {
-    if (excluded.has(rec.paperId) || seen.has(rec.paperId)) return false;
+    if (excluded.has(rec.paperId) || !eligibleRecommendation(state,rec) || seen.has(rec.paperId)) return false;
     seen.add(rec.paperId);
     return true;
   }).slice(0, 3);
@@ -107,6 +137,7 @@ export function publishRecommendations(state: AppState, picks: Recommendation[],
   job.status = "complete";
   delete job.recommendationRefillRequested;
   if (needsRefill) queueRecommendationRefill(state, now, id);
+  return true;
 }
 
 /** Replacements run before queued long-form preparation; running work is untouched. */

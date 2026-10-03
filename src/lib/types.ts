@@ -128,6 +128,9 @@ export type Recommendation = {
   depth: string;
 };
 export type Feedback = {
+  eventId?: string;
+  profileRevision?: number;
+  undoneAt?: string;
   paperId: string;
   value: "useful" | "known" | "advanced" | "irrelevant" | "later";
   at: string;
@@ -146,6 +149,7 @@ export type Job = {
   attempts: number;
   /** Automatic discovery fills vacant slots; an explicit refresh replaces the shortlist. */
   recommendationMode?: "refill";
+  preferenceRevision?: number;
   /** A reading/dismissal action arrived after this recommendation job was claimed. */
   recommendationRefillRequested?: boolean;
   stage?: WorkerStage;
@@ -156,6 +160,9 @@ export type Job = {
 };
 export type AppState = {
   schemaVersion: 2;
+  preferences?: import("./preferences").PreferenceLedger;
+  preferenceSummary?: import("./preferences").PreferenceSummary;
+  recommendationReceipts?: unknown[];
   assistantRequests?: AssistantRequest[];
   papers: Paper[];
   entries: Record<string, Entry>;

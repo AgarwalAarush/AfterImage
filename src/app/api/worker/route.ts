@@ -1,3 +1,4 @@
+import { ensurePreferences } from "@/lib/preferences";
 import { studySchema, validateStudy } from "@/lib/study";
 import { NextResponse } from "next/server";
 import { workerAuth } from "@/lib/auth";
@@ -8,7 +9,7 @@ import { randomUUID } from "node:crypto";
 import { importPaper } from "@/lib/papers";
 import { validateRecall } from "@/lib/recall-validation";
 import { parsePaperId } from "@/lib/identity";
-import { nextQueuedJob, publishRecommendations, recommendationRunSchema } from "@/lib/recommendations";
+import { nextQueuedJob, queueRecommendationRefill, publishRecommendations, recommendationRunSchema, recommendationReceiptSchema } from "@/lib/recommendations";
 import type { Job, Paper } from "@/lib/types";
 import { recordWorkerProgress } from "@/lib/worker-progress";
 export const maxDuration = 60;
@@ -61,6 +62,7 @@ export async function POST(req: Request) {
         }
         const job = nextQueuedJob(s.jobs);
         if (!job) return { job: null };
+        if (job.type === "recommend") job.preferenceRevision = ensurePreferences(s).revision;
         job.status = "running";
         job.attempts++;
         job.startedAt = now;
@@ -83,6 +85,7 @@ export async function POST(req: Request) {
           entries: s.entries,
           feedback: s.feedback,
           recommendations: s.recommendations,
+          preferences: job.type === "recommend" ? s.preferences : undefined,
         };
       }
       const job = s.jobs.find((j) => j.id === body.jobId);
@@ -164,10 +167,22 @@ export async function POST(req: Request) {
           s.jobs.push({id:randomUUID(),type:"study",paperId:p.id,status:"queued",createdAt:now,attempts:0});
       } else {
         const report = body.report ? recommendationRunSchema.parse(body.report) : undefined;
-        if (report && report.directionUpdatedAt !== (s.direction.updatedAt || ""))
-          throw new Error("Your direction changed during discovery. Request a new shortlist.");
+        const profileChanged = job.preferenceRevision !== undefined && job.preferenceRevision !== ensurePreferences(s).revision;
+        if (profileChanged) {
+          publishRecommendations(s,[],job,now,randomUUID);
+          job.finishedAt = now;
+          delete job.leaseToken;
+          return {ok: true, stalePreferences: true};
+        }
+        if (report && report.directionUpdatedAt !== (s.direction.updatedAt || "")) {
+          job.status = "complete";
+          queueRecommendationRefill(s,now,randomUUID);
+          return {ok: true, stalePreferences: true};
+        }
         for (const p of newPapers)
           if (!s.papers.some((x) => x.id === p.id)) s.papers.push(p);
+        if (ensurePreferences(s).enabled && (!body.receipt || job.preferenceRevision === undefined))
+          throw new Error("Compatible reviewed discovery worker required");
         const result = recommendationSchema.parse(body.result);
         const seen = new Set<string>();
         for (const r of result.recommendations) {
@@ -179,6 +194,18 @@ export async function POST(req: Request) {
         s.recommendationSource = "codex";
         s.recommendedAt = now;
         s.recommendationRun = report;
+        if (body.receipt) {
+          const receipt = recommendationReceiptSchema.parse(body.receipt);
+          if (receipt.profileRevision !== job.preferenceRevision || receipt.learningEnabled !== ensurePreferences(s).enabled) throw new Error("Preference receipt mismatch");
+          for (const rec of result.recommendations) {
+            const canonical = ensurePreferences(s).features[rec.paperId];
+            const verdict = receipt.grounding.filter(v => v.paperId === rec.paperId).at(-1);
+            const ranking = receipt.ranking.find(r => r.paperId === rec.paperId && r.metadataDigest === canonical?.digest && r.relevance >= 0.6);
+            if (!canonical || !ranking || ranking.metadataDigest !== canonical.digest || ranking.relevance < 0.6 || !verdict || verdict.metadataDigest !== canonical.digest || !verdict.identity || !verdict.reason || !verdict.focus)
+              throw new Error("Grounding receipt mismatch");
+          }
+          s.recommendationReceipts = [...(s.recommendationReceipts || []),receipt].slice(-30);
+        }
         // Discovery publishes metadata only. The reader explicitly requests a kit.
       }
       job.status = "complete";
