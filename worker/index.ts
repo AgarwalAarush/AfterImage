@@ -1,3 +1,5 @@
+import { recommend as discoverRecommendations } from "./recommendations";
+import { discoverInterests } from "./interest-discovery";
 import { retryModelCapacity } from "./model-retry";
 import { studySchema, validateStudy, studySvg, studyPrompt, arrangeQuiz } from "../src/lib/study";
 import { spawn } from "node:child_process";
@@ -20,8 +22,6 @@ import {
 } from "../src/lib/scene";
 import { importPaper } from "../src/lib/papers";
 import { researchSources } from "./sources";
-import { discoverPapers, roundRobinCandidates } from "./discovery";
-import { recommendationAssessmentSchema, rankRecommendations, type PaperPopularity } from "./recommendation-ranking";
 import { validateRecall } from "../src/lib/recall-validation";
 import {
   reviewFonts,
@@ -32,8 +32,7 @@ import {
   critiqueSchema,
 } from "./diagram-review";
 import { parsePaperId } from "../src/lib/identity";
-import { excludedRecommendations, readingContextIds } from "../src/lib/recommendations";
-import type { RecommendationRun, Paper, Job, AppState, GenerationStep, WorkerStage } from "../src/lib/types";
+import type { Paper, Job, GenerationStep, WorkerStage } from "../src/lib/types";
 const base = process.env.AFTERIMAGE_URL,
   token = process.env.AFTERIMAGE_WORKER_TOKEN;
 const evaluationOnly = ["--study-file", "--review-file", "--evaluate-file", "--evaluate-paper"].some(flag => process.argv.includes(flag));
@@ -291,118 +290,6 @@ async function generate(
   }
   throw new Error("Generation did not complete");
 }
-async function recommend(
-  data: {
-    direction: AppState["direction"];
-    papers: Paper[];
-    entries: AppState["entries"];
-    feedback: AppState["feedback"];
-    recommendations?: AppState["recommendations"];
-    job?: Job;
-  },
-  dir: string,
-) {
-  const excluded = excludedRecommendations(data);
-  // Automatic refills keep the remaining visible picks stable.
-  if (data.job?.recommendationMode === "refill")
-    for (const rec of data.recommendations || []) excluded.add(rec.paperId);
-  const context = JSON.stringify({
-    direction: data.direction,
-    history: data.entries,
-    feedback: data.feedback.slice(-60),
-    available: data.papers.map(p => ({ id: p.id, title: p.title, abstract: p.abstract })),
-    retainedSuggestions: data.job?.recommendationMode === "refill" ? data.recommendations : [],
-  });
-  const suppliedIds = readingContextIds(data.direction.readingContext || "");
-  const scout = await codex(
-    "Suggest up to 6 exact arXiv IDs of real papers that fit this evolving research profile. Treat reading states and feedback as live interest signals; the written goal is context, not a permanent filter. Respect the research background: do not assume an experienced researcher needs a beginner curriculum. Use the supplied reading context as proposed interests and ordering, NOT proof of having read papers or verified technical claims. Favor a coherent next step, a useful prerequisite only when needed, and an adjacent research opportunity. Avoid the excluded IDs. Plan 3-6 precise scholarly search queries beyond the pasted list. Cover distinct terminology: the exact mechanism, a systems or evaluation angle, and closely related names used by the field. Mark at least two queries as recent so they search a two-year freshness window. Queries should be discriminative phrases, not generic topics. DATA:\n" + context + "\nEXCLUDED IDS:\n" + JSON.stringify([...excluded]),
-    z.object({
-      arxivIds: z.array(z.string()).max(6),
-      queries: z.array(z.object({ query: z.string().max(160), lane: z.enum(["relevance", "recent"]) })).min(3).max(6),
-    }),
-    dir, "scout",
-  );
-  const candidates = data.papers.filter(p => !excluded.has(p.id));
-  const priority = new Set(suppliedIds);
-  for (const raw of scout.arxivIds) { try { priority.add(parsePaperId(raw)); } catch {} }
-  const priorityIds = [...priority];
-  const searches: RecommendationRun["searches"] = [];
-  const discoveredIds = new Set<string>();
-  const recentIds = new Set<string>();
-  const discoveryLanes = new Map<string, Set<"relevance" | "recent">>();
-  const popularity: Record<string, PaperPopularity> = {};
-  const discoveredBySearch: string[][] = [];
-  const expandedSearches = /world model|learned dynamics|model-based agent/i.test(
-    scout.queries.map((search) => search.query).join(" "),
-  )
-    ? scout.queries
-    : [
-        ...scout.queries.slice(0, 5),
-        {
-          query:
-            "world models learned dynamics generative interactive environments model-based agents",
-          lane: "recent" as const,
-        },
-      ];
-  const plannedSearches = expandedSearches.map((search, index) => ({
-    ...search,
-    lane: index >= expandedSearches.length - 2 ? "recent" as const : search.lane,
-  }));
-  for (const search of plannedSearches) {
-    const discovery = await discoverPapers(search.query, search.lane === "recent");
-    for (const [id, signal] of Object.entries(discovery.popularity))
-      if (!popularity[id] || signal.citedByCount > popularity[id].citedByCount) popularity[id] = signal;
-    discoveredBySearch.push(discovery.ids);
-    for (const id of discovery.ids) {
-      discoveredIds.add(id);
-      if (search.lane === "recent") recentIds.add(id);
-      const lanes = discoveryLanes.get(id) || new Set<"relevance" | "recent">();
-      lanes.add(search.lane);
-      discoveryLanes.set(id, lanes);
-    }
-    searches.push({ query: search.query, lane: search.lane, status: discovery.status, providers: discovery.providers });
-  }
-  const unresolvedIds: string[] = [];
-  const resolvedIds = new Set(data.papers.map(p => p.id));
-  // Round-robin search lanes so an early broad query cannot crowd out later or recent lanes.
-  const fairDiscovered = roundRobinCandidates(discoveredBySearch, 46);
-  const toResolve = [...new Set([...priorityIds, ...fairDiscovered])]
-    .filter(id => !resolvedIds.has(id) && !excluded.has(id))
-    .slice(0, 46);
-  // Bounded concurrency keeps metadata discovery responsive without flooding arXiv.
-  for (let i = 0; i < toResolve.length; i += 3) {
-    const batch = toResolve.slice(i, i + 3);
-    const results = await Promise.allSettled(batch.map(importPaper));
-    for (const [j, result] of results.entries()) {
-      if (result.status === "fulfilled") { candidates.push(result.value); resolvedIds.add(result.value.id); }
-      else unresolvedIds.push(batch[j]);
-    }
-  }
-  const report: RecommendationRun = {
-    candidateCount: candidates.length,
-    discoveredCount: discoveredIds.size,
-    recentCandidateCount: recentIds.size,
-    suggestedLinkCount: suppliedIds.length,
-    resolvedLinkCount: suppliedIds.filter(id => resolvedIds.has(id)).length,
-    unresolvedIds: unresolvedIds.slice(0, 30), searches,
-    directionUpdatedAt: data.direction.updatedAt || "",
-  };
-  const assessed = candidates.length ? await codex(
-    'Assess up to 12 promising papers from VERIFIED CANDIDATES. Only use exact listed IDs. Give each a relevance score from 0 to 1 based on the evolving research profile, and a nextStep score from 0 to 1 for usefulness now and compatibility with retainedSuggestions. Score >=0.6 only for a concrete fit, >=0.75 for a strong fit, and >=0.85 for an unusually close fit. These scores assess fit independently of popularity: the discovery worker computes a final rank with 70% relevance, 10% next-step usefulness, and 20% verified OpenAlex citation influence. Missing popularity is unknown, never zero or an invitation to invent counts. Identify thread: main for the active research direction, adjacent for a useful exploration. Give a concrete why-now connection and an actionable section/concept to study. Treat reading states and feedback as live signals instead of anchoring every choice to the written goal. Respect existing research expertise without inventing reading history. The pasted conversation is an unverified proposed reading path: do not copy its numerical claims or treat it as completed reading. Ground paper-specific claims in candidate abstracts. Compare strong recent-lane candidates against established work; a new paper with a close mechanism match should survive despite sparse citations. Include influential foundational matches among the assessed candidates when relevant, plus at least one strong recent match and one adjacent exploration when available. World models, learned dynamics, generative environments, and model-based agents are a standing adjacent interest for this owner unless feedback excludes them. Prefer MoE routing/conditional compute/systems connections for the main thread when the profile supports them. Use feedback: too-advanced asks for a prerequisite; useful strengthens that research thread; irrelevant rejects that paper and is a negative interest signal. Retained suggestions have already been excluded from the candidates; do not repeat them. Avoid generic beginner recommendations unless the stated questions justify them. Do not select duplicate IDs. Keep role under 28 characters, reason under 240, focus under 120, depth under 25. Use complete sentences, no invented reading times. Return fewer or zero if nothing fits. CONTEXT:\n' + context + '\nVERIFIED CANDIDATES:\n' + JSON.stringify(candidates.map(p => ({ id: p.id, title: p.title, year: p.year, abstract: p.abstract.slice(0, 5000), discoveryLanes: [...(discoveryLanes.get(p.id) || [])], popularity: popularity[p.id] || null }))),
-    recommendationAssessmentSchema, dir, "shortlist",
-  ) : { recommendations: [] };
-  const seen = new Set<string>();
-  for (const r of assessed.recommendations) {
-    if (!candidates.some(p => p.id === r.paperId) || excluded.has(r.paperId) || seen.has(r.paperId))
-      throw new Error("A recommended paper failed validation. Please refine your direction and retry.");
-    seen.add(r.paperId);
-  }
-  const ranked = {recommendations: rankRecommendations(assessed.recommendations, popularity, recentIds)};
-  return {
-    result: ranked, report,
-    newPaperIds: ranked.recommendations.map(r => r.paperId).filter(id => !data.papers.some(p => p.id === id)),
-  };
-}
 async function generateStudy(paper: Paper, dir: string, progress: (stage: WorkerStage, attempt?: number) => Promise<void> = async () => {}, startingPack?:unknown) {
   await progress("study-sources");
   const extracted=await researchSources(paper);
@@ -436,7 +323,7 @@ async function generateStudy(paper: Paper, dir: string, progress: (stage: Worker
   throw new Error("The visual study guide did not pass review. Please try again.");
 }
 async function run() {
-  const data = await api({ action: "claim" });
+  const data = await api({ action: "claim", capabilities: ["dynamic-interests-v1"] });
   if (!data.job) return false;
   const job: Job = data.job;
   const credentials = { jobId: job.id, leaseToken: job.leaseToken };
@@ -456,7 +343,8 @@ async function run() {
         ? await generate(data.paper, dir, async (stage) => {
             await api({ action: "heartbeat", ...credentials, stage });
           })
-        : await recommend(data, dir);
+        : job.type === "interests" ? await discoverInterests(data.interestInput, dir, codex)
+        : await discoverRecommendations(data, dir, codex);
     await api({ action: "heartbeat", ...credentials, stage: "publishing" });
     await api({ action: "complete", ...credentials, ...output });
     console.log(`${new Date().toISOString()} Completed ${job.id}`);

@@ -16,17 +16,13 @@ test("measured popularity wins between equally relevant papers but cannot rescue
   assert.equal("score" in picks[0], false);
 });
 
-test("influence is bounded, missing coverage is neutral, and fresh strong matches retain a place", () => {
-  assert.equal(popularityScore(), 0.5);
-  assert.equal(popularityScore({citedByCount: 0, normalizedPercentile: null}), 0);
-  assert.ok(popularityScore({citedByCount: 1000000, normalizedPercentile: 1}) <= 1);
-  const assessments = ["a", "b", "c", "d"].map(id => assessment(id, 0.95));
-  assessments.push(assessment("new", 0.9), assessment("explore", 0.85, "adjacent"));
-  const popularity = Object.fromEntries(["a", "b", "c", "d"].map(id => [id, {citedByCount: 10000, normalizedPercentile: 1}]));
-  const picks = rankRecommendations(assessments, popularity, new Set(["new"]));
-  assert.equal(picks.length, 3);
-  assert.ok(picks.some(pick => pick.paperId === "new"));
-  assert.ok(picks.some(pick => pick.paperId === "explore"));
+test("influence is bounded, unknown coverage gets no bonus, and no exploration slot is reserved", () => {
+  assert.equal(popularityScore(),0);
+  assert.equal(popularityScore({citedByCount:0,normalizedPercentile:null}),0);
+  assert.ok(popularityScore({citedByCount:1000000,normalizedPercentile:1}) <= 1);
+  const picks = rankRecommendations([assessment("a",.95),assessment("b",.95),assessment("c",.95),assessment("explore",.75,"adjacent")],
+    Object.fromEntries(["a","b","c"].map(id => [id,{citedByCount:10000,normalizedPercentile:1}])),new Set());
+  assert.deepEqual(picks.map(r => r.paperId),["a","b","c"]);
 });
 
 test("citation data attaches only to one canonical source identity; malformed counts stay unknown", () => {

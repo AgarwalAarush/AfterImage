@@ -14,21 +14,15 @@ const config: NextConfig = {
     "/api/reader/pdf": ["./src/content/subjects/lessons/*.json"],
     "/subjects": ["./src/content/subjects/lessons/*.json"],
     "/subjects/*": ["./src/content/subjects/lessons/*.json", "./src/content/subjects/mechanisms/*.json",
-      "./src/lib/subject-mechanism.ts", "./src/components/subject-mechanism.tsx",
-      "./src/components/subject-mechanism.module.css", "./src/lib/scene-layout.ts",
-      "./src/lib/diagram-text-metrics.ts", "./src/lib/diagram-text-metrics.json",
-      "./src/app/globals.css", "./src/app/theme.css", "./src/app/ui.css", "./src/app/layout.tsx",
-      "./src/components/app.tsx", "./src/components/theme-control.tsx",
-      "./src/components/paper-assistant.tsx", "./src/components/paper-pdf.tsx", "./src/components/assistant-answer.tsx",
-      "./src/lib/assistant-model.ts", "./src/lib/pdf-location.ts", "./src/lib/pdf-search.ts",
-      "./src/lib/theme.ts", "./src/components/subject-reader.tsx", "./src/components/subject-prose.tsx", "./src/components/reader-quiz.tsx",
-      "./src/lib/subject-visual-review-schema.ts", "./src/lib/subject-visual-review.ts",
-      "./src/lib/subject-mechanism-quality.ts", "./src/lib/subject-mechanism-store.ts",
-      "./package-lock.json", "./public/fonts/**/*",
-      "./node_modules/@fontsource-variable/newsreader/**/*.css", "./node_modules/@fontsource-variable/newsreader/**/*.woff2",
-      "./node_modules/@fontsource-variable/newsreader/**/*.woff",
-      "./node_modules/@fontsource/ibm-plex-mono/**/*.css", "./node_modules/@fontsource/ibm-plex-mono/**/*.woff2",
-      "./node_modules/@fontsource/ibm-plex-mono/**/*.woff"],
+      "./src/content/subjects/workspace-acceptance.json", "./src/content/subjects/catalog.json",
+      // Runtime scope and isolation checks read source bytes, including the
+      // feature import closure. These globs contain code only; private artifacts,
+      // credentials and storage remain excluded above.
+      "./src/components/**/*.{ts,tsx,css}", "./src/lib/**/*.{ts,json}",
+      "./src/app/**/*.{ts,tsx,js,jsx,mdx,css}",
+      "./next.config.ts", "./package-lock.json", "./public/fonts/**/*",
+      "./node_modules/@fontsource-variable/newsreader/**/*.{css,woff,woff2}",
+      "./node_modules/@fontsource/ibm-plex-mono/**/*.{css,woff,woff2}"],
   },
   async headers() {
     return [
@@ -40,6 +34,12 @@ const config: NextConfig = {
           { key: "X-Frame-Options", value: "DENY" },
         ],
       },
+      // Same-origin iframes are permitted only for the local development review.
+      // Production retains DENY and both review routes return 404.
+      ...(process.env.NODE_ENV === "development" ? [{
+        source: "/subjects/review/workspace/frame",
+        headers: [{ key: "X-Frame-Options", value: "SAMEORIGIN" }],
+      }] : []),
       {
         source: "/api/documents/:id",
         headers: [{ key: "X-Frame-Options", value: "SAMEORIGIN" }],

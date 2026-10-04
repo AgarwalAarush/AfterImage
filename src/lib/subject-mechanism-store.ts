@@ -4,7 +4,8 @@ import path from "node:path";
 import { publishedSubjectMechanismSchema, subjectMechanismSchema, validateSubjectMechanism } from "./subject-mechanism";
 import { validateSubjectMath } from "./subject-math";
 import type { PublishedLesson } from "./subjects";
-import { subjectVisualPresentationDigest } from "./subject-visual-review";
+import { subjectPresentationScope } from "./subject-presentation-scope";
+import { subjectWorkspaceAccepted } from "./subject-workspace-review";
 import { subjectMechanismQualityVersion, validateSubjectMechanismQuality } from "./subject-mechanism-quality";
 
 export const subjectMechanismRendererFiles=["src/lib/subject-mechanism.ts","src/components/subject-mechanism.tsx","src/components/subject-mechanism.module.css","src/lib/scene-layout.ts","src/lib/diagram-text-metrics.ts","src/lib/diagram-text-metrics.json"];
@@ -26,7 +27,14 @@ export async function getSubjectMechanism(lesson:PublishedLesson,{allowSourcePas
     if(input.review.contentDigest!==mechanismDigest(JSON.stringify(subjectMechanismSchema.parse(input)))||input.review.rendererDigest!==await subjectMechanismRendererDigest())return null;
     if(!allowSourcePassed){
       const acceptance=input.review.visualAcceptance;
-      if(!acceptance||acceptance.semanticPolicyVersion!==subjectMechanismQualityVersion||acceptance.beatCount!==input.beats.length||acceptance.transitionCount!==(input.beats.length-1)*4||acceptance.presentationDigest!==await subjectVisualPresentationDigest())return null;
+      if(!acceptance||acceptance.semanticPolicyVersion!==subjectMechanismQualityVersion||acceptance.beatCount!==input.beats.length||acceptance.transitionCount!==(input.beats.length-1)*4)return null;
+      const scope=await subjectPresentationScope();
+      const current=acceptance.presentationDigest===scope.coreDigest;
+      const unchangedLegacy=scope.legacyCore.equivalent && acceptance.presentationDigest===scope.legacyCore.legacyPresentationDigest;
+      // Existing every-beat acceptance remains necessary. The legacy path also
+      // requires exact historical core/font/layout equivalence and a fresh,
+      // independently reviewed shared-workspace receipt for these source bytes.
+      if(!(current||unchangedLegacy)||!await subjectWorkspaceAccepted(scope))return null;
     }
     validateSubjectMechanism(input,lesson,lesson.sources);validateMechanismMath(input,lesson);
     validateSubjectMechanismQuality(input);

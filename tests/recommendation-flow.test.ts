@@ -4,6 +4,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 import { initialState } from "../src/lib/catalog";
+import { ensurePreferences, canonicalFeatures } from "../src/lib/preferences";
 import { publicState } from "../src/lib/public-state";
 import { queueRecommendationRefill } from "../src/lib/recommendations";
 import { paperPreparationModel } from "../src/lib/generation-progress";
@@ -15,6 +16,8 @@ function fixture() {
   const state = initialState();
   state.direction.goal = "Understand conditional compute.";
   state.papers = Array.from({length: 6}, (_, i) => ({...structuredClone(state.papers[0]), id: `2001.0000${i + 1}`, arxivId: `2001.0000${i + 1}`, title: `Test candidate ${i + 1}`, recall: null, scene: null}));
+  state.preferences = undefined;
+  state.recommendationReceipts = undefined;
   state.entries = {};
   state.feedback = [];
   state.jobs = [];
@@ -215,4 +218,48 @@ test("generation and study retain their longer lease and heartbeat renewal", asy
       assert.equal((await store.snapshot()).data.jobs[0].attempts, 1);
     }
   } finally { Date.now = originalNow; }
+});
+
+test("engagement acknowledgements are small, duplicate-safe and create no discovery or generation", async()=>{
+ const seed=await reset({...fixture(),preferences:undefined});
+ await post(stateRoute,{action:"learning-policy",enabled:true});
+ const before=(await store.snapshot()).data.jobs.length;
+ const eventId="88888888-8888-4888-8888-888888888888";
+ const body={action:"engagement",paperId:seed.papers[0].id,eventId,seconds:45,day:new Date().toISOString().slice(0,10)};
+ assert.deepEqual(await post(stateRoute,body),{ok:true,recorded:true});
+ assert.deepEqual(await post(stateRoute,body),{ok:true,recorded:false});
+ const state=(await store.snapshot()).data;
+ assert.equal(state.jobs.length,before);assert.deepEqual(state.entries,{});
+ assert.equal(state.preferences!.events.filter(e=>e.kind==="engaged").length,1);
+});
+test("feedback IDs suppress duplicate choices and Undo restores the consumed card",async()=>{
+ const seed=await reset({...fixture(),preferences:undefined});
+ const eventId="99999999-9999-4999-8999-999999999999";
+ const body={action:"feedback",paperId:seed.papers[0].id,eventId,value:"irrelevant"};
+ await post(stateRoute,body);await post(stateRoute,body);
+ assert.equal((await store.snapshot()).data.feedback.filter(e=>e.eventId===eventId).length,1);
+ const result=await post(stateRoute,{action:"undo-feedback",eventId});
+ assert.ok(result.state.recommendations.some((r:Recommendation)=>r.paperId===seed.papers[0].id));
+ assert.ok(!result.state.preferences);assert.ok(!result.state.recommendationReceipts);
+});
+
+
+test("enabled learning rejects missing or mismatched review receipts before publication",async()=>{
+ const seed=fixture();ensurePreferences(seed).enabled=true;await reset(seed);
+ await post(stateRoute,{action:"recommend"});const claim=await post(workerRoute,{action:"claim"},true);
+ const result={recommendations:[pick(seed.papers[3].id)]},digest=canonicalFeatures(seed.papers[3]).digest;
+ const receipt={policy:"preferences-v1",profileRevision:claim.job.preferenceRevision,learningEnabled:true,preferenceInputs:[],signals:[],
+   ranking:[{paperId:seed.papers[3].id,metadataDigest:digest,relevance:.9,nextStep:.9,citationCount:null,normalizedPercentile:null,
+    openAlexId:null,verifiedAt:null,popularity:null,adjustment:0,score:.72}],
+   grounding:[{paperId:seed.papers[3].id,metadataDigest:digest,identity:true,reason:true,focus:true,attempt:1}]};
+ const complete={action:"complete",jobId:claim.job.id,leaseToken:claim.job.leaseToken,result};
+ for(const invalid of [undefined,{...receipt,ranking:[]},{...receipt,learningEnabled:false},
+  {...receipt,grounding:[{...receipt.grounding[0],metadataDigest:"0".repeat(64)}]}]) {
+  const response=await workerRoute.POST(new Request("http://localhost/api/worker",{method:"POST",
+   headers:{"Content-Type":"application/json",Authorization:"Bearer isolated-test-worker"},body:JSON.stringify({...complete,receipt:invalid})}));
+  assert.equal(response.status,400);assert.deepEqual((await store.snapshot()).data.recommendations,seed.recommendations);
+ }
+ await post(workerRoute,{...complete,receipt},true);const published=(await store.snapshot()).data;
+ assert.deepEqual(published.recommendations,result.recommendations);assert.equal(published.recommendationReceipts?.length,1);
+ assert.equal(publicState(published,true).recommendationReceipts,undefined);
 });

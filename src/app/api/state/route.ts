@@ -1,3 +1,5 @@
+import { addInterest, decideInterestSuggestion, queueInterestDiscovery, requestInterestDiscovery, retireInterest } from "@/lib/interest-suggestions";
+import { ensurePreferences, recordChoice, recordEngagement, undoFeedback } from "@/lib/preferences";
 import { NextResponse } from "next/server";
 import { authenticated, sameOrigin } from "@/lib/auth";
 import { mutate, publicState, snapshot, stateStatus } from "@/lib/store";
@@ -52,6 +54,10 @@ export async function POST(req: Request) {
       imported = existing || (await importPaper(id));
     }
     const result = await mutate((s) => {
+      const profile = ensurePreferences(s);
+      let feedbackUndone: boolean | undefined;
+      const eventId = body.eventId ? z.string().uuid().parse(body.eventId) : randomUUID();
+      const interestReplay = Boolean(profile.interestDiscovery?.decisions[eventId]);
       const id = String(body.paperId || imported?.id || "");
       const paper = s.papers.find((p) => p.id === id);
       const ensureEntry = () => {
@@ -66,7 +72,56 @@ export async function POST(req: Request) {
       const refreshFromReading = () => {
         queueRecommendationRefill(s, now, randomUUID);
       };
+      if (body.action === "engagement") {
+        const input = z.object({eventId: z.string().uuid(), paperId: z.string().max(40),
+          seconds: z.number().min(45).max(86400), day: z.string().regex(/^\d{4}-\d{2}-\d{2}$/)}).parse(body);
+        const recorded = recordEngagement(s,input.eventId,input.paperId,input.seconds,input.day,now);
+        return {ok: true, recorded};
+      }
       switch (body.action) {
+        case "learning-policy": {
+          const enabled = z.boolean().parse(body.enabled);
+          if (profile.enabled !== enabled) {profile.enabled = enabled;profile.revision++;refreshFromReading();}
+          break;
+        }
+        case "interest-add": {
+          addInterest(s,z.string().parse(body.label),eventId,now);
+          if (!interestReplay) refreshFromReading();
+          break;
+        }
+        case "interest-remove":
+          retireInterest(s,z.string().min(1).max(60).parse(body.interestId),eventId,now);
+          if (!interestReplay) refreshFromReading();
+          break;
+        case "interest-suggestion": {
+          const input = z.object({suggestionId:z.string().min(1).max(80),decision:z.enum(["add","ignore"])}).parse(body);
+          decideInterestSuggestion(s,input.suggestionId,input.decision,eventId,now);
+          if (!interestReplay && input.decision === "add") refreshFromReading();
+          break;
+        }
+        case "refresh-interest-suggestions":
+          requestInterestDiscovery(s,eventId,now,randomUUID);
+          break;
+        case "interests": {
+          const update = z.object({learningFromReading: z.boolean(), interests: z.array(z.object({
+            id: z.string().min(1).max(60), strength: z.enum(["stronger","normal","less","off"]),
+          })).max(24)}).parse(body);
+          let changed = profile.learningFromReading !== update.learningFromReading;
+          if (new Set(update.interests.map(i => i.id)).size !== update.interests.length) throw new Error("Duplicate interest");
+          for (const interest of update.interests) {
+            const existing = profile.interests.find(i => i.id === interest.id);
+            if (!existing) throw new Error("Unknown interest");
+            changed ||= existing.strength !== interest.strength;
+            existing.strength = interest.strength;
+          }
+          profile.learningFromReading = update.learningFromReading;
+          if (changed) {profile.revision++;refreshFromReading();}
+          break;
+        }
+        case "undo-feedback":
+          feedbackUndone = undoFeedback(s,z.string().uuid().parse(body.eventId),now);
+          if (feedbackUndone) refreshFromReading();
+          break;
         case "import":
           if (!s.papers.some((p) => p.id === imported!.id))
             s.papers.push(imported!);
@@ -127,12 +182,21 @@ export async function POST(req: Request) {
             .parse(body.direction);
           s.direction.updatedAt = now;
           s.onboardingDone = true;
+          profile.revision++;
+          refreshFromReading();
           break;
         case "feedback": {
           const value = z
             .enum(["useful", "known", "advanced", "irrelevant", "later"])
             .parse(body.value);
-          s.feedback.push({ paperId: id, value, at: now });
+          if (!paper) throw new Error("Paper not found");
+          const previous = s.feedback.find(f => f.eventId === eventId);
+          if (previous && (previous.paperId !== id || previous.value !== value)) throw new Error("Feedback action already used");
+          if (!previous) {
+            s.feedback.push({ paperId: id, value, at: now, eventId, profileRevision: profile.revision });
+            recordChoice(s,{id: eventId,paperId: id,kind: "feedback",value,at: now,recommendation: s.recommendations.find(r => r.paperId === id)});
+          }
+          refreshFromReading();
           if (value === "later") ensureEntry();
           break;
         }
@@ -179,8 +243,14 @@ export async function POST(req: Request) {
         default:
           throw new Error("Unknown action");
       }
+      if (["import","generate","study"].includes(body.action)) recordChoice(s,{id: eventId,paperId: id,kind: "prepare",at: now});
+      if (body.action === "save") recordChoice(s,{id: eventId,paperId: id,kind: body.status === "reading" ? "reading" : "save",at: now});
+      if (body.action === "status" && ["reading","read"].includes(body.status)) recordChoice(s,{id: eventId,paperId: id,kind: "reading",at: now});
       advanceRecommendations(s, now, randomUUID);
-      return { state: publicState(s), paperId: id };
+      // Engagement deliberately returns before this block. Its small write never queues work.
+      if (!interestReplay && ["learning-policy","interests","interest-add","interest-remove","interest-suggestion","import","generate","study","save","status","feedback","undo-feedback"].includes(body.action))
+        queueInterestDiscovery(s,now,randomUUID);
+      return { state: publicState(s), paperId: id, ...(feedbackUndone === undefined ? {} : {feedbackUndone}) };
     });
     return NextResponse.json(result);
   } catch (e) {

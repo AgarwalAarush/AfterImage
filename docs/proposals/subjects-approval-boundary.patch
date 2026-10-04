@@ -1,0 +1,142 @@
+--- a/src/lib/subject-visual-review.ts
++++ b/src/lib/subject-visual-review.ts
+@@ -1,21 +1,15 @@
+ import { createHash } from "node:crypto";
+-import { readFile, readdir, realpath, stat } from "node:fs/promises";
++import { readFile, realpath, stat } from "node:fs/promises";
+ import path from "node:path";
+ import sharp from "sharp";
+ import { layoutSubjectMechanism, type SubjectMechanism } from "./subject-mechanism";
+ import { subjectMechanismQualityVersion } from "./subject-mechanism-quality";
+ import { subjectVisualReviewSchema, subjectVisualBrowserAuditSchema, type SubjectVisualReview, type SubjectVisualAcceptance } from "./subject-visual-review-schema";
+
++import { subjectCorePresentationFiles, subjectPresentationScope } from "./subject-presentation-scope";
++
+ const hash = (value: string | Buffer) => createHash("sha256").update(value).digest("hex");
+-export const subjectVisualPresentationFiles = [
+-  "src/app/globals.css", "src/app/theme.css", "src/app/ui.css", "src/app/layout.tsx", "src/lib/theme.ts",
+-  "src/components/paper-feedback.tsx", "src/components/reading-interests.tsx",
+-  "src/components/app.tsx", "src/components/theme-control.tsx", "src/components/subject-reader.tsx", "src/components/subject-prose.tsx", "src/components/reader-quiz.tsx",
+-  "src/components/paper-assistant.tsx", "src/components/paper-pdf.tsx", "src/components/assistant-answer.tsx",
+-  "src/lib/assistant-model.ts", "src/lib/pdf-location.ts", "src/lib/pdf-search.ts",
+-  "src/lib/subject-visual-review-schema.ts", "src/lib/subject-visual-review.ts",
+-  "src/lib/subject-mechanism-quality.ts", "src/lib/subject-mechanism-store.ts", "package-lock.json",
+-];
++export const subjectVisualPresentationFiles = subjectCorePresentationFiles;
+ let productionPresentationDigest: Promise<string> | undefined;
+ /** Geometry has its own fingerprint. Appearance includes local fonts and the imported font CSS/bytes. */
+ export function subjectVisualPresentationDigest() {
+@@ -24,19 +18,7 @@
+   return computePresentationDigest();
+ }
+ async function computePresentationDigest() {
+-  const fontDirectories = ["public/fonts", "node_modules/@fontsource-variable/newsreader", "node_modules/@fontsource/ibm-plex-mono"];
+-  const fontFiles: string[] = [];
+-  async function fonts(directory: string) {
+-    for (const item of await readdir(directory, { withFileTypes: true })) {
+-      const file = path.join(directory, item.name);
+-      if (item.isDirectory()) await fonts(file);
+-      else if (/\.(?:woff2?|css)$/.test(item.name)) fontFiles.push(file);
+-    }
+-  }
+-  for (const directory of fontDirectories) await fonts(directory);
+-  const files = [...subjectVisualPresentationFiles, ...fontFiles].sort();
+-  const manifest = await Promise.all(files.map(async file => [file, hash(await readFile(file))]));
+-  return hash(JSON.stringify(manifest));
++  return (await subjectPresentationScope()).coreDigest;
+ }
+ export function subjectBeatStateDigest(mechanism: SubjectMechanism, beatIndex: number) {
+   const beat = mechanism.beats[beatIndex];
+--- a/src/lib/subject-mechanism-store.ts
++++ b/src/lib/subject-mechanism-store.ts
+@@ -4,7 +4,8 @@
+ import { publishedSubjectMechanismSchema, subjectMechanismSchema, validateSubjectMechanism } from "./subject-mechanism";
+ import { validateSubjectMath } from "./subject-math";
+ import type { PublishedLesson } from "./subjects";
+-import { subjectVisualPresentationDigest } from "./subject-visual-review";
++import { subjectPresentationScope } from "./subject-presentation-scope";
++import { subjectWorkspaceAccepted } from "./subject-workspace-review";
+ import { subjectMechanismQualityVersion, validateSubjectMechanismQuality } from "./subject-mechanism-quality";
+
+ export const subjectMechanismRendererFiles=["src/lib/subject-mechanism.ts","src/components/subject-mechanism.tsx","src/components/subject-mechanism.module.css","src/lib/scene-layout.ts","src/lib/diagram-text-metrics.ts","src/lib/diagram-text-metrics.json"];
+@@ -26,7 +27,14 @@
+     if(input.review.contentDigest!==mechanismDigest(JSON.stringify(subjectMechanismSchema.parse(input)))||input.review.rendererDigest!==await subjectMechanismRendererDigest())return null;
+     if(!allowSourcePassed){
+       const acceptance=input.review.visualAcceptance;
+-      if(!acceptance||acceptance.semanticPolicyVersion!==subjectMechanismQualityVersion||acceptance.beatCount!==input.beats.length||acceptance.transitionCount!==(input.beats.length-1)*4||acceptance.presentationDigest!==await subjectVisualPresentationDigest())return null;
++      if(!acceptance||acceptance.semanticPolicyVersion!==subjectMechanismQualityVersion||acceptance.beatCount!==input.beats.length||acceptance.transitionCount!==(input.beats.length-1)*4)return null;
++      const scope=await subjectPresentationScope();
++      const current=acceptance.presentationDigest===scope.coreDigest;
++      const unchangedLegacy=scope.legacyCore.equivalent && acceptance.presentationDigest===scope.legacyCore.legacyPresentationDigest;
++      // Existing every-beat acceptance remains necessary. The legacy path also
++      // requires exact historical core/font/layout equivalence and a fresh,
++      // independently reviewed shared-workspace receipt for these source bytes.
++      if(!(current||unchangedLegacy)||!await subjectWorkspaceAccepted(scope))return null;
+     }
+     validateSubjectMechanism(input,lesson,lesson.sources);validateMechanismMath(input,lesson);
+     validateSubjectMechanismQuality(input);
+--- a/next.config.ts
++++ b/next.config.ts
+@@ -14,22 +14,15 @@
+     "/api/reader/pdf": ["./src/content/subjects/lessons/*.json"],
+     "/subjects": ["./src/content/subjects/lessons/*.json"],
+     "/subjects/*": ["./src/content/subjects/lessons/*.json", "./src/content/subjects/mechanisms/*.json",
+-      "./src/lib/subject-mechanism.ts", "./src/components/subject-mechanism.tsx",
+-      "./src/components/subject-mechanism.module.css", "./src/lib/scene-layout.ts",
+-      "./src/lib/diagram-text-metrics.ts", "./src/lib/diagram-text-metrics.json",
++      "./src/content/subjects/workspace-acceptance.json", "./src/content/subjects/catalog.json",
++      // Runtime scope and isolation checks read source bytes, including the
++      // feature import closure. These globs contain code only; private artifacts,
++      // credentials and storage remain excluded above.
++      "./src/components/**/*.{ts,tsx,css}", "./src/lib/**/*.{ts,json}",
+-      "./src/app/globals.css", "./src/app/theme.css", "./src/app/ui.css", "./src/app/layout.tsx",
++      "./src/app/**/*.{ts,tsx,js,jsx,mdx,css}",
+-      "./src/components/paper-feedback.tsx", "./src/components/reading-interests.tsx",
+-      "./src/components/app.tsx", "./src/components/theme-control.tsx",
+-      "./src/components/paper-assistant.tsx", "./src/components/paper-pdf.tsx", "./src/components/assistant-answer.tsx",
+-      "./src/lib/assistant-model.ts", "./src/lib/pdf-location.ts", "./src/lib/pdf-search.ts",
+-      "./src/lib/theme.ts", "./src/components/subject-reader.tsx", "./src/components/subject-prose.tsx", "./src/components/reader-quiz.tsx",
+-      "./src/lib/subject-visual-review-schema.ts", "./src/lib/subject-visual-review.ts",
+-      "./src/lib/subject-mechanism-quality.ts", "./src/lib/subject-mechanism-store.ts",
+-      "./package-lock.json", "./public/fonts/**/*",
+-      "./node_modules/@fontsource-variable/newsreader/**/*.css", "./node_modules/@fontsource-variable/newsreader/**/*.woff2",
+-      "./node_modules/@fontsource-variable/newsreader/**/*.woff",
+-      "./node_modules/@fontsource/ibm-plex-mono/**/*.css", "./node_modules/@fontsource/ibm-plex-mono/**/*.woff2",
+-      "./node_modules/@fontsource/ibm-plex-mono/**/*.woff"],
++      "./next.config.ts", "./package-lock.json", "./public/fonts/**/*",
++      "./node_modules/@fontsource-variable/newsreader/**/*.{css,woff,woff2}",
++      "./node_modules/@fontsource/ibm-plex-mono/**/*.{css,woff,woff2}"],
+   },
+   async headers() {
+     return [
+--- /dev/null
++++ b/scripts/approve-subject-workspace.ts
+@@ -0,0 +1,28 @@
++import { readFile, writeFile } from "node:fs/promises";
++import path from "node:path";
++import { createHash } from "node:crypto";
++import { subjectPresentationScope } from "../src/lib/subject-presentation-scope";
++import { validateSubjectWorkspaceReview, verifySubjectWorkspaceArtifacts, subjectWorkspaceAcceptance } from "../src/lib/subject-workspace-review";
++
++// Explicit approval-time command. A browser observation is not an approval.
++const args=process.argv.slice(2);
++if(args.length!==4||args[0]!=="--report"||args[2]!=="--expected-receipt-digest")
++  throw new Error("Usage: approve-subject-workspace.ts --report PRIVATE_REPORT --expected-receipt-digest none|SHA256");
++const expected=args[3];
++if(expected!=="none"&&!/^[a-f0-9]{64}$/.test(expected))throw new Error("Invalid expected receipt digest");
++const destination=path.resolve("src/content/subjects/workspace-acceptance.json");
++const hash=(bytes:Buffer)=>createHash("sha256").update(bytes).digest("hex");
++async function receiptDigest(){
++  try{return hash(await readFile(destination));}
++  catch(error){if((error as NodeJS.ErrnoException).code==="ENOENT")return "none";throw error;}
++}
++if(await receiptDigest()!==expected)throw new Error("Workspace receipt changed before review");
++const before=await subjectPresentationScope(process.cwd());
++const report=validateSubjectWorkspaceReview(JSON.parse(await readFile(path.resolve(args[1]),"utf8")),before);
++await verifySubjectWorkspaceArtifacts(report);
++const after=await subjectPresentationScope(process.cwd());
++if(before.coreDigest!==after.coreDigest||before.integrationDigest!==after.integrationDigest)
++  throw new Error("Presentation changed during review");
++if(await receiptDigest()!==expected)throw new Error("Workspace receipt changed during review");
++await writeFile(destination,JSON.stringify(subjectWorkspaceAcceptance(report),null,2)+"\n");
++console.log("Recorded independently reviewed workspace acceptance; per-mechanism publication checks still apply.");
