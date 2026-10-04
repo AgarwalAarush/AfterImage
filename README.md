@@ -1,6 +1,6 @@
 # AfterImage
 
-Recommendation pages and styles now have separate owners from the shared reader. Compute-only [Subjects presentation scope checks](docs/scoped-subjects-presentation-2026-10-03.md) distinguish unchanged diagram presentation from shared notifications; the runtime approval-gate change remains unapplied and release is still held.
+Recommendation pages and styles now have separate owners from the shared reader. The authorized [Subjects presentation scope gate](docs/scoped-subjects-presentation-2026-10-03.md) distinguishes unchanged diagram presentation from shared notifications and requires current independent workspace acceptance. Release remains held for final Dia acceptance and preservation of newer live renderer contracts.
 
 Library study figures now use compact captions with a small teaching-example or reported-evidence label beside their source, replacing the prominent disclaimer section. See [study-figure captions](docs/study-figure-captions-2026-10-03.md).
 

@@ -1,21 +1,15 @@
 import { createHash } from "node:crypto";
-import { readFile, readdir, realpath, stat } from "node:fs/promises";
+import { readFile, realpath, stat } from "node:fs/promises";
 import path from "node:path";
 import sharp from "sharp";
 import { layoutSubjectMechanism, type SubjectMechanism } from "./subject-mechanism";
 import { subjectMechanismQualityVersion } from "./subject-mechanism-quality";
 import { subjectVisualReviewSchema, subjectVisualBrowserAuditSchema, type SubjectVisualReview, type SubjectVisualAcceptance } from "./subject-visual-review-schema";
 
+import { subjectCorePresentationFiles, subjectPresentationScope } from "./subject-presentation-scope";
+
 const hash = (value: string | Buffer) => createHash("sha256").update(value).digest("hex");
-export const subjectVisualPresentationFiles = [
-  "src/app/globals.css", "src/app/theme.css", "src/app/ui.css", "src/app/layout.tsx", "src/lib/theme.ts",
-  "src/components/paper-feedback.tsx", "src/components/reading-interests.tsx",
-  "src/components/app.tsx", "src/components/theme-control.tsx", "src/components/subject-reader.tsx", "src/components/subject-prose.tsx", "src/components/reader-quiz.tsx",
-  "src/components/paper-assistant.tsx", "src/components/paper-pdf.tsx", "src/components/assistant-answer.tsx",
-  "src/lib/assistant-model.ts", "src/lib/pdf-location.ts", "src/lib/pdf-search.ts",
-  "src/lib/subject-visual-review-schema.ts", "src/lib/subject-visual-review.ts",
-  "src/lib/subject-mechanism-quality.ts", "src/lib/subject-mechanism-store.ts", "package-lock.json",
-];
+export const subjectVisualPresentationFiles = subjectCorePresentationFiles;
 let productionPresentationDigest: Promise<string> | undefined;
 /** Geometry has its own fingerprint. Appearance includes local fonts and the imported font CSS/bytes. */
 export function subjectVisualPresentationDigest() {
@@ -24,19 +18,7 @@ export function subjectVisualPresentationDigest() {
   return computePresentationDigest();
 }
 async function computePresentationDigest() {
-  const fontDirectories = ["public/fonts", "node_modules/@fontsource-variable/newsreader", "node_modules/@fontsource/ibm-plex-mono"];
-  const fontFiles: string[] = [];
-  async function fonts(directory: string) {
-    for (const item of await readdir(directory, { withFileTypes: true })) {
-      const file = path.join(directory, item.name);
-      if (item.isDirectory()) await fonts(file);
-      else if (/\.(?:woff2?|css)$/.test(item.name)) fontFiles.push(file);
-    }
-  }
-  for (const directory of fontDirectories) await fonts(directory);
-  const files = [...subjectVisualPresentationFiles, ...fontFiles].sort();
-  const manifest = await Promise.all(files.map(async file => [file, hash(await readFile(file))]));
-  return hash(JSON.stringify(manifest));
+  return (await subjectPresentationScope()).coreDigest;
 }
 export function subjectBeatStateDigest(mechanism: SubjectMechanism, beatIndex: number) {
   const beat = mechanism.beats[beatIndex];
