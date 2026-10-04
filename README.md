@@ -1,5 +1,7 @@
 # AfterImage
 
+Recommendation pages and styles now have separate owners from the shared reader. Compute-only [Subjects presentation scope checks](docs/scoped-subjects-presentation-2026-10-03.md) distinguish unchanged diagram presentation from shared notifications; the runtime approval-gate change remains unapplied and release is still held.
+
 Library study figures now use compact captions with a small teaching-example or reported-evidence label beside their source, replacing the prominent disclaimer section. See [study-figure captions](docs/study-figure-captions-2026-10-03.md).
 
 PR #10 is merged and deployed. Live desktop checks confirm the Analysis/Paper positioning, Library preparation controls, Subjects and Documents, and real original-paper rendering, search, and download. See [October 3 reader release verification](docs/reader-ui-release-2026-10-03.md).

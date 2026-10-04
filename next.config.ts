@@ -41,6 +41,12 @@ const config: NextConfig = {
           { key: "X-Frame-Options", value: "DENY" },
         ],
       },
+      // Same-origin iframes are permitted only for the local development review.
+      // Production retains DENY and both review routes return 404.
+      ...(process.env.NODE_ENV === "development" ? [{
+        source: "/subjects/review/workspace/frame",
+        headers: [{ key: "X-Frame-Options", value: "SAMEORIGIN" }],
+      }] : []),
       {
         source: "/api/documents/:id",
         headers: [{ key: "X-Frame-Options", value: "SAMEORIGIN" }],

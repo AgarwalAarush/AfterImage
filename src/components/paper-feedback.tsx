@@ -3,6 +3,7 @@ import { useEffect, useRef } from "react";
 import { MoreHorizontal } from "lucide-react";
 import type { Feedback } from "@/lib/types";
 import { useApp } from "./app";
+import styles from "./paper-feedback.module.css";
 
 export function usePaperFeedback(paperId: string) {
   const {act, toast} = useApp();
@@ -54,7 +55,7 @@ export function PaperFeedback({paperId, paperTitle, saveForLater = false, compac
     ["known", "Already know it", "Skip this paper without a dislike"],
   ];
   if (saveForLater) items.push(["later", "Save for later", "Add to your Library"]);
-  return <details ref={ref} className={`suggestion-feedback${compact ? "" : " reader-feedback"}`} onKeyDown={event => {
+  return <details ref={ref} className={`suggestion-feedback${compact ? "" : " reader-feedback"} ${styles.scope}`} onKeyDown={event => {
     const menu = event.currentTarget;
     if (event.key === "Escape") {
       event.preventDefault(); menu.open = false; menu.querySelector("summary")?.focus();

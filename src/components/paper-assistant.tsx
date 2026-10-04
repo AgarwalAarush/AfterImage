@@ -6,7 +6,7 @@ import { createPortal } from "react-dom";
 import type { Paper } from "@/lib/types";
 import { isActiveTurn, targetQuery, type AssistantTarget, type AssistantTurn, type AssistantSource, type Conversation } from "@/lib/assistant-model";
 import { AssistantAnswer, type CitationHandlers } from "./assistant-answer";
-import { useApp } from "./app";
+import { useApp } from "./app-context";
 import type { PdfDestination } from "./paper-pdf";
 const PaperPdf=dynamic(()=>import("./paper-pdf").then(module=>module.PaperPdf),{ssr:false,loading:()=> <p role="status">Opening paper…</p>});
 type Selection={text:string;x:number;y:number};
