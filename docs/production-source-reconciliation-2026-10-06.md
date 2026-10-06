@@ -1,5 +1,7 @@
 # Production source reconciliation
 
+This records the conservative reconciliation state. The subsequent owner-authorized [renderer binding correction](subjects-renderer-binding-2026-10-06.md) establishes exact helper/routing equivalence and retains existing Subjects diagram approval; fresh independent workspace acceptance remains required.
+
 ## Observed drift
 
 On October 6, the production custom-domain alias pointed to Vercel deployment `dpl_9Qu9oNH5zLjb8dMZ7LzieSiWuktZ` (`afterimage-liabos6xi-aarush-agarwals-projects.vercel.app`). The CLI upload was created October 3 at 15:46:20 Pacific and promoted at 15:48:17. Its metadata contained no Git commit. The project had no Vercel Git integration.

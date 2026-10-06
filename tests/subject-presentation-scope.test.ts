@@ -5,7 +5,8 @@ import os from "node:os";
 import path from "node:path";
 import {createHash} from "node:crypto";
 import {execFileSync} from "node:child_process";
-import {evaluateSubjectPresentationScope,subjectPresentationScope,readSubjectPresentationFonts,subjectPresentationBaseline,subjectScopedPresentationFiles,subjectCorePresentationFiles,subjectIntegrationPresentationFiles,type SubjectPresentationSources} from "../src/lib/subject-presentation-scope";
+import {evaluateSubjectPresentationScope,subjectPresentationScope,readSubjectPresentationFonts,subjectPresentationBaseline,subjectScopedPresentationFiles,subjectCorePresentationFiles,subjectIntegrationPresentationFiles,subjectLibraryRendererFiles,type SubjectPresentationSources} from "../src/lib/subject-presentation-scope";
+import {subjectRendererBoundary} from "../src/lib/subject-renderer-boundary";
 const hash=(value:string|Buffer)=>createHash("sha256").update(value).digest("hex");
 const reconciledCoreFiles=["src/lib/scene-illustration.ts","src/lib/scene-illustration-svg.ts"];
 let sources:SubjectPresentationSources,currentSources:SubjectPresentationSources,fonts:[string,string][];
@@ -32,15 +33,31 @@ test("source extraction witnesses are exact fragments of the approved Git source
     assert.ok(start>=0&&end>=0);assert.equal(hash(original.slice(start,end+witness.endAnchor.length)),witness.fragmentDigest);
   }
 });
-test("reconciled live renderers invalidate legacy approval and bind the new matrix implementation to core",()=>{
+test("Library renderer changes remain integration-bound while the exact Subjects helper retains historical approval",()=>{
   const result=evaluateSubjectPresentationScope(currentSources,fonts);
-  assert.equal(result.legacyCore.equivalent,false);
-  for(const file of reconciledCoreFiles)assert.ok(result.legacyCore.failures.includes(`core-changed:${file}`));
+  assert.equal(result.legacyCore.equivalent,true);
+  for(const file of reconciledCoreFiles)assert.ok(subjectLibraryRendererFiles.includes(file));
   const matrix="src/lib/scene-matrix-svg.ts";
-  assert.ok(subjectCorePresentationFiles.includes(matrix));
+  assert.ok(!subjectCorePresentationFiles.includes(matrix));assert.ok(subjectIntegrationPresentationFiles.includes(matrix));
   const changed=evaluateSubjectPresentationScope({...currentSources,[matrix]:String(currentSources[matrix])+"\n/* changed matrix geometry */"},fonts);
-  assert.notEqual(changed.coreDigest,result.coreDigest);
-  assert.equal(changed.integrationDigest,result.integrationDigest);
+  assert.equal(changed.coreDigest,result.coreDigest);
+  assert.notEqual(changed.integrationDigest,result.integrationDigest);
+  const helper="src/lib/diagram-text.ts";
+  const unsafe=evaluateSubjectPresentationScope({...currentSources,[helper]:String(currentSources[helper])+"\n/* changed shared helper */"},fonts);
+  assert.equal(unsafe.legacyCore.equivalent,false);assert.notEqual(unsafe.coreDigest,result.coreDigest);
+});
+test("text helper extraction is exactly anchored to the approved scene source",()=>{
+  const witness=subjectRendererBoundary;
+  const original=execFileSync("git",["show",`${witness.baselineCommit}:${witness.legacyFile}`],{encoding:"utf8"});
+  assert.equal(hash(original),witness.legacyFileDigest);
+  const fragment=original.slice(original.indexOf(witness.startAnchor),original.indexOf(witness.endAnchor));
+  assert.equal(hash(fragment),witness.targetFileDigest);
+  assert.equal(String(currentSources[witness.targetFile]),fragment);
+});
+test("routing import normalization cannot accept other code or a substituted helper",()=>{
+  const file="src/lib/scene-layout.ts",text=String(currentSources[file]);
+  for(const changed of [text.replace('./diagram-text','./different-helper'),text+"\n/* changed routing */"])
+    assert.equal(evaluateSubjectPresentationScope({...currentSources,[file]:changed},fonts).legacyCore.equivalent,false);
 });
 test("real reader, diagram, theme and global CSS changes fail legacy core equivalence",()=>{
   const original=evaluateSubjectPresentationScope(sources,fonts);

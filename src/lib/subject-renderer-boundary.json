@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "baselineCommit": "a3f781d0e14bc94eb9c8891beab10cca8db72e9c",
+  "legacyFile": "src/lib/scene.ts",
+  "legacyFileDigest": "2829a9f255a309a089a1833e2a56520e53efb1ce709ae95bfb7a0dcd1d916e4c",
+  "startAnchor": "export const escapeXml =",
+  "endAnchor": "export function validateScene(",
+  "targetFile": "src/lib/diagram-text.ts",
+  "targetFileDigest": "b308f1c43bbef228ffebac4ecdb93249e1cf83617a72992e18f7610fda50ae27",
+  "relocatedFile": "src/lib/scene-layout.ts",
+  "legacyImport": "import { diagramText, escapeXml } from \"./scene\";",
+  "currentImport": "import { diagramText, escapeXml } from \"./diagram-text\";"
+}
