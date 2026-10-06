@@ -3,11 +3,12 @@ import assert from "node:assert/strict";
 import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
+import { execFileSync } from "node:child_process";
 import { getSubjectMechanism, mechanismDigest, validateMechanismMath } from "../src/lib/subject-mechanism-store";
 import { getSubjectLesson } from "../src/lib/subject-library";
 import { publishedSubjectMechanismSchema, subjectMechanismSchema, validateSubjectMechanism } from "../src/lib/subject-mechanism";
 import { validateSubjectMechanismQuality } from "../src/lib/subject-mechanism-quality";
-import { subjectPresentationScope, subjectCorePresentationFiles, subjectIntegrationPresentationFiles, readSubjectPresentationFonts } from "../src/lib/subject-presentation-scope";
+import { subjectPresentationScope, subjectPresentationBaseline, subjectCorePresentationFiles, subjectIntegrationPresentationFiles, readSubjectPresentationFonts } from "../src/lib/subject-presentation-scope";
 import { auditSubjectPresentationCoverage } from "../src/lib/subject-presentation-coverage";
 import { auditSubjectRouteInventory } from "../src/lib/subject-presentation-routes";
 import { subjectFeatureRoots } from "../src/lib/subject-presentation-isolation";
@@ -28,6 +29,11 @@ test("actual mechanism publication preserves every gate across scoped legacy com
       await mkdir(path.dirname(path.join(root,file)),{recursive:true});
       await copyFile(path.join(originalCwd,file),path.join(root,file));
     }));
+    const reconciledCoreFiles=["src/lib/scene-illustration.ts","src/lib/scene-illustration-svg.ts"];
+    const currentRenderers=Object.fromEntries(await Promise.all(reconciledCoreFiles.map(async file=>[file,await readFile(path.join(root,file))])));
+    // Preserve a real historical compatibility fixture while the checkout moves
+    // forward. These approved bytes are written only into the temporary fixture.
+    for(const file of reconciledCoreFiles)await writeFile(path.join(root,file),execFileSync("git",["show",`${subjectPresentationBaseline.baselineCommit}:${file}`],{cwd:originalCwd}));
     Object.assign(process.env,{NODE_ENV:"test"});
     process.chdir(root);
     const lesson=await getSubjectLesson("resnet");assert.ok(lesson,"public lesson fixture must pass its own publication checks");
@@ -67,6 +73,19 @@ test("actual mechanism publication preserves every gate across scoped legacy com
         await receipt(changed);assert.equal(await subjectWorkspaceAccepted(changed),true);
         assert.equal(await getSubjectMechanism(lesson),null);
       } finally {await writeFile(file,bytes);await receipt();}
+    });
+    await t.test("reconciled production renderers need new core approval even with a current workspace receipt",async()=>{
+      const historical=Object.fromEntries(await Promise.all(reconciledCoreFiles.map(async file=>[file,await readFile(file)])));
+      try {
+        for(const file of reconciledCoreFiles)await writeFile(file,currentRenderers[file]);
+        const changed=await subjectPresentationScope(root);assert.equal(changed.legacyCore.equivalent,false);
+        assert.notEqual(changed.coreDigest,scope.coreDigest);
+        await receipt(changed);assert.equal(await subjectWorkspaceAccepted(changed),true);
+        assert.equal(await getSubjectMechanism(lesson),null);
+      } finally {
+        for(const file of reconciledCoreFiles)await writeFile(file,historical[file]);
+        await receipt();
+      }
     });
     await t.test("changed font bytes reject legacy approval even with a freshly matching workspace receipt",async()=>{
       const file=fonts.find(([name])=>name.startsWith("public/fonts/")&&name.endsWith(".woff2"))![0],bytes=await readFile(file);
