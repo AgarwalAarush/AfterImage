@@ -21,7 +21,9 @@ export const subjectPresentationScopeVersion = "subjects-scoped-v1" as const;
 /** Hashes only: no copied application implementation, review artifacts or private state. */
 export const subjectPresentationBaseline = baseline;
 export const subjectPresentationFontDirectories = baseline.legacyFontDirectories;
-export const subjectCorePresentationFiles = [...baseline.unchangedCoreManifest.map(([file]) => file), ...baseline.extractions.map(item => item.targetFile)].sort();
+// New renderer dependencies belong to the current core digest. Keep the
+// historical witness immutable: changed importers cannot reuse its approval.
+export const subjectCorePresentationFiles = [...baseline.unchangedCoreManifest.map(([file]) => file), ...baseline.extractions.map(item => item.targetFile), "src/lib/scene-matrix-svg.ts"].sort();
 /** Shared hooks, prop wiring, overlays, route layout and the acceptance policy need their own current review. */
 export const subjectIntegrationPresentationFiles = [
   "src/app/layout.tsx", "src/components/app.tsx", "src/components/app-context.tsx",

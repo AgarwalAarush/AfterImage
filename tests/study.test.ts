@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { validateStudy, studySvg, type StudyPack, type StudyFigure } from "../src/lib/study";
+import { validateStudy, studySvg, figureSchema, MAX_STUDY_BAR_SERIES, type StudyPack, type StudyFigure } from "../src/lib/study";
 import { inspectSvg } from "../worker/diagram-review";
 const pack:StudyPack={figures:[{id:"comparison",kind:"bars",placement:"evidence",title:"A controlled comparison",caption:"Illustrative values show how to compare results under the same conditions, not a measured benchmark.",sourceId:"s1",provenance:"illustrative",unit:"iterations",series:[{label:"Baseline",value:100,note:"Same task and hardware"},{label:"Variant",value:50,note:"Same task and hardware"}]}],quiz:[0,1].map(i=>({id:`q-${i}`,question:"Which quantity stays fixed in this comparison?",options:[{text:"The task",explanation:"The task stays fixed for a controlled comparison."},{text:"The result",explanation:"The result can change; that is the measured outcome."},{text:"Nothing",explanation:"This cannot isolate an effect if everything changes."}],answer:0,sourceId:"s1"}))};
 const sources=[{id:"s1",label:"Method",url:"https://arxiv.org/abs/1234.56789",excerpt:"Evidence"}];
@@ -24,6 +24,43 @@ test("reported charts need the exact values in the cited original excerpt",()=>{
  assert.throws(()=>validateStudy(reported,sources),/absent/);
  assert.doesNotThrow(()=>validateStudy(reported,[{...sources[0],excerpt:"Baseline 100 iterations; variant 50 iterations under the same conditions."}]));
 });
+test("complete eight-endpoint comparisons preserve every sourced condition and value",()=>{
+ const values=[6.1,9.8,37.6,55.2,16.2,30.5,44.3,66.3];
+ const labels=["Alpaca parallel low","Alpaca parallel high","Alpaca beam low","Alpaca beam high","ShareGPT parallel low","ShareGPT parallel high","ShareGPT beam low","ShareGPT beam high"];
+ const figure={...pack.figures[0],kind:"bars" as const,layout:"adaptive-bars-v1" as const,provenance:"reported" as const,unit:"Memory saved (%)",series:values.map((value,i)=>({label:labels[i],value,note:"Reported range endpoint."}))};
+ validateStudy({...pack,figures:[figure]},[{...sources[0],excerpt:values.join("; ")}]);
+ for(const mobile of [false,true]){
+  const svg=studySvg(figure,mobile);assert.deepEqual(inspectSvg(svg),[]);
+  for(const [i,value] of values.entries()){assert.ok(svg.includes(`>${value}<`));assert.ok(svg.includes(labels[i]));}
+  assert.equal([...svg.matchAll(/fill="#8c79b2"/g)].length,8);
+ }
+});
+test("maximum study bar rows retain readable text and complete notes within a bounded resource budget",()=>{
+ const figure={...pack.figures[0],kind:"bars" as const,layout:"adaptive-bars-v1" as const,unit:"items",series:Array.from({length:MAX_STUDY_BAR_SERIES},(_,i)=>({label:`Condition ${i+1}, same workload`,value:i+1,note:"The task, model, precision, hardware and measurement denominator remain the same across conditions."}))};
+ validateStudy({...pack,figures:[figure]},sources);
+ for(const mobile of [false,true]){
+  const svg=studySvg(figure,mobile);assert.deepEqual(inspectSvg(svg),[]);
+  assert.equal([...svg.matchAll(/fill="#8c79b2"/g)].length,MAX_STUDY_BAR_SERIES);
+  for(const item of figure.series)assert.ok(svg.includes(item.label));
+  assert.doesNotMatch(svg,/font-size="(?:[0-9]|10|11)"/);
+  assert.ok(svg.includes("conditions."));
+ }
+ assert.throws(()=>figureSchema.parse({...figure,series:[...figure.series,figure.series[0]]}));
+ assert.throws(()=>validateStudy({...pack,figures:[{...figure,layout:null}]},sources),/adaptive-bars-v1/);
+});
+test("adaptive loss comparisons use their actual positive endpoint while keeping relative parity and complete unit labels",()=>{
+ const figure={...pack.figures[0],kind:"bars" as const,layout:"adaptive-bars-v1" as const,unit:"Auxiliary loss",series:[{label:"Balanced",value:.010,note:"Illustrative balanced routing."},{label:"Imbalanced",value:.013,note:"Illustrative imbalanced routing."}]};
+ validateStudy({...pack,figures:[figure]},sources);
+ for(const mobile of [false,true]){
+  const svg=studySvg(figure,mobile),extent=mobile?302:558;
+  const widths=[...svg.matchAll(/<rect[^>]+width="([^"]+)"[^>]+fill="#8c79b2"/g)].map(m=>Number(m[1]));
+  assert.ok(Math.abs(widths[0]-extent*.010/.013)<.00001);assert.equal(widths[1],extent);assert.match(svg,/>0.013<\/text>/);assert.deepEqual(inspectSvg(svg),[]);
+  assert.match(studySvg({...figure,unit:"speedup ratio"},mobile),/1× parity/);
+  assert.match(studySvg({...figure,unit:"accuracy (%)"},mobile),/>100<\/text>/);
+ }
+ assert.throws(()=>validateStudy({...pack,figures:[{...figure,unit:"Aux loss (dimensionles"}]},sources),/unfinished bracket/);
+ assert.doesNotThrow(()=>validateStudy({...pack,figures:[{...figure,unit:"Aux loss (dimensionless)"}]},sources));
+});
 test("specialized scientific renderers are deterministic and publication-safe",()=>{
  const base={placement:"mechanism" as const,caption:"Illustrative values expose the structure of this mechanism and are not measurements reported by the paper.",sourceId:"s1",provenance:"illustrative" as const};
  const figures:StudyPack["figures"]=[
@@ -44,8 +81,31 @@ test("specialized renderers reject invalid normalization, topology, axes, and pa
  assert.throws(()=>validateStudy({figures:[{...base,id:"bad-landscape",kind:"landscape",xLabel:"x",yLabel:"y",zLabel:"loss",values:[[1,2,3],[2,3,4],[3,4,5]],path:[{row:0,column:0,label:"start"},{row:4,column:1,label:"end"}]}],quiz:validQuiz},sources),/leaves the grid/);
 });
 
+test("readable curves retain complete configuration names and every point without legend collisions",()=>{
+ const figure={...pack.figures[0],id:"training-curve",kind:"curve" as const,layout:"readable-curve-v1" as const,xLabel:"Training tokens (B)",yLabel:"Validation perplexity",series:[{label:"8-bit GaLore, rank 1024",points:[{x:5.2,y:17.94},{x:10.5,y:15.39},{x:15.7,y:14.95},{x:19.7,y:14.65}]},{label:"8-bit Adam",points:[{x:5.2,y:18.09},{x:10.5,y:15.47},{x:15.7,y:14.83},{x:19.7,y:14.61}]}]};
+ validateStudy({...pack,figures:[figure]},sources);
+ const legacy={...figure,layout:null,series:figure.series.map(s=>({...s,label:s.label.replace("1024","102")}))};
+ assert(inspectSvg(studySvg(legacy,true)).some(issue=>issue.includes("collision")));
+ const maximum={...figure,xLabel:"Complete horizontal axis description",yLabel:"Complete vertical axis description",series:Array.from({length:3},(_,i)=>({label:`Condition ${i+1} complete configuration name`,points:Array.from({length:12},(_,j)=>({x:j+1,y:(i+1)*(j+1)}))}))};
+ figureSchema.parse(maximum);
+ for(const f of [figure,maximum])for(const mobile of [false,true]){
+  const svg=studySvg(f,mobile);assert.deepEqual(inspectSvg(svg),[]);assert.equal(svg,studySvg(f,mobile));
+  assert.doesNotMatch(svg,/font-size="(?:[0-9]|10|11|12)"/);
+  for(const [i,series] of f.series.entries())for(const [j,point] of series.points.entries())assert.ok(svg.includes(`data-point="${i}:${j}" data-x="${point.x}" data-y="${point.y}"`));
+  assert.equal([...svg.matchAll(/data-point=/g)].length,f.series.reduce((n,s)=>n+s.points.length,0));
+  for(const [i,series] of f.series.entries()){
+   const legend=svg.match(new RegExp(`<g data-legend="${i}">([\\s\\S]*?)</g>`))![1];
+   assert.equal([...legend.matchAll(/<text[^>]*>([^<]*)<\/text>/g)].map(m=>m[1]).join(" "),series.label);
+  }
+ }
+ assert.throws(()=>validateStudy({...pack,figures:[{...figure,layout:null}]},sources),/readable-curve-v1/);
+ assert.throws(()=>validateStudy({...pack,figures:[{...figure,series:[{...figure.series[0],label:"GaLore (rank 1024"}]}]},sources),/complete brackets/);
+ const flat={...figure,series:[{label:"Constant measurement",points:[{x:1,y:0},{x:2,y:0}]}]};
+ for(const mobile of [false,true])assert.deepEqual(inspectSvg(studySvg(flat,mobile)),[]);
+});
+
 test("percentage bars use the full 0–100 scale and label both endpoints", () => {
-  const figure={...pack.figures[0],kind:"bars" as const,unit:"accuracy (%)",series:[{label:"EC-CF2",value:92.6,note:"Same condition"},{label:"ST Top-1",value:88.9,note:"Same condition"}]};
+  const figure={...pack.figures[0],kind:"bars" as const,layout:null,unit:"accuracy (%)",series:[{label:"EC-CF2",value:92.6,note:"Same condition"},{label:"ST Top-1",value:88.9,note:"Same condition"}]};
   for(const mobile of [false,true]) {
     const svg=studySvg(figure,mobile);
     assert.match(svg,/>100<\/text>/);
@@ -81,7 +141,7 @@ test("mobile matrices preserve complete operand labels and timeline details are 
 
 test("transpose glyphs use native SVG superscripts and relative charts show parity", () => {
  const matrix={...pack.figures[0],kind:"matrix" as const,unit:"sparse products",rows:["Data","Weights"],columns:["Layer 1","Layer 2"],values:[[0,1],[1,0]]};
- const figure={...pack.figures[0],kind:"bars" as const,unit:"% of baseline",reference:{value:100,label:"100% parity"},series:[{label:"Below",value:91,note:"Same conditions"},{label:"Above",value:104,note:"Same conditions"}]};
+ const figure={...pack.figures[0],kind:"bars" as const,layout:null,unit:"% of baseline",reference:{value:100,label:"100% parity"},series:[{label:"Below",value:91,note:"Same conditions"},{label:"Above",value:104,note:"Same conditions"}]};
  for(const mobile of [false,true]){assert.match(studySvg(figure,mobile),/100% parity/);assert.deepEqual(inspectSvg(studySvg(figure,mobile)),[]);assert.deepEqual(inspectSvg(studySvg(matrix,mobile)),[]);}
 });
 

@@ -7,8 +7,15 @@ import {createHash} from "node:crypto";
 import {execFileSync} from "node:child_process";
 import {evaluateSubjectPresentationScope,subjectPresentationScope,readSubjectPresentationFonts,subjectPresentationBaseline,subjectScopedPresentationFiles,subjectCorePresentationFiles,subjectIntegrationPresentationFiles,type SubjectPresentationSources} from "../src/lib/subject-presentation-scope";
 const hash=(value:string|Buffer)=>createHash("sha256").update(value).digest("hex");
-let sources:SubjectPresentationSources,fonts:[string,string][];
-before(async()=>{sources=Object.fromEntries(await Promise.all(subjectScopedPresentationFiles.map(async file=>[file,await readFile(file)])));fonts=await readSubjectPresentationFonts();});
+const reconciledCoreFiles=["src/lib/scene-illustration.ts","src/lib/scene-illustration-svg.ts"];
+let sources:SubjectPresentationSources,currentSources:SubjectPresentationSources,fonts:[string,string][];
+before(async()=>{
+  currentSources=Object.fromEntries(await Promise.all(subjectScopedPresentationFiles.map(async file=>[file,await readFile(file)])));
+  // Exercise historical compatibility against actual approved Git bytes, rather
+  // than assuming the current checkout has an unchanged renderer.
+  sources={...currentSources,...Object.fromEntries(reconciledCoreFiles.map(file=>[file,execFileSync("git",["show",`${subjectPresentationBaseline.baselineCommit}:${file}`])]))};
+  fonts=await readSubjectPresentationFonts();
+});
 test("hash-only witness reconstructs the exact legacy presentation approval and current extracted core",()=>{
   const result=evaluateSubjectPresentationScope(sources,fonts);
   assert.equal(result.legacyCore.reconstructedLegacyDigest,"76a8196b47300566afdb94d5001d9a6a0d802cffe6c797fd3e7c66fba3ffeac2");
@@ -24,6 +31,16 @@ test("source extraction witnesses are exact fragments of the approved Git source
     const start=original.indexOf(witness.startAnchor),end=original.indexOf(witness.endAnchor,start+witness.startAnchor.length);
     assert.ok(start>=0&&end>=0);assert.equal(hash(original.slice(start,end+witness.endAnchor.length)),witness.fragmentDigest);
   }
+});
+test("reconciled live renderers invalidate legacy approval and bind the new matrix implementation to core",()=>{
+  const result=evaluateSubjectPresentationScope(currentSources,fonts);
+  assert.equal(result.legacyCore.equivalent,false);
+  for(const file of reconciledCoreFiles)assert.ok(result.legacyCore.failures.includes(`core-changed:${file}`));
+  const matrix="src/lib/scene-matrix-svg.ts";
+  assert.ok(subjectCorePresentationFiles.includes(matrix));
+  const changed=evaluateSubjectPresentationScope({...currentSources,[matrix]:String(currentSources[matrix])+"\n/* changed matrix geometry */"},fonts);
+  assert.notEqual(changed.coreDigest,result.coreDigest);
+  assert.equal(changed.integrationDigest,result.integrationDigest);
 });
 test("real reader, diagram, theme and global CSS changes fail legacy core equivalence",()=>{
   const original=evaluateSubjectPresentationScope(sources,fonts);
