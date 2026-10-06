@@ -4,7 +4,7 @@ import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promi
 import path from "node:path";
 import os from "node:os";
 import { execFileSync } from "node:child_process";
-import { getSubjectMechanism, mechanismDigest, validateMechanismMath } from "../src/lib/subject-mechanism-store";
+import { getSubjectMechanism, mechanismDigest, validateMechanismMath, subjectMechanismRendererDigest } from "../src/lib/subject-mechanism-store";
 import { getSubjectLesson } from "../src/lib/subject-library";
 import { publishedSubjectMechanismSchema, subjectMechanismSchema, validateSubjectMechanism } from "../src/lib/subject-mechanism";
 import { validateSubjectMechanismQuality } from "../src/lib/subject-mechanism-quality";
@@ -74,18 +74,28 @@ test("actual mechanism publication preserves every gate across scoped legacy com
         assert.equal(await getSubjectMechanism(lesson),null);
       } finally {await writeFile(file,bytes);await receipt();}
     });
-    await t.test("reconciled production renderers need new core approval even with a current workspace receipt",async()=>{
+    await t.test("Library renderer reconciliation retains diagram approval only with a fresh matching workspace receipt",async()=>{
       const historical=Object.fromEntries(await Promise.all(reconciledCoreFiles.map(async file=>[file,await readFile(file)])));
       try {
         for(const file of reconciledCoreFiles)await writeFile(file,currentRenderers[file]);
-        const changed=await subjectPresentationScope(root);assert.equal(changed.legacyCore.equivalent,false);
-        assert.notEqual(changed.coreDigest,scope.coreDigest);
+        const changed=await subjectPresentationScope(root);assert.equal(changed.legacyCore.equivalent,true);
+        assert.equal(changed.coreDigest,scope.coreDigest);assert.notEqual(changed.integrationDigest,scope.integrationDigest);
+        assert.equal(await getSubjectMechanism(lesson),null,"old workspace receipt must not accept a changed Library integration");
         await receipt(changed);assert.equal(await subjectWorkspaceAccepted(changed),true);
-        assert.equal(await getSubjectMechanism(lesson),null);
+        assert.deepEqual((await getSubjectMechanism(lesson))?.review,original.review,"diagram approvals remain byte-identical");
       } finally {
         for(const file of reconciledCoreFiles)await writeFile(file,historical[file]);
         await receipt();
       }
+    });
+    await t.test("a modified extracted helper invalidates renderer and historical approval",async()=>{
+      const file="src/lib/diagram-text.ts",bytes=await readFile(file),digest=await subjectMechanismRendererDigest();
+      try {
+        await writeFile(file,Buffer.concat([bytes,Buffer.from("\n/* altered text rendering */\n")]));
+        assert.notEqual(await subjectMechanismRendererDigest(),digest);
+        const changed=await subjectPresentationScope(root);assert.equal(changed.legacyCore.equivalent,false);
+        await receipt(changed);assert.equal(await getSubjectMechanism(lesson),null);
+      } finally {await writeFile(file,bytes);await receipt();}
     });
     await t.test("changed font bytes reject legacy approval even with a freshly matching workspace receipt",async()=>{
       const file=fonts.find(([name])=>name.startsWith("public/fonts/")&&name.endsWith(".woff2"))![0],bytes=await readFile(file);

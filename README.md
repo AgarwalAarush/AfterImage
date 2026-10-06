@@ -1,6 +1,8 @@
 # AfterImage
 
-The [October 6 production source reconciliation](docs/production-source-reconciliation-2026-10-06.md) brings the exact live Library renderer contracts into source control alongside the recommendation changes. The matrix dependency is core-bound; publication still requires fresh Subjects acceptance before deployment.
+The [October 6 production source reconciliation](docs/production-source-reconciliation-2026-10-06.md) brings the exact live Library renderer contracts into source control alongside the recommendation changes. The [Subjects renderer binding](docs/subjects-renderer-binding-2026-10-06.md) now pins its unchanged text helpers and routing separately, preserving exact historical diagram approval while retaining the independent workspace review before deployment.
+
+Next reads keeps its “Updating suggestions…” header indicator while refilling the shortlist, with the duplicate progress bar removed. See [suggestion refresh feedback](docs/suggestion-refresh-feedback-2026-10-06.md).
 
 Recommendation pages and styles now have separate owners from the shared reader. The authorized [Subjects presentation scope gate](docs/scoped-subjects-presentation-2026-10-03.md) distinguishes unchanged diagram presentation from shared notifications and requires current independent workspace acceptance. Release remains held for final Dia acceptance and preservation of newer live renderer contracts.
 
