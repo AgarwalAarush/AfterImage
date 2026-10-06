@@ -2,6 +2,8 @@
 
 The [October 6 production source reconciliation](docs/production-source-reconciliation-2026-10-06.md) brings the exact live Library renderer contracts into source control alongside the recommendation changes. The matrix dependency is core-bound; publication still requires fresh Subjects acceptance before deployment.
 
+Next reads keeps its “Updating suggestions…” header indicator while refilling the shortlist, with the duplicate progress bar removed. See [suggestion refresh feedback](docs/suggestion-refresh-feedback-2026-10-06.md).
+
 Recommendation pages and styles now have separate owners from the shared reader. The authorized [Subjects presentation scope gate](docs/scoped-subjects-presentation-2026-10-03.md) distinguishes unchanged diagram presentation from shared notifications and requires current independent workspace acceptance. Release remains held for final Dia acceptance and preservation of newer live renderer contracts.
 
 Library study figures now use compact captions with a small teaching-example or reported-evidence label beside their source, replacing the prominent disclaimer section. See [study-figure captions](docs/study-figure-captions-2026-10-03.md).
