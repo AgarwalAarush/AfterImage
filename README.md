@@ -1,5 +1,7 @@
 # AfterImage
 
+The browser tab now uses AfterImage's stacked-paper mark, with SVG, PNG and ICO assets served through Next.js metadata conventions. See [browser tab icon](docs/browser-tab-icon-2026-10-06.md) for scope and verification.
+
 Recommendation pages and styles now have separate owners from the shared reader. The authorized [Subjects presentation scope gate](docs/scoped-subjects-presentation-2026-10-03.md) distinguishes unchanged diagram presentation from shared notifications and requires current independent workspace acceptance. Release remains held for final Dia acceptance and preservation of newer live renderer contracts.
 
 Library study figures now use compact captions with a small teaching-example or reported-evidence label beside their source, replacing the prominent disclaimer section. See [study-figure captions](docs/study-figure-captions-2026-10-03.md).
