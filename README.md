@@ -1,5 +1,7 @@
 # AfterImage
 
+Subjects paragraphs, objectives and headings now use the same available article width as their equation panels and diagrams. The owner authorized a source-bound exception for this exact prose/title change without renewed browser review; renderer geometry, fonts, scientific checks and existing diagram approvals remain enforced. See [Subjects reading-width alignment](docs/subjects-reading-width-2026-10-06.md) for the change and release checks.
+
 The [October 6 production source reconciliation](docs/production-source-reconciliation-2026-10-06.md) brings the exact live Library renderer contracts into source control alongside the recommendation changes. The [Subjects renderer binding](docs/subjects-renderer-binding-2026-10-06.md) now pins its unchanged text helpers and routing separately, preserving exact historical diagram approval. The owner exception below applies to the remaining shared-workspace review.
 
 Next reads keeps its “Updating suggestions…” header indicator while refilling the shortlist, with the duplicate progress bar removed. See [suggestion refresh feedback](docs/suggestion-refresh-feedback-2026-10-06.md). The owner authorized deploying reconciled `main` without the pending Dia workspace check; the [source-bound release exception](docs/owner-workspace-release-2026-10-06.md) records that instruction without claiming an independent review or relaxing the existing diagram approvals.

@@ -3,7 +3,7 @@ import { readFile, realpath, stat } from "node:fs/promises";
 import path from "node:path";
 import sharp from "sharp";
 import { z } from "zod";
-import { subjectPresentationScope } from "./subject-presentation-scope";
+import { subjectPresentationBaseline, subjectPresentationScope } from "./subject-presentation-scope";
 import { getSubjectLesson } from "./subject-library";
 import { getSubjectMechanism } from "./subject-mechanism-store";
 
@@ -41,6 +41,40 @@ const ownerExceptionSchema = z.object({
   authorization:z.literal("Deploy reconciled main without the pending Dia workspace review"),
   waivedCheck:z.literal("shared-workspace-browser-review"),
 }).strict();
+const ownerTextWidthExceptionSchema = z.object({
+  version:z.literal(1),kind:z.literal("owner-text-width-release-exception"),policy:z.literal("subjects-scoped-v1"),
+  coreDigest:digest,integrationDigest:digest,legacyPresentationDigest:digest,stylesheetDigest:digest,
+  authorizedBy:z.literal("owner"),authorizedAt:z.string().datetime(),
+  authorization:z.literal("Release the exact Subjects prose/title-width change in PR 19 without renewed browser presentation review"),
+  waivedChecks:z.tuple([z.literal("subjects-prose-width-browser-review"),z.literal("shared-workspace-browser-review")]),
+}).strict();
+// Invert only the three approved prose-width edits, including the adjacent
+// heading rule. The complete remaining stylesheet must match approved bytes.
+const textWidthEdits = [
+  [".subject-article-header > p { max-width:68ch; font:400 16px/1.65 var(--font-sans); color:var(--muted); }",
+   ".subject-article-header > p { max-width:100%; font:400 16px/1.65 var(--font-sans); color:var(--muted); }"],
+  [".subject-objectives li { max-width:68ch; margin:12px 0; font:400 var(--recall-font-size)/1.75 var(--font-sans); }",
+   ".subject-objectives li { max-width:100%; margin:12px 0; font:400 var(--recall-font-size)/1.75 var(--font-sans); }"],
+  [".subject-section > .subject-prose > :is(p:not(:has(.katex-display)),ul,ol,blockquote) { max-width:68ch; }",
+   ".subject-section > .subject-prose > :is(p,ul,ol,blockquote) { max-width:100%; }\n.subject-article-header h1, .subject-section > h2, .subject-section > .subject-prose > :is(h1,h2,h3,h4) { max-width:100%; text-wrap:wrap; }"],
+] as const;
+/** Explicit owner exception, never an independent core or diagram review. */
+export async function subjectOwnerTextWidthAccepted(scope:Awaited<ReturnType<typeof subjectPresentationScope>>) {
+  try {
+    if(scope.legacyCore.equivalent||scope.legacyCore.failures.length!==1||scope.legacyCore.failures[0]!=="core-changed:src/app/globals.css")return false;
+    const exception=ownerTextWidthExceptionSchema.parse(JSON.parse(await readFile(path.resolve("src/content/subjects/text-width-owner-exception.json"),"utf8")));
+    if(exception.coreDigest!==scope.coreDigest||exception.integrationDigest!==scope.integrationDigest||
+      exception.legacyPresentationDigest!==scope.legacyCore.legacyPresentationDigest)return false;
+    const stylesheet=await readFile(path.resolve("src/app/globals.css"),"utf8");
+    if(hash(stylesheet)!==exception.stylesheetDigest)return false;
+    let original=stylesheet;
+    for(const [before,after] of textWidthEdits) {
+      if(original.split(after).length!==2)return false;
+      original=original.replace(after,before);
+    }
+    return hash(original)===subjectPresentationBaseline.unchangedCoreManifest.find(([file])=>file==="src/app/globals.css")?.[1];
+  } catch {return false;}
+}
 export function validateSubjectWorkspaceReview(input:unknown, scope:Awaited<ReturnType<typeof subjectPresentationScope>>) {
   const report=subjectWorkspaceReviewSchema.parse(input);
   if(report.authorId.trim().toLowerCase()===report.reviewerId.trim().toLowerCase())throw new Error("Workspace review requires an independent reviewer");
@@ -174,7 +208,8 @@ export async function subjectWorkspaceAccepted(scope:Awaited<ReturnType<typeof s
     const exception=ownerExceptionSchema.parse(JSON.parse(await readFile(path.resolve("src/content/subjects/workspace-owner-exception.json"),"utf8")));
     // This release exception also requires proven unchanged historical core and
     // fonts. The caller independently enforces scientific and per-beat approval.
-    return scope.legacyCore.equivalent&&exception.coreDigest===scope.coreDigest&&exception.integrationDigest===scope.integrationDigest&&
-      exception.legacyPresentationDigest===scope.legacyCore.legacyPresentationDigest;
-  } catch {return false;}
+    if(scope.legacyCore.equivalent&&exception.coreDigest===scope.coreDigest&&exception.integrationDigest===scope.integrationDigest&&
+      exception.legacyPresentationDigest===scope.legacyCore.legacyPresentationDigest)return true;
+  } catch { /* No current unchanged-core owner exception. */ }
+  return subjectOwnerTextWidthAccepted(scope);
 }
