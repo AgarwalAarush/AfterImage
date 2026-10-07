@@ -13,9 +13,10 @@ import { panelTextRepairSchema, generationSchemas, recallRepairFields, type Reca
 import { qualityVersion, mechanismPlanSchema, planningPrompt, technicalReviewPrompt, technicalReviewSchema, validateMechanismPlan, technicalDefects, technicalRepairTarget, type RepairTarget } from "./quality";
 import { Resvg } from "@resvg/resvg-js";
 import sharp from "sharp";
+import { prepareDraftScene as prepareScene, prepareDraftIllustration, diagramPresentationContract } from "./diagram-presentation";
+import { inspectPublicationSvg, publicationTextFacts, publicationReviewContract } from "./diagram-publication";
 import {
   sceneGraphSchema,
-  prepareScene,
   sceneSvg,
   sceneSvgMobile,
   validateScene,
@@ -27,7 +28,6 @@ import {
   reviewFonts,
   reviewSlices,
   visualRepairTarget,
-  inspectSvg,
   reviewRubric,
   critiqueSchema,
 } from "./diagram-review";
@@ -135,11 +135,18 @@ async function codex<T>(
 }
 async function saveReviewImages(svg:string,file:string,width:number){
   const rendered=new Resvg(svg,{background:"#ffffff",font:reviewFonts,fitTo:{mode:"width",value:width}}).render(),png=rendered.asPng();
-  await writeFile(file,png);const files=[file];
+  await writeFile(file,png);
+  await writeFile(file.replace(/\.png$/, ".publication.json"), JSON.stringify(publicationTextFacts(svg, width), null, 2));
+  const files=[file];
   for(const [index,region] of reviewSlices(rendered.width,rendered.height).entries()){
     const slice=file.replace(/\.png$/,`-slice-${index}.png`);await sharp(png).extract(region).png().toFile(slice);files.push(slice);
   }
   return files;
+}
+async function publicationContext(images: string[]) {
+  const manifests = await Promise.all(images.filter(file => !/-slice-\d+\.png$/.test(file)).map(async file =>
+    ({ image: path.basename(file), facts: JSON.parse(await readFile(file.replace(/\.png$/, ".publication.json"), "utf8")) })));
+  return "\n" + publicationReviewContract + "\nRENDERED PUBLICATION FACTS:\n" + JSON.stringify(manifests);
 }
 async function generate(
   paper: Paper,
@@ -158,13 +165,13 @@ async function generate(
     throw new Error("--diagram-focus requires a concise focus of at most 400 characters.");
   const focusContext = requestedFocus ? "\nEVALUATION DIAGRAM FOCUS: " + requestedFocus +
     "\nVerify that this focus is supported by SOURCE DATA and select this narrow focus when valid. It constrains only the diagram; plan the full paper's recall, math, phases and evidence as usual. Do not require omitted objectives or phases in its visibleProof. An inaccurate or visually empty proposal still fails review.\n" : "";
-  const plan = await codex(planningPrompt + focusContext + "\nSOURCE DATA:\n" + sourceText, mechanismPlanSchema, dir, "mechanism-plan");
+  const plan = await codex(planningPrompt + "\n" + diagramPresentationContract + focusContext + "\nSOURCE DATA:\n" + sourceText, mechanismPlanSchema, dir, "mechanism-plan");
   validateMechanismPlan(plan, sources, scope);
   const planningContext = "\nMECHANISM PLAN (verify against sources):\n" + JSON.stringify(plan);
   const design = `Create an original technical diagram making one contribution-specific mechanism visible. Choose concrete illustration panels or a genuine dependency graph according to the layout contract. For a graph, choose 2-8 nodes with clear directed edges. Node labels must be at most 26 characters and details at most 32 characters. Use labels of 2-3 short words. Prefer empty edge labels when node text already identifies the transferred object. Use the caption to disclose omitted branches or phases. Keep text accurate and never decorative jargon. SCENE TEXT IS PLAIN TEXT: do not put dollar-delimited math or LaTeX commands in scene labels/details/edges. Native labels such as X, k slots, or x₀ are supported; rendered LaTeX belongs only in the recall. Footnote must identify the central takeaway in a COMPLETE phrase under 75 characters; never truncate a sentence to meet the limit. The recall version must be 2. The idea is ONE complete sentence of about 15-22 words, ideally under 140 characters. Never truncate a word or sentence to meet a schema limit. The recall covers the paper's overall contribution and main architecture or algorithm, not just the single mechanism chosen for the diagram. Write a substantial, precise technical refresher, roughly 400-600 words across problem, mechanism, evidence, limitation, and significance when full-text sources support this depth. Use 2-3 paragraphs for mechanism if helpful, separated by blank lines. Explain the actual sequence of computations, what is trained or fixed, assumptions, and what the reported evidence establishes. Distinguish author claims from interpretation. Make limitations specific. Significance explains why this idea is useful and connects it to the problem. Avoid repetition and generic praise. Include 1-5 essential equations if the supplied source supports them; each equation needs valid KaTeX LaTeX, a plain-language explanation defining EVERY symbol and its role, and its exact sourceId. For linear algebra specify dimensions and correct multiplication order. Equations must explain the paper-specific mechanism, not only a familiar background formula. Give each equation a short descriptive title. Its explanation must walk through input -> operation -> output, define the symbols, and explain why the operation is needed; use paragraphs instead of a dense symbol glossary. Add an example field with a concrete worked calculation or token/tensor trace when it helps, clearly labeling invented numbers as illustrative. Never invent an exact loss or implementation detail; label explanatory shorthand and omitted terms. Optionally include a walkthrough object with title, introduction, steps (label, input, operation, output), and sourceId when a multi-step algorithm benefits from a worked table. Each row must explain an operation in a full sentence, not merely repeat a stage name. Distinguish training from inference, hidden states from sampled tokens, and the novel contribution from the background algorithm. Diagrams must identify their objects and selection or dependency relationships, and make scoped simplifications explicit; a sequence of unexplained stage names is insufficient. Use $...$ for inline math, and no delimiters in the dedicated latex field. Return equations:[] if notation is not necessary or not reliably recoverable from the sources. Cite only supplied sourceIds. For abstract-only sources use a shorter honest recall (150-250 words), state that full methods and limitations were not reviewed, and never fabricate technical detail to reach a word target.`;
   await progress("drafting");
   const layoutContract = `DIAGRAM LAYOUT CONTRACT: Choose a visual representation that satisfies the plan's visibleProof. For concrete examples, return scene.illustration with a takeaway and 1-3 panels; set nodes:[] and edges:[]. Each panel has title, caption, illustrative, and supplied sourceIds. Matrix panels contain row/column axis labels, 2-6 short row/column labels, a rectangular values array, and explicit zero-based selected cell indices. Declare normalization:row-normalized for probabilities (each row must sum to one), otherwise none; selectionRule:{axis:row or column,k} for numeric top-k (selected cells must actually be top-k on that axis), otherwise null. Label the operation clearly; the renderer displays the declared top-k axis. Routing panels use presentation:buckets to illustrate tokens/objects as circles, copied identities inside colored allocation buckets, and per-object count dots. Use short left identities (at most four characters). Prefer this object view for allocation over a plain links diagram; presentation:links remains available for general labeled assignments. Routing panels contain 2-6 short labels per side, axis labels, explicit zero-based links, selection direction (left-to-right or right-to-left), and counts (left, right, both or none); the renderer derives counts from links. Supply leftCountUnit/rightCountUnit with singular and plural nouns such as expert/experts or token/tokens when counts are shown; use null when no domain count is appropriate. Arrows express the stated selection relationship; distinguish that from physical token dispatch in the caption. Allocation panels contain arrangement:lanes or diagonal, a unit, and 2-4 groups with label, capacity1-6, and 0-6 short item identities (max4 characters). Items may not exceed capacity or repeat within a group. Filled cells are assigned objects and dashed empty cells are allocated padding; their counts derive from the data. Lanes compare fixed capacity and ragged allocation, while diagonal shows disjoint expert regions in separate columns. Use the same identities across comparative panels and disclose collapsed dimensions (e.g. each expert-width column is one schematic region). Prefer allocation for multiple parallel capacity/sparse regions instead of a long dependency graph or numerical used/allocated bars. Do not invent intermediate grouping operations to squeeze real parallel regions into a schematic. Memory panels contain exactly two named regions, each with 1-6 objects {id,label,shape,rows:1-6,columns:1-6,residency:stored|transient|absent}, up to twelve transfers {from,to,label}, and repeat (max100) explaining traversal/state updates. Equal-size grid cells encode relative object area; region membership encodes memory location, crossed-out grids mean not materialized, not skipped computation. Use consistent illustrative N and d across every grid with shape N×N or N×d: rows must equal N, columns must equal N or d. For a combined c×N×d object columns equal c*d; combined c×N×N may exceed bounds, so separate S/P. Query/key block counts and local tile sizes should cover the same N. State-vector summaries must be explicitly schematic. Use concise COMPLETE sentences in repeat and captions, never cut clauses to fit bounds; source-supported symbolic shapes may be schematic, not hardware capacities. For an intermediate-residency overview, show full stored/absent intermediates versus reusable transient score/exponential tiles and explicitly omit operands, output and row-state arithmetic. For an arithmetic view, include identifiable running output/normalization state and every required operand, preserving exact attention. Do not call a tile of unnormalized exponentials globally normalized probabilities: distinguish its local maximum/sum from the accumulated row normalizer. Use all necessary transfers rather than omitting dependencies to fit a diagram; arithmetic views have up to twelve anchored transfers. Use coverage:{leftLabel,rightLabel,left,right,order:left-major|right-major} with 2-4 short block identities per axis to show the complete tile-pair visit schedule. The renderer numbers every Cartesian pair; this is a visit schedule, never a stored attention matrix. right-major visits all Q blocks for each K/V block. Repeat text explains state updates; never promise that only the final output is written back when state/output updates recur. Transfers must refer to present object IDs, never absent objects. They may show cross-region traffic or local computation such as S→P→accumulator. Arrows anchor to the actual grids, and source-endpoint numbers map to the labelled transfer key. Prefer this panel for memory hierarchy and tiling, not vectors merely naming full matrices. State-trace panels compare replay posterior and imagined prior transitions from ONE shared replay posterior. Supply initial:{state,h,z,observation} and exactly two branches {mode:replay|imagination,steps:1-2 [{state,h,z,action,observation}]}. Symbols are at most five characters. Each step.action is the INCOMING action from the previous state (e.g. aR₀ into sR₁). Replay actions are recorded; imaginary actions are actor samples. Replay step observations are required, imagined step observations must be null. Use distinct state identities across branches, e.g. sR₁/sI₁, with source-supported symbolic h/z components, not invented Gaussian parameters. The renderer owns paired h/z state components, an action token joining each recurrent transition, aligned posterior observation inputs, actor conditioning, and a single shared initial state. Choose this narrow state trace instead of a whole training-update flow; objectives remain in recall. Tree panels contain 3-15 individual token nodes {id,parentId:null for one root,token:max4,status:accepted|candidate|rejected}. There are at most four children per parent and four edges of depth. Sibling tokens are distinct because shared prefixes are merged. Accepted nodes must form one connected root-to-node path, not several accepted branches. A root representing the already verified prefix uses prefixLabel; that root is existing context and is omitted from newly committed output, so add a separate root P before the first proposed token A. optional verificationLabel encloses all proposed nodes in one parallel verifier pass, leaving that prefix outside. Other trees may omit prefixLabel and frame the entire tree. Optional targetToken shows the appended target-LLM fallback in a separate committed-output ribbon, derived from the connected accepted path. Use it for a complete greedy verification iteration; that target token is not a proposed tree node. Use matching illustrative token identities across baseline/tree panels, show the first rejected proposal and its descendants, and ensure the claimed accepted output matches the highlighted path. Do not replace individual branching nodes by opaque token-list glyphs or duplicate a shared token to satisfy a glyph minimum. Schematic panels contain 2-6 semantic nodes and at most 8 directed edges, with a maximum of four dependency layers and two objects per layer; every object must participate in a relationship and the graph must be acyclic. Each node has id, label (max22), detail (max52), and a glyph: module for actual compute blocks; vector with 1-4 short values; tokens with 2-6 short identities; bank with capacity1-6 and occupied items no more than capacity; gaussian with mean, positive deviation, nullable sample (if present inside mean±3 deviations); gauge with value0-1 and inverse boolean (true only for a positive denominator whose reciprocal matters). Tokens/bank identities must be at most four characters. Edges have from,to,label,dashed; the renderer preserves all relationship labels. Use source-supported forms: a distribution curve is not a universal latent-space decoration, a gauge represents a fraction on an explicit shared 0–1 scale, and repeated identities encode repeated selection. Only choose module blocks for genuine transformations. Branching and data-bearing glyphs should make the mechanism visible. Prefer a conceptual object illustration as the hero over a numerical table unless the numerical pattern itself is the contribution. Bars panels contain nonnegative values, a unit, and 2-6 labeled items; panels with the same unit share a scale and percentages use 0-100; use only sourced measurements or explicitly illustrative quantities, never invented benchmark results. Panels may form a side-by-side baseline comparison or successive views of ONE worked example. If several panels reuse scores/assignments, every selection and count must agree. Use small examples, not miniature unreadable tables. Mark invented examples illustrative:true and name simplifications in captions. Prefer representation of the actual objects over generic stage boxes. Use illustration:null and 2-8 semantic nodes/edges only when a flow graph best explains the contribution. Do not choose x/y coordinates or arbitrary SVG. Flow kinds are neutral motifs, not data: experts does NOT imply a count or selection, and matrix without a panel does not contain values. The renderer owns typography, spacing, arrows, mobile recomposition, and counts. Repair semantics or the representation when a reviewer reports an inadequate visual mechanism.`;
-  const generationPrompt = design + "\n" + layoutContract + "\nUse lowercase hyphenated graph node IDs; every edge from/to must exactly match a node ID, including punctuation.";
+  const generationPrompt = design + "\n" + layoutContract + "\n" + diagramPresentationContract + "\nUse lowercase hyphenated graph node IDs; every edge from/to must exactly match a node ID, including punctuation.";
   const schemas = generationSchemas(sources.map(source => source.id));
   let draft = startingCandidate ? schemas.result.parse(startingCandidate) : await codex(
     generationPrompt + planningContext + "\nSOURCE DATA:\n" + sourceText,
@@ -194,8 +201,8 @@ async function generate(
       validateScene(result.scene);
       if (result.scene.illustration) validateIllustrationSources(result.scene.illustration, sources);
       const defects = [
-        ...inspectSvg(sceneSvg(result.scene)),
-        ...inspectSvg(sceneSvgMobile(result.scene)).map((s) => "Mobile: " + s),
+        ...inspectPublicationSvg(sceneSvg(result.scene), 880),
+        ...inspectPublicationSvg(sceneSvgMobile(result.scene), 350).map((s) => "Mobile: " + s),
       ];
       if (defects.length) throw new Error(defects.join("; "));
     } catch (e) {
@@ -205,7 +212,7 @@ async function generate(
     let technicalReview;
     if (!issue) {
       technicalReview = await codex(
-        technicalReviewPrompt + planningContext + "\nDIAGRAM CONTRACT:\n" + layoutContract + "\nRESULT:\n" + JSON.stringify({ ...result, scene: sceneGraphSchema.parse(result.scene) }) + "\nSOURCE DATA:\n" + sourceText,
+        technicalReviewPrompt + planningContext + "\nDIAGRAM CONTRACT:\n" + layoutContract + "\n" + diagramPresentationContract + "\nRESULT:\n" + JSON.stringify({ ...result, scene: sceneGraphSchema.parse(result.scene) }) + "\nSOURCE DATA:\n" + sourceText,
         technicalReviewSchema, dir, `technical-review-${attempt}`,
       );
       const defects = technicalDefects(plan, result.recall, technicalReview, sources);
@@ -219,7 +226,7 @@ async function generate(
       const mobilePng = path.join(dir, `review-mobile-${attempt}.png`);
       const reviewImages=[...await saveReviewImages(svg,png,880),...await saveReviewImages(sceneSvgMobile(result.scene),mobilePng,350)];
       const critique = await codex(
-        reviewRubric +
+        reviewRubric + await publicationContext(reviewImages) +
           "\nRESULT:\n" +
           JSON.stringify({ ...result, scene: sceneGraphSchema.parse(result.scene) }) +
           "\nSOURCE DATA:\n" +
@@ -299,22 +306,23 @@ async function generateStudy(paper: Paper, dir: string, progress: (stage: Worker
   let repair="", previousDraft="";
   for(let attempt=0;attempt<3;attempt++){
     await progress(attempt ? "study-repairing" : "study-drafting", attempt + 1);
-    const draft=attempt===0&&startingPack?studySchema.parse(startingPack):await codex(studyPrompt+"\nSOURCE DATA:\n"+data+"\nPREVIOUS DRAFT (retain correct material while repairing):\n"+previousDraft+"\nREPAIR NOTES:\n"+repair,studySchema,dir,`study-${attempt}`);
+    const draft=attempt===0&&startingPack?studySchema.parse(startingPack):await codex(studyPrompt+"\n"+diagramPresentationContract+"\nSOURCE DATA:\n"+data+"\nPREVIOUS DRAFT (retain correct material while repairing):\n"+previousDraft+"\nREPAIR NOTES:\n"+repair,studySchema,dir,`study-${attempt}`);
     if(attempt===0&&startingPack)await writeFile(path.join(dir,"study-0.json"),JSON.stringify(draft));
-    const pack=arrangeQuiz(draft);
+    const pack=arrangeQuiz({...draft,figures:draft.figures.map(figure=>figure.kind==="illustration"?{...figure,illustration:prepareDraftIllustration(figure.illustration)}:figure)});
     previousDraft=JSON.stringify(pack);
     try{
       validateStudy(pack,sources);
       await progress("study-rendering", attempt + 1);
       const images:string[]=[];
       for(const [i,f] of pack.figures.entries())for(const mobile of [false,true])for(let state=0;state<(f.kind==="network"?f.states.length:1);state++){
-        const svg=studySvg(f,mobile,state),defects=inspectSvg(svg);
+        const width=mobile?350:f.kind==="illustration"?880:760;
+        const svg=studySvg(f,mobile,state),defects=inspectPublicationSvg(svg,width);
         if(defects.length)throw new Error(`Figure ${i+1} ${mobile?"mobile":"desktop"}: ${defects.join("; ")}`);
         const file=path.join(dir,`study-${attempt}-${i}-${mobile}-${state}.png`);
         images.push(...await saveReviewImages(svg,file,mobile?350:f.kind==="illustration"?880:760));
       }
       await progress("study-reviewing", attempt + 1);
-      const review=await codex(`Review all these supplementary figures and quiz questions independently against SOURCE DATA. ${reviewRubric} Check values, axes, units and denominators; illustrative versus reported labels; equal conditions when a comparison is claimed; network edges and multiplication; heatmap normalization and direction; token-tree topology, scores and accepted path; timeline ordering; curve axes, monotonic x order and comparable series; loss-landscape grid/path semantics; readable mobile labels. Verify the correct quiz answer AND every distractor explanation; reject ambiguous questions or multiple correct choices. These figures supplement the supplied notecard, not replace it. Values must be supported exactly by the cited source or clearly illustrative. No demand for decorative variety.\nPACK:\n${JSON.stringify(pack)}\nSOURCE DATA:\n${data}`,critiqueSchema,dir,`study-review-${attempt}`,images);
+      const review=await codex(`Review all these supplementary figures and quiz questions independently against SOURCE DATA. ${reviewRubric} ${await publicationContext(images)} Check values, axes, units and denominators; illustrative versus reported labels; equal conditions when a comparison is claimed; network edges and multiplication; heatmap normalization and direction; token-tree topology, scores and accepted path; timeline ordering; curve axes, monotonic x order and comparable series; loss-landscape grid/path semantics; readable mobile labels. Verify the correct quiz answer AND every distractor explanation; reject ambiguous questions or multiple correct choices. These figures supplement the supplied notecard, not replace it. Values must be supported exactly by the cited source or clearly illustrative. No demand for decorative variety.\nPACK:\n${JSON.stringify(pack)}\nSOURCE DATA:\n${data}`,critiqueSchema,dir,`study-review-${attempt}`,images);
       if(!review.approved||review.issues.some(i=>i.severity==="must-fix"))throw new Error(JSON.stringify(review.issues));
       await writeFile(path.join(dir,"study-quality-report.json"),JSON.stringify({version:"study-figures-v2",paperId:paper.id,review,at:new Date().toISOString()},null,2));
       return {study:pack,sources};
@@ -380,7 +388,7 @@ async function main() {
     console.log("Review evaluation artifacts:", dir);
     const scope = paper.recall.evidenceScope;
     const sourceText = JSON.stringify({ title: paper.title, scope, sources: paper.sources });
-    const plan = await codex(planningPrompt + "\nSOURCE DATA:\n" + sourceText, mechanismPlanSchema, dir, "mechanism-plan");
+    const plan = await codex(planningPrompt + "\n" + diagramPresentationContract + "\nSOURCE DATA:\n" + sourceText, mechanismPlanSchema, dir, "mechanism-plan");
     validateMechanismPlan(plan, paper.sources, scope);
     const review = await codex(technicalReviewPrompt + "\nPLAN:\n" + JSON.stringify(plan) + "\nRESULT:\n" + JSON.stringify({recall:paper.recall,scene:paper.scene}) + "\nSOURCE DATA:\n" + sourceText, technicalReviewSchema, dir, "technical-review");
     const defects = technicalDefects(plan, paper.recall, review, paper.sources);

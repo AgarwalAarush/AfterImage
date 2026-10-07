@@ -27,6 +27,7 @@ export const illustrationPanelSchema = z.discriminatedUnion("kind", [
   }),
   z.object({
     ...common, kind: z.literal("routing"),
+    layout: z.literal("readable-routing-v1").nullish(),
     leftLabel: label, rightLabel: label,
     left: z.array(label).min(2).max(6), right: z.array(label).min(2).max(6),
     // Direction describes the selection relationship, not necessarily data movement.
