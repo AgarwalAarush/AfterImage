@@ -14,7 +14,7 @@ export function generationSchemas(sourceIds: string[]) {
   });
   const [matrix, routing, bars, schematic, allocation, memory, tree, stateTrace] = illustrationPanelSchema.options;
   const support = { sourceIds: z.array(citation).min(1).max(8) };
-  const illustration = illustrationSchema.extend({ panels: z.array(z.discriminatedUnion("kind", [matrix.extend(support), routing.extend(support), bars.extend(support), schematic.extend(support), allocation.extend(support), memory.extend(support), tree.extend(support), stateTrace.extend(support)])).min(1).max(3) });
+  const illustration = illustrationSchema.extend({ panels: z.array(z.discriminatedUnion("kind", [matrix.extend(support), routing.omit({ layout: true }).extend(support), bars.extend(support), schematic.extend(support), allocation.extend(support), memory.extend(support), tree.extend(support), stateTrace.extend(support)])).min(1).max(3) });
   const scene = sceneGraphSchema.extend({ illustration: illustration.nullish() });
   return { recall, scene, result: generationResultSchema.extend({ recall, scene }) };
 }

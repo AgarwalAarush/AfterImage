@@ -9,6 +9,7 @@ import { stateTraceSvg } from "./scene-state-trace-svg";
 import { tokenTreeSvg } from "./scene-tree-svg";
 import { memorySvg } from "./scene-memory-svg";
 import { readableMatrixSvg } from "./scene-matrix-svg";
+import { readableRoutingSvg } from "./scene-routing-svg";
 
 const ink = "#34332f", muted = "#62675f";
 const text = (x: number, y: number, value: string, size = 14, fill = ink, anchor = "start") =>
@@ -88,6 +89,10 @@ function panelSvg(panel: IllustrationPanel, width: number, accent: string, marke
       svg += `<rect x="0" y="${y - 10}" width="10" height="10" rx="2" fill="${accent}20" stroke="${accent}"/>${text(18, y, "Selected cells", 12, muted)}`;
       y += 29;
     }
+  } else if (panel.kind === "routing" && panel.layout === "readable-routing-v1") {
+    const graphic = readableRoutingSvg(panel, width, accent, marker, panelId);
+    svg += `<g transform="translate(0 ${y})">${graphic.svg}</g>`;
+    y += graphic.height;
   } else if (panel.kind === "routing") {
     const boxW = Math.min(124, Math.floor(width * .32));
     const labelLimit = Math.floor((boxW - 12) / 7.2);

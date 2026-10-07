@@ -24,7 +24,7 @@ export const subjectPresentationBaseline = baseline;
 export const subjectPresentationFontDirectories = baseline.legacyFontDirectories;
 // Subjects uses the pure text helper and routing, not Library scene rendering.
 // The entire Library runtime closure remains bound to workspace integration.
-export const subjectLibraryRendererFiles = [...baseline.unchangedCoreManifest.map(([file])=>file).filter(file=>file.startsWith("src/lib/scene")&&file!=="src/lib/scene-layout.ts"),"src/lib/scene-matrix-svg.ts"].sort();
+export const subjectLibraryRendererFiles = [...baseline.unchangedCoreManifest.map(([file])=>file).filter(file=>file.startsWith("src/lib/scene")&&file!=="src/lib/scene-layout.ts"),"src/lib/scene-matrix-svg.ts","src/lib/scene-routing-svg.ts"].sort();
 export const subjectCorePresentationFiles = [...baseline.unchangedCoreManifest.map(([file]) => file).filter(file=>!subjectLibraryRendererFiles.includes(file)), ...baseline.extractions.map(item => item.targetFile), subjectDiagramTextFile].sort();
 /** Shared hooks, prop wiring, overlays, route layout and the acceptance policy need their own current review. */
 export const subjectIntegrationPresentationFiles = [

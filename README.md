@@ -1,5 +1,7 @@
 # AfterImage
 
+New routing drafts use a versioned layout with readable publication-scale identities. Generation/review now checks partial missing glyphs and supplies measured font sizes bound to the actual SVG and review-font bytes. Approved stored diagrams retain their legacy output. See [diagram publication repair](docs/diagram-publication-repair-2026-10-06.md) for the Sparse MRI diagnosis, evaluation evidence and release gates.
+
 Original-paper loading uses a quiet dotted orb and faint page outline, keeping the view switch available until the PDF is ready. Reduced motion uses a still orb. See [PDF loading presentation](docs/pdf-loading-presentation-2026-10-06.md) for owner verification, the exact-source release record and deployment status.
 
 PDF text selection keeps the selectable overlay transparent in Light and Dark, preserving the original page lettering beneath the highlight. Escape dismisses both the selected passage and its Ask AI popover. See [reader selection correction](docs/pdf-selection-overlap-2026-10-06.md) for validation and publication status.
