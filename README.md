@@ -1,8 +1,9 @@
 # AfterImage
 
-Original-paper loading uses a quiet dotted orb and faint page outline, keeping the view switch available until the PDF is ready. Reduced motion uses a still orb. See [PDF loading presentation](docs/pdf-loading-presentation-2026-10-06.md) for local verification and release status.
+Original-paper loading uses a quiet dotted orb and faint page outline, keeping the view switch available until the PDF is ready. Reduced motion uses a still orb. See [PDF loading presentation](docs/pdf-loading-presentation-2026-10-06.md) for owner verification, the exact-source release record and deployment status.
 
 PDF text selection keeps the selectable overlay transparent in Light and Dark, preserving the original page lettering beneath the highlight. Escape dismisses both the selected passage and its Ask AI popover. See [reader selection correction](docs/pdf-selection-overlap-2026-10-06.md) for validation and publication status.
+
 The browser tab now uses AfterImage's stacked-paper mark, with SVG, PNG and ICO assets served through Next.js metadata conventions. See [browser tab icon](docs/browser-tab-icon-2026-10-06.md) for scope and verification.
 
 Subjects paragraphs, objectives and headings now use the same available article width as their equation panels and diagrams. The owner authorized a source-bound exception for this exact prose/title change without renewed browser review; renderer geometry, fonts, scientific checks and existing diagram approvals remain enforced. See [Subjects reading-width alignment](docs/subjects-reading-width-2026-10-06.md) for the change and release checks.

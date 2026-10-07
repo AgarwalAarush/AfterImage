@@ -11,7 +11,7 @@ const externalImports = [
   "katex", "katex/dist/katex.min.css", "lucide-react", "next/dist/compiled/babel/bundle",
   "next/dynamic", "next/headers", "next/link", "next/navigation", "node:crypto", "node:fs/promises",
   "node:module", "node:path", "pdfjs-dist", "postcss", "react", "react-dom", "react-markdown",
-  "rehype-katex", "rehype-raw", "rehype-sanitize", "rehype-slug", "remark-gfm", "remark-math", "sharp", "zod",
+  "rehype-katex", "rehype-raw", "rehype-sanitize", "rehype-slug", "remark-gfm", "remark-math", "sharp", "thinking-orbs", "zod",
 ];
 export type SubjectPresentationCoverageOptions = {
   root?: string;
