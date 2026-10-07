@@ -5,7 +5,7 @@ import { publishedSubjectMechanismSchema, subjectMechanismSchema, validateSubjec
 import { validateSubjectMath } from "./subject-math";
 import type { PublishedLesson } from "./subjects";
 import { subjectPresentationScope } from "./subject-presentation-scope";
-import { subjectOwnerTextWidthAccepted, subjectWorkspaceAccepted } from "./subject-workspace-review";
+import { subjectOwnerPdfReaderAccepted, subjectOwnerTextWidthAccepted, subjectWorkspaceAccepted } from "./subject-workspace-review";
 import { subjectMechanismQualityVersion, validateSubjectMechanismQuality } from "./subject-mechanism-quality";
 import { subjectDiagramTextFile, subjectDiagramTextIsHistorical, subjectRendererSource } from "./subject-renderer-boundary";
 
@@ -37,9 +37,10 @@ export async function getSubjectMechanism(lesson:PublishedLesson,{allowSourcePas
       const current=acceptance.presentationDigest===scope.coreDigest;
       const unchangedLegacy=scope.legacyCore.equivalent && acceptance.presentationDigest===scope.legacyCore.legacyPresentationDigest;
       const ownerTextWidth=acceptance.presentationDigest===scope.legacyCore.legacyPresentationDigest&&await subjectOwnerTextWidthAccepted(scope);
+      const ownerPdfReader=acceptance.presentationDigest===scope.legacyCore.legacyPresentationDigest&&await subjectOwnerPdfReaderAccepted(scope);
       // Existing every-beat acceptance remains necessary. Owner exceptions are
       // separate exact-source decisions, never invented independent reviews.
-      if(!(current||unchangedLegacy||ownerTextWidth)||!await subjectWorkspaceAccepted(scope))return null;
+      if(!(current||unchangedLegacy||ownerTextWidth||ownerPdfReader)||!await subjectWorkspaceAccepted(scope))return null;
     }
     validateSubjectMechanism(input,lesson,lesson.sources);validateMechanismMath(input,lesson);
     validateSubjectMechanismQuality(input);

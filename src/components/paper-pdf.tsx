@@ -5,6 +5,7 @@ import { targetQuery, type AssistantSource, type AssistantTarget } from "@/lib/a
 import { locatePdfSource, normalizePdfText, type PdfMatch, type PdfTextPage } from "@/lib/pdf-location";
 import { findPdfTextMatches, normalizePdfSearchText, pdfSearchOriginalRange, type PdfSearchMatch } from "@/lib/pdf-search";
 import type { PDFDocumentProxy, PDFPageProxy } from "pdfjs-dist";
+import { PaperLoading, PaperPagePlaceholder } from "./paper-loading";
 export type PdfDestination={key:string;source:AssistantSource};
 type PdfModule=typeof import("pdfjs-dist");
 type IndexedPdfPage=PdfTextPage&{searchText:string};
@@ -62,13 +63,13 @@ function PdfPage({document,page,scale,match,searchMatches,activeSearch,highlight
     let offset=0;spans.forEach((span,index)=>{const length=normalizePdfText(normalized[index]).length;if(offset<start+match.needle.length&&offset+length>start)span.classList.add("pdf-match");offset+=length+1;});
     scrollPdfTo(text.current.querySelector(".pdf-match"),true);
   },[ready,match,page,searchMatches,activeSearch,highlightAll]);
-  return <div ref={container} id={`pdf-page-${page}`} className={`pdf-page ${ready?"":"pdf-page-placeholder"}`} style={{width:dimensions.width*scale,height:dimensions.height*scale,"--scale-factor":scale,"--total-scale-factor":scale,"--user-unit":1} as CSSProperties} aria-label={`Page ${page}`}>
-    {!ready&&<span>Page {page}</span>}<canvas ref={canvas} aria-hidden="true"/><div ref={text} className="textLayer"/>
+  return <div ref={container} id={`pdf-page-${page}`} className={`pdf-page ${ready?"":"pdf-page-placeholder"}`} style={{width:dimensions.width*scale,height:dimensions.height*scale,"--scale-factor":scale,"--total-scale-factor":scale,"--user-unit":1} as CSSProperties} aria-label={`Page ${page}`} aria-busy={!ready}>
+    {!ready&&<PaperPagePlaceholder active={visible}/>}<canvas ref={canvas} aria-hidden="true"/><div ref={text} className="textLayer"/>
   </div>;
 }
 export function PaperPdf({target,title,arxivId,destination,viewControls,toolbarActions}:{target:AssistantTarget;title:string;arxivId:string;destination:PdfDestination|null;viewControls?:ReactNode;toolbarActions?:ReactNode}){
   const [attempt,setAttempt]=useState(0),[fitWidth,setFitWidth]=useState(true);
-  const [document,setDocument]=useState<PDFDocumentProxy|null>(null),[error,setError]=useState(""),[status,setStatus]=useState("Loading original paper…"),[scale,setScale]=useState(1),[page,setPage]=useState(1),[search,setSearch]=useState("");
+  const [document,setDocument]=useState<PDFDocumentProxy|null>(null),[error,setError]=useState(""),[status,setStatus]=useState(""),[scale,setScale]=useState(1),[page,setPage]=useState(1),[search,setSearch]=useState("");
   const [match,setMatch]=useState<PdfMatch|null>(null),[download,setDownload]=useState(""),[digest,setDigest]=useState("");
   const pages=useRef<Promise<IndexedPdfPage[]>|null>(null),locations=useRef(new Map<string,PdfMatch|null>()),pane=useRef<HTMLDivElement>(null);
   const [findOpen,setFindOpen]=useState(false),[highlightAll,setHighlightAll]=useState(true),[matchCase,setMatchCase]=useState(false),[wholeWords,setWholeWords]=useState(false);
@@ -91,7 +92,7 @@ export function PaperPdf({target,title,arxivId,destination,viewControls,toolbarA
   },[findOpen]);
   const targetKey=`${target.kind}:${target.id}`;
   useEffect(()=>{
-    setError("");setStatus("Loading original paper…");setDocument(null);setDownload("");setMatch(null);
+    setError("");setStatus("");setDocument(null);setDownload("");setMatch(null);
     const controller=new AbortController();let blobUrl="",task:ReturnType<PdfModule["getDocument"]>|undefined,alive=true;
     void (async()=>{
       const response=await fetch(`/api/reader/pdf?${targetQuery(target)}`,{signal:controller.signal});if(!response.ok)throw Error("The PDF could not be loaded. Retry loading the PDF or open the original source.");
@@ -181,6 +182,6 @@ export function PaperPdf({target,title,arxivId,destination,viewControls,toolbarA
     {(status||error)&&<p className="pdf-status" role="status">{error||status}</p>}
     {error&&<button className="button small pdf-retry" onClick={()=>setAttempt(value=>value+1)}>Retry PDF</button>}
     {destination&&!match&&/^https:\/\/arxiv\.org\//.test(destination.source.url)&&<a className="text-button" href={destination.source.url} target="_blank" rel="noreferrer">Open original section<ExternalLink size={13}/></a>}
-    <div className="pdf-pages" ref={pane}>{document&&Array.from({length:document.numPages},(_,index)=><PdfPage key={index} document={document} page={index+1} scale={scale} match={match} searchMatches={findOpen?searchMatches:emptySearchMatches} activeSearch={activeSearch} highlightAll={highlightAll} onVisible={setPage}/>)}</div>
+    <div className="pdf-pages" ref={pane}>{!document&&!error&&<PaperLoading/>}{document&&Array.from({length:document.numPages},(_,index)=><PdfPage key={index} document={document} page={index+1} scale={scale} match={match} searchMatches={findOpen?searchMatches:emptySearchMatches} activeSearch={activeSearch} highlightAll={highlightAll} onVisible={setPage}/>)}</div>
   </section>;
 }

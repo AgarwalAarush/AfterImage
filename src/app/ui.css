@@ -397,14 +397,29 @@ input::placeholder, textarea::placeholder { font-size: inherit; color: var(--mut
 .pdf-status { font:13px/1.6 var(--font-sans); padding:10px 0; color:var(--muted); }
 .pdf-pages { overflow:auto; max-height:calc(100dvh - 190px); padding:24px 12px; background:var(--paper); scroll-behavior:auto; }
 .pdf-page { position:relative; margin:0 auto 24px; background:white; color:black; overflow:hidden; }
-.pdf-page canvas { position:absolute; inset:0; width:100%; height:100%; }
+.pdf-page > canvas { position:absolute; inset:0; width:100%; height:100%; opacity:1; transition:opacity 160ms cubic-bezier(0.23,1,0.32,1); }
 .pdf-page .textLayer { position:absolute; inset:0; overflow:clip; opacity:1; line-height:1; text-align:initial; text-size-adjust:none; forced-color-adjust:none; transform-origin:0 0; z-index:2; letter-spacing:normal; word-spacing:normal; --min-font-size:1; --text-scale-factor:calc(var(--total-scale-factor) * var(--min-font-size)); --min-font-size-inv:calc(1 / var(--min-font-size)); }
 .pdf-page .textLayer :is(span,br) { color:transparent; position:absolute; white-space:pre; cursor:text; transform-origin:0% 0%; }
 .pdf-page .textLayer > :not(.markedContent),.pdf-page .textLayer .markedContent span:not(.markedContent) { z-index:1; --font-height:0; --scale-x:1; --rotate:0deg; font-size:calc(var(--text-scale-factor) * var(--font-height)); transform:rotate(var(--rotate)) scaleX(var(--scale-x)) scale(var(--min-font-size-inv)); }
 .pdf-page .textLayer .markedContent { display:contents; }
-.pdf-page .textLayer ::selection { background:rgba(90,100,200,.3); }
+.pdf-page .textLayer ::selection { background:rgba(90,100,200,.3); color:transparent; }
 .pdf-page .textLayer .pdf-match { background:rgba(232,184,54,.35); }
-.pdf-page-placeholder { display:flex; align-items:center; justify-content:center; color:#555; font:13px var(--font-sans); }
+.pdf-page-placeholder > canvas { opacity:0; }
+.pdf-page-placeholder .textLayer { visibility:hidden; }
+.pdf-loading { position:relative; display:grid; place-items:center; height:100%; min-height:420px; }
+.pdf-loading-sheet { grid-area:1/1; position:relative; width:min(360px,70%); aspect-ratio:612/792; max-height:100%; border:1px solid var(--line); border-radius:3px; color:var(--line); opacity:.6; }
+.pdf-paper-outline { position:absolute; inset:0; padding:12% 11%; pointer-events:none; }
+.pdf-outline-title,.pdf-outline-subtitle { height:1.3%; margin:0 auto 3%; border-radius:2px; background:currentColor; }
+.pdf-outline-title { width:72%; height:2%; }
+.pdf-outline-subtitle { width:44%; }
+.pdf-outline-columns { display:grid; grid-template-columns:1fr 1fr; gap:8%; height:75%; margin-top:12%; }
+.pdf-outline-columns > div { background:repeating-linear-gradient(to bottom,currentColor 0 2px,transparent 2px 12px); }
+.pdf-outline-columns > div:last-child { height:85%; }
+.pdf-loading-orb { grid-area:1/1; z-index:1; display:grid; place-items:center; padding:24px; border-radius:50%; background:var(--paper); }
+.pdf-loading-orb canvas { display:block; }
+.pdf-page-loading { position:absolute; inset:0; display:grid; place-items:center; color:#ededed; }
+.pdf-page-loading .pdf-loading-orb { background:white; }
+@media (prefers-reduced-motion:reduce) { .pdf-page > canvas { transition:none; } }
 @media (max-width:999px) { .reader-view-tabs { margin-left:20px; } .paper-pdf { padding:16px; } }
 @media print { .reader-view-tabs,.pdf-toolbar,.selection-popover { display:none; } }
 

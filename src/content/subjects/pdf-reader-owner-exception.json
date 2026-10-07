@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "kind": "owner-pdf-reader-release-exception",
+  "policy": "subjects-scoped-v1",
+  "coreDigest": "74222c440a634a1062f25ff74915f34d9cbf40161045957781bfb17acc7c3e58",
+  "integrationDigest": "029462ceba51f9effc3c3b148f00529aa4c1d1f79ce5ac0c28b0389e2d853c51",
+  "legacyPresentationDigest": "76a8196b47300566afdb94d5001d9a6a0d802cffe6c797fd3e7c66fba3ffeac2",
+  "authorizedBy": "owner",
+  "authorizedAt": "2026-10-07T02:41:11.000Z",
+  "authorization": "Owner verified the PDF reader; clean merge and deploy after basic tests without further browser verification",
+  "sourceDigests": {
+    "src/app/globals.css": "8ccdb34fd64bd6ed9ea526fff8d404c096f9bcf79bc04b9ae5de490c767d5f26",
+    "src/app/ui.css": "592017094579007ed31f17d47a8533e984f768204335f5d38a01835a6160eaf6",
+    "src/components/paper-assistant.tsx": "876023cb7e8b314570dc1486690ca6eb3903d09e52ddb901e4c40abfe8aec9f7",
+    "src/components/paper-pdf.tsx": "77bad06d46e24f6ab9854a75733a747ff964feb03040bdda97eed03ef9194595",
+    "src/components/paper-loading.tsx": "bfbe92e3c467abf6fb26634e081d15c6e7a36978f40680e4334bed473baecdc1"
+  },
+  "waivedChecks": [
+    "pdf-reader-browser-review",
+    "shared-workspace-browser-review"
+  ]
+}

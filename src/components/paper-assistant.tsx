@@ -1,14 +1,14 @@
 "use client";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ArrowUp, X, MessageSquare, Square, Quote, Copy, Plus, History } from "lucide-react";
-import dynamic from "next/dynamic";
 import { createPortal } from "react-dom";
 import type { Paper } from "@/lib/types";
 import { isActiveTurn, targetQuery, type AssistantTarget, type AssistantTurn, type AssistantSource, type Conversation } from "@/lib/assistant-model";
 import { AssistantAnswer, type CitationHandlers } from "./assistant-answer";
 import { useApp } from "./app-context";
 import type { PdfDestination } from "./paper-pdf";
-const PaperPdf=dynamic(()=>import("./paper-pdf").then(module=>module.PaperPdf),{ssr:false,loading:()=> <p role="status">Opening paper…</p>});
+import { PaperLoading } from "./paper-loading";
+const PaperPdf=lazy(()=>import("./paper-pdf").then(module=>({default:module.PaperPdf})));
 type Selection={text:string;x:number;y:number};
 type HistoryPage={items:Conversation[];nextCursor:string|null};
 type TurnPage={conversation:Conversation;items:AssistantTurn[];nextCursor:string|null};
@@ -109,6 +109,7 @@ export function ReaderAssistant({target,title,arxivId,children,available=true}:{
     const text=(clone.textContent||selection.toString()).trim().slice(0,6000);if(text.length<3)return null;
     const rect=range.getBoundingClientRect();return {text,x:Math.max(12,Math.min(innerWidth-352,rect.left)),y:Math.max(12,Math.min(innerHeight-180,rect.bottom+8))};
   }
+  function dismissSelection(){window.getSelection()?.removeAllRanges();setHighlight(null);setSelectionQuestion("");}
   useEffect(()=>{
     if(!available)return;
     const select=(event:Event)=>{if((event.target as Element)?.closest?.(".selection-popover"))return;const value=captureSelection();if(value){setHighlight(value);setSelectionQuestion("");}else if(!(event.target as Element)?.closest?.(".paper-assistant"))setHighlight(null);};
@@ -118,7 +119,7 @@ export function ReaderAssistant({target,title,arxivId,children,available=true}:{
       if((event.metaKey||event.ctrlKey)&&event.key.toLowerCase()==="e"&&!editable){const selected=captureSelection();if(selected){event.preventDefault();if(!running&&!loading&&!submitting.current&&!uncertain){show();void send("Explain this selection",selected.text);}return;}}
       if((event.metaKey||event.ctrlKey)&&event.key.toLowerCase()==="j"){event.preventDefault();if(open)close();else show();}
       if(event.defaultPrevented)return;
-      if(event.key==="Escape"){if(highlight){setHighlight(null);return;}if(source){setSource(null);return;}if(historyOpen){setHistoryOpen(false);return;}if(open)close();}
+      if(event.key==="Escape"){if(highlight||captureSelection()){event.preventDefault();dismissSelection();return;}if(source){setSource(null);return;}if(historyOpen){setHistoryOpen(false);return;}if(open)close();}
       if(open&&narrow&&event.key==="Tab"){
         const nodes=Array.from(root.current?.querySelectorAll<HTMLElement>(".paper-assistant button:not(:disabled),.paper-assistant textarea,.paper-assistant a,.assistant-table-scroll")||[]).filter(node=>node.offsetParent!==null);
         if(source)nodes.push(...document.querySelectorAll<HTMLElement>(".assistant-source-preview button,.assistant-source-preview a"));
@@ -175,11 +176,11 @@ export function ReaderAssistant({target,title,arxivId,children,available=true}:{
     <div className="reader-main" inert={open&&narrow?true:undefined}>
       {tab==="reading"&&viewControls}
       <div data-assistant-content hidden={tab!=="reading"}>{children}</div>
-      {pdfOpened&&<div className="reader-pdf-view" data-assistant-content hidden={tab!=="paper"}><PaperPdf target={target} title={title} arxivId={arxivId} destination={destination} viewControls={viewControls} toolbarActions={assistantControl}/></div>}
+      {pdfOpened&&<div className="reader-pdf-view" data-assistant-content hidden={tab!=="paper"}><Suspense fallback={<section className="paper-pdf" aria-label={`Original paper: ${title}`}><div className="pdf-toolbar">{viewControls}{assistantControl&&<div className="pdf-toolbar-actions">{assistantControl}</div>}</div><div className="pdf-pages"><PaperLoading/></div></section>}><PaperPdf target={target} title={title} arxivId={arxivId} destination={destination} viewControls={viewControls} toolbarActions={assistantControl}/></Suspense></div>}
     </div>
     {target.kind==="paper"&&available&&!open&&<button className="assistant-launch button" onClick={show}><MessageSquare size={17}/>Ask this paper<kbd>⌘ J</kbd></button>}
     {available&&highlight&&<form className="selection-popover" style={{left:highlight.x,top:highlight.y}} onSubmit={event=>{event.preventDefault();show();void send(selectionQuestion,highlight.text);}} aria-label="Ask about selected text">
-      <button type="button" className="icon-button selection-close" aria-label="Dismiss selection" onClick={()=>setHighlight(null)}><X size={14}/></button>
+      <button type="button" className="icon-button selection-close" aria-label="Dismiss selection" onClick={dismissSelection}><X size={14}/></button>
       <textarea aria-label="Question about selected text" placeholder="What would you like to understand?" value={selectionQuestion} maxLength={3000} onChange={event=>setSelectionQuestion(event.target.value)} onKeyDown={event=>{if(event.key==="Enter"&&!event.shiftKey&&!event.nativeEvent.isComposing){event.preventDefault();show();void send(selectionQuestion,highlight.text);}}}/>
       <div><button type="submit" className="button small" disabled={!selectionQuestion.trim()||busy||!!running}>Ask AI<ArrowUp size={14}/></button><button type="button" className="text-button" disabled={busy||!!running} onMouseDown={event=>event.preventDefault()} onClick={()=>{show();void send("Explain this selection",highlight.text);}}>Quick explain<kbd>⌘ E</kbd></button></div>
     </form>}

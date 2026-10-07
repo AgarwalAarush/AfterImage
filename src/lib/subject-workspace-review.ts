@@ -48,6 +48,36 @@ const ownerTextWidthExceptionSchema = z.object({
   authorization:z.literal("Release the exact Subjects prose/title-width change in PR 19 without renewed browser presentation review"),
   waivedChecks:z.tuple([z.literal("subjects-prose-width-browser-review"),z.literal("shared-workspace-browser-review")]),
 }).strict();
+// The owner verified the reader and explicitly requested release without more
+// browser review. These are the exact reviewed reader bytes, not an allowlist
+// for arbitrary future changes to shared styles or assistant behavior.
+export const subjectPdfReaderAuthorizedSources = {
+  "src/app/globals.css":"8ccdb34fd64bd6ed9ea526fff8d404c096f9bcf79bc04b9ae5de490c767d5f26",
+  "src/app/ui.css":"592017094579007ed31f17d47a8533e984f768204335f5d38a01835a6160eaf6",
+  "src/components/paper-assistant.tsx":"876023cb7e8b314570dc1486690ca6eb3903d09e52ddb901e4c40abfe8aec9f7",
+  "src/components/paper-pdf.tsx":"77bad06d46e24f6ab9854a75733a747ff964feb03040bdda97eed03ef9194595",
+  "src/components/paper-loading.tsx":"bfbe92e3c467abf6fb26634e081d15c6e7a36978f40680e4334bed473baecdc1",
+} as const;
+const ownerPdfReaderExceptionSchema = z.object({
+  version:z.literal(1),kind:z.literal("owner-pdf-reader-release-exception"),policy:z.literal("subjects-scoped-v1"),
+  coreDigest:digest,integrationDigest:digest,legacyPresentationDigest:digest,
+  authorizedBy:z.literal("owner"),authorizedAt:z.string().datetime(),
+  authorization:z.literal("Owner verified the PDF reader; clean merge and deploy after basic tests without further browser verification"),
+  sourceDigests:z.object(Object.fromEntries(Object.entries(subjectPdfReaderAuthorizedSources).map(([file,value])=>[file,z.literal(value)]))).strict(),
+  waivedChecks:z.tuple([z.literal("pdf-reader-browser-review"),z.literal("shared-workspace-browser-review")]),
+}).strict();
+/** Owner exception only: original scientific and every-beat approvals still apply. */
+export async function subjectOwnerPdfReaderAccepted(scope:Awaited<ReturnType<typeof subjectPresentationScope>>,root=process.cwd()) {
+  try {
+    const allowedFailures=["src/app/globals.css","src/app/ui.css","src/components/paper-assistant.tsx","src/components/paper-pdf.tsx"].map(file=>`core-changed:${file}`).sort();
+    if(JSON.stringify([...scope.legacyCore.failures].sort())!==JSON.stringify(allowedFailures))return false;
+    const exception=ownerPdfReaderExceptionSchema.parse(JSON.parse(await readFile(path.join(root,"src/content/subjects/pdf-reader-owner-exception.json"),"utf8")));
+    if(exception.coreDigest!==scope.coreDigest||exception.integrationDigest!==scope.integrationDigest||
+      exception.legacyPresentationDigest!==scope.legacyCore.legacyPresentationDigest)return false;
+    const current=await Promise.all(Object.entries(subjectPdfReaderAuthorizedSources).map(async([file,expected])=>hash(await readFile(path.join(root,file)))===expected));
+    return current.every(Boolean);
+  } catch {return false;}
+}
 // Invert only the three approved prose-width edits, including the adjacent
 // heading rule. The complete remaining stylesheet must match approved bytes.
 const textWidthEdits = [
@@ -211,5 +241,5 @@ export async function subjectWorkspaceAccepted(scope:Awaited<ReturnType<typeof s
     if(scope.legacyCore.equivalent&&exception.coreDigest===scope.coreDigest&&exception.integrationDigest===scope.integrationDigest&&
       exception.legacyPresentationDigest===scope.legacyCore.legacyPresentationDigest)return true;
   } catch { /* No current unchanged-core owner exception. */ }
-  return subjectOwnerTextWidthAccepted(scope);
+  return await subjectOwnerTextWidthAccepted(scope)||await subjectOwnerPdfReaderAccepted(scope);
 }

@@ -9,12 +9,14 @@ import {evaluateSubjectPresentationScope,subjectPresentationScope,readSubjectPre
 import {subjectRendererBoundary} from "../src/lib/subject-renderer-boundary";
 const hash=(value:string|Buffer)=>createHash("sha256").update(value).digest("hex");
 const reconciledCoreFiles=["src/lib/scene-illustration.ts","src/lib/scene-illustration-svg.ts"];
+const historicalReaderFiles=["src/app/globals.css","src/app/ui.css","src/components/paper-assistant.tsx","src/components/paper-pdf.tsx"];
 let sources:SubjectPresentationSources,currentSources:SubjectPresentationSources,fonts:[string,string][];
 before(async()=>{
   currentSources=Object.fromEntries(await Promise.all(subjectScopedPresentationFiles.map(async file=>[file,await readFile(file)])));
   // Exercise historical compatibility against actual approved Git bytes, rather
   // than assuming the current checkout has an unchanged renderer.
-  sources={...currentSources,...Object.fromEntries([...reconciledCoreFiles,"src/app/globals.css"].map(file=>[file,execFileSync("git",["show",`${subjectPresentationBaseline.baselineCommit}:${file}`])]))};
+  sources={...currentSources,...Object.fromEntries([...reconciledCoreFiles,...historicalReaderFiles].map(file=>[file,execFileSync("git",["show",`${subjectPresentationBaseline.baselineCommit}:${file}`])]))};
+  sources={...sources,"src/components/paper-assistant.tsx":String(sources["src/components/paper-assistant.tsx"]).replace('import { useApp } from "./app";','import { useApp } from "./app-context";')};
   fonts=await readSubjectPresentationFonts();
 });
 test("hash-only witness reconstructs the exact legacy presentation approval and current extracted core",()=>{
@@ -34,7 +36,7 @@ test("source extraction witnesses are exact fragments of the approved Git source
   }
 });
 test("Library renderer changes remain integration-bound while the exact Subjects helper retains historical approval",()=>{
-  const fixture:SubjectPresentationSources={...currentSources,"src/app/globals.css":sources["src/app/globals.css"]};
+  const fixture:SubjectPresentationSources={...currentSources,...Object.fromEntries(historicalReaderFiles.map(file=>[file,sources[file]]))};
   const result=evaluateSubjectPresentationScope(fixture,fonts);
   assert.equal(result.legacyCore.equivalent,true);
   for(const file of reconciledCoreFiles)assert.ok(subjectLibraryRendererFiles.includes(file));

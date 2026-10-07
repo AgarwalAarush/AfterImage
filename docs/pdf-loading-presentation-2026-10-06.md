@@ -1,0 +1,17 @@
+# Original-paper loading presentation
+
+The original-paper reader previously displayed plain “Opening paper…” and “Loading original paper…” paragraphs while loading its client module and fetching the PDF. Unrendered pages displayed only their page number.
+
+Both initial loading phases now show the same quiet, monochrome dotted orb inside a faint paper outline. The Lesson/Analysis and Paper switch remains available during the lazy module load. The installed `thinking-orbs` 0.3.1 package supplies the orb; its existing theme detection, reduced-motion still frame, offscreen suspension and hidden-tab suspension apply. No dependency or lockfile update is needed.
+
+Pages retain their measured dimensions while rendering. A static paper outline and light-surface orb replace the page-number placeholder; the completed canvas fades in over 160 ms. The selectable text stays hidden until its corresponding canvas and text layer have both finished. Reduced motion removes this fade. Loading has a screen-reader status, and incomplete pages expose `aria-busy`; visible error/retry, citation location and find statuses remain available.
+
+There is no artificial wait, progress percentage, generated content or backend change. PDF.js remains lazily imported and fetches the same authenticated PDF endpoint. The shared loading component is included in Subjects presentation fingerprints and runtime source traces. Scientific content, parent digests, renderer geometry, stored state and font/dependency bytes are preserved.
+
+## Owner verification and release
+
+Native Dia checks showed the real loading orb and subsequent T5 PDF in Light and Dark. The owner then confirmed their own browser verification and explicitly requested a clean merge and deployment after basic tests, without further browser verification. `pdf-reader-owner-exception.json` records that decision separately from independent diagram review; it pins the exact selection, assistant, PDF and loading-helper bytes, current core/integration digests, and existing PR #19 stylesheet. It requires historical equality for every other core/font source and preserves all scientific, renderer, parent and every-beat/transition approvals. Rebinding receipt hashes cannot authorize another shared stylesheet, reader/helper or font change.
+
+The loading helper is explicitly integration-bound, the existing orb dependency remains covered by the unchanged lockfile, and the public source-bound exception is included in Subjects runtime traces. Private audit images, logs, environment files, storage and assistant runtime remain excluded. The icon fix was already merged in PR #15 at `d065071` and live before this combined release; the reader patch was reconciled with that exact main without changing API, storage or worker behavior.
+
+Typecheck and the complete engineering suite pass: 403 tests passed, one skipped. New publication tests reject stale/malformed owner records, unrelated reader/helper/core/font changes even with rebound hashes, and missing scientific or per-beat approval. Historical compatibility fixtures use actual approved Git bytes, preserving their previous guarantees. The complete publication audit accepts 100 lessons, 203 figures and 14 mechanisms with no issues. The ordinary webpack production build passes compilation, TypeScript and static generation. Its 30 fresh output traces contain no private review/storage/runtime/environment/Git paths and include the required loading helper and exact-source receipt. The existing Babel bundling warnings are unchanged.

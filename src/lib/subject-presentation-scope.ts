@@ -29,6 +29,7 @@ export const subjectCorePresentationFiles = [...baseline.unchangedCoreManifest.m
 /** Shared hooks, prop wiring, overlays, route layout and the acceptance policy need their own current review. */
 export const subjectIntegrationPresentationFiles = [
   "src/app/layout.tsx", "src/components/app.tsx", "src/components/app-context.tsx",
+  "src/components/paper-loading.tsx",
   "src/components/app-notifications.tsx", "src/components/app-notifications.module.css", "src/components/paper-palette.tsx",
   "src/lib/client-request.ts", "src/lib/library-client.ts", "src/lib/subject-visual-review.ts",
   "src/lib/subject-visual-review-schema.ts", "src/lib/subject-mechanism-quality.ts", "src/lib/subject-mechanism-store.ts",

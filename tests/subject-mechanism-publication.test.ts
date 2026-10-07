@@ -12,7 +12,7 @@ import { subjectPresentationScope, subjectPresentationBaseline, subjectCorePrese
 import { auditSubjectPresentationCoverage } from "../src/lib/subject-presentation-coverage";
 import { auditSubjectRouteInventory } from "../src/lib/subject-presentation-routes";
 import { subjectFeatureRoots } from "../src/lib/subject-presentation-isolation";
-import { subjectOwnerTextWidthAccepted, subjectWorkspaceAccepted } from "../src/lib/subject-workspace-review";
+import { subjectOwnerPdfReaderAccepted, subjectPdfReaderAuthorizedSources, subjectOwnerTextWidthAccepted, subjectWorkspaceAccepted } from "../src/lib/subject-workspace-review";
 
 // All fixture mutations, including synthetic receipts, are confined to this
 // disposable directory. No source, review, font or receipt in the repository is changed.
@@ -23,6 +23,8 @@ test("actual mechanism publication preserves every gate across scoped legacy com
   const receiptFile="src/content/subjects/workspace-acceptance.json";
   const exceptionFile="src/content/subjects/workspace-owner-exception.json";
   const widthExceptionFile="src/content/subjects/text-width-owner-exception.json";
+  const pdfExceptionFile="src/content/subjects/pdf-reader-owner-exception.json";
+  const pdfSources:Record<string,Buffer>=Object.fromEntries(await Promise.all(Object.keys(subjectPdfReaderAuthorizedSources).map(async file=>[file,await readFile(path.join(originalCwd,file))] as const)));
   const widthCss=await readFile(path.join(originalCwd,"src/app/globals.css"),"utf8");
   try {
     const routes=await auditSubjectRouteInventory(originalCwd);
@@ -40,6 +42,8 @@ test("actual mechanism publication preserves every gate across scoped legacy com
     // Positive legacy fixtures use approved typography even when the checkout
     // intentionally changes its current reading presentation.
     await writeFile(path.join(root,"src/app/globals.css"),execFileSync("git",["show",`${subjectPresentationBaseline.baselineCommit}:src/app/globals.css`],{cwd:originalCwd}));
+    for(const file of ["src/app/ui.css","src/components/paper-assistant.tsx","src/components/paper-pdf.tsx"])
+      await writeFile(path.join(root,file),execFileSync("git",["show",`${subjectPresentationBaseline.baselineCommit}:${file}`],{cwd:originalCwd}));
     Object.assign(process.env,{NODE_ENV:"test"});
     process.chdir(root);
     const lesson=await getSubjectLesson("resnet");assert.ok(lesson,"public lesson fixture must pass its own publication checks");
@@ -220,6 +224,55 @@ test("actual mechanism publication preserves every gate across scoped legacy com
         } finally {await writeFile(helper,bytes);}
       } finally {
         await writeFile(file,baseline);await rm(widthExceptionFile,{force:true});await resetMechanism();await receipt();
+      }
+    });
+    await t.test("the owner PDF exception accepts only verified reader bytes and preserves every scientific gate",async()=>{
+      const before:Record<string,Buffer>=Object.fromEntries(await Promise.all(Object.keys(pdfSources).map(async file=>[file,await readFile(file)] as const)));
+      async function pdfException(current:Awaited<ReturnType<typeof subjectPresentationScope>>,overrides:Record<string,unknown>={}) {
+        await writeFile(pdfExceptionFile,JSON.stringify({version:1,kind:"owner-pdf-reader-release-exception",policy:"subjects-scoped-v1",
+          coreDigest:current.coreDigest,integrationDigest:current.integrationDigest,legacyPresentationDigest:current.legacyCore.legacyPresentationDigest,
+          authorizedBy:"owner",authorizedAt:"2026-10-07T02:41:11.000Z",
+          authorization:"Owner verified the PDF reader; clean merge and deploy after basic tests without further browser verification",
+          sourceDigests:subjectPdfReaderAuthorizedSources,waivedChecks:["pdf-reader-browser-review","shared-workspace-browser-review"],...overrides}));
+      }
+      await rm(receiptFile,{force:true});
+      try {
+        for(const [file,bytes] of Object.entries(pdfSources))await writeFile(file,bytes);
+        const changed=await subjectPresentationScope(root);
+        assert.equal(await getSubjectMechanism(lesson),null,"missing owner record withholds publication");
+        await pdfException(changed);
+        assert.equal(await subjectOwnerPdfReaderAccepted(changed),true);
+        assert.deepEqual((await getSubjectMechanism(lesson))?.review,original.review,"existing every-beat review remains unchanged");
+        for(const overrides of [
+          {coreDigest:"0".repeat(64)},{integrationDigest:"0".repeat(64)},{legacyPresentationDigest:"0".repeat(64)},
+          {sourceDigests:{...subjectPdfReaderAuthorizedSources,"src/app/ui.css":"0".repeat(64)}},
+          {waivedChecks:["all-publication-checks"]},{reviewerId:"invented-reviewer"},{authorizedBy:"worker"},
+        ]) {await pdfException(changed,overrides);assert.equal(await getSubjectMechanism(lesson),null);}
+        for(const file of [...Object.keys(pdfSources),"src/lib/diagram-text.ts",fonts.find(([name])=>name.startsWith("public/fonts/")&&name.endsWith(".woff2"))![0]]) {
+          const bytes=await readFile(file);
+          try {
+            await writeFile(file,Buffer.concat([bytes,Buffer.from("\n/* unrelated change */\n")]));
+            const altered=await subjectPresentationScope(root);await pdfException(altered);
+            assert.equal(await subjectOwnerPdfReaderAccepted(altered),false,`rebound receipt cannot authorize ${file}`);
+            assert.equal(await getSubjectMechanism(lesson),null);
+          } finally {await writeFile(file,bytes);}
+        }
+        await pdfException(changed);
+        for(const alter of [
+          (value:typeof original)=>{delete value.review.visualAcceptance;},
+          (value:typeof original)=>{value.review.visualAcceptance!.beatCount+=1;},
+          (value:typeof original)=>{value.review.visualAcceptance!.transitionCount-=1;},
+          (value:typeof original)=>{value.review.rendererDigest="0".repeat(64);},
+          (value:typeof original)=>{value.parentContentDigest="0".repeat(64);},
+          (value:typeof original)=>{value.beats[0].sourceIds=["unknown-source"];},
+        ]) {
+          const value=structuredClone(original);alter(value);await writeFile(mechanismFile,JSON.stringify(value));
+          assert.equal(await getSubjectMechanism(lesson),null);
+        }
+        await resetMechanism();assert.ok(await getSubjectMechanism(lesson));
+      } finally {
+        for(const [file,bytes] of Object.entries(before))await writeFile(file,bytes);
+        await rm(pdfExceptionFile,{force:true});await resetMechanism();await receipt();
       }
     });
   } finally {
