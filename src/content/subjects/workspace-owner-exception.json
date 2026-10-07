@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "kind": "owner-release-exception",
+  "policy": "subjects-scoped-v1",
+  "coreDigest": "840a4220adc62492711a0fb67f7e08e2ccfd23b901fe3f43a0193b0991c95f83",
+  "integrationDigest": "d26d1bfee900b83e5e26367c517387d3b414bdb61d25252747d328d80aa80756",
+  "legacyPresentationDigest": "76a8196b47300566afdb94d5001d9a6a0d802cffe6c797fd3e7c66fba3ffeac2",
+  "authorizedBy": "owner",
+  "authorizedAt": "2026-10-07T00:41:08.821Z",
+  "authorization": "Deploy reconciled main without the pending Dia workspace review",
+  "waivedCheck": "shared-workspace-browser-review"
+}

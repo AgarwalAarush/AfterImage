@@ -32,6 +32,15 @@ const publicAcceptanceSchema = z.object({
   legacyPresentationDigest:digest,reportDigest:digest,reviewerId:z.string().min(1).max(160),
   reviewedAt:z.string().datetime(),viewCount:z.literal(4),
 }).strict();
+// An explicit owner release instruction can waive only the shared-workspace
+// browser check. This record is not an independent review or diagram approval.
+const ownerExceptionSchema = z.object({
+  version:z.literal(1),kind:z.literal("owner-release-exception"),policy:z.literal("subjects-scoped-v1"),
+  coreDigest:digest,integrationDigest:digest,legacyPresentationDigest:digest,
+  authorizedBy:z.literal("owner"),authorizedAt:z.string().datetime(),
+  authorization:z.literal("Deploy reconciled main without the pending Dia workspace review"),
+  waivedCheck:z.literal("shared-workspace-browser-review"),
+}).strict();
 export function validateSubjectWorkspaceReview(input:unknown, scope:Awaited<ReturnType<typeof subjectPresentationScope>>) {
   const report=subjectWorkspaceReviewSchema.parse(input);
   if(report.authorId.trim().toLowerCase()===report.reviewerId.trim().toLowerCase())throw new Error("Workspace review requires an independent reviewer");
@@ -158,7 +167,14 @@ export function subjectWorkspaceAcceptance(report:SubjectWorkspaceReview) {
 export async function subjectWorkspaceAccepted(scope:Awaited<ReturnType<typeof subjectPresentationScope>>) {
   try {
     const receipt=publicAcceptanceSchema.parse(JSON.parse(await readFile(path.resolve("src/content/subjects/workspace-acceptance.json"),"utf8")));
-    return receipt.coreDigest===scope.coreDigest&&receipt.integrationDigest===scope.integrationDigest&&
-      receipt.legacyPresentationDigest===scope.legacyCore.legacyPresentationDigest;
+    if(receipt.coreDigest===scope.coreDigest&&receipt.integrationDigest===scope.integrationDigest&&
+      receipt.legacyPresentationDigest===scope.legacyCore.legacyPresentationDigest)return true;
+  } catch { /* No current independent workspace receipt. */ }
+  try {
+    const exception=ownerExceptionSchema.parse(JSON.parse(await readFile(path.resolve("src/content/subjects/workspace-owner-exception.json"),"utf8")));
+    // This release exception also requires proven unchanged historical core and
+    // fonts. The caller independently enforces scientific and per-beat approval.
+    return scope.legacyCore.equivalent&&exception.coreDigest===scope.coreDigest&&exception.integrationDigest===scope.integrationDigest&&
+      exception.legacyPresentationDigest===scope.legacyCore.legacyPresentationDigest;
   } catch {return false;}
 }
