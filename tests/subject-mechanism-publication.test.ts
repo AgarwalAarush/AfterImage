@@ -3,15 +3,16 @@ import assert from "node:assert/strict";
 import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
-import { getSubjectMechanism, mechanismDigest, validateMechanismMath } from "../src/lib/subject-mechanism-store";
+import { execFileSync } from "node:child_process";
+import { getSubjectMechanism, mechanismDigest, validateMechanismMath, subjectMechanismRendererDigest } from "../src/lib/subject-mechanism-store";
 import { getSubjectLesson } from "../src/lib/subject-library";
 import { publishedSubjectMechanismSchema, subjectMechanismSchema, validateSubjectMechanism } from "../src/lib/subject-mechanism";
 import { validateSubjectMechanismQuality } from "../src/lib/subject-mechanism-quality";
-import { subjectPresentationScope, subjectCorePresentationFiles, subjectIntegrationPresentationFiles, readSubjectPresentationFonts } from "../src/lib/subject-presentation-scope";
+import { subjectPresentationScope, subjectPresentationBaseline, subjectCorePresentationFiles, subjectIntegrationPresentationFiles, readSubjectPresentationFonts } from "../src/lib/subject-presentation-scope";
 import { auditSubjectPresentationCoverage } from "../src/lib/subject-presentation-coverage";
 import { auditSubjectRouteInventory } from "../src/lib/subject-presentation-routes";
 import { subjectFeatureRoots } from "../src/lib/subject-presentation-isolation";
-import { subjectWorkspaceAccepted } from "../src/lib/subject-workspace-review";
+import { subjectOwnerTextWidthAccepted, subjectWorkspaceAccepted } from "../src/lib/subject-workspace-review";
 
 // All fixture mutations, including synthetic receipts, are confined to this
 // disposable directory. No source, review, font or receipt in the repository is changed.
@@ -20,6 +21,9 @@ test("actual mechanism publication preserves every gate across scoped legacy com
   const root=await mkdtemp(path.join(os.tmpdir(),"subject-publication-fixture-"));
   const mechanismFile="src/content/subjects/mechanisms/resnet.json",lessonFile="src/content/subjects/lessons/resnet.json";
   const receiptFile="src/content/subjects/workspace-acceptance.json";
+  const exceptionFile="src/content/subjects/workspace-owner-exception.json";
+  const widthExceptionFile="src/content/subjects/text-width-owner-exception.json";
+  const widthCss=await readFile(path.join(originalCwd,"src/app/globals.css"),"utf8");
   try {
     const routes=await auditSubjectRouteInventory(originalCwd);
     const coverage=await auditSubjectPresentationCoverage({root:originalCwd,coreFiles:subjectCorePresentationFiles,integrationRoots:subjectIntegrationPresentationFiles,featureRoots:subjectFeatureRoots,routeFiles:routes.sourceFiles});
@@ -28,6 +32,14 @@ test("actual mechanism publication preserves every gate across scoped legacy com
       await mkdir(path.dirname(path.join(root,file)),{recursive:true});
       await copyFile(path.join(originalCwd,file),path.join(root,file));
     }));
+    const reconciledCoreFiles=["src/lib/scene-illustration.ts","src/lib/scene-illustration-svg.ts"];
+    const currentRenderers=Object.fromEntries(await Promise.all(reconciledCoreFiles.map(async file=>[file,await readFile(path.join(root,file))])));
+    // Preserve a real historical compatibility fixture while the checkout moves
+    // forward. These approved bytes are written only into the temporary fixture.
+    for(const file of reconciledCoreFiles)await writeFile(path.join(root,file),execFileSync("git",["show",`${subjectPresentationBaseline.baselineCommit}:${file}`],{cwd:originalCwd}));
+    // Positive legacy fixtures use approved typography even when the checkout
+    // intentionally changes its current reading presentation.
+    await writeFile(path.join(root,"src/app/globals.css"),execFileSync("git",["show",`${subjectPresentationBaseline.baselineCommit}:src/app/globals.css`],{cwd:originalCwd}));
     Object.assign(process.env,{NODE_ENV:"test"});
     process.chdir(root);
     const lesson=await getSubjectLesson("resnet");assert.ok(lesson,"public lesson fixture must pass its own publication checks");
@@ -40,6 +52,19 @@ test("actual mechanism publication preserves every gate across scoped legacy com
         legacyPresentationDigest:current.legacyCore.legacyPresentationDigest,reportDigest:"a".repeat(64),reviewerId:"synthetic-test-only",reviewedAt:"2026-10-03T20:00:00.000Z",viewCount:4,...overrides}));
     }
     async function resetMechanism(){await writeFile(mechanismFile,JSON.stringify(original));}
+    async function widthException(current:Awaited<ReturnType<typeof subjectPresentationScope>>,overrides:Record<string,unknown>={}) {
+      await writeFile(widthExceptionFile,JSON.stringify({version:1,kind:"owner-text-width-release-exception",policy:"subjects-scoped-v1",
+        coreDigest:current.coreDigest,integrationDigest:current.integrationDigest,legacyPresentationDigest:current.legacyCore.legacyPresentationDigest,
+        stylesheetDigest:mechanismDigest(await readFile("src/app/globals.css","utf8")),authorizedBy:"owner",authorizedAt:"2026-10-07T02:20:00.000Z",
+        authorization:"Release the exact Subjects prose/title-width change in PR 19 without renewed browser presentation review",
+        waivedChecks:["subjects-prose-width-browser-review","shared-workspace-browser-review"],...overrides}));
+    }
+    async function exception(current=scope,overrides:Record<string,unknown>={}) {
+      await writeFile(exceptionFile,JSON.stringify({version:1,kind:"owner-release-exception",policy:"subjects-scoped-v1",
+        coreDigest:current.coreDigest,integrationDigest:current.integrationDigest,legacyPresentationDigest:current.legacyCore.legacyPresentationDigest,
+        authorizedBy:"owner",authorizedAt:"2026-10-07T00:37:46.000Z",authorization:"Deploy reconciled main without the pending Dia workspace review",
+        waivedCheck:"shared-workspace-browser-review",...overrides}));
+    }
 
     await t.test("missing workspace receipt withholds an otherwise valid legacy mechanism",async()=>{
       await rm(receiptFile,{force:true});
@@ -50,6 +75,31 @@ test("actual mechanism publication preserves every gate across scoped legacy com
       await receipt();
       const result=await getSubjectMechanism(lesson);assert.ok(result);
       assert.deepEqual(result.review,original.review,"legacy approval bytes must not be rewritten or synthesized");
+    });
+    await t.test("a source-bound owner exception waives only workspace review and never claims independent approval",async()=>{
+      await rm(receiptFile,{force:true});
+      try {
+        await exception();
+        assert.deepEqual((await getSubjectMechanism(lesson))?.review,original.review);
+        for(const overrides of [
+          {coreDigest:"0".repeat(64)},{integrationDigest:"0".repeat(64)},{legacyPresentationDigest:"0".repeat(64)},
+          {kind:"independent-review"},{waivedCheck:"all-publication-checks"},{reviewerId:"invented-reviewer"},{authorizedBy:"worker"},
+        ]) {
+          await exception(scope,overrides);assert.equal(await getSubjectMechanism(lesson),null);
+        }
+        await exception();
+        const file="src/components/subject-reader.tsx",bytes=await readFile(file);
+        try {
+          await writeFile(file,Buffer.concat([bytes,Buffer.from("\n/* synthetic changed core */\n")]));
+          const changed=await subjectPresentationScope(root);await exception(changed);
+          assert.equal(await subjectWorkspaceAccepted(changed),false,"owner exception cannot approve changed historical core");
+          assert.equal(await getSubjectMechanism(lesson),null);
+        } finally {await writeFile(file,bytes);}
+        await exception();
+        const invalid=structuredClone(original);delete invalid.review.visualAcceptance;
+        await writeFile(mechanismFile,JSON.stringify(invalid));assert.equal(await getSubjectMechanism(lesson),null);
+        await resetMechanism();assert.ok(await getSubjectMechanism(lesson));
+      } finally {await rm(exceptionFile,{force:true});await resetMechanism();await receipt();}
     });
     await t.test("stale or malformed workspace receipts reject publication",async()=>{
       for(const key of ["coreDigest","integrationDigest","legacyPresentationDigest"]) {
@@ -66,6 +116,29 @@ test("actual mechanism publication preserves every gate across scoped legacy com
         const changed=await subjectPresentationScope(root);assert.equal(changed.legacyCore.equivalent,false);
         await receipt(changed);assert.equal(await subjectWorkspaceAccepted(changed),true);
         assert.equal(await getSubjectMechanism(lesson),null);
+      } finally {await writeFile(file,bytes);await receipt();}
+    });
+    await t.test("Library renderer reconciliation retains diagram approval only with a fresh matching workspace receipt",async()=>{
+      const historical=Object.fromEntries(await Promise.all(reconciledCoreFiles.map(async file=>[file,await readFile(file)])));
+      try {
+        for(const file of reconciledCoreFiles)await writeFile(file,currentRenderers[file]);
+        const changed=await subjectPresentationScope(root);assert.equal(changed.legacyCore.equivalent,true);
+        assert.equal(changed.coreDigest,scope.coreDigest);assert.notEqual(changed.integrationDigest,scope.integrationDigest);
+        assert.equal(await getSubjectMechanism(lesson),null,"old workspace receipt must not accept a changed Library integration");
+        await receipt(changed);assert.equal(await subjectWorkspaceAccepted(changed),true);
+        assert.deepEqual((await getSubjectMechanism(lesson))?.review,original.review,"diagram approvals remain byte-identical");
+      } finally {
+        for(const file of reconciledCoreFiles)await writeFile(file,historical[file]);
+        await receipt();
+      }
+    });
+    await t.test("a modified extracted helper invalidates renderer and historical approval",async()=>{
+      const file="src/lib/diagram-text.ts",bytes=await readFile(file),digest=await subjectMechanismRendererDigest();
+      try {
+        await writeFile(file,Buffer.concat([bytes,Buffer.from("\n/* altered text rendering */\n")]));
+        assert.notEqual(await subjectMechanismRendererDigest(),digest);
+        const changed=await subjectPresentationScope(root);assert.equal(changed.legacyCore.equivalent,false);
+        await receipt(changed);assert.equal(await getSubjectMechanism(lesson),null);
       } finally {await writeFile(file,bytes);await receipt();}
     });
     await t.test("changed font bytes reject legacy approval even with a freshly matching workspace receipt",async()=>{
@@ -107,6 +180,47 @@ test("actual mechanism publication preserves every gate across scoped legacy com
         assert.equal(await getSubjectMechanism(lesson,{allowSourcePassed:true}),null,"development review cannot bypass scientific checks");
       }
       await resetMechanism();assert.ok(await getSubjectMechanism(lesson));
+    });
+    await t.test("the owner width exception permits only the exact authorized CSS delta and retains diagram gates",async()=>{
+      const file="src/app/globals.css",baseline=await readFile(file);
+      await rm(receiptFile,{force:true});
+      try {
+        await writeFile(file,widthCss);
+        const changed=await subjectPresentationScope(root);
+        assert.deepEqual(changed.legacyCore.failures,["core-changed:src/app/globals.css"]);
+        assert.equal(await getSubjectMechanism(lesson),null,"the earlier owner exception cannot grant changed core approval");
+        await widthException(changed);
+        assert.equal(await subjectOwnerTextWidthAccepted(changed),true);
+        assert.deepEqual((await getSubjectMechanism(lesson))?.review,original.review);
+        for(const overrides of [
+          {coreDigest:"0".repeat(64)},{integrationDigest:"0".repeat(64)},{legacyPresentationDigest:"0".repeat(64)},
+          {stylesheetDigest:"0".repeat(64)},{waivedChecks:["all-publication-checks"]},{reviewerId:"invented-reviewer"},
+        ]) {await widthException(changed,overrides);assert.equal(await getSubjectMechanism(lesson),null);}
+        await writeFile(file,widthCss+"\n.subject-experiment-canvas { height:999px; }\n");
+        const extra=await subjectPresentationScope(root);await widthException(extra);
+        assert.equal(await subjectOwnerTextWidthAccepted(extra),false,"even rebound hashes cannot authorize unrelated CSS");
+        assert.equal(await getSubjectMechanism(lesson),null);
+        await writeFile(file,widthCss);await widthException(changed);
+        for(const alter of [
+          (value:typeof original)=>{delete value.review.visualAcceptance;},
+          (value:typeof original)=>{value.review.visualAcceptance!.beatCount+=1;},
+          (value:typeof original)=>{value.review.rendererDigest="0".repeat(64);},
+          (value:typeof original)=>{value.parentContentDigest="0".repeat(64);},
+        ]) {
+          const value=structuredClone(original);alter(value);await writeFile(mechanismFile,JSON.stringify(value));
+          assert.equal(await getSubjectMechanism(lesson),null);
+        }
+        await resetMechanism();assert.ok(await getSubjectMechanism(lesson));
+        const helper="src/lib/diagram-text.ts",bytes=await readFile(helper);
+        try {
+          await writeFile(helper,Buffer.concat([bytes,Buffer.from("\n/* changed helper */\n")]));
+          const altered=await subjectPresentationScope(root);await widthException(altered);
+          assert.equal(await subjectOwnerTextWidthAccepted(altered),false);
+          assert.equal(await getSubjectMechanism(lesson),null);
+        } finally {await writeFile(helper,bytes);}
+      } finally {
+        await writeFile(file,baseline);await rm(widthExceptionFile,{force:true});await resetMechanism();await receipt();
+      }
     });
   } finally {
     process.chdir(originalCwd);

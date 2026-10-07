@@ -37,6 +37,11 @@ test("a core module cannot silently move a new dependency to integration",async(
     assert.ok(result.integrationFiles.includes("src/added.ts"));
   });
 });
+test("Library renderer imports cannot reenter Subjects core through an integration classification",async()=>{
+  await fixture({"src/core.ts":'import "./library-renderer";',"src/library-renderer.ts":'export const x=1;'},async root=>{
+    await assert.rejects(auditSubjectPresentationCoverage({root,coreFiles:["src/core.ts"],integrationRoots:["src/library-renderer.ts"],forbiddenCoreImports:["src/library-renderer.ts"]}),/Library renderer cannot enter Subjects core/);
+  });
+});
 test("unresolved, computed, unknown external and unsupported asset imports fail closed",async()=>{
   for(const statement of ['import "./missing";','const target="./other"; import(target);','require(target);','export * from "unknown-package";','import "./asset.svg";'])
     await fixture({"src/entry.ts":statement,"src/asset.svg":"<svg/>"},async root=>{await assert.rejects(audit(root),/coverage failed|nonliteral imports/);});

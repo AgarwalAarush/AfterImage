@@ -1,6 +1,10 @@
 # Current operations
 
-Updated October 2, 2026. Start here before older hosting and outage records.
+Updated October 6, 2026. Start here before older hosting and outage records.
+
+## Web source and release identity
+
+The October 6 investigation found the production alias on CLI deployment `dpl_9Qu9oNH5zLjb8dMZ7LzieSiWuktZ`, uploaded October 3 before PR #14 merged. Its source is the PR #13 baseline plus five uncommitted Library renderer files; Vercel's project Git integration is absent. Merging to `main` therefore does not deploy this project automatically. The [source reconciliation](production-source-reconciliation-2026-10-06.md) retains those exact runtime bytes on the current recommendation source. The [owner-authorized renderer binding](subjects-renderer-binding-2026-10-06.md) preserves exact Subjects helper/routing equivalence and integration-binds Library rendering. The owner subsequently instructed deployment without the pending Dia workspace check; the [exact-source owner exception](owner-workspace-release-2026-10-06.md) records that authorization while preserving the normal scientific and diagram publication gates. Recheck the alias and source identity when releasing; this paragraph records the October 6 observation.
 
 ## Production and administration use different connections
 

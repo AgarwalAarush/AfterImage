@@ -14,7 +14,8 @@ const config: NextConfig = {
     "/api/reader/pdf": ["./src/content/subjects/lessons/*.json"],
     "/subjects": ["./src/content/subjects/lessons/*.json"],
     "/subjects/*": ["./src/content/subjects/lessons/*.json", "./src/content/subjects/mechanisms/*.json",
-      "./src/content/subjects/workspace-acceptance.json", "./src/content/subjects/catalog.json",
+      "./src/content/subjects/workspace-acceptance.json", "./src/content/subjects/workspace-owner-exception.json", "./src/content/subjects/catalog.json",
+      "./src/content/subjects/text-width-owner-exception.json",
       // Runtime scope and isolation checks read source bytes, including the
       // feature import closure. These globs contain code only; private artifacts,
       // credentials and storage remain excluded above.

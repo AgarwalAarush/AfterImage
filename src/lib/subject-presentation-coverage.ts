@@ -20,6 +20,7 @@ export type SubjectPresentationCoverageOptions = {
   featureRoots?: readonly string[];
   routeFiles?: readonly string[];
   allowedExternalImports?: readonly string[];
+  forbiddenCoreImports?: readonly string[];
 };
 function fail(file: string, reason: string): never {
   throw new Error(`Subject presentation import coverage failed in ${file}: ${reason}`);
@@ -50,6 +51,7 @@ function cssImports(source: string, file: string) {
 export async function auditSubjectPresentationCoverage(options: SubjectPresentationCoverageOptions) {
   const root = await realpath(options.root ?? process.cwd());
   const core = new Set(options.coreFiles), integrationRoots = new Set(options.integrationRoots);
+  const forbiddenCoreImports = new Set(options.forbiddenCoreImports??[]);
   const allowedExternal = new Set(options.allowedExternalImports ?? externalImports);
   const visited = new Set<string>(), integration = new Set<string>();
   function localPath(file: string) {
@@ -76,6 +78,7 @@ export async function auditSubjectPresentationCoverage(options: SubjectPresentat
   }
   async function visit(file: string, importer?: string) {
     const resolved = await resolveFile(file);
+    if(importer&&core.has(importer)&&forbiddenCoreImports.has(resolved))fail(importer,`Library renderer cannot enter Subjects core: ${resolved}`);
     if (importer && core.has(importer) && !core.has(resolved) && !integrationRoots.has(resolved))
       fail(importer, `unbound core dependency ${resolved}`);
     if (resolved.endsWith(".css") && !resolved.endsWith(".module.css") && !core.has(resolved))

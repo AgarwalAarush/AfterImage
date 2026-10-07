@@ -74,9 +74,6 @@ export function Home() {
           Suggestions could not refresh. Try Refresh suggestions to find another paper.
         </p>
       )}
-      {active && recs.length > 0 && recs.length < 3 && (
-        <p className="shortlist-refill-status" role="status">Finding your next paper…</p>
-      )}
       <div className="recommendation-grid">
         {recs.map(({ r, p }, index) => (
           <RecommendationCard

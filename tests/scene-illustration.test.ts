@@ -202,3 +202,26 @@ test("memory area encoding must preserve symbolic dimensions across both methods
  const bad=structuredClone(result);bad.illustration.panels[0].regions[0].objects[0].rows=2;assert.throws(()=>validateScene(prepareScene(bad)),/same illustrative N/);
  const combined=structuredClone(result);combined.illustration.panels[0].regions[0].objects[1].shape="2 × N×N";assert.throws(()=>validateScene(prepareScene(combined)),/multiplicity/);
 });
+
+test('readable matrices preserve every labeled cell and selection at both publication sizes',()=>{
+ const panel={...expertScoresPanel,layout:'readable-matrix-v1' as const};
+ const scene=prepareScene({...expertChoiceScene,illustration:{takeaway:'Every selection remains attached to its row and column.',panels:[panel,panel]}});
+ for(const render of [sceneSvg,sceneSvgMobile]){
+  const svg=render(scene);assert.deepEqual(inspectSvg(svg),[]);
+  const $=cheerio.load(svg,{xml:true});assert.equal($('[data-cell]').length,36);assert.equal($('[data-selected="true"]').length,12);
+  assert($('[data-cell]').toArray().every(node=>Number($(node).next().attr('font-size'))===16));
+  for(const label of [...panel.rows,...panel.columns])assert(svg.includes(label));
+  assert.equal(svg,render(scene));
+ }
+});
+test('maximum readable matrices keep complete long labels and eight-character values',()=>{
+ const panel={...expertScoresPanel,layout:'readable-matrix-v1' as const,rows:Array.from({length:6},(_,i)=>`Row condition ${i+1}`),columns:Array.from({length:6},(_,i)=>`Column condition ${i+1}`),values:Array.from({length:6},(_,r)=>Array.from({length:6},(_,c)=>`${r+1}${c+1}.01234`)),selected:[{row:5,column:5}],selectionRule:null,normalization:'none' as const};
+ const scene=prepareScene({...expertChoiceScene,illustration:{takeaway:'All six-by-six conditions and values remain visible.',panels:[panel]}});
+ for(const render of [sceneSvg,sceneSvgMobile]){
+  const svg=render(scene);assert.deepEqual(inspectSvg(svg),[]);
+  const $=cheerio.load(svg,{xml:true});assert.equal($('[data-cell]').length,36);
+  for(const value of panel.values.flat())assert(svg.includes(value));
+  assert.equal($('[data-selected="true"]').length,1);
+ }
+ assert.throws(()=>validateScene({...scene,illustration:{...scene.illustration,panels:[{...panel,selected:[{row:6,column:0}]}]}}));
+});

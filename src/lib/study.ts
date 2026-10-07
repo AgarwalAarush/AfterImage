@@ -3,19 +3,22 @@ import type { Source } from "./types";
 import { illustrationSchema, validateIllustration, validateIllustrationSources } from "./scene-illustration";
 import { diagramText } from "./scene";
 import { illustrationSvg } from "./scene-illustration-svg";
+import { readableCurveSvg } from "./study-curve-svg";
 const short=z.string().min(1).max(28);
 const axis=z.string().min(1).max(36);
 const point=z.object({x:z.number().finite().min(-1e9).max(1e9),y:z.number().finite().min(-1e9).max(1e9)});
 const base={id:z.string().regex(/^[a-z0-9-]+$/).max(40),title:z.string().min(1).max(100),placement:z.enum(["mechanism","evidence"]),caption:z.string().min(50).max(900),sourceId:z.string(),provenance:z.enum(["reported","illustrative"])};
+/** Bound review/image resources; chart rows grow vertically without shrinking text. */
+export const MAX_STUDY_BAR_SERIES=32;
 export const figureSchema=z.discriminatedUnion("kind",[
   z.object({...base,kind:z.literal("illustration"),illustration:illustrationSchema}),
-  z.object({...base,kind:z.literal("bars"),unit:short,reference:z.object({value:z.number().finite().min(0).max(1e9),label:short}).nullish(),series:z.array(z.object({label:short,value:z.number().finite().min(0).max(1e9),note:z.string().max(100)})).min(2).max(6)}),
+  z.object({...base,kind:z.literal("bars"),layout:z.literal("adaptive-bars-v1").nullish(),unit:short.describe("A complete concise metric/unit label, never clipped. Put a long definition or dimensionless qualification in the caption; use a short complete name such as Auxiliary loss."),reference:z.object({value:z.number().finite().min(0).max(1e9),label:short}).nullish(),series:z.array(z.object({label:short,value:z.number().finite().min(0).max(1e9),note:z.string().max(100)})).min(2).max(MAX_STUDY_BAR_SERIES)}),
   z.object({...base,kind:z.literal("network"),layers:z.array(z.object({label:short,nodes:z.array(z.string().min(1).max(12)).min(1).max(4)})).min(2).max(4),states:z.array(z.object({label:short,explanation:z.string().min(20).max(450),edges:z.array(z.object({fromLayer:z.number().int().min(0).max(2),from:z.number().int().min(0).max(3),to:z.number().int().min(0).max(3),weight:z.number().finite().min(-1000).max(1000),active:z.boolean()})).min(1).max(12)})).min(1).max(3)}),
   z.object({...base,kind:z.literal("matrix"),rows:z.array(short).min(2).max(5),columns:z.array(short).min(2).max(5),unit:short,values:z.array(z.array(z.number().finite().min(-1e6).max(1e6)).min(2).max(5)).min(2).max(5)}),
   z.object({...base,kind:z.literal("heatmap"),rows:z.array(z.string().min(1).max(14)).min(2).max(8),columns:z.array(z.string().min(1).max(14)).min(2).max(8),unit:short,normalization:z.enum(["row-normalized","unnormalized"]),values:z.array(z.array(z.number().finite().min(0).max(1e6)).min(2).max(8)).min(2).max(8)}),
   z.object({...base,kind:z.literal("tree"),nodes:z.array(z.object({id:z.string().regex(/^[a-z0-9-]+$/).max(24),parentId:z.string().nullable(),token:z.string().min(1).max(12),score:z.number().finite().min(-1e6).max(1e6),status:z.enum(["accepted","candidate","rejected"])})).min(3).max(15),scoreUnit:short}),
   z.object({...base,kind:z.literal("timeline"),events:z.array(z.object({label:z.string().min(1).max(22),detail:z.string().min(1).max(72),phase:z.enum(["input","compute","decision","output"])})).min(3).max(7)}),
-  z.object({...base,kind:z.literal("curve"),xLabel:axis,yLabel:axis,series:z.array(z.object({label:z.string().min(1).max(22),points:z.array(point).min(2).max(12)})).min(1).max(3)}),
+  z.object({...base,kind:z.literal("curve"),layout:z.literal("readable-curve-v1").nullish(),xLabel:axis,yLabel:axis,series:z.array(z.object({label:z.string().min(1).max(40).describe("A complete concise configuration name; rewrite rather than clipping words or numeric identities."),points:z.array(point).min(2).max(12)})).min(1).max(3)}),
   z.object({...base,kind:z.literal("landscape"),xLabel:axis,yLabel:axis,zLabel:axis,values:z.array(z.array(z.number().finite().min(-1e9).max(1e9)).min(3).max(7)).min(3).max(7),path:z.array(z.object({row:z.number().int().min(0).max(6),column:z.number().int().min(0).max(6),label:z.string().min(1).max(12)})).min(2).max(7)}),
 ]);
 export const studySchema=z.object({
@@ -47,6 +50,8 @@ export function validateStudy(pack:StudyPack,sources:Source[]){
       const key=`${e.fromLayer}:${e.from}:${e.to}`;
       if(seen.has(key)||!f.layers[e.fromLayer]?.nodes[e.from]||!f.layers[e.fromLayer+1]?.nodes[e.to])throw new Error("Invalid network edge");seen.add(key);
     }}
+    if(f.kind==="bars"&&!f.layout&&f.series.length>6)throw new Error("More than six bar rows require the reviewed adaptive-bars-v1 layout.");
+    if(f.kind==="bars"&&f.layout&&(!balancedLabel(f.unit)))throw new Error("The bar unit has an unfinished bracket. Use a complete short metric name and put its longer definition in the caption; never clip a label.");
     if(f.kind==="bars"&&f.series.every(s=>s.value===0))throw new Error("Empty quantitative comparison");
     if(f.kind==="tree"){
       const nodeIds=new Set(f.nodes.map(n=>n.id)),roots=f.nodes.filter(n=>n.parentId===null);
@@ -54,7 +59,11 @@ export function validateStudy(pack:StudyPack,sources:Source[]){
       for(const n of f.nodes){if(n.parentId!==null&&!nodeIds.has(n.parentId))throw new Error("Token tree parent is missing");let p=n,depth=0,seen=new Set([n.id]);while(p.parentId!==null){if(seen.has(p.parentId)||++depth>4)throw new Error("Token tree has a cycle or exceeds four levels");seen.add(p.parentId);p=f.nodes.find(x=>x.id===p.parentId)!;}}
       if(f.nodes.some(n=>f.nodes.filter(x=>x.parentId===n.id).length>4))throw new Error("Token tree exceeds four children per node");
     }
-    if(f.kind==="curve")for(const s of f.series)for(let i=1;i<s.points.length;i++)if(s.points[i].x<=s.points[i-1].x)throw new Error("Curve x values must increase strictly");
+    if(f.kind==="curve"){
+      if(!f.layout&&f.series.some(s=>s.label.length>22))throw new Error("Long curve labels require readable-curve-v1.");
+      if(f.layout&&[f.xLabel,f.yLabel,...f.series.map(s=>s.label)].some(label=>!balancedLabel(label)))throw new Error("Curve labels must have complete brackets; rewrite the name rather than clipping it.");
+      for(const s of f.series)for(let i=1;i<s.points.length;i++)if(s.points[i].x<=s.points[i-1].x)throw new Error("Curve x values must increase strictly");
+    }
     if(f.kind==="landscape"){
       const columns=f.values[0]?.length;if(!columns||f.values.some(row=>row.length!==columns))throw new Error("Loss landscape grid dimensions disagree");
       if(f.path.some(p=>p.row>=f.values.length||p.column>=columns))throw new Error("Loss landscape path leaves the grid");
@@ -71,6 +80,7 @@ export function validateStudy(pack:StudyPack,sources:Source[]){
 const esc=(s:string)=>s.replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&apos;"}[c]!));
 const text=(x:number,y:number,value:string,size=13,anchor="start",fill="#555a54")=>`<text x="${x}" y="${y}" text-anchor="${anchor}" font-family="IBM Plex Mono" font-size="${size}" fill="${fill}">${diagramText(value)}</text>`;
 const num=(n:number)=>Number(n.toPrecision(4)).toString();
+function balancedLabel(value:string){const stack:string[]=[];for(const character of value){if(character==="("||character==="[")stack.push(character);else if(character===")"||character==="]"){if(stack.pop()!==(character===")"?"(":"["))return false;}}return !stack.length;}
 const color=(t:number)=>{const v=Math.max(0,Math.min(1,t)),a=[245,243,248],b=[119,96,170];return `rgb(${a.map((n,i)=>Math.round(n+(b[i]-n)*v)).join(",")})`;};
 function lines(s:string,max:number){const words=s.split(/\s+/).flatMap(word=>word.length>max?Array.from({length:Math.ceil(word.length/max)},(_,i)=>word.slice(i*max,(i+1)*max)):[word]),out:string[]=[];for(const word of words){if(!out.length||out[out.length-1].length+word.length+1>max)out.push(word);else out[out.length-1]+=" "+word;}return out;}
 function contourPaths(values:number[][],left:number,top:number,width:number,height:number){
@@ -89,24 +99,31 @@ export function barAxisMax(figure: Extract<StudyFigure, {kind: "bars"}>) {
   const largest = Math.max(...figure.series.map(s => s.value),figure.reference?.value||0);
   // Percentages have a known endpoint; other units keep their actual common
   // endpoint visible so a full-width bar cannot imply a different scale.
-  return /%|percent/i.test(figure.unit) && largest <= 100 ? 100 : Math.max(largest, 1);
+  if(/%|percent/i.test(figure.unit) && largest <= 100)return 100;
+  if(figure.layout==="adaptive-bars-v1")return /speedup|ratio|×|\bx\b/i.test(figure.unit)?Math.max(largest,1):largest||1;
+  return Math.max(largest, 1);
 }
 /** Deterministic charts/networks: models provide semantics and numbers, never arbitrary SVG or coordinates. */
 export function studySvg(f:StudyFigure,mobile=false,state=0){
   if(f.kind==="illustration")return illustrationSvg({layout:"explanatory-v3",title:f.title,description:f.caption,footnote:"",nodes:[],edges:[],illustration:f.illustration},mobile,"#7761bb");
+  if(f.kind==="curve"&&f.layout==="readable-curve-v1")return readableCurveSvg(f,mobile);
   const w=mobile?350:760;let h=300,body="";
   if(f.kind==="bars"){
-    const top=36,row=mobile?90:68;h=top+f.series.length*row+32;const left=mobile?16:170,right=w-32,extent=right-left,max=barAxisMax(f);
+    const top=36,row=mobile?90:68;const left=mobile?16:170,right=w-32,extent=right-left,max=barAxisMax(f);
+    const notes=f.series.map(s=>lines(s.note,mobile?35:65));
+    const heights=notes.map(lines=>f.layout==="adaptive-bars-v1"&&lines.length?Math.max(row,(mobile?25:24)+30+(lines.length-1)*16+12):row);
+    const offsets:number[]=[];let height=0;for(const rowHeight of heights){offsets.push(height);height+=rowHeight;}
+    h=top+height+32;
     body+=text(left,18,`0 · ${f.unit}`,12)+text(right,18,num(max),12,"end");
     const reference=f.reference || (/speedup|ratio|×|\bx\b/i.test(f.unit)?{value:1,label:"1× parity (no speedup)"}:/%.*of|percent.*of/i.test(f.unit)?{value:100,label:"100% parity"}:null);
     if(reference)body+=text(left,top-2,`Tick = ${reference.label}`,12);
-    f.series.forEach((s,i)=>{const y=top+i*row;const bw=extent*s.value/max;
+    f.series.forEach((s,i)=>{const y=top+offsets[i];const bw=extent*s.value/max;
       body+=text(mobile?left:20,y+15,s.label,13);
       const by=mobile?y+25:y+24;
       body+=`<rect x="${left}" y="${by}" width="${extent}" height="12" rx="3" fill="#eeedf0"/><rect x="${left}" y="${by}" width="${bw}" height="12" rx="3" fill="#8c79b2"/>`;
       if(reference&&reference.value<=max){const parity=left+extent*reference.value/max;body+=`<path d="M${parity} ${by-3} V${by+15}" stroke="#555a54" stroke-width="1.5"/>`;}
       body+=text(right,y+15,num(s.value),13,"end","#353832");
-      lines(s.note,mobile?35:65).forEach((line,j)=>body+=text(left,by+30+j*16,line,12));
+      notes[i].forEach((line,j)=>body+=text(left,by+30+j*16,line,12));
     });
   }else if(f.kind==="matrix"){
     const max=Math.max(...f.values.flat().map(Math.abs),1);

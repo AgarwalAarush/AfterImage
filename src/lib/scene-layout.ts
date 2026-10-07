@@ -1,5 +1,5 @@
 import type { Scene, SceneNode } from "./types";
-import { diagramText, escapeXml } from "./scene";
+import { diagramText, escapeXml } from "./diagram-text";
 
 type Point = { x: number; y: number };
 type Box = Point & { w: number; h: number };

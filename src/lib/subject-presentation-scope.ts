@@ -5,6 +5,7 @@ import baselineJson from "./subject-presentation-baseline.json";
 import { auditSubjectFeatureIsolation, subjectFeatureRoots } from "./subject-presentation-isolation";
 import { auditSubjectPresentationCoverage } from "./subject-presentation-coverage";
 import { auditSubjectRouteInventory } from "./subject-presentation-routes";
+import { subjectDiagramTextFile, subjectDiagramTextIsHistorical, subjectRendererBoundary, subjectRendererSource } from "./subject-renderer-boundary";
 
 type Manifest = [string, string][];
 type Baseline = {
@@ -21,7 +22,10 @@ export const subjectPresentationScopeVersion = "subjects-scoped-v1" as const;
 /** Hashes only: no copied application implementation, review artifacts or private state. */
 export const subjectPresentationBaseline = baseline;
 export const subjectPresentationFontDirectories = baseline.legacyFontDirectories;
-export const subjectCorePresentationFiles = [...baseline.unchangedCoreManifest.map(([file]) => file), ...baseline.extractions.map(item => item.targetFile)].sort();
+// Subjects uses the pure text helper and routing, not Library scene rendering.
+// The entire Library runtime closure remains bound to workspace integration.
+export const subjectLibraryRendererFiles = [...baseline.unchangedCoreManifest.map(([file])=>file).filter(file=>file.startsWith("src/lib/scene")&&file!=="src/lib/scene-layout.ts"),"src/lib/scene-matrix-svg.ts"].sort();
+export const subjectCorePresentationFiles = [...baseline.unchangedCoreManifest.map(([file]) => file).filter(file=>!subjectLibraryRendererFiles.includes(file)), ...baseline.extractions.map(item => item.targetFile), subjectDiagramTextFile].sort();
 /** Shared hooks, prop wiring, overlays, route layout and the acceptance policy need their own current review. */
 export const subjectIntegrationPresentationFiles = [
   "src/app/layout.tsx", "src/components/app.tsx", "src/components/app-context.tsx",
@@ -31,6 +35,7 @@ export const subjectIntegrationPresentationFiles = [
   "src/lib/subject-workspace-review.ts", "src/lib/subject-presentation-scope.ts", "src/lib/subject-presentation-baseline.json",
   "src/lib/subject-presentation-isolation.ts", "src/lib/subject-presentation-coverage.ts", "src/lib/subject-presentation-routes.ts",
   "next.config.ts",
+  "src/lib/subject-renderer-boundary.ts", "src/lib/subject-renderer-boundary.json", ...subjectLibraryRendererFiles,
 ].sort();
 export const subjectScopedPresentationFiles = [...new Set([...subjectCorePresentationFiles,...subjectIntegrationPresentationFiles])].sort();
 export type SubjectPresentationSources = Readonly<Record<string,string|Buffer|undefined>>;
@@ -49,10 +54,10 @@ function extraction(text:string,start:string,end:string) {
   if(first<0||last<0||text.indexOf(start,first+start.length)>=0||text.indexOf(end,last+end.length)>=0)return null;
   return text.slice(first,last+end.length);
 }
-function baselineCoreBytes(file:string,text:string) {
+function baselineCoreBytes(file:string,text:string,sources:SubjectPresentationSources) {
   // A literal import relocation points at the separately reviewed identical context
   // contract. Every other byte of this actual Subjects component stays bound.
-  if(file!=="src/components/paper-assistant.tsx")return text;
+  if(file!=="src/components/paper-assistant.tsx")return subjectRendererSource(file,text,sources[subjectDiagramTextFile]);
   const relocated='import { useApp } from "./app-context";';
   if(text.split(relocated).length!==2)return text;
   return text.replace(relocated,'import { useApp } from "./app";');
@@ -71,8 +76,11 @@ export function evaluateSubjectPresentationScope(sources:SubjectPresentationSour
   // The old application hashes remain historical values, not aliases for new files.
   const reconstructedLegacyDigest=hash(JSON.stringify(sortManifest([...baseline.legacySourceManifest,...fontManifest])));
   if(reconstructedLegacyDigest!==baseline.legacyPresentationDigest)failures.push("legacy-manifest-or-fonts-changed");
+  if(subjectRendererBoundary.baselineCommit!==baseline.baselineCommit||!baseline.unchangedCoreManifest.some(([file,digest])=>file===subjectRendererBoundary.legacyFile&&digest===subjectRendererBoundary.legacyFileDigest))failures.push("unbound-diagram-text-extraction");
+  if(!subjectDiagramTextIsHistorical(sources[subjectDiagramTextFile]))failures.push(`core-changed:${subjectDiagramTextFile}`);
   for(const [file,expected] of baseline.unchangedCoreManifest) {
-    if(hash(baselineCoreBytes(file,source(sources,file)))!==expected)failures.push(`core-changed:${file}`);
+    if(subjectLibraryRendererFiles.includes(file))continue;
+    if(hash(baselineCoreBytes(file,source(sources,file),sources))!==expected)failures.push(`core-changed:${file}`);
   }
   for(const witness of baseline.extractions) {
     if(!baseline.legacySourceManifest.some(([file,digest])=>file===witness.legacyFile&&digest===witness.legacyFileDigest))
@@ -109,7 +117,7 @@ async function computeSubjectPresentationScope(root:string) {
   await auditSubjectFeatureIsolation({root});
   const routes=await auditSubjectRouteInventory(root);
   const coverage=await auditSubjectPresentationCoverage({root,coreFiles:subjectCorePresentationFiles,
-    integrationRoots:subjectIntegrationPresentationFiles,featureRoots:subjectFeatureRoots,routeFiles:routes.sourceFiles});
+    integrationRoots:subjectIntegrationPresentationFiles,featureRoots:subjectFeatureRoots,routeFiles:routes.sourceFiles,forbiddenCoreImports:subjectLibraryRendererFiles});
   const [entries,fonts]=await Promise.all([
     Promise.all([...new Set([...subjectScopedPresentationFiles,...coverage.integrationFiles])].map(async file=>[file,await readFile(path.join(root,file))] as const)),
     readSubjectPresentationFonts(root),
