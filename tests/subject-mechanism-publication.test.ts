@@ -21,6 +21,7 @@ test("actual mechanism publication preserves every gate across scoped legacy com
   const root=await mkdtemp(path.join(os.tmpdir(),"subject-publication-fixture-"));
   const mechanismFile="src/content/subjects/mechanisms/resnet.json",lessonFile="src/content/subjects/lessons/resnet.json";
   const receiptFile="src/content/subjects/workspace-acceptance.json";
+  const exceptionFile="src/content/subjects/workspace-owner-exception.json";
   try {
     const routes=await auditSubjectRouteInventory(originalCwd);
     const coverage=await auditSubjectPresentationCoverage({root:originalCwd,coreFiles:subjectCorePresentationFiles,integrationRoots:subjectIntegrationPresentationFiles,featureRoots:subjectFeatureRoots,routeFiles:routes.sourceFiles});
@@ -46,6 +47,12 @@ test("actual mechanism publication preserves every gate across scoped legacy com
         legacyPresentationDigest:current.legacyCore.legacyPresentationDigest,reportDigest:"a".repeat(64),reviewerId:"synthetic-test-only",reviewedAt:"2026-10-03T20:00:00.000Z",viewCount:4,...overrides}));
     }
     async function resetMechanism(){await writeFile(mechanismFile,JSON.stringify(original));}
+    async function exception(current=scope,overrides:Record<string,unknown>={}) {
+      await writeFile(exceptionFile,JSON.stringify({version:1,kind:"owner-release-exception",policy:"subjects-scoped-v1",
+        coreDigest:current.coreDigest,integrationDigest:current.integrationDigest,legacyPresentationDigest:current.legacyCore.legacyPresentationDigest,
+        authorizedBy:"owner",authorizedAt:"2026-10-07T00:37:46.000Z",authorization:"Deploy reconciled main without the pending Dia workspace review",
+        waivedCheck:"shared-workspace-browser-review",...overrides}));
+    }
 
     await t.test("missing workspace receipt withholds an otherwise valid legacy mechanism",async()=>{
       await rm(receiptFile,{force:true});
@@ -56,6 +63,31 @@ test("actual mechanism publication preserves every gate across scoped legacy com
       await receipt();
       const result=await getSubjectMechanism(lesson);assert.ok(result);
       assert.deepEqual(result.review,original.review,"legacy approval bytes must not be rewritten or synthesized");
+    });
+    await t.test("a source-bound owner exception waives only workspace review and never claims independent approval",async()=>{
+      await rm(receiptFile,{force:true});
+      try {
+        await exception();
+        assert.deepEqual((await getSubjectMechanism(lesson))?.review,original.review);
+        for(const overrides of [
+          {coreDigest:"0".repeat(64)},{integrationDigest:"0".repeat(64)},{legacyPresentationDigest:"0".repeat(64)},
+          {kind:"independent-review"},{waivedCheck:"all-publication-checks"},{reviewerId:"invented-reviewer"},{authorizedBy:"worker"},
+        ]) {
+          await exception(scope,overrides);assert.equal(await getSubjectMechanism(lesson),null);
+        }
+        await exception();
+        const file="src/components/subject-reader.tsx",bytes=await readFile(file);
+        try {
+          await writeFile(file,Buffer.concat([bytes,Buffer.from("\n/* synthetic changed core */\n")]));
+          const changed=await subjectPresentationScope(root);await exception(changed);
+          assert.equal(await subjectWorkspaceAccepted(changed),false,"owner exception cannot approve changed historical core");
+          assert.equal(await getSubjectMechanism(lesson),null);
+        } finally {await writeFile(file,bytes);}
+        await exception();
+        const invalid=structuredClone(original);delete invalid.review.visualAcceptance;
+        await writeFile(mechanismFile,JSON.stringify(invalid));assert.equal(await getSubjectMechanism(lesson),null);
+        await resetMechanism();assert.ok(await getSubjectMechanism(lesson));
+      } finally {await rm(exceptionFile,{force:true});await resetMechanism();await receipt();}
     });
     await t.test("stale or malformed workspace receipts reject publication",async()=>{
       for(const key of ["coreDigest","integrationDigest","legacyPresentationDigest"]) {
