@@ -17,6 +17,7 @@ const countUnit = z.object({ singular: z.string().min(1).max(14), plural: z.stri
 export const illustrationPanelSchema = z.discriminatedUnion("kind", [
   z.object({
     ...common, kind: z.literal("matrix"),
+    layout: z.literal("readable-matrix-v1").nullish(),
     rowLabel: label, columnLabel: label,
     rows: z.array(label).min(2).max(6), columns: z.array(label).min(2).max(6),
     values: z.array(z.array(z.string().max(8)).min(2).max(6)).min(2).max(6),

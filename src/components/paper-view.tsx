@@ -1,4 +1,6 @@
 "use client";
+import { useReadingEngagement } from "./reading-engagement";
+import { PaperFeedback } from "./paper-feedback";
 import Link from "next/link";
 import { PaperAssistant } from "./paper-assistant";
 import { PaperPreparation } from "./paper-preparation";
@@ -19,6 +21,7 @@ import reading from "./paper-reading.module.css";
 
 export function PaperView({ id }: { id: string }) {
   const { state, act, busy, toast, preparations } = useApp();
+  useReadingEngagement(id, Boolean(state?.papers.some(p => p.id === id && p.recall) && state?.preferenceSummary?.learningFromReading));
   if (!state) return null;
   const p = state.papers.find((p) => p.id === id);
   if (!p)
@@ -59,6 +62,7 @@ export function PaperView({ id }: { id: string }) {
         <h1>{p.title}</h1>
         <p><InlineText text={ready ? r?.idea || p.abstract : p.abstract} /></p>
         <div className="paper-header-actions">
+          <PaperFeedback paperId={id} paperTitle={p.title} compact={false} />
           <a
             className="button primary"
             href={readerUrl(p)}

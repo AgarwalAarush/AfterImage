@@ -2578,15 +2578,16 @@ h3 {
 .subject-article { min-width:0; }
 .subject-article-header { padding-bottom:36px; border-bottom:1px solid var(--line); margin-bottom:36px; }
 .subject-article-header h1 { margin:22px 0; }
-.subject-article-header > p { max-width:68ch; font:400 16px/1.65 var(--font-sans); color:var(--muted); }
+.subject-article-header > p { max-width:100%; font:400 16px/1.65 var(--font-sans); color:var(--muted); }
 .subject-objectives { margin-bottom:44px; }
 .subject-objectives h2 { font:550 20px/1.4 var(--font-sans); margin-bottom:16px; }
-.subject-objectives li { max-width:68ch; margin:12px 0; font:400 var(--recall-font-size)/1.75 var(--font-sans); }
+.subject-objectives li { max-width:100%; margin:12px 0; font:400 var(--recall-font-size)/1.75 var(--font-sans); }
 .subject-section { margin:46px 0; scroll-margin-top:24px; }
 .subject-section > h2, .subject-quiz > h2, .subject-sources > h2 { font:550 25px/1.3 var(--font-sans); letter-spacing:-.25px; margin-bottom:20px; }
 .subject-prose { font:400 var(--recall-font-size)/1.75 var(--font-sans); color:var(--theme-ink, #363b34); }
 .subject-prose p { line-height:1.75; margin:0 0 20px; }
-.subject-section > .subject-prose > :is(p:not(:has(.katex-display)),ul,ol,blockquote) { max-width:68ch; }
+.subject-section > .subject-prose > :is(p,ul,ol,blockquote) { max-width:100%; }
+.subject-article-header h1, .subject-section > h2, .subject-section > .subject-prose > :is(h1,h2,h3,h4) { max-width:100%; text-wrap:wrap; }
 .subject-prose h3 { font:500 var(--recall-font-size)/1.5 var(--font-sans); margin:24px 0 14px; }
 .subject-article .katex { font-size:1em; }
 .subject-prose .katex:not(.katex-display .katex) { white-space:nowrap; }

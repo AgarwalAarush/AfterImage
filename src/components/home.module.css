@@ -1,0 +1,5 @@
+:where(.scope) :global(.next-read-card .card-idea) { margin-bottom: 16px; }
+:where(.scope) :global(.next-read-card .card-reading-focus) { color: var(--muted); font-size: 13px; line-height: 1.6; margin: 0 0 24px; }
+:where(.scope) :global(.card-reading-focus > span) { display: block; color: var(--ink); font-size: 12px; font-weight: 550; margin-bottom: 4px; }
+:where(.scope) :global(.card-tools > .icon-button) { width: 34px; height: 34px; }
+:where(.scope) :global(.shortlist-refill-status) { margin: -8px 0 20px; color: var(--muted); font-size: 13px; line-height: 1.6; }

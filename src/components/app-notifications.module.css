@@ -1,0 +1,8 @@
+:where(.scope) :global(.toast) { display: flex; align-items: center; gap: 20px; }
+:where(.scope) :global(.toast .text-button) { color: inherit; flex-shrink: 0; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
+:where(.scope) :global(.toast .text-button:focus-visible) { outline-color: currentColor; }
+:where(.scope) :global(.toast-dismiss) { display: grid; place-items: center; width: 28px; height: 28px; color: inherit; border: 0; border-radius: 5px; background: transparent; flex-shrink: 0; cursor: pointer; }
+:where(.scope) :global(.toast-dismiss:hover) { background: color-mix(in srgb, currentColor 10%, transparent); }
+:where(.scope) :global(.toast-dismiss:focus-visible) { outline-color: currentColor; outline-offset: 2px; }
+:where(.scope):global(.toast-stack) { position: fixed; bottom: 25px; left: 50%; transform: translateX(-50%); display: grid; justify-items: center; gap: 8px; z-index: 100; max-width: calc(100vw - 32px); }
+:where(.scope):global(.toast-stack .toast) { position: static; transform: none; max-width: 100%; }

@@ -8,6 +8,7 @@ import { allocationSvg } from "./scene-allocation-svg";
 import { stateTraceSvg } from "./scene-state-trace-svg";
 import { tokenTreeSvg } from "./scene-tree-svg";
 import { memorySvg } from "./scene-memory-svg";
+import { readableMatrixSvg } from "./scene-matrix-svg";
 
 const ink = "#34332f", muted = "#62675f";
 const text = (x: number, y: number, value: string, size = 14, fill = ink, anchor = "start") =>
@@ -17,7 +18,7 @@ const lines = (x: number, y: number, value: string, limit: number, size = 14, fi
   return { svg: wrapped.map((line, i) => text(x, y + i * (size + 6), line, size, fill)).join(""), height: wrapped.length * (size + 6) };
 };
 
-function panelSvg(panel: IllustrationPanel, width: number, accent: string, marker: string, barMax: number, panelId: string) {
+function panelSvg(panel: IllustrationPanel, width: number, accent: string, marker: string, barMax: number, panelId: string, mobile: boolean) {
   const title = lines(0, 23, panel.title, Math.floor(width / 10), 16);
   let svg = title.svg;
   let y = title.height + 26;
@@ -47,6 +48,10 @@ function panelSvg(panel: IllustrationPanel, width: number, accent: string, marke
     const graphic = bucketRoutingSvg(panel, width, marker, panelId);
     svg += `<g transform="translate(0 ${y})">${graphic.svg}</g>`;
     y += graphic.height + 22;
+  } else if (panel.kind === "matrix" && panel.layout === "readable-matrix-v1") {
+    const graphic=readableMatrixSvg(panel,width,accent,mobile);
+    svg+=`<g transform="translate(0 ${y})">${graphic.svg}</g>`;
+    y+=graphic.height+22;
   } else if (panel.kind === "matrix") {
     if (panel.selectionRule) {
       svg += text(0, y, `Top-${panel.selectionRule.k} per ${panel.selectionRule.axis}`, 12, accent);
@@ -149,12 +154,13 @@ export function illustrationSvg(scene: Scene, mobile: boolean, accent: string) {
   const takeaway = lines(padding, 30 + heading.height + 6, illustration.takeaway, Math.floor((width - padding * 2) / 9.6), 16, muted);
   let y = 30 + heading.height + takeaway.height + 44, svg = heading.svg + takeaway.svg;
   for (let index = 0; index < count;) {
-    const full = ["schematic", "state-trace"].includes(illustration.panels[index].kind);
-    const rowCount = full ? 1 : columns === 2 && !["schematic", "state-trace"].includes(illustration.panels[index + 1]?.kind || "") && index + 1 < count ? 2 : 1;
+    const fullWidth=(panel:IllustrationPanel|undefined)=>!!panel&&(["schematic", "state-trace"].includes(panel.kind)||(panel.kind==="matrix"&&panel.layout==="readable-matrix-v1"));
+    const full = fullWidth(illustration.panels[index]);
+    const rowCount = full ? 1 : columns === 2 && !fullWidth(illustration.panels[index + 1]) && index + 1 < count ? 2 : 1;
     const rowW = full ? width - padding * 2 : panelW;
     const panels = illustration.panels.slice(index, index + rowCount).map((panel, col) => {
       const max = panel.kind === "bars" ? /%|percent/i.test(panel.unit) ? 100 : (Math.max(...illustration.panels.flatMap(other => other.kind === "bars" && other.unit === panel.unit ? other.items.map(item => item.value) : [])) || 1) : 1;
-      return panelSvg(panel, rowW, accent, marker, max, `panel-${index + col}`);
+      return panelSvg(panel, rowW, accent, marker, max, `panel-${index + col}`,mobile);
     });
     const height = Math.max(...panels.map(panel => panel.height));
     panels.forEach((panel, col) => {

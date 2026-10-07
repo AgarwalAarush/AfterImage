@@ -1,0 +1,51 @@
+/* Reading direction uses the same compact controls as the Library and appearance picker. */
+:where(.scope) :global(.direction-grid) { grid-template-columns: minmax(0, 1.65fr) minmax(320px, 1fr); gap: 32px; align-items: start; }
+:where(.scope) :global(.direction-grid .direction-aside) { max-width: none; padding-top: 0; min-width: 0; }
+:where(.scope) :global(.direction-form-heading), :where(.scope) :global(.interest-heading) { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 20px; }
+:where(.scope) :global(.direction-form-heading h2), :where(.scope) :global(.direction-grid .direction-aside h2) { font: 550 20px/1.3 var(--font-sans); letter-spacing: -.02em; margin: 0; }
+:where(.scope) :global(.direction-form-heading > span), :where(.scope) :global(.interest-save-status) { color: var(--muted); font-size: 12px; line-height: 1.5; }
+:where(.scope) :global(.direction-form-heading > span) { text-align: right; }
+:where(.scope) :global(.reading-interests) { padding: 24px; }
+:where(.scope) :global(.interest-heading) { flex-wrap: wrap; gap: 4px 12px; margin-bottom: 8px; }
+:where(.scope) :global(.direction-grid .direction-aside .interest-description) { margin: 0 0 8px; font-size: 12px; line-height: 1.6; }
+:where(.scope) :global(.interest-row) { min-width: 0; margin: 0; padding: 14px 0; border: 0; }
+:where(.scope) :global(.interest-row + .interest-row) { border-top: 1px solid var(--line); }
+:where(.scope) :global(.interest-row legend) { display: contents; font-size: 13px; font-weight: 500; line-height: 1.5; }
+:where(.scope) :global(.interest-strengths) { display: flex; gap: 2px; padding: 3px; margin-top: 8px; border-radius: var(--control-radius); background: var(--theme-surface, #efeff1); }
+:where(.scope) :global(.interest-choice) { position: relative; display: flex; flex: 1; min-width: 0; cursor: pointer; }
+:where(.scope) :global(.interest-choice input) { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: inherit; }
+:where(.scope) :global(.interest-choice > span) { display: flex; align-items: center; justify-content: center; width: 100%; min-height: 32px; padding: 4px 8px; border-radius: 5px; color: var(--muted); font-size: 12px; line-height: 1.5; }
+:where(.scope) :global(.interest-choice input:checked + span) { background: var(--theme-surface-raised, var(--paper)); color: var(--ink); font-weight: 600; box-shadow: inset 0 -2px var(--accent); }
+:where(.scope) :global(.interest-choice input:focus-visible + span) { outline: 2px solid var(--control-focus); outline-offset: -2px; }
+:where(.scope) :global(.interest-choice input[aria-disabled="true"]) { cursor: wait; }
+:where(.scope) :global(.engagement-setting) { border-top: 1px solid var(--line); padding-top: 18px; margin-top: 2px; }
+:where(.scope) :global(.engagement-switch) { position: relative; display: flex; align-items: center; gap: 10px; width: fit-content; cursor: pointer; font-size: 13px; font-weight: 500; }
+:where(.scope) :global(.engagement-switch input) { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: inherit; }
+:where(.scope) :global(.engagement-switch-face) { display: flex; align-items: center; width: 32px; height: 20px; padding: 3px; border-radius: 12px; background: var(--theme-line-strong, #bfc0c2); flex-shrink: 0; }
+:where(.scope) :global(.engagement-switch-face::after) { content: ""; width: 14px; height: 14px; border-radius: 50%; background: var(--paper); }
+:where(.scope) :global(.engagement-switch input:checked + .engagement-switch-face) { background: var(--accent); }
+:where(.scope) :global(.engagement-switch input:checked + .engagement-switch-face::after) { transform: translateX(12px); }
+:where(.scope) :global(.engagement-switch input:focus-visible + .engagement-switch-face) { outline: 2px solid var(--control-focus); outline-offset: 3px; }
+:where(.scope) :global(.engagement-switch input[aria-disabled="true"]) { cursor: wait; }
+:where(.scope) :global(.direction-grid .direction-aside .engagement-setting p) { margin: 10px 0 0; font-size: 12px; line-height: 1.6; }
+:where(.scope) :global(.direction-grid .direction-aside .interest-error) { margin: 12px 0 0; }
+:where(.scope) :global(.direction-help) { margin-top: 28px; padding-inline: 4px; }
+:where(.scope) :global(.direction-grid .direction-aside .direction-help h2) { font-size: 16px; margin-bottom: 12px; }
+:where(.scope) :global(.direction-grid .direction-aside .direction-help p) { font-size: 13px; line-height: 1.7; margin: 0 0 14px; }
+:where(.scope) :global(.direction-grid .direction-aside .worker-status) { font-size: 12px; }
+@media (hover: hover) and (pointer: fine) {
+  :where(.scope) :global(.interest-choice:hover > span) { color: var(--ink); }
+}
+@media (max-width: 1050px) {
+  :where(.scope) :global(.direction-grid) { grid-template-columns: 1fr; gap: 24px; }
+  :where(.scope) :global(.direction-aside) { grid-row: 1; }
+  :where(.scope) :global(.direction-grid .direction-aside) { display: grid; grid-template-columns: minmax(280px, 1fr) minmax(0, 1fr); gap: 24px; align-items: start; }
+  :where(.scope) :global(.direction-help) { margin-top: 8px; }
+}
+@media (max-width: 700px) {
+  :where(.scope) :global(.direction-grid .direction-aside) { grid-template-columns: 1fr; gap: 20px; }
+  :where(.scope) :global(.reading-interests) { padding: 20px; }
+  :where(.scope) :global(.direction-help) { margin-top: 0; }
+  :where(.scope) :global(.direction-form-heading) { flex-wrap: wrap; gap: 4px 12px; }
+  :where(.scope) :global(.direction-buttons) { flex-wrap: wrap; gap: 12px 20px; }
+}

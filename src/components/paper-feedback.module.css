@@ -1,0 +1,9 @@
+:where(.scope):global(.suggestion-feedback summary) { width: 34px; height: 34px; }
+:where(.scope):global(.suggestion-feedback summary) { display: flex; justify-content: center; align-items: center; gap: 8px; }
+:where(.scope):global(.suggestion-feedback[open] summary) { color: var(--ink); background: var(--theme-surface, #efeff1); }
+:where(.scope):global(.suggestion-feedback > .paper-feedback-options) { top: calc(100% + 6px); min-width: 238px; max-width: min(290px, calc(100vw - 48px)); padding: 6px; }
+:where(.scope):global(.suggestion-feedback .paper-feedback-options button) { display: grid; gap: 3px; padding: 10px 12px; white-space: normal; font-size: 13px; line-height: 1.45; color: var(--ink); }
+:where(.scope) :global(.paper-feedback-options button > small) { color: var(--muted); font-size: 11px; line-height: 1.5; }
+:where(.scope) :global(.paper-feedback-options button:focus-visible) { outline-offset: -2px; }
+:where(.scope) :global(.paper-feedback-options button:disabled) { opacity: .5; cursor: wait; }
+:where(.scope):global(.reader-feedback summary) { width: auto; height: var(--control-height); padding: 0 14px; border: 1px solid var(--line); border-radius: var(--control-radius); font-size: 13px; color: var(--ink); }

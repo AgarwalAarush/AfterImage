@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "kind": "owner-text-width-release-exception",
+  "policy": "subjects-scoped-v1",
+  "coreDigest": "5a0cfcbd0960ba0704679bd00202f14db7fc88bdd9fe9eaf7149d28484d15624",
+  "integrationDigest": "652184d713b7053c70158e4cb4016b7f8872ba87f5e78d862569a73eee6160d3",
+  "legacyPresentationDigest": "76a8196b47300566afdb94d5001d9a6a0d802cffe6c797fd3e7c66fba3ffeac2",
+  "stylesheetDigest": "8ccdb34fd64bd6ed9ea526fff8d404c096f9bcf79bc04b9ae5de490c767d5f26",
+  "authorizedBy": "owner",
+  "authorizedAt": "2026-10-07T02:21:53.768Z",
+  "authorization": "Release the exact Subjects prose/title-width change in PR 19 without renewed browser presentation review",
+  "waivedChecks": [
+    "subjects-prose-width-browser-review",
+    "shared-workspace-browser-review"
+  ]
+}

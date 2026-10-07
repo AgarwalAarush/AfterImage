@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 import type { Paper } from "@/lib/types";
 import { isActiveTurn, targetQuery, type AssistantTarget, type AssistantTurn, type AssistantSource, type Conversation } from "@/lib/assistant-model";
 import { AssistantAnswer, type CitationHandlers } from "./assistant-answer";
-import { useApp } from "./app";
+import { useApp } from "./app-context";
 import type { PdfDestination } from "./paper-pdf";
 import { PaperLoading } from "./paper-loading";
 const PaperPdf=lazy(()=>import("./paper-pdf").then(module=>({default:module.PaperPdf})));
