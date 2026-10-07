@@ -12,7 +12,7 @@ import { subjectPresentationScope, subjectPresentationBaseline, subjectCorePrese
 import { auditSubjectPresentationCoverage } from "../src/lib/subject-presentation-coverage";
 import { auditSubjectRouteInventory } from "../src/lib/subject-presentation-routes";
 import { subjectFeatureRoots } from "../src/lib/subject-presentation-isolation";
-import { subjectWorkspaceAccepted } from "../src/lib/subject-workspace-review";
+import { subjectOwnerTextWidthAccepted, subjectWorkspaceAccepted } from "../src/lib/subject-workspace-review";
 
 // All fixture mutations, including synthetic receipts, are confined to this
 // disposable directory. No source, review, font or receipt in the repository is changed.
@@ -22,6 +22,8 @@ test("actual mechanism publication preserves every gate across scoped legacy com
   const mechanismFile="src/content/subjects/mechanisms/resnet.json",lessonFile="src/content/subjects/lessons/resnet.json";
   const receiptFile="src/content/subjects/workspace-acceptance.json";
   const exceptionFile="src/content/subjects/workspace-owner-exception.json";
+  const widthExceptionFile="src/content/subjects/text-width-owner-exception.json";
+  const widthCss=await readFile(path.join(originalCwd,"src/app/globals.css"),"utf8");
   try {
     const routes=await auditSubjectRouteInventory(originalCwd);
     const coverage=await auditSubjectPresentationCoverage({root:originalCwd,coreFiles:subjectCorePresentationFiles,integrationRoots:subjectIntegrationPresentationFiles,featureRoots:subjectFeatureRoots,routeFiles:routes.sourceFiles});
@@ -50,6 +52,13 @@ test("actual mechanism publication preserves every gate across scoped legacy com
         legacyPresentationDigest:current.legacyCore.legacyPresentationDigest,reportDigest:"a".repeat(64),reviewerId:"synthetic-test-only",reviewedAt:"2026-10-03T20:00:00.000Z",viewCount:4,...overrides}));
     }
     async function resetMechanism(){await writeFile(mechanismFile,JSON.stringify(original));}
+    async function widthException(current:Awaited<ReturnType<typeof subjectPresentationScope>>,overrides:Record<string,unknown>={}) {
+      await writeFile(widthExceptionFile,JSON.stringify({version:1,kind:"owner-text-width-release-exception",policy:"subjects-scoped-v1",
+        coreDigest:current.coreDigest,integrationDigest:current.integrationDigest,legacyPresentationDigest:current.legacyCore.legacyPresentationDigest,
+        stylesheetDigest:mechanismDigest(await readFile("src/app/globals.css","utf8")),authorizedBy:"owner",authorizedAt:"2026-10-07T02:20:00.000Z",
+        authorization:"Release the exact Subjects prose/title-width change in PR 19 without renewed browser presentation review",
+        waivedChecks:["subjects-prose-width-browser-review","shared-workspace-browser-review"],...overrides}));
+    }
     async function exception(current=scope,overrides:Record<string,unknown>={}) {
       await writeFile(exceptionFile,JSON.stringify({version:1,kind:"owner-release-exception",policy:"subjects-scoped-v1",
         coreDigest:current.coreDigest,integrationDigest:current.integrationDigest,legacyPresentationDigest:current.legacyCore.legacyPresentationDigest,
@@ -171,6 +180,47 @@ test("actual mechanism publication preserves every gate across scoped legacy com
         assert.equal(await getSubjectMechanism(lesson,{allowSourcePassed:true}),null,"development review cannot bypass scientific checks");
       }
       await resetMechanism();assert.ok(await getSubjectMechanism(lesson));
+    });
+    await t.test("the owner width exception permits only the exact authorized CSS delta and retains diagram gates",async()=>{
+      const file="src/app/globals.css",baseline=await readFile(file);
+      await rm(receiptFile,{force:true});
+      try {
+        await writeFile(file,widthCss);
+        const changed=await subjectPresentationScope(root);
+        assert.deepEqual(changed.legacyCore.failures,["core-changed:src/app/globals.css"]);
+        assert.equal(await getSubjectMechanism(lesson),null,"the earlier owner exception cannot grant changed core approval");
+        await widthException(changed);
+        assert.equal(await subjectOwnerTextWidthAccepted(changed),true);
+        assert.deepEqual((await getSubjectMechanism(lesson))?.review,original.review);
+        for(const overrides of [
+          {coreDigest:"0".repeat(64)},{integrationDigest:"0".repeat(64)},{legacyPresentationDigest:"0".repeat(64)},
+          {stylesheetDigest:"0".repeat(64)},{waivedChecks:["all-publication-checks"]},{reviewerId:"invented-reviewer"},
+        ]) {await widthException(changed,overrides);assert.equal(await getSubjectMechanism(lesson),null);}
+        await writeFile(file,widthCss+"\n.subject-experiment-canvas { height:999px; }\n");
+        const extra=await subjectPresentationScope(root);await widthException(extra);
+        assert.equal(await subjectOwnerTextWidthAccepted(extra),false,"even rebound hashes cannot authorize unrelated CSS");
+        assert.equal(await getSubjectMechanism(lesson),null);
+        await writeFile(file,widthCss);await widthException(changed);
+        for(const alter of [
+          (value:typeof original)=>{delete value.review.visualAcceptance;},
+          (value:typeof original)=>{value.review.visualAcceptance!.beatCount+=1;},
+          (value:typeof original)=>{value.review.rendererDigest="0".repeat(64);},
+          (value:typeof original)=>{value.parentContentDigest="0".repeat(64);},
+        ]) {
+          const value=structuredClone(original);alter(value);await writeFile(mechanismFile,JSON.stringify(value));
+          assert.equal(await getSubjectMechanism(lesson),null);
+        }
+        await resetMechanism();assert.ok(await getSubjectMechanism(lesson));
+        const helper="src/lib/diagram-text.ts",bytes=await readFile(helper);
+        try {
+          await writeFile(helper,Buffer.concat([bytes,Buffer.from("\n/* changed helper */\n")]));
+          const altered=await subjectPresentationScope(root);await widthException(altered);
+          assert.equal(await subjectOwnerTextWidthAccepted(altered),false);
+          assert.equal(await getSubjectMechanism(lesson),null);
+        } finally {await writeFile(helper,bytes);}
+      } finally {
+        await writeFile(file,baseline);await rm(widthExceptionFile,{force:true});await resetMechanism();await receipt();
+      }
     });
   } finally {
     process.chdir(originalCwd);
