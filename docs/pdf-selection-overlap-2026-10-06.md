@@ -1,0 +1,18 @@
+# Reader selection and PDF overlap correction
+
+The PDF reader renders the original page on a canvas and places transparent selectable text above it. The global Dark appearance selection rule supplies an off-white foreground. The PDF selection rule previously replaced only the background, so selecting a passage exposed the overlay lettering above the original black letters.
+
+The PDF-specific selection rule in `src/app/ui.css` now explicitly keeps the foreground transparent while retaining its existing translucent highlight. Its specificity matches the Dark appearance rule, and `ui.css` is imported after `theme.css`. The override covers text-layer spans and nested search marks. Text positioning, PDF rendering, copying, search and citation highlight backgrounds, and ordinary prose selection are unchanged.
+
+Escape previously hid the Ask AI popover without clearing the browser's selected range. The following keyup captured that same range and reopened the popover. Escape now clears the actual selection, the popover, and its temporary question together. The Dismiss selection button uses the same dismissal. This applies to PDF text and reader prose; a selected passage is dismissed before an already-open assistant panel. The PDF find panel retains its existing first-Escape handling.
+
+This is a local web presentation change. No API, storage, worker, content or progress migration is required. Shared CSS remains part of the Subjects presentation fingerprint; publication requires renewed independent visual acceptance against the changed presentation, preserving exact parent and scientific digests.
+
+## Validation status
+
+- `npm run typecheck` passes after both corrections. The existing focused PDF matching/search and Subjects publication/visual-review/capture tests pass: 19 tests, zero failures. These tests do not establish the new Escape interaction's browser behavior.
+- Native Dia inspection of the local T5 original-paper reader in Dark appearance at 220% shows black canvas lettering beneath the translucent selection, without the exposed off-white overlay. Light appearance, normal-zoom/multiline selection, copying, search/citation interaction and Escape dismissal still need native browser verification. Dia changed active pages/windows during subsequent attempts, preventing reliable continued interaction.
+- The committed lockfile remains unchanged (`4551ca961c528d4a4edb033d63dfef70bfe09ab1dda04306493ee59bd45abc2d`), and the diagram metrics check confirms matching font digests. Lesson, mechanism, renderer and public font sources remain unchanged.
+- `npm run subjects:verify` correctly rejects all fourteen mechanisms' old visual acceptances after the presentation changed. Their existing sidecars and scientific/parent digests are preserved. Current renderer digest: `83a7df171d30c59ad1eef731009edc62331803b8dcba7d6983b92d72bf27ea4a`; current presentation digest after both fixes: `09ed7e3f805cd7183b585d3190b2ede01dc733edee8cb64147f8819f8b19a293`.
+- Dia is available through native accessibility/input/screenshots, but the supported browser inventory exposes only Codex MCP Apps and the in-app browser, not a Dia DOM-audit/viewport session compatible with the existing fingerprint-bound capture workflow. Independent every-beat/transition acceptance at 1440px/900px in Light/Dark remains outstanding. No alternative browser was launched and no approval was reused or fabricated.
+- `AFTERIMAGE_BUILD_DIR=.next-production npm run build -- --webpack` stops at the Subjects publication prebuild gate. Webpack compilation and fresh output-trace inspection therefore remain unverified. Publication gates and tracing exclusions were not changed. No production deployment has been performed.

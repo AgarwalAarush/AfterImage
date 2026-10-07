@@ -1,5 +1,9 @@
 # AfterImage
 
+Original-paper loading uses a quiet dotted orb and faint page outline, keeping the view switch available until the PDF is ready. Reduced motion uses a still orb. See [PDF loading presentation](docs/pdf-loading-presentation-2026-10-06.md) for local verification and release status.
+
+PDF text selection keeps the selectable overlay transparent in Light and Dark, preserving the original page lettering beneath the highlight. Escape dismisses both the selected passage and its Ask AI popover. See [reader selection correction](docs/pdf-selection-overlap-2026-10-06.md) for validation and publication status.
+
 Library study figures now use compact captions with a small teaching-example or reported-evidence label beside their source, replacing the prominent disclaimer section. See [study-figure captions](docs/study-figure-captions-2026-10-03.md).
 
 PR #10 is merged and deployed. Live desktop checks confirm the Analysis/Paper positioning, Library preparation controls, Subjects and Documents, and real original-paper rendering, search, and download. See [October 3 reader release verification](docs/reader-ui-release-2026-10-03.md).
