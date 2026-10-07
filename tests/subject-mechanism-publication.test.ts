@@ -35,6 +35,9 @@ test("actual mechanism publication preserves every gate across scoped legacy com
     // Preserve a real historical compatibility fixture while the checkout moves
     // forward. These approved bytes are written only into the temporary fixture.
     for(const file of reconciledCoreFiles)await writeFile(path.join(root,file),execFileSync("git",["show",`${subjectPresentationBaseline.baselineCommit}:${file}`],{cwd:originalCwd}));
+    // Positive legacy fixtures use approved typography even when the checkout
+    // intentionally changes its current reading presentation.
+    await writeFile(path.join(root,"src/app/globals.css"),execFileSync("git",["show",`${subjectPresentationBaseline.baselineCommit}:src/app/globals.css`],{cwd:originalCwd}));
     Object.assign(process.env,{NODE_ENV:"test"});
     process.chdir(root);
     const lesson=await getSubjectLesson("resnet");assert.ok(lesson,"public lesson fixture must pass its own publication checks");

@@ -14,7 +14,7 @@ before(async()=>{
   currentSources=Object.fromEntries(await Promise.all(subjectScopedPresentationFiles.map(async file=>[file,await readFile(file)])));
   // Exercise historical compatibility against actual approved Git bytes, rather
   // than assuming the current checkout has an unchanged renderer.
-  sources={...currentSources,...Object.fromEntries(reconciledCoreFiles.map(file=>[file,execFileSync("git",["show",`${subjectPresentationBaseline.baselineCommit}:${file}`])]))};
+  sources={...currentSources,...Object.fromEntries([...reconciledCoreFiles,"src/app/globals.css"].map(file=>[file,execFileSync("git",["show",`${subjectPresentationBaseline.baselineCommit}:${file}`])]))};
   fonts=await readSubjectPresentationFonts();
 });
 test("hash-only witness reconstructs the exact legacy presentation approval and current extracted core",()=>{
@@ -34,16 +34,17 @@ test("source extraction witnesses are exact fragments of the approved Git source
   }
 });
 test("Library renderer changes remain integration-bound while the exact Subjects helper retains historical approval",()=>{
-  const result=evaluateSubjectPresentationScope(currentSources,fonts);
+  const fixture:SubjectPresentationSources={...currentSources,"src/app/globals.css":sources["src/app/globals.css"]};
+  const result=evaluateSubjectPresentationScope(fixture,fonts);
   assert.equal(result.legacyCore.equivalent,true);
   for(const file of reconciledCoreFiles)assert.ok(subjectLibraryRendererFiles.includes(file));
   const matrix="src/lib/scene-matrix-svg.ts";
   assert.ok(!subjectCorePresentationFiles.includes(matrix));assert.ok(subjectIntegrationPresentationFiles.includes(matrix));
-  const changed=evaluateSubjectPresentationScope({...currentSources,[matrix]:String(currentSources[matrix])+"\n/* changed matrix geometry */"},fonts);
+  const changed=evaluateSubjectPresentationScope({...fixture,[matrix]:String(fixture[matrix])+"\n/* changed matrix geometry */"},fonts);
   assert.equal(changed.coreDigest,result.coreDigest);
   assert.notEqual(changed.integrationDigest,result.integrationDigest);
   const helper="src/lib/diagram-text.ts";
-  const unsafe=evaluateSubjectPresentationScope({...currentSources,[helper]:String(currentSources[helper])+"\n/* changed shared helper */"},fonts);
+  const unsafe=evaluateSubjectPresentationScope({...fixture,[helper]:String(fixture[helper])+"\n/* changed shared helper */"},fonts);
   assert.equal(unsafe.legacyCore.equivalent,false);assert.notEqual(unsafe.coreDigest,result.coreDigest);
 });
 test("text helper extraction is exactly anchored to the approved scene source",()=>{

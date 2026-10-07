@@ -1,0 +1,9 @@
+# Subjects text and figure column alignment
+
+Subjects equations and diagrams already occupy the article's full column. Paragraphs, lists, objectives and the introduction had an additional `68ch` cap, leaving their right edge short of the adjacent figure/equation edge. The owner requested that text and titles extend to that existing width.
+
+Remove those nested caps only within Subjects article prose and use the full available column for its headings. Lesson titles use ordinary wrapping rather than balanced lines that stop early. Preserve the article/outline grid, equation panels, diagram containers, renderer geometry, fonts and scientific lesson content. The open assistant still determines the available reader column. Library's separately owned reading-width rules remain in place.
+
+This changes a Subjects core presentation stylesheet. Existing scientific and per-beat approvals remain unchanged, but the new source cannot reuse the October 6 workspace exception or claim historical core equality. The ordinary production publication gate requires renewed current presentation acceptance before release. Verify in Dia at 1440px and 900px, Light/Dark, including the assistant-open layout; no other browser substitutes for the required acceptance.
+
+Validation: TypeScript and the existing 402-test suite pass (401 passed, one existing opt-in skip). The local ResNet route compiles and returns HTTP 200 with its article and prerequisite section. Historical approval tests restore approved CSS only inside disposable fixtures; production sources and approvals are never restored or synthesized. The publication audit correctly withholds all 14 mechanisms after the core stylesheet change. Dia exposes native controls here without a supported DOM/viewport interface, and foreground changes interrupted the separate preview window. Current presentation acceptance is therefore incomplete; no merge or deployment is claimed.
